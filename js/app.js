@@ -480,10 +480,10 @@ if (document.getElementById('bmiCalcBtn')){
   });
 
   function bmiCategoryFor(bmi){
-    if (bmi < 18.5) return { label: 'Underweight', color: 'var(--accent1)' };
-    if (bmi < 25) return { label: 'Normal weight', color: 'var(--ok)' };
-    if (bmi < 30) return { label: 'Overweight', color: 'var(--warn)' };
-    return { label: 'Obesity', color: 'var(--err)' };
+    if (bmi < 18.5) return { label: 'Underweight', color: 'var(--accent1-solid)' };
+    if (bmi < 25) return { label: 'Normal weight', color: 'var(--ok-solid)' };
+    if (bmi < 30) return { label: 'Overweight', color: 'var(--warn-solid)' };
+    return { label: 'Obesity', color: 'var(--err-solid)' };
   }
 
   document.getElementById('bmiCalcBtn').onclick = () => {
@@ -654,6 +654,91 @@ if (document.getElementById('metaPreview')){
   };
 
   updateMetaPreview();
+}
+
+/* ============ PERCENTAGE CALCULATOR (calculators.html) ============ */
+if (document.getElementById('pctCalcBtn')){
+  let pctMode = 'of';
+  const pctLabelConfig = {
+    of: { x: 'Percentage (%)', y: 'Of value', xPh: 'e.g. 20', yPh: 'e.g. 250' },
+    percentOf: { x: 'Part value', y: 'Total value', xPh: 'e.g. 40', yPh: 'e.g. 250' },
+    increase: { x: 'Original value', y: 'New value', xPh: 'e.g. 100', yPh: 'e.g. 125' },
+    decrease: { x: 'Original value', y: 'New value', xPh: 'e.g. 100', yPh: 'e.g. 80' },
+    difference: { x: 'Value 1', y: 'Value 2', xPh: 'e.g. 100', yPh: 'e.g. 120' },
+  };
+
+  document.querySelectorAll('.pct-mode-toggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.pct-mode-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      pctMode = btn.dataset.mode;
+      const cfg = pctLabelConfig[pctMode];
+      document.getElementById('pctLabelX').textContent = cfg.x;
+      document.getElementById('pctLabelY').textContent = cfg.y;
+      document.getElementById('pctX').placeholder = cfg.xPh;
+      document.getElementById('pctY').placeholder = cfg.yPh;
+      document.getElementById('pctResultBox').classList.add('hidden');
+    };
+  });
+
+  document.getElementById('pctCalcBtn').onclick = () => {
+    const x = parseFloat(document.getElementById('pctX').value);
+    const y = parseFloat(document.getElementById('pctY').value);
+    if (!isFinite(x) || !isFinite(y)){ toast('Enter both values.', 'err'); return; }
+
+    let result, formula;
+    if (pctMode === 'of'){
+      result = (x / 100) * y;
+      formula = `${x}% of ${y} = ${result.toFixed(2)}`;
+    } else if (pctMode === 'percentOf'){
+      if (y === 0){ toast("The total value can't be zero.", 'err'); return; }
+      result = (x / y) * 100;
+      formula = `${x} is ${result.toFixed(2)}% of ${y}`;
+    } else if (pctMode === 'increase'){
+      if (x === 0){ toast("The original value can't be zero.", 'err'); return; }
+      result = ((y - x) / x) * 100;
+      formula = `Change from ${x} to ${y} = ${result.toFixed(2)}% ${result >= 0 ? 'increase' : 'decrease'}`;
+    } else if (pctMode === 'decrease'){
+      if (x === 0){ toast("The original value can't be zero.", 'err'); return; }
+      result = ((x - y) / x) * 100;
+      formula = `Change from ${x} to ${y} = ${result.toFixed(2)}% ${result >= 0 ? 'decrease' : 'increase'}`;
+    } else if (pctMode === 'difference'){
+      const avg = (x + y) / 2;
+      if (avg === 0){ toast("Values can't both be zero.", 'err'); return; }
+      result = (Math.abs(x - y) / avg) * 100;
+      formula = `Difference between ${x} and ${y} = ${result.toFixed(2)}%`;
+    }
+
+    document.getElementById('pctValue').textContent = result.toFixed(2) + (pctMode === 'of' ? '' : '%');
+    document.getElementById('pctFormula').textContent = formula;
+    document.getElementById('pctResultBox').classList.remove('hidden');
+    toast('Calculated.');
+  };
+
+  document.getElementById('pctClearBtn').onclick = () => {
+    document.getElementById('pctX').value = '';
+    document.getElementById('pctY').value = '';
+    document.getElementById('pctResultBox').classList.add('hidden');
+  };
+}
+
+/* ============ DISCOUNT CALCULATOR (calculators.html) ============ */
+if (document.getElementById('discOriginal')){
+  function updateDiscount(){
+    const price = parseFloat(document.getElementById('discOriginal').value);
+    const pct = parseFloat(document.getElementById('discPercent').value);
+    if (!isFinite(price) || !isFinite(pct) || price < 0 || pct < 0){
+      document.getElementById('discFinal').textContent = '0.00';
+      document.getElementById('discSaved').textContent = '0.00';
+      return;
+    }
+    const saved = price * (pct / 100);
+    const final = price - saved;
+    document.getElementById('discFinal').textContent = final.toFixed(2);
+    document.getElementById('discSaved').textContent = saved.toFixed(2);
+  }
+  document.getElementById('discOriginal').addEventListener('input', updateDiscount);
+  document.getElementById('discPercent').addEventListener('input', updateDiscount);
 }
 
 /* ============ FAQ (index.html) ============ */
