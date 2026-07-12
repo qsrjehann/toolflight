@@ -4,14 +4,19 @@
   --card:rgba(255,255,255,0.72); --card-border:rgba(255,255,255,0.9);
   --accent1:#6D5EF5; --accent2:#C24CF0; --accent-text:#ffffff;
   --ok:#12A66B; --err:#EF4444; --warn:#F59E0B;
+  /* Darker "-solid" variants for use behind white text — the base tokens above
+     don't all meet WCAG AA (4.5:1) contrast with white, these do. */
+  --accent1-solid:#5142D6; --ok-solid:#0E8F5C; --warn-solid:#B45309; --err-solid:#DC2626;
   --shadow: 0 20px 45px -20px rgba(90,60,200,0.25);
   --radius:20px;
+  color-scheme: light;
 }
 html.dark{
   --bg1:#0B0D18; --bg2:#141225; --bg3:#0E1024;
   --ink:#F1F1F8; --ink-soft:#9A9CC0;
   --card:rgba(255,255,255,0.06); --card-border:rgba(255,255,255,0.12);
   --shadow: 0 20px 45px -20px rgba(0,0,0,0.6);
+  color-scheme: dark;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;scroll-behavior:smooth;}
@@ -151,8 +156,8 @@ a{color:inherit;}
 .file-item .fname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .file-item .fsub{color:var(--ink-soft);font-size:11.5px;}
 .file-remove{
-  width:26px;height:26px;border-radius:8px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
-  color:var(--err);cursor:pointer;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  width:36px;height:36px;border-radius:9px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
+  color:var(--err);cursor:pointer;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
 
 .badge{
@@ -180,12 +185,22 @@ button.btn{
 .spinner.dark-spin{border:2.5px solid color-mix(in srgb, var(--ink) 25%, transparent);border-top-color:var(--ink);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
-input[type=text]{
-  width:100%;font-family:inherit;font-size:14.5px;padding:13px 14px;border-radius:12px;
+input[type=text], input[type=date], input[type=number], select{
+  width:100%;font-family:inherit;font-size:15px;padding:13px 14px;border-radius:12px;
   border:1.5px solid var(--card-border);background:color-mix(in srgb, var(--card) 60%, #fff 0%);color:var(--ink);outline:none;
+  -webkit-appearance:none;appearance:none;
 }
-html.dark input[type=text]{background:rgba(255,255,255,0.04);}
-input[type=text]:focus{border-color:var(--accent1);}
+html.dark input[type=text], html.dark input[type=date], html.dark input[type=number], html.dark select{
+  background:rgba(255,255,255,0.06);color:var(--ink);
+}
+input[type=text]:focus, input[type=date]:focus, input[type=number]:focus, select:focus{border-color:var(--accent1);}
+input::placeholder{color:var(--ink-soft);opacity:1;}
+/* Native date-picker calendar icon: keep visible against both light and dark input backgrounds */
+input[type=date]::-webkit-calendar-picker-indicator{
+  cursor:pointer;border-radius:6px;padding:3px;
+}
+html.dark input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);}
+select{cursor:pointer;background-image:none;}
 
 input[type=range]{width:100%;accent-color:var(--accent1);}
 input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:pointer;background:none;padding:0;}
@@ -415,6 +430,6 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   background:var(--card);color:var(--ink);
 }
 .rule-remove{
-  width:34px;height:34px;border-radius:9px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
-  color:var(--err);cursor:pointer;font-weight:700;flex-shrink:0;
+  width:40px;height:40px;border-radius:9px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
+  color:var(--err);cursor:pointer;font-weight:700;font-size:15px;flex-shrink:0;
 }
