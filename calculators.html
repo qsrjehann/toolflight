@@ -1,30 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-7WKVGW86B6"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-7WKVGW86B6');
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Calculators — Age, BMI & More | ToolFlight</title>
-<meta name="description" content="Free everyday calculators including age and BMI calculators.">
+<title>Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight</title>
+<meta name="description" content="Free calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 
-<meta property="og:title" content="Calculators — Age, BMI & More | ToolFlight">
-<meta property="og:description" content="Free everyday calculators including age and BMI calculators.">
+<meta property="og:title" content="Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight">
+<meta property="og:description" content="Free calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://yourdomain.com/calculators.html">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Calculators — Age, BMI & More | ToolFlight">
-<meta name="twitter:description" content="Free everyday calculators including age and BMI calculators.">
+<meta name="twitter:title" content="Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight">
+<meta name="twitter:description" content="Free calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -40,7 +31,7 @@
   "name": "ToolFlight",
   "applicationCategory": "Utility",
   "operatingSystem": "Any",
-  "description": "Free everyday calculators including age and BMI calculators.",
+  "description": "Free calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -97,6 +88,31 @@
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M2 11h20M6 15h4"/></svg></div>
       <h3>Discount Calculator</h3>
       <p>Final price and amount saved, calculated instantly.</p>
+    </button>
+    <button class="tool-card" data-tool="emi">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M2 11h20M6 15h4"/></svg></div>
+      <h3>EMI / Loan Calculator</h3>
+      <p>Monthly payment, total interest, and total payment for any loan.</p>
+    </button>
+    <button class="tool-card" data-tool="gst">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l3 3v17H6z"/><path d="M9 12l6 6M15 12l-6 6"/></svg></div>
+      <h3>GST / VAT Calculator</h3>
+      <p>Add or remove tax from any amount instantly.</p>
+    </button>
+    <button class="tool-card" data-tool="scientific">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 7h8M7 12h1M11 12h1M15 12h1M7 16h1M11 16h1M15 16h1"/></svg></div>
+      <h3>Scientific Calculator</h3>
+      <p>Trig, logs, powers, memory functions, and full keyboard support.</p>
+    </button>
+    <button class="tool-card" data-tool="unit">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M7 3l-3 4M7 3l3 4M17 21V3M17 21l-3-4M17 21l3-4"/></svg></div>
+      <h3>Unit Converter</h3>
+      <p>Length, weight, temperature, area, volume, speed, time, and data.</p>
+    </button>
+    <button class="tool-card" data-tool="currency">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg></div>
+      <h3>Currency Converter</h3>
+      <p>Live exchange rates for 25+ currencies, updated daily.</p>
     </button>
   </div>
 
@@ -188,8 +204,228 @@
         <div class="result-stat"><div class="num" id="discSaved">0.00</div><div class="label">Amount Saved</div></div>
       </div>
     </div>
+
+    <div class="tool-view" id="view-emi">
+      <div class="view-title"><h2>EMI / Loan Calculator</h2></div>
+      <span class="field-label">Loan amount</span>
+      <input type="number" id="emiAmount" placeholder="e.g. 20000" min="0" step="0.01">
+      <span class="field-label" style="margin-top:14px;">Interest rate (annual %)</span>
+      <input type="number" id="emiRate" placeholder="e.g. 8.5" min="0" step="0.01">
+      <span class="field-label" style="margin-top:14px;">Loan term</span>
+      <div class="row" style="margin-top:0;">
+        <input type="number" id="emiTerm" placeholder="e.g. 5" min="0" step="1">
+        <select id="emiTermUnit">
+          <option value="years" selected>Years</option>
+          <option value="months">Months</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="emiCalcBtn" style="flex:1;">Calculate EMI</button>
+        <button class="btn btn-ghost" id="emiResetBtn">Reset</button>
+      </div>
+      <div class="result-grid hidden" id="emiResultBox">
+        <div class="result-stat"><div class="num" id="emiMonthly">0.00</div><div class="label">Monthly EMI</div></div>
+        <div class="result-stat"><div class="num" id="emiInterest">0.00</div><div class="label">Total Interest</div></div>
+        <div class="result-stat"><div class="num" id="emiTotal">0.00</div><div class="label">Total Payment</div></div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the EMI Calculator</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Enter the loan amount, annual interest rate, and loan term in months or years, then tap Calculate EMI to see your monthly payment, total interest, and total amount payable over the life of the loan.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>How is EMI calculated?</strong><br>Using the standard reducing-balance formula: EMI = P × r × (1+r)^n / ((1+r)^n − 1), where P is the principal, r is the monthly interest rate, and n is the number of monthly installments.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Does this include fees or insurance?</strong><br>No — this calculates principal and interest only. Add any separate fees or insurance premiums manually.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related calculators</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('discount')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Discount Calculator</h3><p>Final price and amount saved.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('gst')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>GST / VAT Calculator</h3><p>Add or remove tax instantly.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('currency')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Currency Converter</h3><p>Live daily exchange rates.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-gst">
+      <div class="view-title"><h2>GST / VAT Calculator</h2></div>
+      <div class="unit-toggle gst-mode-toggle">
+        <button class="active" data-mode="add" type="button">Add GST/VAT</button>
+        <button data-mode="remove" type="button">Remove GST/VAT</button>
+      </div>
+      <span class="field-label" style="margin-top:14px;" id="gstAmountLabel">Original amount</span>
+      <input type="number" id="gstAmount" placeholder="e.g. 100" min="0" step="0.01">
+      <span class="field-label" style="margin-top:14px;">Tax percentage (%)</span>
+      <input type="number" id="gstPercent" placeholder="e.g. 18" min="0" step="0.01">
+      <div class="row">
+        <button class="btn btn-primary" id="gstCalcBtn" style="flex:1;">Calculate</button>
+        <button class="btn btn-ghost" id="gstResetBtn">Reset</button>
+      </div>
+      <div class="result-grid hidden" id="gstResultBox">
+        <div class="result-stat"><div class="num" id="gstTaxAmount">0.00</div><div class="label">Tax Amount</div></div>
+        <div class="result-stat"><div class="num" id="gstFinalAmount">0.00</div><div class="label">Final Amount</div></div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the GST / VAT Calculator</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Enter the amount and tax percentage, choose whether to add or remove tax, then tap Calculate.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>What's the difference between adding and removing tax?</strong><br>"Add" treats your amount as the pre-tax price and calculates the tax-inclusive total. "Remove" treats your amount as already including tax and extracts the original pre-tax price.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Does this work for any country's tax rate?</strong><br>Yes — enter whatever percentage applies in your region; the math is the same regardless of what the tax is called locally.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related calculators</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('percentage')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Percentage Calculator</h3><p>X% of Y and more.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('discount')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Discount Calculator</h3><p>Final price and amount saved.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('emi')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>EMI / Loan Calculator</h3><p>Monthly payments made simple.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-scientific">
+      <div class="view-title"><h2>Scientific Calculator</h2></div>
+      <div class="sci-display" id="sciDisplay">0</div>
+      <div class="unit-toggle" id="sciAngleToggle" style="margin-top:10px;">
+        <button class="active" data-angle="deg" type="button">DEG</button>
+        <button data-angle="rad" type="button">RAD</button>
+      </div>
+      <div class="sci-grid" id="sciGrid">
+        <button class="sci-btn sci-mem" data-action="mc" type="button">MC</button>
+        <button class="sci-btn sci-mem" data-action="mr" type="button">MR</button>
+        <button class="sci-btn sci-mem" data-action="mplus" type="button">M+</button>
+        <button class="sci-btn sci-mem" data-action="mminus" type="button">M−</button>
+
+        <button class="sci-btn" data-insert="sin(" type="button">sin</button>
+        <button class="sci-btn" data-insert="cos(" type="button">cos</button>
+        <button class="sci-btn" data-insert="tan(" type="button">tan</button>
+        <button class="sci-btn" data-insert="sqrt(" type="button">√</button>
+
+        <button class="sci-btn" data-insert="log(" type="button">log</button>
+        <button class="sci-btn" data-insert="ln(" type="button">ln</button>
+        <button class="sci-btn" data-insert="PI" type="button">π</button>
+        <button class="sci-btn" data-insert="E" type="button">e</button>
+
+        <button class="sci-btn" data-insert="(" type="button">(</button>
+        <button class="sci-btn" data-insert=")" type="button">)</button>
+        <button class="sci-btn sci-op" data-action="clear" type="button">C</button>
+        <button class="sci-btn sci-op" data-action="backspace" type="button">⌫</button>
+
+        <button class="sci-btn" data-insert="7" type="button">7</button>
+        <button class="sci-btn" data-insert="8" type="button">8</button>
+        <button class="sci-btn" data-insert="9" type="button">9</button>
+        <button class="sci-btn sci-op" data-insert="/" type="button">÷</button>
+
+        <button class="sci-btn" data-insert="4" type="button">4</button>
+        <button class="sci-btn" data-insert="5" type="button">5</button>
+        <button class="sci-btn" data-insert="6" type="button">6</button>
+        <button class="sci-btn sci-op" data-insert="*" type="button">×</button>
+
+        <button class="sci-btn" data-insert="1" type="button">1</button>
+        <button class="sci-btn" data-insert="2" type="button">2</button>
+        <button class="sci-btn" data-insert="3" type="button">3</button>
+        <button class="sci-btn sci-op" data-insert="-" type="button">−</button>
+
+        <button class="sci-btn" data-insert="0" type="button">0</button>
+        <button class="sci-btn" data-insert="." type="button">.</button>
+        <button class="sci-btn" data-insert="^" type="button">^</button>
+        <button class="sci-btn sci-op" data-insert="+" type="button">+</button>
+
+        <button class="sci-btn" data-insert="%" type="button">%</button>
+        <button class="sci-btn sci-equals" data-action="equals" type="button" style="grid-column:span 3;">=</button>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Scientific Calculator</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Tap the number and operator buttons to build an expression, or type directly using your keyboard. Use the DEG/RAD toggle to control how sin, cos, and tan interpret angles, then press = to evaluate.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Does this support keyboard input?</strong><br>Yes — digits, + − * /, parentheses, Enter (=), Backspace, and Escape (clear) all work from your keyboard.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Degrees or radians?</strong><br>Use the DEG/RAD toggle above the display — it defaults to degrees.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related calculators</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('percentage')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Percentage Calculator</h3><p>X% of Y and more.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('unit')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Unit Converter</h3><p>8 categories, instant conversion.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-unit">
+      <div class="view-title"><h2>Unit Converter</h2></div>
+      <span class="field-label">Category</span>
+      <select id="unitCategory">
+        <option value="length" selected>Length</option>
+        <option value="weight">Weight</option>
+        <option value="temperature">Temperature</option>
+        <option value="area">Area</option>
+        <option value="volume">Volume</option>
+        <option value="speed">Speed</option>
+        <option value="time">Time</option>
+        <option value="data">Data Storage</option>
+      </select>
+
+      <div class="qr-controls" style="margin-top:14px;">
+        <div class="ctrl"><label>From</label><select id="unitFromSelect"></select></div>
+        <div class="ctrl"><label>To</label><select id="unitToSelect"></select></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-ghost" id="unitSwapBtn" type="button" style="flex:0;min-width:auto;">⇅ Swap</button>
+      </div>
+
+      <span class="field-label" style="margin-top:14px;">Value</span>
+      <input type="number" id="unitFromValue" placeholder="Enter value" value="1">
+
+      <div class="result-grid" style="grid-template-columns:1fr;margin-top:16px;">
+        <div class="result-stat"><div class="num" id="unitToValue">—</div><div class="label" id="unitToLabel">Result</div></div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Unit Converter</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Pick a category, choose your From and To units, then type a value — the result updates instantly as you type.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>How many categories are supported?</strong><br>Eight: Length, Weight, Temperature, Area, Volume, Speed, Time, and Data Storage.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Are the conversions accurate?</strong><br>Yes, using standard conversion factors; temperature uses the correct Celsius/Fahrenheit/Kelvin formulas rather than a simple multiplier.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related calculators</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('scientific')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Scientific Calculator</h3><p>Trig, logs, and more.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('currency')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Currency Converter</h3><p>Live daily exchange rates.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-currency">
+      <div class="view-title"><h2>Currency Converter</h2></div>
+      <span class="field-label">Amount</span>
+      <input type="number" id="curAmount" placeholder="e.g. 100" value="1" min="0" step="0.01">
+
+      <div class="qr-controls" style="margin-top:14px;">
+        <div class="ctrl"><label>From</label><select id="curFrom"></select></div>
+        <div class="ctrl"><label>To</label><select id="curTo"></select></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn btn-ghost" id="curSwapBtn" type="button" style="flex:0;min-width:auto;">⇅ Swap</button>
+      </div>
+
+      <div class="result-grid" style="grid-template-columns:1fr;margin-top:16px;">
+        <div class="result-stat"><div class="num" id="curResult">—</div><div class="label" id="curResultLabel">Converted amount</div></div>
+      </div>
+      <p id="curStatus" style="font-size:12px;color:var(--ink-soft);margin-top:10px;text-align:center;">Loading exchange rates…</p>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Currency Converter</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Enter an amount, choose your From and To currencies, and the converted amount updates automatically using current exchange rates.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Where do the exchange rates come from?</strong><br>From the free, open Frankfurter API, which publishes daily reference rates sourced from the European Central Bank.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>How often do rates update?</strong><br>Once per working day — this is a reliable daily reference rate, not real-time tick-by-tick trading data.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related calculators</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('emi')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>EMI / Loan Calculator</h3><p>Monthly payments made simple.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('unit')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Calculator</span><h3>Unit Converter</h3><p>8 categories, instant conversion.</p></button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"EMI / Loan Calculator","applicationCategory":"FinanceApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"GST / VAT Calculator","applicationCategory":"FinanceApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Scientific Calculator","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Unit Converter","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Currency Converter","applicationCategory":"FinanceApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 
 <footer>
   <div class="container">
