@@ -79,6 +79,16 @@
       <h3>BMI Calculator</h3>
       <p>Calculate your Body Mass Index from height and weight.</p>
     </button>
+    <button class="tool-card" data-tool="percentage">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 8h7a3 3 0 0 1 0 6H8m0 0l3 3m-3-3l3-3M17 16H9"/></svg></div>
+      <h3>Percentage Calculator</h3>
+      <p>X% of Y, percent of a total, increase, decrease, and difference.</p>
+    </button>
+    <button class="tool-card" data-tool="discount">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M2 11h20M6 15h4"/></svg></div>
+      <h3>Discount Calculator</h3>
+      <p>Final price and amount saved, calculated instantly.</p>
+    </button>
   </div>
 
   <div class="workspace">
@@ -132,6 +142,41 @@
         <div style="font-size:32px;font-weight:800;letter-spacing:-.02em;" id="bmiValue">0.0</div>
         <span class="bmi-badge" id="bmiCategoryBadge">—</span>
         <p style="font-size:11.5px;color:var(--ink-soft);margin-top:12px;">BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition. It isn't a diagnosis.</p>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-percentage">
+      <div class="view-title"><h2>Percentage Calculator</h2></div>
+      <div class="unit-toggle pct-mode-toggle">
+        <button class="active" data-mode="of" type="button">X% of Y</button>
+        <button data-mode="percentOf" type="button">X is what % of Y</button>
+        <button data-mode="increase" type="button">% Increase</button>
+        <button data-mode="decrease" type="button">% Decrease</button>
+        <button data-mode="difference" type="button">% Difference</button>
+      </div>
+      <span class="field-label" id="pctLabelX" style="margin-top:14px;">Percentage (%)</span>
+      <input type="number" id="pctX" placeholder="e.g. 20">
+      <span class="field-label" id="pctLabelY" style="margin-top:14px;">Of value</span>
+      <input type="number" id="pctY" placeholder="e.g. 250">
+      <div class="row">
+        <button class="btn btn-primary" id="pctCalcBtn" style="flex:1;">Calculate</button>
+        <button class="btn btn-ghost" id="pctClearBtn">Clear</button>
+      </div>
+      <div id="pctResultBox" class="hidden" style="text-align:center;margin-top:18px;">
+        <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;" id="pctValue">0</div>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;" id="pctFormula"></p>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-discount">
+      <div class="view-title"><h2>Discount Calculator</h2></div>
+      <span class="field-label">Original price</span>
+      <input type="number" id="discOriginal" placeholder="e.g. 100" min="0" step="0.01">
+      <span class="field-label" style="margin-top:14px;">Discount %</span>
+      <input type="number" id="discPercent" placeholder="e.g. 20" min="0" max="100" step="0.1">
+      <div class="result-grid">
+        <div class="result-stat"><div class="num" id="discFinal">0.00</div><div class="label">Final Price</div></div>
+        <div class="result-stat"><div class="num" id="discSaved">0.00</div><div class="label">Amount Saved</div></div>
       </div>
     </div>
   </div>
