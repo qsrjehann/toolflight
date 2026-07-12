@@ -741,6 +741,314 @@ if (document.getElementById('discOriginal')){
   document.getElementById('discPercent').addEventListener('input', updateDiscount);
 }
 
+/* ============ EMI / LOAN CALCULATOR (calculators.html) ============ */
+if (document.getElementById('emiCalcBtn')){
+  document.getElementById('emiCalcBtn').onclick = () => {
+    const amount = parseFloat(document.getElementById('emiAmount').value);
+    const rate = parseFloat(document.getElementById('emiRate').value);
+    const term = parseFloat(document.getElementById('emiTerm').value);
+    const unit = document.getElementById('emiTermUnit').value;
+    if (!isFinite(amount) || amount <= 0){ toast('Enter a valid loan amount.', 'err'); return; }
+    if (!isFinite(rate) || rate < 0){ toast('Enter a valid interest rate.', 'err'); return; }
+    if (!isFinite(term) || term <= 0){ toast('Enter a valid loan term.', 'err'); return; }
+
+    const months = unit === 'years' ? term * 12 : term;
+    const monthlyRate = rate / 12 / 100;
+    let emi;
+    if (monthlyRate === 0){
+      emi = amount / months;
+    } else {
+      const factor = Math.pow(1 + monthlyRate, months);
+      emi = (amount * monthlyRate * factor) / (factor - 1);
+    }
+    const totalPayment = emi * months;
+    const totalInterest = totalPayment - amount;
+
+    document.getElementById('emiMonthly').textContent = emi.toFixed(2);
+    document.getElementById('emiInterest').textContent = totalInterest.toFixed(2);
+    document.getElementById('emiTotal').textContent = totalPayment.toFixed(2);
+    document.getElementById('emiResultBox').classList.remove('hidden');
+    toast('EMI calculated.');
+  };
+  document.getElementById('emiResetBtn').onclick = () => {
+    ['emiAmount','emiRate','emiTerm'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('emiTermUnit').value = 'years';
+    document.getElementById('emiResultBox').classList.add('hidden');
+  };
+}
+
+/* ============ GST / VAT CALCULATOR (calculators.html) ============ */
+if (document.getElementById('gstCalcBtn')){
+  let gstMode = 'add';
+  document.querySelectorAll('.gst-mode-toggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.gst-mode-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      gstMode = btn.dataset.mode;
+      document.getElementById('gstAmountLabel').textContent = gstMode === 'add' ? 'Original amount' : 'Amount (tax included)';
+      document.getElementById('gstResultBox').classList.add('hidden');
+    };
+  });
+
+  document.getElementById('gstCalcBtn').onclick = () => {
+    const amount = parseFloat(document.getElementById('gstAmount').value);
+    const pct = parseFloat(document.getElementById('gstPercent').value);
+    if (!isFinite(amount) || amount < 0){ toast('Enter a valid amount.', 'err'); return; }
+    if (!isFinite(pct) || pct < 0){ toast('Enter a valid tax percentage.', 'err'); return; }
+
+    let taxAmount, finalAmount;
+    if (gstMode === 'add'){
+      taxAmount = amount * (pct / 100);
+      finalAmount = amount + taxAmount;
+    } else {
+      const base = amount / (1 + pct / 100);
+      taxAmount = amount - base;
+      finalAmount = base;
+    }
+    document.getElementById('gstTaxAmount').textContent = taxAmount.toFixed(2);
+    document.getElementById('gstFinalAmount').textContent = finalAmount.toFixed(2);
+    document.getElementById('gstResultBox').classList.remove('hidden');
+    toast('Calculated.');
+  };
+  document.getElementById('gstResetBtn').onclick = () => {
+    document.getElementById('gstAmount').value = '';
+    document.getElementById('gstPercent').value = '';
+    document.getElementById('gstResultBox').classList.add('hidden');
+  };
+}
+
+/* ============ SCIENTIFIC CALCULATOR (calculators.html) ============ */
+if (document.getElementById('sciDisplay')){
+  let sciExpr = '';
+  let sciMemory = 0;
+  let sciAngleMode = 'deg';
+  const display = document.getElementById('sciDisplay');
+
+  function renderSciDisplay(){
+    display.textContent = sciExpr === '' ? '0' : sciExpr;
+  }
+
+  function sciEvaluate(){
+    if (!sciExpr){ return null; }
+    // Only allow characters/tokens our own buttons ever insert — defense in depth,
+    // since evaluation still runs through named functions rather than raw eval.
+    if (!/^[0-9+\-*/().^%\s a-zA-Z]*$/.test(sciExpr)){
+      toast('Invalid expression.', 'err');
+      return null;
+    }
+    try{
+      const degMode = sciAngleMode === 'deg';
+      const toRad = (x) => degMode ? (x * Math.PI / 180) : x;
+      const sin = (x) => Math.sin(toRad(x));
+      const cos = (x) => Math.cos(toRad(x));
+      const tan = (x) => Math.tan(toRad(x));
+      const log = (x) => Math.log10(x);
+      const ln = (x) => Math.log(x);
+      const sqrt = (x) => Math.sqrt(x);
+      const PI = Math.PI;
+      const E = Math.E;
+      let cleanExpr = sciExpr.replace(/\^/g, '**').replace(/(\d+(\.\d+)?)%/g, '($1/100)');
+      const fn = new Function('sin','cos','tan','log','ln','sqrt','PI','E', '"use strict"; return (' + cleanExpr + ');');
+      const result = fn(sin,cos,tan,log,ln,sqrt,PI,E);
+      if (!isFinite(result)){ toast('That expression is undefined.', 'err'); return null; }
+      return result;
+    }catch(err){
+      toast('Invalid expression.', 'err');
+      return null;
+    }
+  }
+
+  document.querySelectorAll('#sciGrid .sci-btn[data-insert]').forEach(btn => {
+    btn.onclick = () => { sciExpr += btn.dataset.insert; renderSciDisplay(); };
+  });
+  document.querySelectorAll('#sciGrid .sci-btn[data-action]').forEach(btn => {
+    btn.onclick = () => {
+      const action = btn.dataset.action;
+      if (action === 'clear'){ sciExpr = ''; renderSciDisplay(); }
+      else if (action === 'backspace'){ sciExpr = sciExpr.slice(0, -1); renderSciDisplay(); }
+      else if (action === 'equals'){
+        const result = sciEvaluate();
+        if (result !== null){ sciExpr = String(result); renderSciDisplay(); }
+      }
+      else if (action === 'mc'){ sciMemory = 0; toast('Memory cleared.'); }
+      else if (action === 'mr'){ sciExpr += String(sciMemory); renderSciDisplay(); }
+      else if (action === 'mplus'){
+        const result = sciEvaluate();
+        if (result !== null){ sciMemory += result; toast('Added to memory.'); }
+      }
+      else if (action === 'mminus'){
+        const result = sciEvaluate();
+        if (result !== null){ sciMemory -= result; toast('Subtracted from memory.'); }
+      }
+    };
+  });
+
+  document.querySelectorAll('#sciAngleToggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#sciAngleToggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      sciAngleMode = btn.dataset.angle;
+    };
+  });
+
+  // Keyboard support — only active while the Scientific Calculator view is visible.
+  document.addEventListener('keydown', (e) => {
+    const view = document.getElementById('view-scientific');
+    if (!view || !view.classList.contains('active')) return;
+    if (/^[0-9+\-*/().%]$/.test(e.key)){
+      sciExpr += e.key; renderSciDisplay(); e.preventDefault();
+    } else if (e.key === 'Enter' || e.key === '='){
+      const result = sciEvaluate();
+      if (result !== null){ sciExpr = String(result); renderSciDisplay(); }
+      e.preventDefault();
+    } else if (e.key === 'Backspace'){
+      sciExpr = sciExpr.slice(0, -1); renderSciDisplay(); e.preventDefault();
+    } else if (e.key === 'Escape'){
+      sciExpr = ''; renderSciDisplay(); e.preventDefault();
+    }
+  });
+
+  renderSciDisplay();
+}
+
+/* ============ UNIT CONVERTER (calculators.html) ============ */
+if (document.getElementById('unitCategory')){
+  const UNIT_DATA = {
+    length: { units: { mm:0.001, cm:0.01, m:1, km:1000, in:0.0254, ft:0.3048, yd:0.9144, mi:1609.344 } },
+    weight: { units: { mg:0.000001, g:0.001, kg:1, tonne:1000, oz:0.0283495, lb:0.453592 } },
+    area: { units: { 'm2':1, 'km2':1000000, 'ft2':0.092903, acre:4046.86, hectare:10000 } },
+    volume: { units: { ml:0.001, l:1, 'm3':1000, gallon:3.78541, quart:0.946353, cup:0.24 } },
+    speed: { units: { 'm/s':1, 'km/h':0.277778, mph:0.44704, knot:0.514444 } },
+    time: { units: { seconds:1, minutes:60, hours:3600, days:86400, weeks:604800 } },
+    data: { units: { bit:0.125, byte:1, KB:1024, MB:1048576, GB:1073741824, TB:1099511627776 } },
+  };
+  const TEMP_UNITS = ['celsius','fahrenheit','kelvin'];
+
+  function unitsForCategory(cat){
+    if (cat === 'temperature') return TEMP_UNITS;
+    return Object.keys(UNIT_DATA[cat].units);
+  }
+
+  function populateUnitSelects(){
+    const cat = document.getElementById('unitCategory').value;
+    const units = unitsForCategory(cat);
+    const fromSel = document.getElementById('unitFromSelect');
+    const toSel = document.getElementById('unitToSelect');
+    fromSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+    toSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+    fromSel.selectedIndex = 0;
+    toSel.selectedIndex = units.length > 1 ? 1 : 0;
+    runUnitConversion();
+  }
+
+  function convertTemperature(from, to, v){
+    let celsius;
+    if (from === 'celsius') celsius = v;
+    else if (from === 'fahrenheit') celsius = (v - 32) * 5 / 9;
+    else celsius = v - 273.15;
+    if (to === 'celsius') return celsius;
+    if (to === 'fahrenheit') return celsius * 9 / 5 + 32;
+    return celsius + 273.15;
+  }
+
+  function runUnitConversion(){
+    const cat = document.getElementById('unitCategory').value;
+    const from = document.getElementById('unitFromSelect').value;
+    const to = document.getElementById('unitToSelect').value;
+    const value = parseFloat(document.getElementById('unitFromValue').value);
+    if (!isFinite(value)){
+      document.getElementById('unitToValue').textContent = '—';
+      return;
+    }
+    let result;
+    if (cat === 'temperature'){
+      result = convertTemperature(from, to, value);
+    } else {
+      const units = UNIT_DATA[cat].units;
+      result = (value * units[from]) / units[to];
+    }
+    document.getElementById('unitToValue').textContent = Number(result.toFixed(6)).toString();
+    document.getElementById('unitToLabel').textContent = `Result (${to})`;
+  }
+
+  document.getElementById('unitCategory').addEventListener('change', populateUnitSelects);
+  document.getElementById('unitFromSelect').addEventListener('change', runUnitConversion);
+  document.getElementById('unitToSelect').addEventListener('change', runUnitConversion);
+  document.getElementById('unitFromValue').addEventListener('input', runUnitConversion);
+  document.getElementById('unitSwapBtn').onclick = () => {
+    const fromSel = document.getElementById('unitFromSelect');
+    const toSel = document.getElementById('unitToSelect');
+    const tmp = fromSel.value;
+    fromSel.value = toSel.value;
+    toSel.value = tmp;
+    runUnitConversion();
+  };
+
+  populateUnitSelects();
+}
+
+/* ============ CURRENCY CONVERTER (calculators.html) ============ */
+if (document.getElementById('curFrom')){
+  const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','CNY','HKD','NZD','SEK','KRW','SGD','NOK','MXN','INR','ZAR','TRY','BRL','DKK','PLN','THB','IDR','HUF','CZK','ILS','PHP','MYR','RON','BGN'];
+  let ratesCache = {}; // { BASE: { rates, date } }
+
+  const fromSel = document.getElementById('curFrom');
+  const toSel = document.getElementById('curTo');
+  fromSel.innerHTML = CURRENCIES.map(c => `<option value="${c}" ${c==='USD'?'selected':''}>${c}</option>`).join('');
+  toSel.innerHTML = CURRENCIES.map(c => `<option value="${c}" ${c==='EUR'?'selected':''}>${c}</option>`).join('');
+
+  async function getRates(base){
+    if (ratesCache[base]) return ratesCache[base];
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}`);
+    if (!res.ok) throw new Error('Exchange rate service is unavailable right now.');
+    const data = await res.json();
+    ratesCache[base] = data;
+    return data;
+  }
+
+  async function runCurrencyConversion(){
+    const status = document.getElementById('curStatus');
+    const amount = parseFloat(document.getElementById('curAmount').value);
+    const from = fromSel.value;
+    const to = toSel.value;
+    if (!isFinite(amount)){
+      document.getElementById('curResult').textContent = '—';
+      return;
+    }
+    if (from === to){
+      document.getElementById('curResult').textContent = amount.toFixed(2);
+      document.getElementById('curResultLabel').textContent = `= ${to}`;
+      status.textContent = 'Same currency selected.';
+      return;
+    }
+    try{
+      status.textContent = 'Loading exchange rates…';
+      const data = await getRates(from);
+      const rate = data.rates[to];
+      if (!rate){ throw new Error(`No rate available for ${to}.`); }
+      const converted = amount * rate;
+      document.getElementById('curResult').textContent = converted.toFixed(2);
+      document.getElementById('curResultLabel').textContent = `= ${to}`;
+      status.textContent = `1 ${from} = ${rate} ${to} · Last updated: ${data.date}`;
+    }catch(err){
+      status.textContent = 'Could not load exchange rates — check your connection and try again.';
+      toast(err.message || 'Could not load exchange rates.', 'err');
+    }
+  }
+
+  document.getElementById('curAmount').addEventListener('input', runCurrencyConversion);
+  fromSel.addEventListener('change', runCurrencyConversion);
+  toSel.addEventListener('change', runCurrencyConversion);
+  document.getElementById('curSwapBtn').onclick = () => {
+    const tmp = fromSel.value;
+    fromSel.value = toSel.value;
+    toSel.value = tmp;
+    runCurrencyConversion();
+  };
+
+  runCurrencyConversion();
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
