@@ -512,3 +512,20 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 }
 .loading-overlay.show{display:flex;}
 .loading-overlay .spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+
+/* ============ TASK: AI BACKGROUND REMOVER / CHANGER ============ */
+.bg-mode-tabs{display:flex;gap:6px;flex-wrap:wrap;}
+.bg-mode-tab{
+  font-family:inherit;font-size:12px;font-weight:700;padding:8px 12px;border-radius:10px;
+  border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);cursor:pointer;
+}
+.bg-mode-tab.active{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+.bg-swatch-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.bg-swatch{
+  width:36px;height:36px;border-radius:9px;border:2px solid var(--card-border);cursor:pointer;padding:0;
+}
+.bg-swatch.selected{border-color:var(--accent1);box-shadow:0 0 0 2px color-mix(in srgb, var(--accent1) 35%, transparent);}
+.model-status-line{font-size:12px;color:var(--ink-soft);margin-top:8px;display:flex;align-items:center;gap:8px;}
+.model-status-line .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-soft);flex-shrink:0;}
+.model-status-line.ready .dot{background:var(--ok);}
+.model-status-line.error .dot{background:var(--err);}
