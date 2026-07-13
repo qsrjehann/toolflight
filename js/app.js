@@ -1033,20 +1033,78 @@ if (document.getElementById('unitCategory')){
 /* ============ CURRENCY CONVERTER (calculators.html) ============ */
 if (document.getElementById('curFrom')){
   const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','CNY','HKD','NZD','SEK','KRW','SGD','NOK','MXN','INR','ZAR','TRY','BRL','DKK','PLN','THB','IDR','HUF','CZK','ILS','PHP','MYR','RON','BGN'];
-  let ratesCache = {}; // { BASE: { rates, date } }
+  let ratesCache = {}; // { BASE: { date, rates } }
 
   const fromSel = document.getElementById('curFrom');
   const toSel = document.getElementById('curTo');
   fromSel.innerHTML = CURRENCIES.map(c => `<option value="${c}" ${c==='USD'?'selected':''}>${c}</option>`).join('');
   toSel.innerHTML = CURRENCIES.map(c => `<option value="${c}" ${c==='EUR'?'selected':''}>${c}</option>`).join('');
 
+  // Three independently-hosted, free, keyless, CORS-enabled, commercial-use-friendly
+  // providers, tried in order. If one is down or blocked, the next is used
+  // automatically — the user only ever sees an error if all three fail.
+  const CURRENCY_PROVIDERS = [
+    {
+      name: 'frankfurter',
+      buildUrl: (base) => `https://api.frankfurter.dev/v1/latest?base=${encodeURIComponent(base)}`,
+      parse: (data) => {
+        if (!data || !data.rates) throw new Error('Unexpected response from frankfurter.');
+        return { date: data.date, rates: data.rates };
+      }
+    },
+    {
+      name: 'fawazahmed0-jsdelivr',
+      buildUrl: (base) => `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${base.toLowerCase()}.json`,
+      parse: (data, base) => {
+        const raw = data && data[base.toLowerCase()];
+        if (!raw) throw new Error('Unexpected response from currency-api (jsDelivr).');
+        const rates = {};
+        for (const k in raw) rates[k.toUpperCase()] = raw[k];
+        return { date: data.date, rates };
+      }
+    },
+    {
+      name: 'fawazahmed0-pages',
+      buildUrl: (base) => `https://latest.currency-api.pages.dev/v1/currencies/${base.toLowerCase()}.json`,
+      parse: (data, base) => {
+        const raw = data && data[base.toLowerCase()];
+        if (!raw) throw new Error('Unexpected response from currency-api (Pages.dev).');
+        const rates = {};
+        for (const k in raw) rates[k.toUpperCase()] = raw[k];
+        return { date: data.date, rates };
+      }
+    }
+  ];
+
+  function fetchWithTimeout(url, ms){
+    // AbortSignal.timeout isn't in every browser on the compatibility list yet —
+    // feature-detected so older engines just fetch without a client-side timeout
+    // instead of throwing.
+    const opts = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+      ? { signal: AbortSignal.timeout(ms) }
+      : {};
+    return fetch(url, opts);
+  }
+
   async function getRates(base){
     if (ratesCache[base]) return ratesCache[base];
-    const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}`);
-    if (!res.ok) throw new Error('Exchange rate service is unavailable right now.');
-    const data = await res.json();
-    ratesCache[base] = data;
-    return data;
+    let lastErr = null;
+    for (const provider of CURRENCY_PROVIDERS){
+      try{
+        const res = await fetchWithTimeout(provider.buildUrl(base), 8000);
+        if (!res.ok) throw new Error(`${provider.name} responded with HTTP ${res.status}`);
+        const data = await res.json();
+        const normalized = provider.parse(data, base);
+        if (!normalized.rates || Object.keys(normalized.rates).length === 0){
+          throw new Error(`${provider.name} returned no rate data`);
+        }
+        ratesCache[base] = normalized;
+        return normalized;
+      }catch(err){
+        lastErr = err; // try the next provider
+      }
+    }
+    throw new Error('All exchange rate providers are temporarily unreachable. Please try again shortly.');
   }
 
   async function runCurrencyConversion(){
@@ -1068,14 +1126,15 @@ if (document.getElementById('curFrom')){
       status.textContent = 'Loading exchange rates…';
       const data = await getRates(from);
       const rate = data.rates[to];
-      if (!rate){ throw new Error(`No rate available for ${to}.`); }
+      if (!rate){ throw new Error(`No rate available for ${to} right now.`); }
       const converted = amount * rate;
       document.getElementById('curResult').textContent = converted.toFixed(2);
       document.getElementById('curResultLabel').textContent = `= ${to}`;
       status.textContent = `1 ${from} = ${rate} ${to} · Last updated: ${data.date}`;
     }catch(err){
-      status.textContent = 'Could not load exchange rates — check your connection and try again.';
-      toast(err.message || 'Could not load exchange rates.', 'err');
+      // Never surface a raw browser error like "Failed to fetch" — always a friendly message.
+      status.textContent = 'Exchange rates are temporarily unavailable. Please try again in a moment.';
+      toast('Could not load exchange rates right now — please try again shortly.', 'err');
     }
   }
 
