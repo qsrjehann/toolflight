@@ -1,30 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-7WKVGW86B6"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-7WKVGW86B6');
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Image Tools — Compress, Remove & Change Backgrounds | ToolFlight</title>
-<meta name="description" content="Compress images, remove backgrounds, and change backgrounds free, right in your browser. JPG, PNG, and WEBP supported.">
+<title>Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight</title>
+<meta name="description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 
-<meta property="og:title" content="Image Tools — Compress, Remove & Change Backgrounds | ToolFlight">
-<meta property="og:description" content="Compress images, remove backgrounds, and change backgrounds free, right in your browser. JPG, PNG, and WEBP supported.">
+<meta property="og:title" content="Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight">
+<meta property="og:description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://yourdomain.com/image-tools.html">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Image Tools — Compress, Remove & Change Backgrounds | ToolFlight">
-<meta name="twitter:description" content="Compress images, remove backgrounds, and change backgrounds free, right in your browser. JPG, PNG, and WEBP supported.">
+<meta name="twitter:title" content="Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight">
+<meta name="twitter:description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -40,7 +31,7 @@
   "name": "ToolFlight",
   "applicationCategory": "Utility",
   "operatingSystem": "Any",
-  "description": "Compress images, remove backgrounds, and change backgrounds free, right in your browser. JPG, PNG, and WEBP supported.",
+  "description": "Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -73,7 +64,7 @@
 <div class="hero-sub">
   <span class="hero-badge"><span class="dot"></span> Runs entirely in your browser</span>
   <h1>Image Tools</h1>
-  <p class="subtitle">Compress JPG, PNG, and WEBP images with a live before/after preview.</p>
+  <p class="subtitle">Compress, crop, watermark, rotate, and flip images — free, private, no signup.</p>
 </div>
 
 <div class="container" id="tools">
@@ -82,6 +73,21 @@
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h4v6M20 10h-4V4M14 4l6 6M4 20l6-6"/></svg></div>
       <h3>Compress Image</h3>
       <p>Shrink JPG/PNG/WEBP file size with a live before &amp; after preview.</p>
+    </button>
+    <button class="tool-card" data-tool="crop">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg></div>
+      <h3>Image Crop Tool</h3>
+      <p>Free crop or locked ratios (1:1, 16:9, 9:16), plus rotate.</p>
+    </button>
+    <button class="tool-card" data-tool="watermark">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17l3-3 2 2 4-5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg></div>
+      <h3>Image Watermark Tool</h3>
+      <p>Add draggable text or logo watermarks with adjustable opacity.</p>
+    </button>
+    <button class="tool-card" data-tool="rotate-flip">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg></div>
+      <h3>Rotate &amp; Flip Tool</h3>
+      <p>Rotate 90°/180°/270° and flip horizontal or vertical.</p>
     </button>
   </div>
 
@@ -111,8 +117,186 @@
         <button class="btn btn-ghost hidden" id="compressDownloadBtn">Download result</button>
       </div>
     </div>
+
+    <div class="tool-view" id="view-crop">
+      <div class="view-title"><h2>Image Crop Tool</h2></div>
+      <span class="field-label">Choose an image</span>
+      <div class="drop-zone" id="cropDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image here or tap to browse</div>
+        <div class="drop-sub">JPG, PNG, or WEBP</div>
+        <input type="file" id="cropInput" accept="image/png, image/jpeg, image/webp">
+      </div>
+
+      <div id="cropStageWrap" class="hidden">
+        <div class="unit-toggle crop-aspect-toggle" style="margin-top:14px;">
+          <button class="active" data-ratio="free" type="button">Free</button>
+          <button data-ratio="square" type="button">1:1 (Square)</button>
+          <button data-ratio="16:9" type="button">16:9</button>
+          <button data-ratio="9:16" type="button">9:16</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn btn-ghost" id="cropRotateLeftBtn" type="button">⟲ Rotate left</button>
+          <button class="btn btn-ghost" id="cropRotateRightBtn" type="button">⟳ Rotate right</button>
+        </div>
+
+        <div class="canvas-stage" id="cropStage">
+          <canvas id="cropCanvas"></canvas>
+          <div class="crop-box" id="cropBoxEl">
+            <div class="crop-handle tl"></div>
+            <div class="crop-handle tr"></div>
+            <div class="crop-handle bl"></div>
+            <div class="crop-handle br"></div>
+          </div>
+          <div class="loading-overlay" id="cropLoading"><div class="spinner"></div></div>
+        </div>
+
+        <span class="field-label" style="margin-top:14px;">Live preview</span>
+        <canvas id="cropPreview" style="border:1px solid var(--card-border);border-radius:10px;max-width:100%;"></canvas>
+
+        <div class="row">
+          <button class="btn btn-primary" id="cropDownloadBtn" style="flex:1;" type="button">Download cropped image</button>
+          <button class="btn btn-ghost" id="cropResetBtn" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Image Crop Tool</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Upload an image, then drag the crop box or its corner handles to select the area you want. Choose Free for any shape, or lock to 1:1, 16:9, or 9:16. Use Rotate left/right before cropping if needed, then download.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Does cropping reduce image quality?</strong><br>No — the download is reconstructed from your original file at full resolution, regardless of how the on-screen preview looks.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Can I crop on my phone?</strong><br>Yes — dragging the crop box and handles works with touch as well as a mouse.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related tools</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('compress')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Compress Image</h3><p>Shrink file size with a live preview.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('rotate-flip')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Rotate &amp; Flip Tool</h3><p>Straighten or mirror any image.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-watermark">
+      <div class="view-title"><h2>Image Watermark Tool</h2></div>
+      <span class="field-label">Choose an image</span>
+      <div class="drop-zone" id="wmDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image here or tap to browse</div>
+        <div class="drop-sub">JPG, PNG, or WEBP</div>
+        <input type="file" id="wmInput" accept="image/png, image/jpeg, image/webp">
+      </div>
+
+      <div id="wmStageWrap" class="hidden">
+        <div class="unit-toggle wm-type-toggle" style="margin-top:14px;">
+          <button class="active" data-type="text" type="button">Text watermark</button>
+          <button data-type="logo" type="button">Logo watermark</button>
+        </div>
+
+        <div id="wmTextFields" style="margin-top:12px;">
+          <span class="field-label">Watermark text</span>
+          <input type="text" id="wmText" placeholder="© Your Brand" value="© ToolFlight">
+          <div class="qr-controls" style="margin-top:12px;">
+            <div class="ctrl"><label>Font size</label><input type="range" id="wmFontSize" min="12" max="120" value="36"></div>
+            <div class="ctrl"><label>Color</label><input type="color" id="wmColor" value="#ffffff"></div>
+          </div>
+        </div>
+        <div id="wmLogoFields" class="hidden" style="margin-top:12px;">
+          <span class="field-label">Logo image</span>
+          <div class="drop-zone" id="wmLogoDrop" style="padding:18px;">
+            <div class="drop-title">Drop a logo image or tap to browse</div>
+            <input type="file" id="wmLogoInput" accept="image/png, image/jpeg, image/webp">
+          </div>
+        </div>
+
+        <span class="field-label" style="margin-top:14px;">Opacity: <span id="wmOpacityVal">80</span>%</span>
+        <input type="range" id="wmOpacity" min="10" max="100" value="80">
+
+        <span class="field-label" style="margin-top:14px;">Position (or drag directly on the image)</span>
+        <div class="pos-grid">
+          <button class="pos-btn" data-pos="tl" type="button"><span class="dot"></span></button>
+          <div></div>
+          <button class="pos-btn" data-pos="tr" type="button"><span class="dot"></span></button>
+          <div></div>
+          <button class="pos-btn active" data-pos="c" type="button"><span class="dot"></span></button>
+          <div></div>
+          <button class="pos-btn" data-pos="bl" type="button"><span class="dot"></span></button>
+          <div></div>
+          <button class="pos-btn" data-pos="br" type="button"><span class="dot"></span></button>
+        </div>
+
+        <div class="canvas-stage" id="wmStage" style="margin-top:16px;">
+          <canvas id="wmCanvas"></canvas>
+          <div class="loading-overlay" id="wmLoading"><div class="spinner"></div></div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary hidden" id="wmDownloadBtn" style="flex:1;" type="button">Download image</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Image Watermark Tool</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Upload an image, choose text or logo watermark, adjust size/color/opacity, then either tap a position preset or drag the watermark directly on the image to place it exactly where you want.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Can I use my own logo?</strong><br>Yes — switch to "Logo watermark" and upload any PNG, JPG, or WEBP image; a transparent PNG logo works best.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is the watermark placed at full resolution?</strong><br>Yes — the downloaded file is rebuilt from your original image at its full original size.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related tools</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('crop')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Image Crop Tool</h3><p>Crop to any shape or ratio.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('compress')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Compress Image</h3><p>Shrink file size with a live preview.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-rotate-flip">
+      <div class="view-title"><h2>Rotate &amp; Flip Tool</h2></div>
+      <span class="field-label">Choose an image</span>
+      <div class="drop-zone" id="rfDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image here or tap to browse</div>
+        <div class="drop-sub">JPG, PNG, or WEBP</div>
+        <input type="file" id="rfInput" accept="image/png, image/jpeg, image/webp">
+      </div>
+
+      <div id="rfStageWrap" class="hidden">
+        <div class="canvas-stage" id="rfStage" style="margin-top:14px;">
+          <canvas id="rfCanvas"></canvas>
+          <div class="loading-overlay" id="rfLoading"><div class="spinner"></div></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-ghost" id="rfRotate90Btn" type="button">Rotate 90°</button>
+          <button class="btn btn-ghost" id="rfRotate180Btn" type="button">Rotate 180°</button>
+          <button class="btn btn-ghost" id="rfRotate270Btn" type="button">Rotate 270°</button>
+        </div>
+        <div class="row">
+          <button class="btn btn-ghost" id="rfFlipHBtn" type="button">Flip horizontal</button>
+          <button class="btn btn-ghost" id="rfFlipVBtn" type="button">Flip vertical</button>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" id="rfDownloadBtn" style="flex:1;" type="button">Download image</button>
+          <button class="btn btn-ghost" id="rfResetBtn" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Rotate &amp; Flip Tool</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Upload an image, then tap Rotate 90°/180°/270° to turn it, or Flip horizontal/vertical to mirror it. The preview updates live — download once it looks right, or tap Reset to start over.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Can I combine rotate and flip?</strong><br>Yes — rotation and flipping apply together, so you can straighten a sideways photo and mirror it in the same pass.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Does this reduce image quality?</strong><br>No — rotating and flipping don't resample pixels the way resizing does, so quality is preserved.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related tools</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('crop')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Image Crop Tool</h3><p>Crop to any shape or ratio.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('watermark')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Image Watermark Tool</h3><p>Add a text or logo watermark.</p></button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://toolflight.com/"},{"@type":"ListItem","position":2,"name":"Image Tools","item":"https://toolflight.com/image-tools.html"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Image Crop Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Image Watermark Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Rotate & Flip Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to crop an image online","step":[{"@type":"HowToStep","text":"Upload your image by dragging it in or tapping to browse."},{"@type":"HowToStep","text":"Choose Free crop or a locked ratio (1:1, 16:9, 9:16)."},{"@type":"HowToStep","text":"Drag the crop box or its handles to select the area you want."},{"@type":"HowToStep","text":"Tap Download to save the cropped image at full resolution."}]}</script>
 
 <footer>
   <div class="container">
