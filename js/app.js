@@ -347,7 +347,13 @@ if (document.getElementById('compressDrop')){
     document.getElementById('compressProgressFill').style.width = '0%';
   }
   // Universal, Android-Chrome-safe image load: object URL + <img> + onload. No createImageBitmap.
-  function loadImageFromFile(file){
+  // Named distinctly from the shared top-level loadImageFromFile() — a same-named function
+  // declared inside this block previously shadowed the shared one at script scope (a classic
+  // "function declarations in blocks" hazard in non-strict JS), which caused every OTHER tool's
+  // loadImg*/loadImageFromFile alias to silently receive {img, url} objects instead of the Image
+  // itself, breaking drawImage() calls throughout the AI Background Remover, Crop, Watermark,
+  // Rotate/Flip, and Background Changer tools.
+  function loadImageWithUrl(file){
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
@@ -398,7 +404,7 @@ if (document.getElementById('compressDrop')){
 
       setCompressProgress(30, 'Decoding image…');
       await nextFrame();
-      const { img, url } = await loadImageFromFile(compressFile);
+      const { img, url } = await loadImageWithUrl(compressFile);
       loadedUrl = url;
 
       const width = img.naturalWidth;
