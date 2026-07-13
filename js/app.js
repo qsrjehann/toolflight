@@ -1551,6 +1551,286 @@ if (document.getElementById('rfCanvas')){
   };
 }
 
+/* ============ AI BACKGROUND REMOVER (image-tools.html) ============
+   Uses Google's MediaPipe Image Segmenter (Apache 2.0 license, free for
+   commercial use, no API key). Runs entirely in the browser — the model
+   (~a few MB) downloads once on first use and is cached by the browser
+   after that. Version is pinned deliberately since Google labels this a
+   "Preview" API; bump MP_VERSION only after testing. */
+if (document.getElementById('aiRemoveDrop')){
+  const MP_VERSION = '0.10.2';
+  const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
+  let segmenter = null;
+  let segmenterLoadPromise = null;
+  let aiSourceImg = null;
+  let aiResultCanvas = null;
+
+  function loadImgAi(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+
+  function setAiStatus(state, message){
+    const el = document.getElementById('aiModelStatus');
+    if (!el) return;
+    el.className = 'model-status-line' + (state ? ' ' + state : '');
+    const label = el.querySelector('span');
+    if (label) label.textContent = message;
+  }
+
+  async function ensureSegmenter(){
+    if (segmenter) return segmenter;
+    if (!segmenterLoadPromise){
+      segmenterLoadPromise = (async () => {
+        setAiStatus('', 'Loading AI model (first use only, a few MB, cached after)…');
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
+        const { ImageSegmenter, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
+        );
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL },
+          outputCategoryMask: true,
+          outputConfidenceMasks: false,
+          runningMode: 'IMAGE'
+        });
+        segmenter = seg;
+        setAiStatus('ready', 'AI model ready.');
+        return seg;
+      })().catch((err) => {
+        setAiStatus('error', 'Could not load the AI model — check your connection and try again.');
+        segmenterLoadPromise = null;
+        throw err;
+      });
+    }
+    return segmenterLoadPromise;
+  }
+
+  setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB.`, 'err'); return; }
+    try{
+      aiSourceImg = await loadImgAi(f);
+      document.getElementById('aiRemoveStage').classList.remove('hidden');
+      const wrap = document.getElementById('aiRemovePreview');
+      wrap.innerHTML = '';
+      const preview = document.createElement('img');
+      preview.src = aiSourceImg.src;
+      preview.style.maxWidth = '100%';
+      preview.style.display = 'block';
+      wrap.appendChild(preview);
+      document.getElementById('aiRemoveBtn').disabled = false;
+      // Warm up the model in the background as soon as an image is loaded.
+      ensureSegmenter().catch(() => {});
+      toast('Image loaded.');
+    }catch(err){
+      toast(err.message, 'err');
+    }
+  });
+
+  document.getElementById('aiRemoveBtn').onclick = async () => {
+    const btn = document.getElementById('aiRemoveBtn');
+    if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
+    setLoading(btn, true);
+    try{
+      const seg = await ensureSegmenter();
+      await nextFrame();
+
+      const MAX = 1200;
+      let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
+      if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w; srcCanvas.height = h;
+      srcCanvas.getContext('2d').drawImage(aiSourceImg, 0, 0, w, h);
+
+      const result = await new Promise((resolve, reject) => {
+        try{ seg.segment(srcCanvas, (res) => resolve(res)); }
+        catch(err){ reject(err); }
+      });
+
+      if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
+      const maskData = result.categoryMask.getAsUint8Array();
+      const maskW = result.categoryMask.width || w;
+      const maskH = result.categoryMask.height || h;
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = w; outCanvas.height = h;
+      const octx = outCanvas.getContext('2d');
+      octx.drawImage(srcCanvas, 0, 0);
+      const imageData = octx.getImageData(0, 0, w, h);
+      const pixels = imageData.data;
+
+      for (let y = 0; y < h; y++){
+        for (let x = 0; x < w; x++){
+          const mx = Math.min(maskW - 1, Math.floor((x / w) * maskW));
+          const my = Math.min(maskH - 1, Math.floor((y / h) * maskH));
+          const category = maskData[my * maskW + mx];
+          if (category === 0){ // category 0 = background in this model
+            pixels[((y * w) + x) * 4 + 3] = 0;
+          }
+        }
+      }
+      octx.putImageData(imageData, 0, 0);
+      if (result.categoryMask.close) result.categoryMask.close();
+
+      aiResultCanvas = outCanvas;
+      const wrap = document.getElementById('aiRemovePreview');
+      wrap.innerHTML = '';
+      wrap.appendChild(outCanvas);
+      document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+      document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+      toast('Background removed.');
+    }catch(err){
+      toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Remove background (AI)');
+    }
+  };
+
+  document.getElementById('aiRemoveDownloadBtn').onclick = () => {
+    if (!aiResultCanvas){ toast('Remove a background first.', 'err'); return; }
+    aiResultCanvas.toBlob((blob) => {
+      if (!blob){ toast('Could not export this image.', 'err'); return; }
+      downloadBlob(blob, 'background-removed.png');
+    }, 'image/png');
+  };
+
+  document.getElementById('sendToAiChangerBtn').onclick = () => {
+    if (!aiResultCanvas) return;
+    selectTool('bg-changer');
+    if (typeof receiveForegroundForAiChanger === 'function') receiveForegroundForAiChanger(aiResultCanvas);
+    toast('Sent to Background Changer.');
+  };
+}
+
+/* ============ BACKGROUND CHANGER (image-tools.html) ============ */
+let receiveForegroundForAiChanger = null;
+if (document.getElementById('bgChangerDrop')){
+  let fgCanvas = null;
+  let bgMode = 'color';
+  let customBgImg = null;
+
+  function loadImgBg(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+
+  setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
+    const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
+    if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
+    try{
+      const img = await loadImgBg(f);
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      fgCanvas = c;
+      document.getElementById('bgChangerStage').classList.remove('hidden');
+      renderBgComposite();
+      toast('Image loaded — choose a new background.');
+    }catch(err){ toast(err.message, 'err'); }
+  });
+
+  receiveForegroundForAiChanger = (canvas) => {
+    fgCanvas = canvas;
+    document.getElementById('bgChangerStage').classList.remove('hidden');
+    renderBgComposite();
+  };
+
+  document.querySelectorAll('#view-bg-changer .bg-mode-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('#view-bg-changer .bg-mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      bgMode = tab.dataset.mode;
+      document.querySelectorAll('#view-bg-changer .bg-mode-panel').forEach(p => p.classList.toggle('hidden', p.dataset.mode !== bgMode));
+      renderBgComposite();
+    };
+  });
+
+  document.querySelectorAll('#view-bg-changer .bg-swatch[data-color]').forEach(sw => {
+    sw.style.background = sw.dataset.color;
+    sw.onclick = () => {
+      document.querySelectorAll('#view-bg-changer .bg-swatch[data-color]').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+      document.getElementById('bgChangerSolidColor').value = sw.dataset.color;
+      renderBgComposite();
+    };
+  });
+  document.getElementById('bgChangerSolidColor').oninput = renderBgComposite;
+  document.getElementById('bgChangerGradStart').oninput = renderBgComposite;
+  document.getElementById('bgChangerGradEnd').oninput = renderBgComposite;
+  document.getElementById('bgChangerGradAngle').oninput = (e) => {
+    document.getElementById('bgChangerGradAngleVal').textContent = e.target.value;
+    renderBgComposite();
+  };
+
+  setupDropZone('bgChangerCustomDrop','bgChangerCustomInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f) return;
+    customBgImg = await loadImgBg(f);
+    renderBgComposite();
+  });
+
+  function renderBgComposite(){
+    if (!fgCanvas) return;
+    const w = fgCanvas.width, h = fgCanvas.height;
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const ctx = out.getContext('2d');
+
+    if (bgMode === 'color'){
+      ctx.fillStyle = document.getElementById('bgChangerSolidColor').value;
+      ctx.fillRect(0,0,w,h);
+    } else if (bgMode === 'gradient'){
+      const angle = parseInt(document.getElementById('bgChangerGradAngle').value,10) * Math.PI/180;
+      const x1 = w/2 - Math.cos(angle)*w/2, y1 = h/2 - Math.sin(angle)*h/2;
+      const x2 = w/2 + Math.cos(angle)*w/2, y2 = h/2 + Math.sin(angle)*h/2;
+      const grad = ctx.createLinearGradient(x1,y1,x2,y2);
+      grad.addColorStop(0, document.getElementById('bgChangerGradStart').value);
+      grad.addColorStop(1, document.getElementById('bgChangerGradEnd').value);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,0,w,h);
+    } else if (bgMode === 'image' && customBgImg){
+      const ir = customBgImg.naturalWidth / customBgImg.naturalHeight;
+      const cr = w / h;
+      let dw, dh, dx, dy;
+      if (ir > cr){ dh = h; dw = h*ir; dx = (w-dw)/2; dy = 0; }
+      else { dw = w; dh = w/ir; dx = 0; dy = (h-dh)/2; }
+      ctx.drawImage(customBgImg, dx, dy, dw, dh);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0,0,w,h);
+    }
+
+    ctx.drawImage(fgCanvas, 0, 0);
+    const wrap = document.getElementById('bgChangerPreview');
+    wrap.innerHTML = '';
+    wrap.appendChild(out);
+    document.getElementById('bgChangerDownloadRow').classList.remove('hidden');
+    window.__bgChangerResult = out;
+  }
+
+  document.getElementById('bgChangerDownloadBtn').onclick = () => {
+    const out = window.__bgChangerResult;
+    if (!out){ toast('Load an image first.', 'err'); return; }
+    out.toBlob((blob) => {
+      if (!blob){ toast('Could not export this image.', 'err'); return; }
+      downloadBlob(blob, 'background-changed.png');
+    }, 'image/png');
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
