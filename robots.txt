@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow:
 
 Sitemap: https://toolflight.com/sitemap.xml
-Host: toolflight.com

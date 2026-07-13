@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BMI Calculator — Free Online | ToolFlight</title>
+<meta name="description" content="Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="canonical" href="https://toolflight.com/bmi-calculator.html">
+
+<meta property="og:title" content="BMI Calculator — Free Online | ToolFlight">
+<meta property="og:description" content="Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/bmi-calculator.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BMI Calculator — Free Online | ToolFlight">
+<meta name="twitter:description" content="Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="calculators.html" style="color:var(--ink-soft);text-decoration:none;">Calculators</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">BMI Calculator</span>
+</nav>
+  <h1>BMI Calculator</h1>
+  <p class="subtitle">Calculate your Body Mass Index from height and weight — metric or imperial.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="calculators.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to Calculators</a>
+  </div>
+
+  <div class="workspace">
+      <div class="view-title"><h2>BMI Calculator</h2></div>
+      <div class="unit-toggle bmi-unit-toggle">
+        <button class="active" data-unit="metric" type="button">Metric (cm/kg)</button>
+        <button data-unit="imperial" type="button">Imperial (ft/lb)</button>
+      </div>
+
+      <div id="bmiMetricFields" style="margin-top:14px;">
+        <span class="field-label">Height (cm)</span>
+        <input type="number" id="bmiHeightCm" placeholder="e.g. 170" min="1" step="0.1">
+        <span class="field-label" style="margin-top:14px;">Weight (kg)</span>
+        <input type="number" id="bmiWeightKg" placeholder="e.g. 65" min="1" step="0.1">
+      </div>
+      <div id="bmiImperialFields" class="hidden" style="margin-top:14px;">
+        <span class="field-label">Height</span>
+        <div class="row" style="margin-top:0;">
+          <input type="number" id="bmiHeightFt" placeholder="Feet" min="0" step="1">
+          <input type="number" id="bmiHeightIn" placeholder="Inches" min="0" max="11" step="1">
+        </div>
+        <span class="field-label" style="margin-top:14px;">Weight (lb)</span>
+        <input type="number" id="bmiWeightLb" placeholder="e.g. 140" min="1" step="0.1">
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary" id="bmiCalcBtn" style="flex:1;">Calculate BMI</button>
+        <button class="btn btn-ghost" id="bmiClearBtn">Clear</button>
+      </div>
+
+      <div id="bmiResultBox" class="hidden" style="text-align:center;margin-top:18px;">
+        <div style="font-size:32px;font-weight:800;letter-spacing:-.02em;" id="bmiValue">0.0</div>
+        <span class="bmi-badge" id="bmiCategoryBadge">—</span>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin-top:12px;">BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition. It isn't a diagnosis.</p>
+      </div>
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">How to use the BMI Calculator</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Choose Metric or Imperial units, enter your height and weight, then tap Calculate BMI to see your Body Mass Index and its standard category.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What do the BMI categories mean?</strong><br>Under 18.5 is Underweight, 18.5–24.9 is Normal weight, 25–29.9 is Overweight, and 30+ is Obesity, using the standard WHO ranges.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is BMI accurate for everyone?</strong><br>BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition — it isn't a diagnosis.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Calculators</h2>
+    <div class="related-grid">
+      <a href="age-calculator.html" class="blog-card"><span class="blog-tag">Calculator</span><h3>Age Calculator</h3><p>Find your exact age in years, months, and days.</p></a>
+      <a href="percentage-calculator.html" class="blog-card"><span class="blog-tag">Calculator</span><h3>Percentage Calculator</h3><p>X% of Y, percent of a total, increase, decrease, and difference.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Calculators", "item": "https://toolflight.com/calculators.html"}, {"@type": "ListItem", "position": 3, "name": "BMI Calculator", "item": "https://toolflight.com/bmi-calculator.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "BMI Calculator", "applicationCategory": "HealthApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What do the BMI categories mean?", "acceptedAnswer": {"@type": "Answer", "text": "Under 18.5 is Underweight, 18.5\u201324.9 is Normal weight, 25\u201329.9 is Overweight, and 30+ is Obesity, using the standard WHO ranges."}}, {"@type": "Question", "name": "Is BMI accurate for everyone?", "acceptedAnswer": {"@type": "Answer", "text": "BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition \u2014 it isn't a diagnosis."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script defer src="js/app.js"></script>
+</body>
+</html>
