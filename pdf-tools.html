@@ -55,7 +55,7 @@
       <a href="blog.html" data-page="blog.html">Blog</a>
       
     </div>
-    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
       <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -70,12 +70,12 @@
 
 <div class="container" id="tools">
   <div class="tools-grid">
-    <button class="tool-card active" data-tool="merge">
+    <button class="tool-card active" data-tool="merge" type="button">
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="13" rx="2"/><path d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1"/></svg></div>
       <h3>Merge PDF</h3>
       <p>Combine multiple PDFs into one, in any order you choose.</p>
     </button>
-    <button class="tool-card" data-tool="split">
+    <button class="tool-card" data-tool="split" type="button">
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></div>
       <h3>Split PDF</h3>
       <p>Pull specific pages out, or split every page into its own file.</p>
@@ -94,8 +94,8 @@
       </div>
       <div class="file-list" id="mergeList"></div>
       <div class="row">
-        <button class="btn btn-primary" id="mergeBtn" disabled>Merge &amp; download</button>
-        <button class="btn btn-ghost" id="mergeClearBtn">Clear all</button>
+        <button class="btn btn-primary" id="mergeBtn" disabled type="button">Merge &amp; download</button>
+        <button class="btn btn-ghost" id="mergeClearBtn" type="button">Clear all</button>
       </div>
     </div>
 
@@ -113,13 +113,13 @@
         <span class="field-label" style="margin-top:16px;">Select pages to export (tap to toggle)</span>
         <div class="page-grid" id="pageGrid"></div>
         <div class="row" style="margin-top:10px;">
-          <button class="btn btn-ghost" id="selectAllBtn" style="flex:0;min-width:auto;">Select all</button>
-          <button class="btn btn-ghost" id="selectNoneBtn" style="flex:0;min-width:auto;">Clear selection</button>
+          <button class="btn btn-ghost" id="selectAllBtn" style="flex:0;min-width:auto;" type="button">Select all</button>
+          <button class="btn btn-ghost" id="selectNoneBtn" style="flex:0;min-width:auto;" type="button">Clear selection</button>
         </div>
       </div>
       <div class="row">
-        <button class="btn btn-primary" id="splitBtn" disabled>Split &amp; download .zip</button>
-        <button class="btn btn-ghost" id="splitClearBtn">Clear</button>
+        <button class="btn btn-primary" id="splitBtn" disabled type="button">Split &amp; download .zip</button>
+        <button class="btn btn-ghost" id="splitClearBtn" type="button">Clear</button>
       </div>
     </div>
   </div>
@@ -158,7 +158,7 @@
 
 <div class="legal-modal" id="legalModal">
   <div class="legal-box">
-    <button class="legal-close" onclick="closeLegal()">✕</button>
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
     <div id="legalContent"></div>
   </div>
 </div>
