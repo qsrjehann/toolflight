@@ -200,7 +200,31 @@ input[type=date]::-webkit-calendar-picker-indicator{
   cursor:pointer;border-radius:6px;padding:3px;
 }
 html.dark input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);}
-select{cursor:pointer;background-image:none;}
+select{
+  cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C6079' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  background-size:16px;
+  padding-right:36px;
+}
+html.dark select{
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239A9CC0' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+/* Visible keyboard-focus ring — restores what removing the native outline took away,
+   using :focus-visible so mouse clicks don't show it but Tab navigation does. */
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible{
+  outline:2.5px solid var(--accent1);
+  outline-offset:2px;
+}
+/* Fallback for browsers without :focus-visible support (very old Safari/Firefox) —
+   degrades to always showing on focus rather than never showing at all. */
+@supports not selector(:focus-visible){
+  input:focus, select:focus, textarea:focus, button:focus, a:focus{
+    outline:2.5px solid var(--accent1);
+    outline-offset:2px;
+  }
+}
 
 input[type=range]{width:100%;accent-color:var(--accent1);}
 input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:pointer;background:none;padding:0;}
