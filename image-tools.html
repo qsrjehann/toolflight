@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight</title>
-<meta name="description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
+<title>Image Tools — AI Background Remover, Compress, Crop, Watermark & More | ToolFlight</title>
+<meta name="description" content="AI background remover, background changer, image compressor, crop, watermark, and rotate/flip tools — free, right in your browser. JPG, PNG, and WEBP supported.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="canonical" href="https://toolflight.com/image-tools.html">
 
-<meta property="og:title" content="Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight">
-<meta property="og:description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
+<meta property="og:title" content="Image Tools — AI Background Remover, Compress, Crop, Watermark & More | ToolFlight">
+<meta property="og:description" content="AI background remover, background changer, image compressor, crop, watermark, and rotate/flip tools — free, right in your browser. JPG, PNG, and WEBP supported.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://toolflight.com/image-tools.html">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Image Tools — Compress, Crop, Watermark, Rotate & Flip | ToolFlight">
-<meta name="twitter:description" content="Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.">
+<meta name="twitter:title" content="Image Tools — AI Background Remover, Compress, Crop, Watermark & More | ToolFlight">
+<meta name="twitter:description" content="AI background remover, background changer, image compressor, crop, watermark, and rotate/flip tools — free, right in your browser. JPG, PNG, and WEBP supported.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -32,7 +32,7 @@
   "name": "ToolFlight",
   "applicationCategory": "Utility",
   "operatingSystem": "Any",
-  "description": "Compress, crop, watermark, rotate, and flip images free, right in your browser. JPG, PNG, and WEBP supported.",
+  "description": "AI background remover, background changer, image compressor, crop, watermark, and rotate/flip tools — free, right in your browser. JPG, PNG, and WEBP supported.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -89,6 +89,16 @@
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg></div>
       <h3>Rotate &amp; Flip Tool</h3>
       <p>Rotate 90°/180°/270° and flip horizontal or vertical.</p>
+    </button>
+    <button class="tool-card" data-tool="bg-remover" type="button">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l4 4M20 4l-4 4M4 20l4-4M20 20l-4-4"/><circle cx="12" cy="12" r="4"/></svg></div>
+      <h3>AI Background Remover</h3>
+      <p>Automatic AI-powered background removal — 100% in your browser.</p>
+    </button>
+    <button class="tool-card" data-tool="bg-changer" type="button">
+      <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg></div>
+      <h3>Background Changer</h3>
+      <p>Solid colors, gradients, or a custom background image.</p>
     </button>
   </div>
 
@@ -290,6 +300,115 @@
         </div>
       </div>
     </div>
+
+    <div class="tool-view" id="view-bg-remover">
+      <div class="view-title"><h2>AI Background Remover</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Powered by Google's MediaPipe AI model, running entirely in your browser — no file is ever uploaded anywhere. Works best on photos of people, animals, vehicles, and everyday objects.</p>
+      <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
+      <div class="drop-zone" id="aiRemoveDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image here or tap to browse</div>
+        <div class="drop-sub">JPG, PNG, or WEBP — up to 50MB</div>
+        <input type="file" id="aiRemoveInput" accept="image/png, image/jpeg, image/webp">
+      </div>
+      <div class="model-status-line" id="aiModelStatus"><span class="dot"></span><span>AI model loads on first use.</span></div>
+
+      <div id="aiRemoveStage" class="hidden">
+        <div class="canvas-stage" id="aiRemovePreviewStage" style="margin-top:14px;">
+          <div id="aiRemovePreview" style="width:100%;"></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
+        </div>
+        <div class="row hidden" id="aiRemoveDownloadRow">
+          <button class="btn btn-ghost" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
+          <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the AI Background Remover</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Upload a photo, then tap Remove background (AI). The first use downloads a small AI model (a few MB, cached afterward), then the background is removed automatically using machine learning — no manual selection needed.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Is my photo uploaded anywhere?</strong><br>No — the AI model runs entirely inside your browser using WebAssembly. Your image is never sent to a server.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What does this work best on?</strong><br>People, animals, vehicles, furniture, and other common photo subjects. Very fine detail like flyaway hair may not be as precise as a specialized paid tool.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related tools</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('bg-changer')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Background Changer</h3><p>Swap in a new background.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('compress')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Compress Image</h3><p>Shrink file size with a live preview.</p></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-view" id="view-bg-changer">
+      <div class="view-title"><h2>Background Changer</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Upload a transparent PNG/WEBP (e.g. from the AI Background Remover above) and place it on a solid color, gradient, or custom background image.</p>
+      <span class="field-label">Choose a transparent image</span>
+      <div class="drop-zone" id="bgChangerDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a transparent PNG/WEBP or tap to browse</div>
+        <div class="drop-sub">Or use "Send to Background Changer" from the AI Remover tab</div>
+        <input type="file" id="bgChangerInput" accept="image/png, image/webp">
+      </div>
+
+      <div id="bgChangerStage" class="hidden">
+        <div class="bg-mode-tabs" style="margin-top:16px;">
+          <button class="bg-mode-tab active" data-mode="color" type="button">Solid color</button>
+          <button class="bg-mode-tab" data-mode="gradient" type="button">Gradient</button>
+          <button class="bg-mode-tab" data-mode="image" type="button">Custom image</button>
+        </div>
+
+        <div class="bg-mode-panel" data-mode="color">
+          <div class="bg-swatch-row" style="margin-top:12px;">
+            <button class="bg-swatch selected" data-color="#ffffff" type="button"></button>
+            <button class="bg-swatch" data-color="#151726" type="button"></button>
+            <button class="bg-swatch" data-color="#6D5EF5" type="button"></button>
+            <button class="bg-swatch" data-color="#C24CF0" type="button"></button>
+            <button class="bg-swatch" data-color="#12A66B" type="button"></button>
+            <button class="bg-swatch" data-color="#F59E0B" type="button"></button>
+            <input type="color" id="bgChangerSolidColor" value="#ffffff" style="width:36px;height:36px;">
+          </div>
+        </div>
+
+        <div class="bg-mode-panel hidden" data-mode="gradient">
+          <div class="qr-controls" style="margin-top:12px;">
+            <div class="ctrl"><label>Start</label><input type="color" id="bgChangerGradStart" value="#6D5EF5"></div>
+            <div class="ctrl"><label>End</label><input type="color" id="bgChangerGradEnd" value="#C24CF0"></div>
+            <div class="ctrl" style="grid-column:span 2;">
+              <label>Angle: <span id="bgChangerGradAngleVal">45</span>°</label>
+              <input type="range" id="bgChangerGradAngle" min="0" max="360" value="45">
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-mode-panel hidden" data-mode="image">
+          <div class="drop-zone" id="bgChangerCustomDrop" style="margin-top:12px;padding:20px;">
+            <div class="drop-title">Drop a background image or tap to browse</div>
+            <input type="file" id="bgChangerCustomInput" accept="image/*">
+          </div>
+        </div>
+
+        <div class="canvas-stage" id="bgChangerPreviewStage" style="margin-top:16px;">
+          <div id="bgChangerPreview" style="width:100%;"></div>
+        </div>
+        <div class="row hidden" id="bgChangerDownloadRow">
+          <button class="btn btn-primary" id="bgChangerDownloadBtn" style="flex:1;" type="button">Download final image</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:8px;">How to use the Background Changer</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;">Upload a transparent-background image, choose Solid color, Gradient, or Custom image, then adjust and download. Works seamlessly with the AI Background Remover's output via the "Send to Background Changer" button.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">FAQ</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;"><strong>Why does my image need transparency first?</strong><br>This tool composites your subject onto a new background — it needs to know which pixels are the subject versus the old background, which is exactly what a transparent PNG/WEBP encodes.</p>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is the result full resolution?</strong><br>Yes — the download matches the resolution of the transparent image you uploaded.</p>
+        <h3 style="font-size:15px;font-weight:800;margin:18px 0 8px;">Related tools</h3>
+        <div class="related-grid">
+          <button class="blog-card" type="button" onclick="selectTool('bg-remover')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>AI Background Remover</h3><p>Remove backgrounds automatically.</p></button>
+          <button class="blog-card" type="button" onclick="selectTool('watermark')" style="text-align:left;cursor:pointer;"><span class="blog-tag">Image Tool</span><h3>Image Watermark Tool</h3><p>Add a text or logo watermark.</p></button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -297,7 +416,10 @@
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Image Crop Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Image Watermark Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Rotate & Flip Tool","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"AI Background Remover","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Background Changer","applicationCategory":"MultimediaApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to crop an image online","step":[{"@type":"HowToStep","text":"Upload your image by dragging it in or tapping to browse."},{"@type":"HowToStep","text":"Choose Free crop or a locked ratio (1:1, 16:9, 9:16)."},{"@type":"HowToStep","text":"Drag the crop box or its handles to select the area you want."},{"@type":"HowToStep","text":"Tap Download to save the cropped image at full resolution."}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to remove an image background with AI","step":[{"@type":"HowToStep","text":"Upload a photo by dragging it in or tapping to browse."},{"@type":"HowToStep","text":"Tap Remove background (AI) — the AI model loads once, then processes the image automatically."},{"@type":"HowToStep","text":"Download the result as a transparent PNG, or send it directly to the Background Changer."}]}</script>
 
 <footer>
   <div class="container">
