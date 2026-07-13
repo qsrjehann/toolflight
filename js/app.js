@@ -1049,6 +1049,484 @@ if (document.getElementById('curFrom')){
   runCurrencyConversion();
 }
 
+/* ============ IMAGE CROP TOOL (image-tools.html) ============
+   Full-resolution crop is always reconstructed from the original image at
+   download time — the on-screen canvas may be downscaled for performance,
+   but exported files are never limited by that display resolution. */
+if (document.getElementById('cropCanvas')){
+  let cropImg = null;
+  let cropRotation = 0;
+  let cropAspect = null; // null = free
+  let cropBox = { x: 0, y: 0, w: 100, h: 100 };
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  function loadImg(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+
+  function setCropLoading(on){
+    document.getElementById('cropLoading').classList.toggle('show', on);
+  }
+
+  setupDropZone('cropDrop','cropInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f){ if (files.length>0) toast('Please select an image file.', 'err'); return; }
+    setCropLoading(true);
+    try{
+      cropImg = await loadImg(f);
+      cropRotation = 0;
+      document.getElementById('cropStageWrap').classList.remove('hidden');
+      setupCropCanvas();
+      toast('Image loaded.');
+    }catch(err){
+      toast(err.message, 'err');
+    }finally{
+      setCropLoading(false);
+    }
+  });
+
+  function setupCropCanvas(){
+    const canvas = document.getElementById('cropCanvas');
+    const ctx = canvas.getContext('2d');
+    const swapped = (cropRotation === 90 || cropRotation === 270);
+    const preW = cropImg.naturalWidth, preH = cropImg.naturalHeight;
+    let w = swapped ? preH : preW;
+    let h = swapped ? preW : preH;
+    const MAX = 900;
+    if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+    canvas.width = w; canvas.height = h;
+    const s = swapped ? w / preH : w / preW;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.rotate(cropRotation * Math.PI / 180);
+    ctx.drawImage(cropImg, -preW*s/2, -preH*s/2, preW*s, preH*s);
+    ctx.restore();
+    cropBox = { x: 0, y: 0, w, h };
+    requestAnimationFrame(renderCropBox);
+  }
+
+  function renderCropBox(){
+    const canvas = document.getElementById('cropCanvas');
+    const stage = document.getElementById('cropStage');
+    const rect = canvas.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const scale = rect.width / canvas.width;
+    const box = document.getElementById('cropBoxEl');
+    box.style.left = ((rect.left - stageRect.left) + cropBox.x*scale) + 'px';
+    box.style.top = ((rect.top - stageRect.top) + cropBox.y*scale) + 'px';
+    box.style.width = (cropBox.w*scale) + 'px';
+    box.style.height = (cropBox.h*scale) + 'px';
+    updateCropPreview();
+  }
+
+  function updateCropPreview(){
+    const canvas = document.getElementById('cropCanvas');
+    const prev = document.getElementById('cropPreview');
+    const pctx = prev.getContext('2d');
+    prev.width = 160; prev.height = Math.max(1, Math.round(160 * (cropBox.h / cropBox.w)));
+    pctx.clearRect(0,0,prev.width,prev.height);
+    if (cropBox.w > 0 && cropBox.h > 0){
+      pctx.drawImage(canvas, cropBox.x, cropBox.y, cropBox.w, cropBox.h, 0, 0, prev.width, prev.height);
+    }
+  }
+
+  function setAspect(ratio){
+    cropAspect = ratio;
+    const canvas = document.getElementById('cropCanvas');
+    let w = canvas.width, h = canvas.height;
+    if (ratio){
+      if (w / h > ratio) w = h * ratio; else h = w / ratio;
+    }
+    cropBox = { x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, w, h };
+    renderCropBox();
+  }
+  const ASPECT_RATIOS = { square: 1, '16:9': 16/9, '9:16': 9/16 };
+  document.querySelectorAll('.crop-aspect-toggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.crop-aspect-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const r = btn.dataset.ratio;
+      setAspect(r === 'free' ? null : ASPECT_RATIOS[r]);
+    };
+  });
+
+  // Drag to move
+  const boxEl = document.getElementById('cropBoxEl');
+  boxEl.addEventListener('pointerdown', (e) => {
+    if (e.target !== boxEl) return;
+    e.preventDefault();
+    boxEl.setPointerCapture(e.pointerId);
+    const canvas = document.getElementById('cropCanvas');
+    const scale = canvas.getBoundingClientRect().width / canvas.width;
+    const startX = e.clientX, startY = e.clientY;
+    const startBox = { ...cropBox };
+    function onMove(ev){
+      const dx = (ev.clientX - startX) / scale, dy = (ev.clientY - startY) / scale;
+      cropBox.x = clamp(startBox.x + dx, 0, canvas.width - cropBox.w);
+      cropBox.y = clamp(startBox.y + dy, 0, canvas.height - cropBox.h);
+      renderCropBox();
+    }
+    function onUp(){
+      boxEl.releasePointerCapture(e.pointerId);
+      boxEl.removeEventListener('pointermove', onMove);
+      boxEl.removeEventListener('pointerup', onUp);
+    }
+    boxEl.addEventListener('pointermove', onMove);
+    boxEl.addEventListener('pointerup', onUp);
+  });
+
+  // Resize via corner handles
+  function setupHandle(handleEl, corner){
+    handleEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      handleEl.setPointerCapture(e.pointerId);
+      const canvas = document.getElementById('cropCanvas');
+      const scale = canvas.getBoundingClientRect().width / canvas.width;
+      const startX = e.clientX, startY = e.clientY;
+      const startBox = { ...cropBox };
+      function onMove(ev){
+        const dx = (ev.clientX - startX) / scale, dy = (ev.clientY - startY) / scale;
+        let { x, y, w, h } = startBox;
+        if (corner === 'br'){ w = startBox.w + dx; h = startBox.h + dy; }
+        else if (corner === 'bl'){ x = startBox.x + dx; w = startBox.w - dx; h = startBox.h + dy; }
+        else if (corner === 'tr'){ w = startBox.w + dx; y = startBox.y + dy; h = startBox.h - dy; }
+        else { x = startBox.x + dx; y = startBox.y + dy; w = startBox.w - dx; h = startBox.h - dy; }
+        if (cropAspect){
+          h = w / cropAspect;
+          if (corner === 'tl' || corner === 'tr') y = startBox.y + startBox.h - h;
+          if (corner === 'tl' || corner === 'bl') x = startBox.x + startBox.w - w;
+        }
+        w = Math.max(20, w); h = Math.max(20, h);
+        x = clamp(x, 0, canvas.width - w);
+        y = clamp(y, 0, canvas.height - h);
+        cropBox = { x, y, w, h };
+        renderCropBox();
+      }
+      function onUp(){
+        handleEl.releasePointerCapture(e.pointerId);
+        handleEl.removeEventListener('pointermove', onMove);
+        handleEl.removeEventListener('pointerup', onUp);
+      }
+      handleEl.addEventListener('pointermove', onMove);
+      handleEl.addEventListener('pointerup', onUp);
+    });
+  }
+  ['tl','tr','bl','br'].forEach(c => setupHandle(document.querySelector(`.crop-handle.${c}`), c));
+
+  document.getElementById('cropRotateLeftBtn').onclick = () => {
+    cropRotation = (cropRotation + 270) % 360;
+    cropAspect = null;
+    document.querySelectorAll('.crop-aspect-toggle button').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'free'));
+    setupCropCanvas();
+  };
+  document.getElementById('cropRotateRightBtn').onclick = () => {
+    cropRotation = (cropRotation + 90) % 360;
+    cropAspect = null;
+    document.querySelectorAll('.crop-aspect-toggle button').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'free'));
+    setupCropCanvas();
+  };
+  document.getElementById('cropResetBtn').onclick = () => {
+    if (!cropImg) return;
+    cropRotation = 0;
+    cropAspect = null;
+    document.querySelectorAll('.crop-aspect-toggle button').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'free'));
+    setupCropCanvas();
+  };
+  document.getElementById('cropDownloadBtn').onclick = () => {
+    if (!cropImg){ toast('Load an image first.', 'err'); return; }
+    setCropLoading(true);
+    try{
+      const canvas = document.getElementById('cropCanvas');
+      const swapped = (cropRotation === 90 || cropRotation === 270);
+      const preW = cropImg.naturalWidth, preH = cropImg.naturalHeight;
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = swapped ? preH : preW;
+      fullCanvas.height = swapped ? preW : preH;
+      const fctx = fullCanvas.getContext('2d');
+      fctx.save();
+      fctx.translate(fullCanvas.width/2, fullCanvas.height/2);
+      fctx.rotate(cropRotation * Math.PI / 180);
+      fctx.drawImage(cropImg, -preW/2, -preH/2);
+      fctx.restore();
+
+      const scaleUp = fullCanvas.width / canvas.width;
+      const outW = Math.max(1, Math.round(cropBox.w * scaleUp));
+      const outH = Math.max(1, Math.round(cropBox.h * scaleUp));
+      const out = document.createElement('canvas');
+      out.width = outW; out.height = outH;
+      out.getContext('2d').drawImage(fullCanvas, cropBox.x*scaleUp, cropBox.y*scaleUp, cropBox.w*scaleUp, cropBox.h*scaleUp, 0, 0, outW, outH);
+      out.toBlob((blob) => {
+        setCropLoading(false);
+        if (!blob){ toast('Could not export this image.', 'err'); return; }
+        downloadBlob(blob, 'cropped.png');
+        toast('Cropped image downloaded.');
+      }, 'image/png');
+    }catch(err){
+      setCropLoading(false);
+      toast('Crop failed: ' + err.message, 'err');
+    }
+  };
+
+  window.addEventListener('resize', () => { if (cropImg) renderCropBox(); });
+}
+
+/* ============ IMAGE WATERMARK TOOL (image-tools.html) ============ */
+if (document.getElementById('wmCanvas')){
+  let wmBaseImg = null;
+  let wmLogoImg = null;
+  let wmPos = { xFrac: 0.85, yFrac: 0.9 }; // fractional position, draggable
+
+  function loadImg2(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+  function setWmLoading(on){ document.getElementById('wmLoading').classList.toggle('show', on); }
+
+  setupDropZone('wmDrop','wmInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f){ if (files.length>0) toast('Please select an image file.', 'err'); return; }
+    setWmLoading(true);
+    try{
+      wmBaseImg = await loadImg2(f);
+      document.getElementById('wmStageWrap').classList.remove('hidden');
+      drawWatermark();
+      toast('Image loaded.');
+    }catch(err){ toast(err.message, 'err'); }
+    finally{ setWmLoading(false); }
+  });
+
+  setupDropZone('wmLogoDrop','wmLogoInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f) return;
+    try{ wmLogoImg = await loadImg2(f); drawWatermark(); toast('Logo loaded.'); }
+    catch(err){ toast(err.message, 'err'); }
+  });
+
+  function currentWmType(){
+    return document.querySelector('.wm-type-toggle button.active').dataset.type;
+  }
+
+  function drawWatermark(){
+    if (!wmBaseImg) return;
+    const canvas = document.getElementById('wmCanvas');
+    const ctx = canvas.getContext('2d');
+    const MAX = 900;
+    let w = wmBaseImg.naturalWidth, h = wmBaseImg.naturalHeight;
+    if (Math.max(w,h) > MAX){ const sc = MAX/Math.max(w,h); w=Math.round(w*sc); h=Math.round(h*sc); }
+    canvas.width = w; canvas.height = h;
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(wmBaseImg, 0, 0, w, h);
+
+    const opacity = parseInt(document.getElementById('wmOpacity').value,10) / 100;
+    ctx.globalAlpha = opacity;
+
+    const type = currentWmType();
+    const x = wmPos.xFrac * w, y = wmPos.yFrac * h;
+    if (type === 'text'){
+      const text = document.getElementById('wmText').value || 'Watermark';
+      const fontSize = parseInt(document.getElementById('wmFontSize').value,10);
+      const color = document.getElementById('wmColor').value;
+      ctx.font = `bold ${fontSize}px 'Inter', sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, y);
+    } else if (wmLogoImg){
+      const logoW = w * 0.22;
+      const logoH = logoW * (wmLogoImg.naturalHeight / wmLogoImg.naturalWidth);
+      ctx.drawImage(wmLogoImg, x - logoW/2, y - logoH/2, logoW, logoH);
+    }
+    ctx.globalAlpha = 1;
+    document.getElementById('wmDownloadBtn').classList.remove('hidden');
+  }
+
+  document.querySelectorAll('.wm-type-toggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.wm-type-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('wmTextFields').classList.toggle('hidden', btn.dataset.type !== 'text');
+      document.getElementById('wmLogoFields').classList.toggle('hidden', btn.dataset.type !== 'logo');
+      drawWatermark();
+    };
+  });
+
+  ['wmText','wmFontSize','wmColor','wmOpacity'].forEach(id => {
+    document.getElementById(id).addEventListener('input', drawWatermark);
+  });
+
+  document.querySelectorAll('.pos-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const map = {
+        'tl': [0.15, 0.1], 'tr': [0.85, 0.1], 'c': [0.5, 0.5], 'bl': [0.15, 0.9], 'br': [0.85, 0.9]
+      };
+      const p = map[btn.dataset.pos];
+      if (p){ wmPos = { xFrac: p[0], yFrac: p[1] }; drawWatermark(); }
+    };
+  });
+
+  // Drag watermark directly on canvas
+  const wmCanvas = document.getElementById('wmCanvas');
+  wmCanvas.addEventListener('pointerdown', (e) => {
+    if (!wmBaseImg) return;
+    wmCanvas.setPointerCapture(e.pointerId);
+    document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+    function move(ev){
+      const rect = wmCanvas.getBoundingClientRect();
+      const xFrac = clampNum((ev.clientX - rect.left) / rect.width, 0, 1);
+      const yFrac = clampNum((ev.clientY - rect.top) / rect.height, 0, 1);
+      wmPos = { xFrac, yFrac };
+      drawWatermark();
+    }
+    function up(){
+      wmCanvas.releasePointerCapture(e.pointerId);
+      wmCanvas.removeEventListener('pointermove', move);
+      wmCanvas.removeEventListener('pointerup', up);
+    }
+    move(e);
+    wmCanvas.addEventListener('pointermove', move);
+    wmCanvas.addEventListener('pointerup', up);
+  });
+  function clampNum(v,min,max){ return Math.max(min,Math.min(max,v)); }
+
+  document.getElementById('wmDownloadBtn').onclick = () => {
+    if (!wmBaseImg) return;
+    setWmLoading(true);
+    try{
+      const full = document.createElement('canvas');
+      full.width = wmBaseImg.naturalWidth; full.height = wmBaseImg.naturalHeight;
+      const fctx = full.getContext('2d');
+      fctx.drawImage(wmBaseImg, 0, 0);
+      const opacity = parseInt(document.getElementById('wmOpacity').value,10) / 100;
+      fctx.globalAlpha = opacity;
+      const type = currentWmType();
+      const x = wmPos.xFrac * full.width, y = wmPos.yFrac * full.height;
+      if (type === 'text'){
+        const text = document.getElementById('wmText').value || 'Watermark';
+        const fontSize = parseInt(document.getElementById('wmFontSize').value,10) * (full.width / document.getElementById('wmCanvas').width);
+        fctx.font = `bold ${fontSize}px 'Inter', sans-serif`;
+        fctx.fillStyle = document.getElementById('wmColor').value;
+        fctx.textBaseline = 'middle';
+        fctx.textAlign = 'center';
+        fctx.fillText(text, x, y);
+      } else if (wmLogoImg){
+        const logoW = full.width * 0.22;
+        const logoH = logoW * (wmLogoImg.naturalHeight / wmLogoImg.naturalWidth);
+        fctx.drawImage(wmLogoImg, x - logoW/2, y - logoH/2, logoW, logoH);
+      }
+      fctx.globalAlpha = 1;
+      full.toBlob((blob) => {
+        setWmLoading(false);
+        if (!blob){ toast('Could not export this image.', 'err'); return; }
+        downloadBlob(blob, 'watermarked.png');
+        toast('Watermarked image downloaded.');
+      }, 'image/png');
+    }catch(err){
+      setWmLoading(false);
+      toast('Watermarking failed: ' + err.message, 'err');
+    }
+  };
+}
+
+/* ============ IMAGE ROTATE & FLIP TOOL (image-tools.html) ============ */
+if (document.getElementById('rfCanvas')){
+  let rfImg = null;
+  let rfRotation = 0;
+  let rfFlipH = false;
+  let rfFlipV = false;
+
+  function loadImg3(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+  function setRfLoading(on){ document.getElementById('rfLoading').classList.toggle('show', on); }
+
+  setupDropZone('rfDrop','rfInput', async (files) => {
+    const f = files.find(f => f.type.startsWith('image/'));
+    if (!f){ if (files.length>0) toast('Please select an image file.', 'err'); return; }
+    setRfLoading(true);
+    try{
+      rfImg = await loadImg3(f);
+      rfRotation = 0; rfFlipH = false; rfFlipV = false;
+      document.getElementById('rfStageWrap').classList.remove('hidden');
+      drawRotateFlip();
+      toast('Image loaded.');
+    }catch(err){ toast(err.message, 'err'); }
+    finally{ setRfLoading(false); }
+  });
+
+  function drawRotateFlip(){
+    const canvas = document.getElementById('rfCanvas');
+    const ctx = canvas.getContext('2d');
+    const swapped = (rfRotation === 90 || rfRotation === 270);
+    const MAX = 900;
+    let preW = rfImg.naturalWidth, preH = rfImg.naturalHeight;
+    let w = swapped ? preH : preW, h = swapped ? preW : preH;
+    if (Math.max(w,h) > MAX){ const sc = MAX/Math.max(w,h); w=Math.round(w*sc); h=Math.round(h*sc); preW=Math.round(preW*sc); preH=Math.round(preH*sc); }
+    canvas.width = w; canvas.height = h;
+    ctx.clearRect(0,0,w,h);
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.rotate(rfRotation * Math.PI/180);
+    ctx.scale(rfFlipH ? -1 : 1, rfFlipV ? -1 : 1);
+    ctx.drawImage(rfImg, -preW/2, -preH/2, preW, preH);
+    ctx.restore();
+  }
+
+  document.getElementById('rfRotate90Btn').onclick = () => { if(!rfImg)return; rfRotation=(rfRotation+90)%360; drawRotateFlip(); };
+  document.getElementById('rfRotate180Btn').onclick = () => { if(!rfImg)return; rfRotation=(rfRotation+180)%360; drawRotateFlip(); };
+  document.getElementById('rfRotate270Btn').onclick = () => { if(!rfImg)return; rfRotation=(rfRotation+270)%360; drawRotateFlip(); };
+  document.getElementById('rfFlipHBtn').onclick = () => { if(!rfImg)return; rfFlipH=!rfFlipH; drawRotateFlip(); };
+  document.getElementById('rfFlipVBtn').onclick = () => { if(!rfImg)return; rfFlipV=!rfFlipV; drawRotateFlip(); };
+  document.getElementById('rfResetBtn').onclick = () => { if(!rfImg)return; rfRotation=0; rfFlipH=false; rfFlipV=false; drawRotateFlip(); };
+
+  document.getElementById('rfDownloadBtn').onclick = () => {
+    if (!rfImg){ toast('Load an image first.', 'err'); return; }
+    setRfLoading(true);
+    try{
+      const swapped = (rfRotation === 90 || rfRotation === 270);
+      const preW = rfImg.naturalWidth, preH = rfImg.naturalHeight;
+      const out = document.createElement('canvas');
+      out.width = swapped ? preH : preW;
+      out.height = swapped ? preW : preH;
+      const octx = out.getContext('2d');
+      octx.save();
+      octx.translate(out.width/2, out.height/2);
+      octx.rotate(rfRotation * Math.PI/180);
+      octx.scale(rfFlipH ? -1 : 1, rfFlipV ? -1 : 1);
+      octx.drawImage(rfImg, -preW/2, -preH/2);
+      octx.restore();
+      out.toBlob((blob) => {
+        setRfLoading(false);
+        if (!blob){ toast('Could not export this image.', 'err'); return; }
+        downloadBlob(blob, 'rotated.png');
+        toast('Image downloaded.');
+      }, 'image/png');
+    }catch(err){
+      setRfLoading(false);
+      toast('Rotate/flip failed: ' + err.message, 'err');
+    }
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
