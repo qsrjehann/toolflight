@@ -304,14 +304,23 @@
     <div class="tool-view" id="view-bg-remover">
       <div class="view-title"><h2>AI Background Remover</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Powered by Google's MediaPipe AI model, running entirely in your browser — no file is ever uploaded anywhere. Works best on photos of people, animals, vehicles, and everyday objects.</p>
+
+      <div id="autoSaveBanner" class="hidden" style="background:color-mix(in srgb, var(--accent1) 8%, var(--card));border:1px solid var(--card-border);border-radius:12px;padding:12px 14px;margin-bottom:14px;" role="status">
+        <p style="font-size:13px;margin:0 0 8px;">You have an unsaved editing session from before — resume it?</p>
+        <div class="row" style="margin-top:0;">
+          <button class="btn btn-primary" id="autoSaveResumeBtn" type="button" style="flex:1;">Resume session</button>
+          <button class="btn btn-ghost" id="autoSaveDiscardBtn" type="button">Discard</button>
+        </div>
+      </div>
+
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
       <div class="drop-zone" id="aiRemoveDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
         <div class="drop-title">Drop an image here or tap to browse</div>
         <div class="drop-sub">JPG, PNG, or WEBP — up to 50MB</div>
-        <input type="file" id="aiRemoveInput" accept="image/png, image/jpeg, image/webp">
+        <input type="file" id="aiRemoveInput" accept="image/png, image/jpeg, image/webp" aria-label="Choose an image file">
       </div>
-      <div class="model-status-line" id="aiModelStatus"><span class="dot"></span><span>AI model loads on first use.</span></div>
+      <div class="model-status-line" id="aiModelStatus" role="status"><span class="dot"></span><span>AI model loads on first use.</span></div>
 
       <div id="aiRemoveStage" class="hidden">
         <div class="canvas-stage" id="aiRemovePreviewStage" style="margin-top:14px;">
@@ -323,6 +332,96 @@
         <div class="row hidden" id="aiRemoveDownloadRow">
           <button class="btn btn-ghost" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
           <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
+        </div>
+      </div>
+
+      <div id="aiEditorPanel" class="hidden" style="margin-top:22px;padding-top:20px;border-top:1px solid var(--card-border);">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:10px;">Refine selection</h3>
+
+        <div class="editor-toolbar" role="group" aria-label="Selection tools">
+          <button class="editor-tool-btn active" data-tool="brush" type="button" aria-pressed="true">Brush (keep)</button>
+          <button class="editor-tool-btn" data-tool="eraser" type="button" aria-pressed="false">Eraser</button>
+          <button class="editor-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Content-aware refinement for hair, fur, and soft edges">Edge Refine</button>
+          <button class="editor-tool-btn" data-tool="wand" type="button" aria-pressed="false">Magic Wand</button>
+          <button class="editor-tool-btn" data-tool="polygon" type="button" aria-pressed="false">Polygon / Pen</button>
+          <button class="editor-tool-btn" data-tool="lasso" type="button" aria-pressed="false">Lasso</button>
+        </div>
+
+        <div class="unit-toggle select-mode-toggle" style="margin-top:10px;" role="group" aria-label="Selection mode">
+          <button class="active" data-mode="add" type="button" aria-pressed="true">Add to selection</button>
+          <button data-mode="subtract" type="button" aria-pressed="false">Subtract</button>
+        </div>
+        <p class="editor-hint">Add/Subtract applies to Magic Wand, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough.</p>
+
+        <div class="qr-controls" style="margin-top:10px;">
+          <div class="ctrl"><label for="brushSizeSlider">Brush size: <span id="brushSizeVal">40</span>px</label><input type="range" id="brushSizeSlider" min="5" max="150" value="40"></div>
+          <div class="ctrl"><label for="brushSoftSlider">Soft edge: <span id="brushSoftVal">50</span>%</label><input type="range" id="brushSoftSlider" min="0" max="100" value="50"></div>
+          <div class="ctrl"><label for="wandToleranceSlider">Wand tolerance: <span id="wandToleranceVal">30</span></label><input type="range" id="wandToleranceSlider" min="1" max="100" value="30"></div>
+          <div class="ctrl">
+            <label for="zoomSelect">Zoom</label>
+            <select id="zoomSelect" aria-label="Zoom level">
+              <option value="25">25%</option>
+              <option value="50">50%</option>
+              <option value="100" selected>100%</option>
+              <option value="200">200%</option>
+              <option value="400">400%</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="qr-controls" style="margin-top:10px;">
+          <div class="ctrl"><label for="featherSlider">Feather edge: <span id="featherVal">0</span>px</label><input type="range" id="featherSlider" min="0" max="30" value="0" step="1"></div>
+          <div class="ctrl"><label for="smoothSlider">Edge smooth: <span id="smoothVal">0</span>px</label><input type="range" id="smoothSlider" min="0" max="10" value="0" step="1"></div>
+          <div class="ctrl" style="grid-column:span 2;"><label for="expandSlider">Expand / Contract: <span id="expandVal">0</span>px</label><input type="range" id="expandSlider" min="-20" max="20" value="0" step="1"></div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-ghost" id="undoBtn" type="button">Undo</button>
+          <button class="btn btn-ghost" id="redoBtn" type="button">Redo</button>
+          <button class="btn btn-ghost" id="invertSelBtn" type="button">Invert selection</button>
+          <button class="btn btn-ghost" id="resetSelBtn" type="button">Reset to AI result</button>
+        </div>
+        <div class="row">
+          <button class="btn btn-ghost" id="overlayToggleBtn" type="button" aria-pressed="false">Selection overlay</button>
+          <button class="btn btn-ghost" id="compareToggleBtn" type="button" aria-pressed="false">Before / After</button>
+        </div>
+
+        <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap">
+          <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
+          <div id="compareWrap" class="hidden" style="position:relative;">
+            <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
+            <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
+              <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
+            </div>
+            <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+          </div>
+        </div>
+        <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices. Canvas drawing itself needs a pointer (mouse, touch, or stylus) — every other control here is fully keyboard operable.</p>
+
+        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--card-border);">
+          <span class="field-label">Export</span>
+          <div class="qr-controls" style="margin-top:8px;">
+            <div class="ctrl">
+              <label for="exportFormat">Format</label>
+              <select id="exportFormat" aria-label="Export format">
+                <option value="png" selected>PNG (transparent)</option>
+                <option value="jpg">JPG (solid background)</option>
+                <option value="webp">WEBP (transparent)</option>
+              </select>
+            </div>
+            <div class="ctrl" id="exportBgColorRow">
+              <label for="exportBgColor">Background (JPG only)</label>
+              <input type="color" id="exportBgColor" value="#ffffff">
+            </div>
+            <div class="ctrl hidden" id="exportQualityRow" style="grid-column:span 2;">
+              <label for="exportQuality">Quality: <span id="exportQualityVal">90</span>%</label>
+              <input type="range" id="exportQuality" min="10" max="100" value="90">
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary" id="exportBtn" type="button" style="flex:1;">Export image</button>
+          </div>
+          <p class="editor-hint">Exports are rebuilt at your original image's full resolution regardless of the editing preview size, using a background worker when your browser supports it so large images don't freeze the page.</p>
         </div>
       </div>
 
@@ -459,7 +558,7 @@
   </div>
 </div>
 
-<div class="toast-stack" id="toastStack"></div>
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
 <script defer src="js/app.js"></script>
 </body>
