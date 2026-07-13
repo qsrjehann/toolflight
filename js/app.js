@@ -91,6 +91,30 @@ if (heroCta){
 })();
 
 /* ============ SHARED HELPERS ============ */
+// navigator.clipboard is undefined in some insecure/embedded contexts, and calling
+// .writeText on undefined throws synchronously rather than rejecting a promise —
+// this guards that case and falls back to the older execCommand approach.
+function copyToClipboard(text){
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('Copy command was blocked by the browser.'));
+    }catch(err){
+      reject(err);
+    }
+  });
+}
 function fmtBytes(bytes){
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
@@ -582,7 +606,7 @@ if (document.getElementById('robotsPreview')){
 
   document.getElementById('robotsCopyBtn').onclick = () => {
     const text = document.getElementById('robotsPreview').textContent;
-    navigator.clipboard.writeText(text).then(() => toast('robots.txt copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
+    copyToClipboard(text).then(() => toast('robots.txt copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
   };
   document.getElementById('robotsDownloadBtn').onclick = () => {
     const text = document.getElementById('robotsPreview').textContent;
@@ -646,7 +670,7 @@ if (document.getElementById('metaPreview')){
 
   document.getElementById('metaCopyBtn').onclick = () => {
     const text = document.getElementById('metaPreview').textContent;
-    navigator.clipboard.writeText(text).then(() => toast('Meta tags copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
+    copyToClipboard(text).then(() => toast('Meta tags copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
   };
   document.getElementById('metaDownloadBtn').onclick = () => {
     const text = document.getElementById('metaPreview').textContent;
