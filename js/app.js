@@ -1764,9 +1764,16 @@ if (document.getElementById('aiRemoveDrop')){
 
   document.getElementById('sendToAiChangerBtn').onclick = () => {
     if (!aiResultCanvas) return;
-    selectTool('bg-changer');
-    if (typeof receiveForegroundForAiChanger === 'function') receiveForegroundForAiChanger(aiResultCanvas);
-    toast('Sent to Background Changer.');
+    // Background Remover and Background Changer are now separate pages (each with
+    // its own URL for SEO), so the old in-page selectTool('bg-changer') handoff no
+    // longer applies — hand off via localStorage, matching the existing auto-save
+    // pattern already used elsewhere, then navigate to the standalone page.
+    try{
+      localStorage.setItem('toolflight_bg_handoff', aiResultCanvas.toDataURL('image/png'));
+      window.location.href = 'background-changer.html';
+    }catch(err){
+      toast('Could not hand off to Background Changer — try downloading and re-uploading instead.', 'err');
+    }
   };
 
   /* ---------- Manual Selection Editor ---------- */
@@ -2491,6 +2498,27 @@ if (document.getElementById('bgChangerDrop')){
   let customBgImg = null;
   const loadImgBg = loadImageFromFile;
 
+  // Receive a handoff from the AI Background Remover (now a separate page) via
+  // localStorage — set on that page right before it navigates here.
+  (function checkBgHandoff(){
+    let dataUrl;
+    try{ dataUrl = localStorage.getItem('toolflight_bg_handoff'); }catch(e){ return; }
+    if (!dataUrl) return;
+    try{ localStorage.removeItem('toolflight_bg_handoff'); }catch(e){}
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      fgCanvas = c;
+      document.getElementById('bgChangerStage').classList.remove('hidden');
+      renderBgComposite();
+      toast('Image received from Background Remover.');
+    };
+    img.onerror = () => { /* handoff data was invalid — just ignore, user can upload manually */ };
+    img.src = dataUrl;
+  })();
+
   setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
     const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
@@ -2512,20 +2540,20 @@ if (document.getElementById('bgChangerDrop')){
     renderBgComposite();
   };
 
-  document.querySelectorAll('#view-bg-changer .bg-mode-tab').forEach(tab => {
+  document.querySelectorAll('.bg-mode-tab').forEach(tab => {
     tab.onclick = () => {
-      document.querySelectorAll('#view-bg-changer .bg-mode-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.bg-mode-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       bgMode = tab.dataset.mode;
-      document.querySelectorAll('#view-bg-changer .bg-mode-panel').forEach(p => p.classList.toggle('hidden', p.dataset.mode !== bgMode));
+      document.querySelectorAll('.bg-mode-panel').forEach(p => p.classList.toggle('hidden', p.dataset.mode !== bgMode));
       renderBgComposite();
     };
   });
 
-  document.querySelectorAll('#view-bg-changer .bg-swatch[data-color]').forEach(sw => {
+  document.querySelectorAll('.bg-swatch[data-color]').forEach(sw => {
     sw.style.background = sw.dataset.color;
     sw.onclick = () => {
-      document.querySelectorAll('#view-bg-changer .bg-swatch[data-color]').forEach(s => s.classList.remove('selected'));
+      document.querySelectorAll('.bg-swatch[data-color]').forEach(s => s.classList.remove('selected'));
       sw.classList.add('selected');
       document.getElementById('bgChangerSolidColor').value = sw.dataset.color;
       renderBgComposite();
@@ -2595,6 +2623,68 @@ if (document.getElementById('bgChangerDrop')){
   };
 }
 
+/* ============ CONTACT FORM (contact.html) ============
+   Submits to Netlify Forms via AJAX (no backend, no page reload) — Netlify
+   detects the static form at deploy time because of the name/data-netlify
+   attributes on the <form> tag plus the hidden form-name field below. */
+if (document.getElementById('contactForm')){
+  const form = document.getElementById('contactForm');
+  const submitBtn = document.getElementById('contactSubmitBtn');
+
+  function showFieldError(id, message){
+    const el = document.getElementById(id + 'Error');
+    if (el) el.textContent = message || '';
+  }
+  function isValidEmail(v){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+  function isValidPhone(v){
+    return /^\+?[1-9][\d\s-]{6,17}$/.test(v.trim());
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    // Honeypot field — real users never fill this in; bots often do. Silently drop.
+    const honeypot = form.querySelector('[name="bot-field"]');
+    if (honeypot && honeypot.value){ return; }
+
+    const fullName = document.getElementById('contactName').value.trim();
+    const email = document.getElementById('contactEmail').value.trim();
+    const whatsapp = document.getElementById('contactWhatsapp').value.trim();
+    const subject = document.getElementById('contactSubject').value.trim();
+    const message = document.getElementById('contactMessage').value.trim();
+
+    ['contactName','contactEmail','contactWhatsapp','contactSubject','contactMessage'].forEach(id => showFieldError(id, ''));
+    let valid = true;
+    if (!fullName){ showFieldError('contactName', 'Please enter your name.'); valid = false; }
+    if (!email || !isValidEmail(email)){ showFieldError('contactEmail', 'Please enter a valid email address.'); valid = false; }
+    if (!whatsapp || !isValidPhone(whatsapp)){ showFieldError('contactWhatsapp', 'Please enter a valid number with country code, e.g. +1 555 123 4567.'); valid = false; }
+    if (!subject){ showFieldError('contactSubject', 'Please enter a subject.'); valid = false; }
+    if (!message || message.length < 10){ showFieldError('contactMessage', 'Please enter a message (at least 10 characters).'); valid = false; }
+
+    if (!valid){ toast('Please fix the highlighted fields.', 'err'); return; }
+
+    setLoading(submitBtn, true);
+    const formData = new FormData(form);
+    fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(formData).toString()
+    }).then((res) => {
+      setLoading(submitBtn, false, 'Send message');
+      if (!res.ok) throw new Error('Submission failed');
+      toast("Message sent — we'll get back to you soon.");
+      form.reset();
+      const banner = document.getElementById('contactSuccessBanner');
+      if (banner) banner.classList.remove('hidden');
+    }).catch(() => {
+      setLoading(submitBtn, false, 'Send message');
+      toast('Something went wrong — please try again or email us directly.', 'err');
+    });
+  });
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
@@ -2617,14 +2707,137 @@ if (document.getElementById('faqList')){
 const legalContent = {
   privacy: `<h3>Privacy Policy</h3><p>ToolFlight does not upload, store, or transmit your files. All PDF and image processing happens locally in your browser using client-side JavaScript. We do not collect personal data beyond standard, anonymized analytics (such as page views) if analytics are enabled on the deployed site.</p>`,
   terms: `<h3>Terms of Service</h3><p>ToolFlight is provided "as is" for free personal and commercial use. We make no warranty regarding uptime or fitness for a particular purpose. You are responsible for the content of files you process using these tools.</p>`,
-  contact: `<h3>Contact</h3><p>For questions or feedback, reach out at <strong>hello@yourdomain.com</strong> (replace with your real support email before launch).</p>`,
+  contact: `
+    <h3>Contact ToolFlight</h3>
+    <p>Have a question, found a bug, need a custom tool, or want professional image editing services? We'd love to hear from you.</p>
+
+    <div id="contactSuccessBanner" class="hidden" role="status" style="background:color-mix(in srgb, var(--ok) 10%, var(--card));border:1px solid var(--card-border);border-radius:12px;padding:12px;margin:14px 0;font-size:13px;">Thanks — your message has been sent. We'll get back to you within one to two business days.</div>
+
+    <form id="contactForm" name="contact" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" netlify>
+      <input type="hidden" name="form-name" value="contact">
+      <p style="display:none;">
+        <label>Don't fill this out if you're human: <input name="bot-field" tabindex="-1" autocomplete="off"></label>
+      </p>
+
+      <span class="field-label">Full Name</span>
+      <input type="text" id="contactName" name="name" placeholder="Your full name" required aria-required="true">
+      <span class="field-error" id="contactNameError"></span>
+
+      <span class="field-label" style="margin-top:12px;">Email Address</span>
+      <input type="email" id="contactEmail" name="email" placeholder="you@example.com" required aria-required="true">
+      <span class="field-error" id="contactEmailError"></span>
+
+      <span class="field-label" style="margin-top:12px;">WhatsApp Number</span>
+      <input type="tel" id="contactWhatsapp" name="whatsapp" placeholder="+1 555 123 4567" required aria-required="true">
+      <span class="field-error" id="contactWhatsappError"></span>
+
+      <span class="field-label" style="margin-top:12px;">Subject <span style="text-transform:none;font-weight:500;color:var(--ink-soft);">(optional)</span></span>
+      <input type="text" id="contactSubject" name="subject" placeholder="What's this about?">
+
+      <span class="field-label" style="margin-top:12px;">Message</span>
+      <textarea id="contactMessage" name="message" placeholder="Tell us a bit more..." required aria-required="true"></textarea>
+      <span class="field-error" id="contactMessageError"></span>
+
+      <div class="row">
+        <button class="btn btn-primary" id="contactSubmitBtn" type="submit" style="flex:1;">Send message</button>
+      </div>
+    </form>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--card-border);">
+      <h3 style="font-size:15px;">Direct Contact</h3>
+      <p style="margin-bottom:10px;">Prefer email? Reach us directly:</p>
+      <a href="mailto:qsrjehan@gmail.com" class="btn btn-ghost" style="text-decoration:none;display:inline-flex;">qsrjehan@gmail.com</a>
+    </div>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--card-border);">
+      <h3 style="font-size:15px;">Professional Freelancing Services</h3>
+      <p style="margin-bottom:10px;">Beyond the free automated tools on this site, ToolFlight also offers hands-on freelance image editing for projects that need a closer touch:</p>
+      <ul class="trust-list">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Background Removal</strong> — precise, hand-refined removal for photos where automated tools fall short.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Background Replacement</strong> — swap in a new background, matched carefully to lighting and edges.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Transparent PNG Creation</strong> — clean, ready-to-use transparent PNGs for any use case.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Product Photo Editing</strong> — consistent, marketplace-ready product photography edits.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Image Enhancement</strong> — color, exposure, and clarity improvements.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Image Retouching</strong> — detail-level cleanup and refinement.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Object Removal</strong> — remove unwanted elements from a photo cleanly.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Watermark Removal</strong> — for images you own the rights to.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Social Media Image Editing</strong> — formatted and sized for your platform of choice.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Custom Photoshop Editing</strong> — bespoke edits for requests outside the list above.</span></li>
+      </ul>
+    </div>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--card-border);">
+      <h3 style="font-size:15px;">Why Contact Us</h3>
+      <ul class="trust-list">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Fast Response</strong> — replies within one to two business days.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Professional Quality</strong> — careful, detail-oriented editing work.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Affordable Pricing</strong> — reasonable rates discussed directly with you.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Custom Editing</strong> — tell us what you need; we'll let you know what's possible.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Worldwide Service</strong> — we work with clients anywhere, over email and WhatsApp.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;color:var(--ok);"><path d="M20 6L9 17l-5-5"/></svg><span><strong>Client Satisfaction</strong> — we aim to get every edit right before calling it done.</span></li>
+      </ul>
+    </div>
+  `,
 };
+function initContactForm(){
+  const form = document.getElementById('contactForm');
+  if (!form || form.dataset.bound) return;
+  form.dataset.bound = 'true';
+  const submitBtn = document.getElementById('contactSubmitBtn');
+
+  function showFieldError(id, message){
+    const el = document.getElementById(id + 'Error');
+    if (el) el.textContent = message || '';
+  }
+  function isValidEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+  function isValidPhone(v){ return /^\+?[1-9][\d\s-]{6,17}$/.test(v.trim()); }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const honeypot = form.querySelector('[name="bot-field"]');
+    if (honeypot && honeypot.value){ return; }
+
+    const fullName = document.getElementById('contactName').value.trim();
+    const email = document.getElementById('contactEmail').value.trim();
+    const whatsapp = document.getElementById('contactWhatsapp').value.trim();
+    const message = document.getElementById('contactMessage').value.trim();
+
+    ['contactName','contactEmail','contactWhatsapp','contactMessage'].forEach(id => showFieldError(id, ''));
+    let valid = true;
+    if (!fullName){ showFieldError('contactName', 'Please enter your name.'); valid = false; }
+    if (!email || !isValidEmail(email)){ showFieldError('contactEmail', 'Please enter a valid email address.'); valid = false; }
+    if (!whatsapp || !isValidPhone(whatsapp)){ showFieldError('contactWhatsapp', 'Please enter a valid number with country code, e.g. +1 555 123 4567.'); valid = false; }
+    if (!message || message.length < 10){ showFieldError('contactMessage', 'Please enter a message (at least 10 characters).'); valid = false; }
+
+    if (!valid){ toast('Please fix the highlighted fields.', 'err'); return; }
+
+    setLoading(submitBtn, true);
+    const formData = new FormData(form);
+    fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(formData).toString()
+    }).then((res) => {
+      setLoading(submitBtn, false, 'Send message');
+      if (!res.ok) throw new Error('Submission failed');
+      toast("Message sent — we'll get back to you soon.");
+      form.reset();
+      const banner = document.getElementById('contactSuccessBanner');
+      if (banner) banner.classList.remove('hidden');
+    }).catch(() => {
+      setLoading(submitBtn, false, 'Send message');
+      toast('Something went wrong — please try again or email us directly.', 'err');
+    });
+  });
+}
 function openLegal(key){
   const content = document.getElementById('legalContent');
   const modal = document.getElementById('legalModal');
   if (!content || !modal) return;
   content.innerHTML = legalContent[key];
   modal.classList.add('show');
+  if (key === 'contact') initContactForm();
 }
 function closeLegal(){
   const modal = document.getElementById('legalModal');
