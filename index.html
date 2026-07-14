@@ -138,6 +138,19 @@
   </div>
 </section>
 
+<!-- Hidden, statically-present form purely so Netlify's build-time bot registers
+     "contact" as a form. The real, visible version of this form is injected into
+     the Contact modal by JavaScript and is what users actually fill in and submit. -->
+<form name="contact" data-netlify="true" data-netlify-honeypot="bot-field" netlify hidden style="display:none;" aria-hidden="true">
+  <input type="hidden" name="form-name" value="contact">
+  <input type="text" name="name">
+  <input type="email" name="email">
+  <input type="tel" name="whatsapp">
+  <input type="text" name="subject">
+  <textarea name="message"></textarea>
+  <input name="bot-field">
+</form>
+
 <footer>
   <div class="container">
     <div class="footer-grid">
