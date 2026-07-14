@@ -612,3 +612,13 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .thumb-card img{max-width:100%;border-radius:6px;display:block;}
 .thumb-card .thumb-label{font-size:11px;color:var(--ink-soft);}
 .thumb-card button{font-size:11px;padding:6px 10px;}
+
+/* ============ TASK: PDF COMPRESS — level toggle robustness fix ============
+   Scoped specifically to this tool's toggle so no other page using the shared
+   .unit-toggle pattern is affected. Explicit min-width/white-space/color
+   guarantee the Low/Medium/High labels can never be clipped, wrapped onto
+   themselves, or rendered with insufficient contrast. */
+.pdfc-level-toggle button{
+  min-width:64px;white-space:nowrap;color:var(--ink);
+}
+.pdfc-level-toggle button.active{color:var(--paper);}
