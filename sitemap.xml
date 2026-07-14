@@ -116,6 +116,21 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/qr-code-generator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/robots-txt-generator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/meta-tag-generator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/blog.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
