@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDF Tools — Merge & Split PDF Free | ToolFlight</title>
-<meta name="description" content="Merge and split PDF files free, right in your browser. No upload, no signup.">
+<title>Free Online PDF Tools — Merge & Split PDF | ToolFlight</title>
+<meta name="description" content="2 free online PDF tools: merge and split. Each with its own dedicated page. No upload, no signup.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="canonical" href="https://toolflight.com/pdf-tools.html">
 
-<meta property="og:title" content="PDF Tools — Merge & Split PDF Free | ToolFlight">
-<meta property="og:description" content="Merge and split PDF files free, right in your browser. No upload, no signup.">
+<meta property="og:title" content="Free Online PDF Tools — Merge & Split PDF | ToolFlight">
+<meta property="og:description" content="2 free online PDF tools: merge and split. Each with its own dedicated page. No upload, no signup.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://toolflight.com/pdf-tools.html">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="PDF Tools — Merge & Split PDF Free | ToolFlight">
-<meta name="twitter:description" content="Merge and split PDF files free, right in your browser. No upload, no signup.">
+<meta name="twitter:title" content="Free Online PDF Tools — Merge & Split PDF | ToolFlight">
+<meta name="twitter:description" content="2 free online PDF tools: merge and split. Each with its own dedicated page. No upload, no signup.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -32,7 +32,7 @@
   "name": "ToolFlight",
   "applicationCategory": "Utility",
   "operatingSystem": "Any",
-  "description": "Merge and split PDF files free, right in your browser. No upload, no signup.",
+  "description": "2 free online PDF tools: merge and split. Each with its own dedicated page. No upload, no signup.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -63,65 +63,25 @@
 </nav>
 
 <div class="hero-sub">
-  <span class="hero-badge"><span class="dot"></span> Runs entirely in your browser</span>
+  <span class="hero-badge"><span class="dot"></span> 2 free PDF tools</span>
   <h1>PDF Tools</h1>
-  <p class="subtitle">Merge, split, and (soon) compress PDFs — no upload, no signup.</p>
+  <p class="subtitle">Merge and split PDFs — free, private, no signup. Each one has its own page.</p>
 </div>
 
-<div class="container" id="tools">
-  <div class="tools-grid">
-    <button class="tool-card active" data-tool="merge" type="button">
+<div class="container">
+  <div class="category-hub-grid">
+    <a href="pdf-merge.html" class="category-hub-card">
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="13" rx="2"/><path d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1"/></svg></div>
       <h3>Merge PDF</h3>
       <p>Combine multiple PDFs into one, in any order you choose.</p>
-    </button>
-    <button class="tool-card" data-tool="split" type="button">
+      <span class="cta-link">Open tool <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </a>
+    <a href="pdf-split.html" class="category-hub-card">
       <div class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></div>
       <h3>Split PDF</h3>
       <p>Pull specific pages out, or split every page into its own file.</p>
-    </button>
-  </div>
-
-  <div class="workspace">
-    <div class="tool-view active" id="view-merge">
-      <div class="view-title"><h2>Merge PDF</h2><span class="badge" id="mergePageBadge">0 files</span></div>
-      <span class="field-label">Add PDF files — drag items below to reorder</span>
-      <div class="drop-zone" id="mergeDrop">
-        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
-        <div class="drop-title">Drop PDFs here or tap to browse</div>
-        <div class="drop-sub">You can select multiple files at once</div>
-        <input type="file" id="mergeInput" accept="application/pdf" multiple>
-      </div>
-      <div class="file-list" id="mergeList"></div>
-      <div class="row">
-        <button class="btn btn-primary" id="mergeBtn" disabled type="button">Merge &amp; download</button>
-        <button class="btn btn-ghost" id="mergeClearBtn" type="button">Clear all</button>
-      </div>
-    </div>
-
-    <div class="tool-view" id="view-split">
-      <div class="view-title"><h2>Split PDF</h2><span class="badge hidden" id="splitPageBadge">0 pages</span></div>
-      <span class="field-label">Choose one PDF</span>
-      <div class="drop-zone" id="splitDrop">
-        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
-        <div class="drop-title">Drop a PDF here or tap to browse</div>
-        <div class="drop-sub">One file at a time</div>
-        <input type="file" id="splitInput" accept="application/pdf">
-      </div>
-      <div class="file-list" id="splitList"></div>
-      <div id="splitPagePicker" class="hidden">
-        <span class="field-label" style="margin-top:16px;">Select pages to export (tap to toggle)</span>
-        <div class="page-grid" id="pageGrid"></div>
-        <div class="row" style="margin-top:10px;">
-          <button class="btn btn-ghost" id="selectAllBtn" style="flex:0;min-width:auto;" type="button">Select all</button>
-          <button class="btn btn-ghost" id="selectNoneBtn" style="flex:0;min-width:auto;" type="button">Clear selection</button>
-        </div>
-      </div>
-      <div class="row">
-        <button class="btn btn-primary" id="splitBtn" disabled type="button">Split &amp; download .zip</button>
-        <button class="btn btn-ghost" id="splitClearBtn" type="button">Clear</button>
-      </div>
-    </div>
+      <span class="cta-link">Open tool <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </a>
   </div>
 </div>
 
