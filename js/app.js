@@ -2623,68 +2623,6 @@ if (document.getElementById('bgChangerDrop')){
   };
 }
 
-/* ============ CONTACT FORM (contact.html) ============
-   Submits to Netlify Forms via AJAX (no backend, no page reload) — Netlify
-   detects the static form at deploy time because of the name/data-netlify
-   attributes on the <form> tag plus the hidden form-name field below. */
-if (document.getElementById('contactForm')){
-  const form = document.getElementById('contactForm');
-  const submitBtn = document.getElementById('contactSubmitBtn');
-
-  function showFieldError(id, message){
-    const el = document.getElementById(id + 'Error');
-    if (el) el.textContent = message || '';
-  }
-  function isValidEmail(v){
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  }
-  function isValidPhone(v){
-    return /^\+?[1-9][\d\s-]{6,17}$/.test(v.trim());
-  }
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-
-    // Honeypot field — real users never fill this in; bots often do. Silently drop.
-    const honeypot = form.querySelector('[name="bot-field"]');
-    if (honeypot && honeypot.value){ return; }
-
-    const fullName = document.getElementById('contactName').value.trim();
-    const email = document.getElementById('contactEmail').value.trim();
-    const whatsapp = document.getElementById('contactWhatsapp').value.trim();
-    const subject = document.getElementById('contactSubject').value.trim();
-    const message = document.getElementById('contactMessage').value.trim();
-
-    ['contactName','contactEmail','contactWhatsapp','contactSubject','contactMessage'].forEach(id => showFieldError(id, ''));
-    let valid = true;
-    if (!fullName){ showFieldError('contactName', 'Please enter your name.'); valid = false; }
-    if (!email || !isValidEmail(email)){ showFieldError('contactEmail', 'Please enter a valid email address.'); valid = false; }
-    if (!whatsapp || !isValidPhone(whatsapp)){ showFieldError('contactWhatsapp', 'Please enter a valid number with country code, e.g. +1 555 123 4567.'); valid = false; }
-    if (!subject){ showFieldError('contactSubject', 'Please enter a subject.'); valid = false; }
-    if (!message || message.length < 10){ showFieldError('contactMessage', 'Please enter a message (at least 10 characters).'); valid = false; }
-
-    if (!valid){ toast('Please fix the highlighted fields.', 'err'); return; }
-
-    setLoading(submitBtn, true);
-    const formData = new FormData(form);
-    fetch('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(formData).toString()
-    }).then((res) => {
-      setLoading(submitBtn, false, 'Send message');
-      if (!res.ok) throw new Error('Submission failed');
-      toast("Message sent — we'll get back to you soon.");
-      form.reset();
-      const banner = document.getElementById('contactSuccessBanner');
-      if (banner) banner.classList.remove('hidden');
-    }).catch(() => {
-      setLoading(submitBtn, false, 'Send message');
-      toast('Something went wrong — please try again or email us directly.', 'err');
-    });
-  });
-}
-
 /* ============ IMAGE TO PDF (image-to-pdf.html) ============
    Uses pdf-lib (already loaded, MIT license) to build the PDF, and the shared
    loadImageFromFile() helper to decode every input format (JPG/PNG/WEBP/BMP/GIF)
@@ -2833,22 +2771,25 @@ if (document.getElementById('itpDrop')){
    pdf-lib does not render/rasterize PDF pages, only reads/writes PDF structure,
    so a separate rendering engine is required for this direction. Loaded via
    dynamic import, same pattern as the AI Background Remover's MediaPipe model. */
+// Shared PDF.js loader (Apache 2.0, Mozilla) — used by PDF to Image and PDF
+// Compress. Version pinned for stability, same pattern as the AI Background
+// Remover's MediaPipe loader.
+const PDFJS_VERSION = '4.5.136';
+let pdfjsLoadPromise = null;
+async function ensurePdfJs(){
+  if (!pdfjsLoadPromise){
+    pdfjsLoadPromise = (async () => {
+      const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
+      return pdfjsLib;
+    })().catch((err) => { pdfjsLoadPromise = null; throw err; });
+  }
+  return pdfjsLoadPromise;
+}
+
 if (document.getElementById('ptiDrop')){
-  const PDFJS_VERSION = '4.5.136';
   let ptiFile = null;
   let ptiPages = []; // { num, blob, thumbUrl }
-  let pdfjsLoadPromise = null;
-
-  async function ensurePdfJs(){
-    if (!pdfjsLoadPromise){
-      pdfjsLoadPromise = (async () => {
-        const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
-        return pdfjsLib;
-      })().catch((err) => { pdfjsLoadPromise = null; throw err; });
-    }
-    return pdfjsLoadPromise;
-  }
 
   function setPtiProgress(pct, label){
     const wrap = document.getElementById('ptiProgressWrap');
@@ -2953,6 +2894,189 @@ if (document.getElementById('ptiDrop')){
   document.getElementById('ptiFormat').addEventListener('change', (e) => {
     document.getElementById('ptiQualityRow').classList.toggle('hidden', e.target.value === 'png');
   });
+}
+
+/* ============ PDF COMPRESS (pdf-compress.html) ============
+   Genuine image recompression, not just a structural rebuild: walks each
+   page's XObject resources, finds embedded JPEG (DCTDecode) images, redraws
+   them at a lower quality/resolution via canvas, and — only if the result is
+   actually smaller — swaps that specific image reference for the recompressed
+   one. Text, fonts, and vector content are never touched, so they stay sharp
+   and selectable. Images using other filters (FlateDecode, JPX, CCITT, etc.)
+   are safely left as-is rather than risking corruption from a best-effort
+   decode of an unfamiliar color space. */
+if (document.getElementById('pdfcDrop')){
+  let pdfcFile = null;
+  let pdfcResultBlob = null;
+
+  setupDropZone('pdfcDrop','pdfcInput', async (files) => {
+    const f = files.find(f => f.type === 'application/pdf');
+    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
+    pdfcFile = f;
+    pdfcResultBlob = null;
+    document.getElementById('pdfcOriginalSize').textContent = fmtBytes(f.size);
+    document.getElementById('pdfcFileName').textContent = f.name;
+    document.getElementById('pdfcStage').classList.remove('hidden');
+    document.getElementById('pdfcCompressBtn').disabled = false;
+    document.getElementById('pdfcResultRow').classList.add('hidden');
+    document.getElementById('pdfcDownloadRow').classList.add('hidden');
+
+    // Best-effort first-page preview thumbnail — reuses the shared PDF.js loader.
+    const previewWrap = document.getElementById('pdfcPreview');
+    previewWrap.innerHTML = '<span class="placeholder-text">Loading preview…</span>';
+    try{
+      const pdfjsLib = await ensurePdfJs();
+      const bytes = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 0.6 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      previewWrap.innerHTML = '';
+      previewWrap.appendChild(canvas);
+      document.getElementById('pdfcPageCount').textContent = pdf.numPages + ' page' + (pdf.numPages!==1?'s':'');
+      if (page.cleanup) page.cleanup();
+    }catch(err){
+      previewWrap.innerHTML = '<span class="placeholder-text">Preview unavailable for this file.</span>';
+    }
+  });
+
+  function setPdfcProgress(pct, label){
+    const wrap = document.getElementById('pdfcProgressWrap');
+    wrap.classList.remove('hidden');
+    document.getElementById('pdfcProgressFill').style.width = pct + '%';
+    document.getElementById('pdfcProgressLabel').textContent = label;
+  }
+  function hidePdfcProgress(){ document.getElementById('pdfcProgressWrap').classList.add('hidden'); }
+
+  async function compressPdfImages(pdfDoc, level, onProgress){
+    const { PDFName, PDFDict, PDFRawStream } = PDFLib;
+    const maxDim = level === 'high' ? 1000 : level === 'medium' ? 1600 : 2400;
+    const quality = level === 'high' ? 0.4 : level === 'medium' ? 0.6 : 0.82;
+    const pages = pdfDoc.getPages();
+    let processed = 0, skipped = 0;
+
+    for (let pIdx = 0; pIdx < pages.length; pIdx++){
+      if (onProgress) onProgress(pIdx, pages.length);
+      const page = pages[pIdx];
+      let resources;
+      try{ resources = page.node.Resources(); }catch(e){ continue; }
+      if (!resources) continue;
+      const xObjectsRaw = resources.get(PDFName.of('XObject'));
+      if (!xObjectsRaw) continue;
+      let xObjects = xObjectsRaw;
+      if (!(xObjects instanceof PDFDict)){
+        try{ xObjects = pdfDoc.context.lookup(xObjectsRaw, PDFDict); }catch(e){ continue; }
+      }
+      if (!xObjects) continue;
+
+      for (const key of xObjects.keys()){
+        let obj;
+        try{ obj = pdfDoc.context.lookup(xObjects.get(key)); }catch(e){ continue; }
+        if (!obj || !(obj instanceof PDFRawStream)) continue;
+        const dict = obj.dict;
+        const subtype = dict.get(PDFName.of('Subtype'));
+        if (!subtype || subtype.toString() !== '/Image') continue;
+        const filterEntry = dict.get(PDFName.of('Filter'));
+        const filterName = filterEntry ? filterEntry.toString() : '';
+        if (!filterName.includes('DCTDecode')) { skipped++; continue; } // only re-encode JPEGs this pass — safest
+
+        try{
+          const sourceBlob = new Blob([obj.contents], { type: 'image/jpeg' });
+          const img = await loadImageFromFile(sourceBlob);
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (Math.max(w, h) > maxDim){ const sc = maxDim / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const newBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+          if (!newBlob) continue;
+          const newBytes = new Uint8Array(await newBlob.arrayBuffer());
+          if (newBytes.length >= obj.contents.length) continue; // never replace with something bigger
+          const embedded = await pdfDoc.embedJpg(newBytes);
+          xObjects.set(key, embedded.ref);
+          processed++;
+        }catch(e){ continue; } // skip any image that fails to decode/re-encode, never abort the whole file
+        await nextFrame();
+      }
+    }
+    return { processed, skipped };
+  }
+
+  document.getElementById('pdfcCompressBtn').onclick = async () => {
+    if (!pdfcFile) return;
+    const btn = document.getElementById('pdfcCompressBtn');
+    setLoading(btn, true);
+    setPdfcProgress(5, 'Reading PDF…');
+    try{
+      const level = document.querySelector('.pdfc-level-toggle button.active').dataset.level;
+      const { PDFDocument } = PDFLib;
+      const originalBytes = await pdfcFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(originalBytes);
+      await nextFrame();
+
+      let compressResult = { processed: 0, skipped: 0 };
+      try{
+        compressResult = await compressPdfImages(pdfDoc, level, (i, total) => {
+          setPdfcProgress(10 + Math.round((i/Math.max(1,total))*75), `Compressing images — page ${i+1} of ${total}…`);
+        });
+      }catch(err){
+        // Low-level image access didn't work for this PDF's structure — fall back
+        // to structural-only compression rather than failing outright.
+      }
+
+      setPdfcProgress(90, 'Saving…');
+      await nextFrame();
+      const outBytes = await pdfDoc.save({ useObjectStreams: true });
+      const outBlob = new Blob([outBytes], { type: 'application/pdf' });
+
+      const originalSize = pdfcFile.size;
+      const newSize = outBlob.size;
+      setPdfcProgress(100, 'Done.');
+
+      document.getElementById('pdfcResultRow').classList.remove('hidden');
+      document.getElementById('pdfcOriginalSize2').textContent = fmtBytes(originalSize);
+      document.getElementById('pdfcCompressedSize').textContent = fmtBytes(newSize);
+
+      if (newSize >= originalSize){
+        document.getElementById('pdfcSavedAmount').textContent = '—';
+        document.getElementById('pdfcSavedPct').textContent = '—';
+        document.getElementById('pdfcResultNote').textContent = "This PDF is already efficiently compressed — the result wasn't smaller, so the original file is kept instead.";
+        pdfcResultBlob = null;
+        document.getElementById('pdfcDownloadRow').classList.add('hidden');
+        toast("Already efficiently compressed — original file kept, nothing to download.");
+      } else {
+        const saved = originalSize - newSize;
+        const pct = Math.round((saved / originalSize) * 100);
+        document.getElementById('pdfcSavedAmount').textContent = fmtBytes(saved);
+        document.getElementById('pdfcSavedPct').textContent = pct + '%';
+        document.getElementById('pdfcResultNote').textContent = compressResult.processed > 0
+          ? `Recompressed ${compressResult.processed} image${compressResult.processed!==1?'s':''} in this PDF.`
+          : 'No compressible images were found — size reduction came from PDF structure optimization only.';
+        pdfcResultBlob = outBlob;
+        document.getElementById('pdfcDownloadRow').classList.remove('hidden');
+        toast('PDF compressed.');
+      }
+    }catch(err){
+      toast('Could not compress this PDF: ' + (err.message || 'please try a different file.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Compress PDF');
+      setTimeout(hidePdfcProgress, 900);
+    }
+  };
+
+  document.querySelectorAll('.pdfc-level-toggle button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.pdfc-level-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+
+  document.getElementById('pdfcDownloadBtn').onclick = () => {
+    if (!pdfcResultBlob){ toast('Nothing to download yet.', 'err'); return; }
+    downloadBlob(pdfcResultBlob, 'compressed.pdf');
+  };
 }
 
 /* ============ FAQ (index.html) ============ */
