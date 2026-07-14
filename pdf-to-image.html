@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF to Image — Free Online | ToolFlight</title>
+<meta name="description" content="Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="canonical" href="https://toolflight.com/pdf-to-image.html">
+
+<meta property="og:title" content="PDF to Image — Free Online | ToolFlight">
+<meta property="og:description" content="Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/pdf-to-image.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PDF to Image — Free Online | ToolFlight">
+<meta name="twitter:description" content="Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="pdf-tools.html" style="color:var(--ink-soft);text-decoration:none;">PDF Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">PDF to Image</span>
+</nav>
+  <h1>PDF to Image</h1>
+  <p class="subtitle">Convert every page of a PDF into JPG, PNG, or WEBP images, with adjustable DPI and quality.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="pdf-tools.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to PDF Tools</a>
+  </div>
+
+  <div class="workspace">
+      <div class="view-title"><h2>PDF to Image</h2></div>
+      <span class="field-label">Choose a PDF</span>
+      <div class="drop-zone" id="ptiDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a PDF here or tap to browse</div>
+        <div class="drop-sub">One PDF at a time — every page is converted</div>
+        <input type="file" id="ptiInput" accept="application/pdf">
+      </div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:6px;" id="ptiFileInfo"></p>
+
+      <div id="ptiStage" class="hidden">
+        <div class="qr-controls" style="margin-top:10px;">
+          <div class="ctrl">
+            <label for="ptiFormat">Output format</label>
+            <select id="ptiFormat">
+              <option value="jpg" selected>JPG</option>
+              <option value="png">PNG</option>
+              <option value="webp">WEBP</option>
+            </select>
+          </div>
+          <div class="ctrl">
+            <label for="ptiDpi">DPI</label>
+            <select id="ptiDpi">
+              <option value="72">72 (screen)</option>
+              <option value="150" selected>150 (good quality)</option>
+              <option value="300">300 (print quality)</option>
+            </select>
+          </div>
+          <div class="ctrl" id="ptiQualityRow" style="grid-column:span 2;">
+            <label for="ptiQuality">Quality: <span id="ptiQualityVal">85</span>%</label>
+            <input type="range" id="ptiQuality" min="10" max="100" value="85">
+          </div>
+        </div>
+
+        <div class="progress-wrap hidden" id="ptiProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="ptiProgressFill"></div></div>
+          <div class="progress-label" id="ptiProgressLabel">Reading PDF…</div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="ptiConvertBtn" style="flex:1;" type="button" disabled>Convert to images</button>
+        </div>
+
+        <span class="field-label" style="margin-top:16px;">Pages</span>
+        <div class="thumb-grid" id="ptiPageGrid"></div>
+        <div class="row hidden" id="ptiDownloadAllBtnRow">
+          <button class="btn btn-ghost hidden" id="ptiDownloadAllBtn" style="flex:1;" type="button">Download all as ZIP</button>
+        </div>
+      </div>
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the PDF to Image</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Need your PDF's pages as images instead? PDF to Image renders every page using the same open-source engine that powers Firefox's built-in PDF viewer, with control over output format, resolution, and quality — download pages individually or all at once as a .zip.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Converts every page automatically, in order</li><li>JPG, PNG, or WEBP output</li><li>Adjustable DPI (72/150/300) and quality</li><li>Download pages individually or all together as a .zip</li><li>Live progress indicator while converting</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Drop in a PDF, choose your output format, DPI, and quality, then tap Convert to images. Download pages one at a time, or tap Download all as ZIP once conversion finishes.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Your document is processed entirely in your browser — nothing is uploaded</li><li>Higher DPI options make this suitable for print-quality exports, not just screen use</li><li>No signup, no per-page limit</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What DPI should I use?</strong><br>150 DPI is a good default for general use; use 300 DPI if you plan to print the images, or 72 DPI for smaller files meant only for screen viewing.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Why would I choose WEBP over JPG or PNG?</strong><br>WEBP typically produces smaller files than JPG at similar quality; if your browser can't encode WEBP, this tool automatically falls back to PNG for that page rather than failing.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+      <a href="image-to-pdf.html" class="blog-card"><span class="blog-tag">PDF Tool</span><h3>Image to PDF</h3><p>Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.</p></a>
+      <a href="pdf-split.html" class="blog-card"><span class="blog-tag">PDF Tool</span><h3>Split PDF</h3><p>Pull specific pages out, or split every page into its own file.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "PDF Tools", "item": "https://toolflight.com/pdf-tools.html"}, {"@type": "ListItem", "position": 3, "name": "PDF to Image", "item": "https://toolflight.com/pdf-to-image.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "PDF to Image", "description": "Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.", "url": "https://toolflight.com/pdf-to-image.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "PDF to Image", "applicationCategory": "BusinessApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What DPI should I use?", "acceptedAnswer": {"@type": "Answer", "text": "150 DPI is a good default for general use; use 300 DPI if you plan to print the images, or 72 DPI for smaller files meant only for screen viewing."}}, {"@type": "Question", "name": "Why would I choose WEBP over JPG or PNG?", "acceptedAnswer": {"@type": "Answer", "text": "WEBP typically produces smaller files than JPG at similar quality; if your browser can't encode WEBP, this tool automatically falls back to PNG for that page rather than failing."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js"></script>
+</body>
+</html>
