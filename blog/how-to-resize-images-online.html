@@ -75,39 +75,58 @@
   <div class="toc-box">
     <h2>Table of contents</h2>
     <ol>
-<li><a href="#resize-vs-compress">Resizing vs. compressing</a></li>\n<li><a href="#why-resize">Why resize before uploading</a></li>\n<li><a href="#what-size">What size should you use</a></li>\n<li><a href="#aspect-ratio">Keeping the aspect ratio</a></li>\n<li><a href="#try-it">Try it yourself</a></li>
+<li><a href="#resize-vs-compress">Resizing vs. compressing</a></li>
+<li><a href="#why-resize">Why resize before uploading</a></li>
+<li><a href="#what-size">What size should you use</a></li>
+<li><a href="#aspect-ratio">Keeping the aspect ratio</a></li>
+<li><a href="#try-it">Try it yourself</a></li>
     </ol>
   </div>
 
   <div class="article-body">
-<h2 id="resize-vs-compress">Resizing vs. compressing</h2>\n
+<h2 id="resize-vs-compress">Resizing vs. compressing</h2>
+
 <p>These two terms get used interchangeably, but they do different things. <strong>Resizing</strong> changes the pixel dimensions of an image (say, from 4000×3000 down to 1200×900). <strong>Compressing</strong> keeps the same dimensions but re-encodes the pixel data to take up less file space. For the biggest size reduction with the least visible quality loss, you generally want both — resize down to the dimensions you'll actually display, then compress on top of that.</p>
-\n<h2 id="why-resize">Why resize before uploading</h2>\n
+
+<h2 id="why-resize">Why resize before uploading</h2>
+
 <p>Modern phone cameras capture images far larger than almost any website or app will display them at. A profile photo displayed at 200×200 pixels doesn't need to be a 4000×3000 pixel file — the browser would just scale it down anyway, wasting bandwidth and load time in the process. Resizing before upload fixes this at the source.</p>
-\n<h2 id="what-size">What size should you use</h2>\n
+
+<h2 id="what-size">What size should you use</h2>
+
 <ul>
 <li><strong>Profile photos / avatars:</strong> 400-800px on the longest side is plenty</li>
 <li><strong>Blog post images:</strong> 1200-1600px on the longest side covers virtually all display contexts</li>
 <li><strong>Large hero/banner images:</strong> up to 2000px on the longest side for full-width desktop banners</li>
 <li><strong>Print:</strong> resizing rules don't apply the same way — print needs much higher resolution and is a different consideration entirely</li>
 </ul>
-\n<h2 id="aspect-ratio">Keeping the aspect ratio</h2>\n
+
+<h2 id="aspect-ratio">Keeping the aspect ratio</h2>
+
 <p>Always resize proportionally (locking width and height together) unless you specifically want to crop or stretch an image — stretching distorts faces and objects in an obvious, unflattering way. Good resize tools calculate the second dimension automatically once you set one.</p>
-\n<h2 id="try-it">Try it yourself</h2>\n
+
+<h2 id="try-it">Try it yourself</h2>
+
 <p>ToolFlight's Image Compressor automatically resizes any image over 2000px on its longest side as part of compression, so oversized photos are handled for you without an extra step.</p>
 <a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
-\n
+
+
   </div>
 
   <section style="margin-top:38px;">
     <h2 style="font-size:19px;font-weight:800;margin-bottom:10px;">Frequently asked questions</h2>
-    <div class="faq-item"><div class="faq-q">Does resizing reduce image quality? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Reducing dimensions doesn't blur or degrade a photo when viewed at the new, smaller size — quality loss only becomes visible if you try to display the resized image larger than its new dimensions.</div></div>\n<div class="faq-item"><div class="faq-q">What's the best format after resizing? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Photos are usually smallest as JPG or WEBP after resizing; graphics or anything needing transparency should stay PNG or WEBP. See our JPG vs PNG vs WEBP comparison for details.</div></div>\n<div class="faq-item"><div class="faq-q">Can I resize multiple images at once? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Batch resizing needs a tool built for it specifically — single-image browser tools typically process one file at a time.</div></div>\n
+    <div class="faq-item"><div class="faq-q">Does resizing reduce image quality? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Reducing dimensions doesn't blur or degrade a photo when viewed at the new, smaller size — quality loss only becomes visible if you try to display the resized image larger than its new dimensions.</div></div>
+<div class="faq-item"><div class="faq-q">What's the best format after resizing? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Photos are usually smallest as JPG or WEBP after resizing; graphics or anything needing transparency should stay PNG or WEBP. See our JPG vs PNG vs WEBP comparison for details.</div></div>
+<div class="faq-item"><div class="faq-q">Can I resize multiple images at once? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Batch resizing needs a tool built for it specifically — single-image browser tools typically process one file at a time.</div></div>
+
   </section>
 
   <section style="margin-top:38px;">
     <h2 style="font-size:19px;font-weight:800;margin-bottom:6px;">Related articles</h2>
     <div class="related-grid">
-<a href="how-to-compress-images-without-losing-quality.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>How to Compress Images Without Losing Quality</h3><p>Practical techniques to shrink JPG, PNG, and WEBP file sizes while keeping images sharp — plus a free browser-based compressor.</p></a>\n<a href="jpg-vs-png-vs-webp.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>JPG vs PNG vs WEBP: Which Image Format Should You Use?</h3><p>A plain-English comparison of JPG, PNG, and WEBP — file size, transparency, and quality — so you can pick the right format every time.</p></a>\n
+<a href="how-to-compress-images-without-losing-quality.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>How to Compress Images Without Losing Quality</h3><p>Practical techniques to shrink JPG, PNG, and WEBP file sizes while keeping images sharp — plus a free browser-based compressor.</p></a>
+<a href="jpg-vs-png-vs-webp.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>JPG vs PNG vs WEBP: Which Image Format Should You Use?</h3><p>A plain-English comparison of JPG, PNG, and WEBP — file size, transparency, and quality — so you can pick the right format every time.</p></a>
+
     </div>
   </section>
 </div>

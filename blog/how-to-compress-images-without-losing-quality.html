@@ -75,17 +75,27 @@
   <div class="toc-box">
     <h2>Table of contents</h2>
     <ol>
-<li><a href="#why-size-matters">Why image file size matters</a></li>\n<li><a href="#lossy-vs-lossless">Lossy vs. lossless compression</a></li>\n<li><a href="#quality-setting">Finding the right quality setting</a></li>\n<li><a href="#resize-first">Resize before you compress</a></li>\n<li><a href="#format-choice">Choosing the right format</a></li>\n<li><a href="#try-it">Try it yourself</a></li>
+<li><a href="#why-size-matters">Why image file size matters</a></li>
+<li><a href="#lossy-vs-lossless">Lossy vs. lossless compression</a></li>
+<li><a href="#quality-setting">Finding the right quality setting</a></li>
+<li><a href="#resize-first">Resize before you compress</a></li>
+<li><a href="#format-choice">Choosing the right format</a></li>
+<li><a href="#try-it">Try it yourself</a></li>
     </ol>
   </div>
 
   <div class="article-body">
-<h2 id="why-size-matters">Why image file size matters</h2>\n
+<h2 id="why-size-matters">Why image file size matters</h2>
+
 <p>Large images are one of the most common causes of slow-loading web pages, and on mobile connections the effect is even worse — a single uncompressed photo can be 5-10MB, which takes several seconds to download on a weak signal. Beyond speed, big files eat storage on phones and make email attachments bounce. Compression solves both problems by re-encoding the image to remove redundant data, usually with little to no visible difference.</p>
-\n<h2 id="lossy-vs-lossless">Lossy vs. lossless compression</h2>\n
+
+<h2 id="lossy-vs-lossless">Lossy vs. lossless compression</h2>
+
 <p>There are two fundamentally different approaches. <strong>Lossless</strong> compression (used by PNG) shrinks the file without discarding any pixel data — you get the exact same image back, just packed more efficiently. It's ideal for screenshots, logos, and graphics with flat colors and text, but it can't shrink photos nearly as much as lossy methods.</p>
 <p><strong>Lossy</strong> compression (used by JPEG and, optionally, WEBP) discards information the human eye is less likely to notice — subtle color gradients, high-frequency detail — in exchange for dramatically smaller files. Most photos compress 70-90% smaller this way with no obvious quality loss, as long as you don't push the compression too far.</p>
-\n<h2 id="quality-setting">Finding the right quality setting</h2>\n
+
+<h2 id="quality-setting">Finding the right quality setting</h2>
+
 <p>Most compressors expose a quality slider from roughly 0-100. In practice:</p>
 <ul>
 <li><strong>90-100:</strong> visually identical to the original, minimal savings</li>
@@ -94,25 +104,37 @@
 <li><strong>Below 50:</strong> visible blocky artifacts, especially around sharp edges and text</li>
 </ul>
 <p>The right number depends on the image and its use case — always compare a before/after preview rather than trusting a single "safe" number.</p>
-\n<h2 id="resize-first">Resize before you compress</h2>\n
+
+<h2 id="resize-first">Resize before you compress</h2>
+
 <p>Quality percentage is only half the story. A photo straight off a modern phone camera can be 4000+ pixels wide — far larger than it will ever be displayed at on a web page or in a chat app. Resizing the image down to the dimensions you'll actually use (say, 2000px on the longest side for a large web photo, or 1200px for a blog post) often saves far more file size than any amount of quality reduction, with zero visible quality loss, since you're removing pixels that were never going to be seen anyway.</p>
-\n<h2 id="format-choice">Choosing the right format</h2>\n
+
+<h2 id="format-choice">Choosing the right format</h2>
+
 <p>As a rule of thumb: use <strong>JPEG</strong> for photos, <strong>PNG</strong> for screenshots/graphics/anything needing transparency, and <strong>WEBP</strong> when you want the smaller file size of JPEG-style compression but with broader flexibility (including transparency support) — modern browsers all support it now. See our full <a href="jpg-vs-png-vs-webp.html">JPG vs PNG vs WEBP comparison</a> for a deeper breakdown.</p>
-\n<h2 id="try-it">Try it yourself</h2>\n
+
+<h2 id="try-it">Try it yourself</h2>
+
 <p>You don't need to install anything to put this into practice — ToolFlight's Image Compressor runs entirely in your browser, resizes large images automatically, and shows a live before/after so you can judge the quality tradeoff yourself.</p>
 <a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
-\n
+
+
   </div>
 
   <section style="margin-top:38px;">
     <h2 style="font-size:19px;font-weight:800;margin-bottom:10px;">Frequently asked questions</h2>
-    <div class="faq-item"><div class="faq-q">Will compressing an image reduce its dimensions? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Not unless you choose to resize it — compression reduces file size by re-encoding pixel data, while resizing reduces the pixel dimensions. Good compressors do both together for the best results.</div></div>\n<div class="faq-item"><div class="faq-q">Is WEBP always smaller than JPEG? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Usually, often by 25-35% at equivalent visual quality, but not universally — for some images JPEG at a slightly higher quality setting can still come out smaller. It's worth comparing both for images that matter.</div></div>\n<div class="faq-item"><div class="faq-q">Can I compress a PNG the same way as a JPEG? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">PNG compression is lossless by design, so file size gains are smaller. For photos saved as PNG, converting to JPEG or WEBP first usually gives far better results.</div></div>\n
+    <div class="faq-item"><div class="faq-q">Will compressing an image reduce its dimensions? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Not unless you choose to resize it — compression reduces file size by re-encoding pixel data, while resizing reduces the pixel dimensions. Good compressors do both together for the best results.</div></div>
+<div class="faq-item"><div class="faq-q">Is WEBP always smaller than JPEG? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Usually, often by 25-35% at equivalent visual quality, but not universally — for some images JPEG at a slightly higher quality setting can still come out smaller. It's worth comparing both for images that matter.</div></div>
+<div class="faq-item"><div class="faq-q">Can I compress a PNG the same way as a JPEG? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">PNG compression is lossless by design, so file size gains are smaller. For photos saved as PNG, converting to JPEG or WEBP first usually gives far better results.</div></div>
+
   </section>
 
   <section style="margin-top:38px;">
     <h2 style="font-size:19px;font-weight:800;margin-bottom:6px;">Related articles</h2>
     <div class="related-grid">
-<a href="jpg-vs-png-vs-webp.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>JPG vs PNG vs WEBP: Which Image Format Should You Use?</h3><p>A plain-English comparison of JPG, PNG, and WEBP — file size, transparency, and quality — so you can pick the right format every time.</p></a>\n<a href="how-to-resize-images-online.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>How to Resize Images Online</h3><p>How and why to resize images before uploading or sharing them, and the difference between resizing and compressing.</p></a>\n
+<a href="jpg-vs-png-vs-webp.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>JPG vs PNG vs WEBP: Which Image Format Should You Use?</h3><p>A plain-English comparison of JPG, PNG, and WEBP — file size, transparency, and quality — so you can pick the right format every time.</p></a>
+<a href="how-to-resize-images-online.html" class="blog-card"><span class="blog-tag">Image Tools</span><h3>How to Resize Images Online</h3><p>How and why to resize images before uploading or sharing them, and the difference between resizing and compressing.</p></a>
+
     </div>
   </section>
 </div>
