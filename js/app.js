@@ -2685,6 +2685,276 @@ if (document.getElementById('contactForm')){
   });
 }
 
+/* ============ IMAGE TO PDF (image-to-pdf.html) ============
+   Uses pdf-lib (already loaded, MIT license) to build the PDF, and the shared
+   loadImageFromFile() helper to decode every input format (JPG/PNG/WEBP/BMP/GIF)
+   via the browser's native <img> decoder — no extra library needed for reading. */
+if (document.getElementById('itpDrop')){
+  let itpImages = []; // { id, img, rotation, name }
+  let itpIdSeq = 0;
+
+  const ITP_ACCEPTED = ['image/jpeg','image/png','image/webp','image/bmp','image/gif'];
+
+  setupDropZone('itpDrop','itpInput', async (files) => {
+    const imgs = files.filter(f => ITP_ACCEPTED.includes(f.type));
+    if (!imgs.length){ if (files.length>0) toast('Please select JPG, PNG, WEBP, BMP, or GIF images.', 'err'); return; }
+    for (const f of imgs){
+      try{
+        const img = await loadImageFromFile(f);
+        itpImages.push({ id: itpIdSeq++, img, rotation: 0, name: f.name });
+      }catch(err){ toast(`Could not read ${f.name}.`, 'err'); }
+    }
+    renderItpList();
+  });
+
+  function getRotatedCanvas(item){
+    const swapped = item.rotation === 90 || item.rotation === 270;
+    const w = item.img.naturalWidth, h = item.img.naturalHeight;
+    const c = document.createElement('canvas');
+    c.width = swapped ? h : w; c.height = swapped ? w : h;
+    const cx = c.getContext('2d');
+    cx.save();
+    cx.translate(c.width/2, c.height/2);
+    cx.rotate(item.rotation * Math.PI/180);
+    cx.drawImage(item.img, -w/2, -h/2);
+    cx.restore();
+    return c;
+  }
+
+  function computeItpLayout(imgW, imgH){
+    const pageSizeMode = document.getElementById('itpPageSize').value;
+    const orientation = document.getElementById('itpOrientation').value;
+    const margin = parseFloat(document.getElementById('itpMargin').value) || 0;
+    let pageW, pageH, drawW, drawH, x, y;
+    if (pageSizeMode === 'original'){
+      pageW = imgW + margin*2; pageH = imgH + margin*2;
+      drawW = imgW; drawH = imgH; x = margin; y = margin;
+    } else {
+      // 'a4', 'letter', and 'fit' (generic "fit to a standard page") all use a
+      // real paper size as the container — 'fit' defaults to A4.
+      let baseW = (pageSizeMode === 'letter') ? 612 : 595.28;
+      let baseH = (pageSizeMode === 'letter') ? 792 : 841.89;
+      if (orientation === 'landscape'){ const t = baseW; baseW = baseH; baseH = t; }
+      pageW = baseW; pageH = baseH;
+      const availW = pageW - margin*2, availH = pageH - margin*2;
+      const fitScale = Math.max(0.01, Math.min(availW/imgW, availH/imgH));
+      drawW = imgW * fitScale; drawH = imgH * fitScale;
+      x = margin + (availW - drawW)/2; y = margin + (availH - drawH)/2;
+    }
+    return { pageW, pageH, drawW, drawH, x, y };
+  }
+
+  function renderItpPreview(){
+    const wrap = document.getElementById('itpPreviewGrid');
+    wrap.innerHTML = '';
+    if (itpImages.length === 0){
+      wrap.innerHTML = '<p class="editor-hint">Add images to see a page preview.</p>';
+      return;
+    }
+    itpImages.forEach((item) => {
+      const rotated = getRotatedCanvas(item);
+      const { pageW, pageH, drawW, drawH, x, y } = computeItpLayout(rotated.width, rotated.height);
+      const s = 100 / Math.max(pageW, pageH);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(pageW*s));
+      canvas.height = Math.max(1, Math.round(pageH*s));
+      canvas.style.cssText = 'border:1px solid var(--card-border);border-radius:4px;background:#fff;max-width:100%;';
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(rotated, x*s, y*s, drawW*s, drawH*s);
+      wrap.appendChild(canvas);
+    });
+  }
+
+  function renderItpList(){
+    const list = document.getElementById('itpList');
+    list.innerHTML = '';
+    itpImages.forEach((item, i) => {
+      const div = document.createElement('div');
+      div.className = 'file-item';
+      div.innerHTML = `
+        <span class="drag-handle">⠿</span>
+        <img src="${item.img.src}" style="width:38px;height:38px;object-fit:cover;border-radius:6px;transform:rotate(${item.rotation}deg);flex-shrink:0;" alt="">
+        <div class="fmeta"><div class="fname">${i+1}. ${item.name}</div></div>
+        <button class="file-remove" data-action="rotate" data-i="${i}" type="button" title="Rotate 90°" style="color:var(--accent1);background:color-mix(in srgb, var(--accent1) 12%, transparent);">⟳</button>
+        <button class="file-remove" data-action="remove" data-i="${i}" type="button" title="Remove">✕</button>
+      `;
+      div.querySelector('[data-action="rotate"]').onclick = () => { item.rotation = (item.rotation + 90) % 360; renderItpList(); };
+      div.querySelector('[data-action="remove"]').onclick = () => { itpImages.splice(i,1); renderItpList(); };
+      list.appendChild(div);
+    });
+    enableDragReorder(list, itpImages, renderItpList);
+    document.getElementById('itpDownloadBtn').disabled = itpImages.length === 0;
+    document.getElementById('itpCountBadge').textContent = itpImages.length + ' image' + (itpImages.length!==1?'s':'');
+    renderItpPreview();
+  }
+
+  ['itpPageSize','itpOrientation','itpMargin'].forEach(id => {
+    document.getElementById(id).addEventListener('input', renderItpPreview);
+    document.getElementById(id).addEventListener('change', renderItpPreview);
+  });
+
+  document.getElementById('itpClearBtn').onclick = () => { itpImages = []; renderItpList(); };
+
+  document.getElementById('itpDownloadBtn').onclick = async () => {
+    if (itpImages.length === 0){ toast('Add at least one image first.', 'err'); return; }
+    const btn = document.getElementById('itpDownloadBtn');
+    setLoading(btn, true);
+    try{
+      const { PDFDocument } = PDFLib;
+      const pdfDoc = await PDFDocument.create();
+      for (const item of itpImages){
+        const rotated = getRotatedCanvas(item);
+        const { pageW, pageH, drawW, drawH, x, y } = computeItpLayout(rotated.width, rotated.height);
+        const blob = await new Promise((resolve, reject) => {
+          rotated.toBlob((b) => b ? resolve(b) : reject(new Error('Could not encode ' + item.name)), 'image/png');
+        });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const embedded = await pdfDoc.embedPng(bytes);
+        const page = pdfDoc.addPage([pageW, pageH]);
+        page.drawImage(embedded, { x, y: pageH - y - drawH, width: drawW, height: drawH });
+        await nextFrame();
+      }
+      const outBytes = await pdfDoc.save();
+      downloadBlob(new Blob([outBytes], { type: 'application/pdf' }), 'images-to-pdf.pdf');
+      toast('PDF created.');
+    }catch(err){
+      toast('Could not create the PDF: ' + (err.message || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Convert &amp; download PDF');
+    }
+  };
+
+  renderItpList();
+}
+
+/* ============ PDF TO IMAGE (pdf-to-image.html) ============
+   Uses PDF.js (pdfjs-dist, Apache 2.0 license, Mozilla) to rasterize pages —
+   pdf-lib does not render/rasterize PDF pages, only reads/writes PDF structure,
+   so a separate rendering engine is required for this direction. Loaded via
+   dynamic import, same pattern as the AI Background Remover's MediaPipe model. */
+if (document.getElementById('ptiDrop')){
+  const PDFJS_VERSION = '4.5.136';
+  let ptiFile = null;
+  let ptiPages = []; // { num, blob, thumbUrl }
+  let pdfjsLoadPromise = null;
+
+  async function ensurePdfJs(){
+    if (!pdfjsLoadPromise){
+      pdfjsLoadPromise = (async () => {
+        const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
+        return pdfjsLib;
+      })().catch((err) => { pdfjsLoadPromise = null; throw err; });
+    }
+    return pdfjsLoadPromise;
+  }
+
+  function setPtiProgress(pct, label){
+    const wrap = document.getElementById('ptiProgressWrap');
+    wrap.classList.remove('hidden');
+    document.getElementById('ptiProgressFill').style.width = pct + '%';
+    document.getElementById('ptiProgressLabel').textContent = label;
+  }
+  function hidePtiProgress(){ document.getElementById('ptiProgressWrap').classList.add('hidden'); }
+
+  setupDropZone('ptiDrop','ptiInput', (files) => {
+    const f = files.find(f => f.type === 'application/pdf');
+    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
+    ptiFile = f;
+    document.getElementById('ptiFileInfo').textContent = f.name + ' · ' + fmtBytes(f.size);
+    document.getElementById('ptiStage').classList.remove('hidden');
+    document.getElementById('ptiConvertBtn').disabled = false;
+    document.getElementById('ptiPageGrid').innerHTML = '';
+    document.getElementById('ptiDownloadAllBtn').classList.add('hidden');
+  });
+
+  document.getElementById('ptiConvertBtn').onclick = async () => {
+    if (!ptiFile) return;
+    const btn = document.getElementById('ptiConvertBtn');
+    setLoading(btn, true);
+    setPtiProgress(0, 'Loading PDF engine…');
+    ptiPages.forEach(p => { try{ URL.revokeObjectURL(p.thumbUrl); }catch(e){} });
+    ptiPages = [];
+    try{
+      const pdfjsLib = await ensurePdfJs();
+      await nextFrame();
+      setPtiProgress(10, 'Reading PDF…');
+      const bytes = await ptiFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+
+      const dpi = parseInt(document.getElementById('ptiDpi').value, 10);
+      const scale = dpi / 72;
+      const format = document.getElementById('ptiFormat').value;
+      const quality = parseInt(document.getElementById('ptiQuality').value, 10) / 100;
+      const mime = format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg';
+
+      for (let i = 1; i <= pdf.numPages; i++){
+        setPtiProgress(10 + Math.round(((i-1)/pdf.numPages)*85), `Rendering page ${i} of ${pdf.numPages}…`);
+        await nextFrame();
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        let blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, format === 'png' ? undefined : quality));
+        if (!blob){
+          // Some browsers can't encode WEBP — fall back to PNG rather than failing the page.
+          blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        }
+        if (blob) ptiPages.push({ num: i, blob, thumbUrl: URL.createObjectURL(blob) });
+        if (page.cleanup) page.cleanup();
+      }
+      setPtiProgress(100, 'Done.');
+      renderPtiPages(format);
+      if (ptiPages.length) document.getElementById('ptiDownloadAllBtn').classList.remove('hidden');
+      toast(`Converted ${ptiPages.length} page(s).`);
+    }catch(err){
+      toast('Could not convert this PDF: ' + (err.message || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Convert to images');
+      setTimeout(hidePtiProgress, 900);
+    }
+  };
+
+  function renderPtiPages(format){
+    const grid = document.getElementById('ptiPageGrid');
+    grid.innerHTML = '';
+    ptiPages.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'thumb-card';
+      card.innerHTML = `<img src="${p.thumbUrl}" alt="Page ${p.num}" loading="lazy"><span class="thumb-label">Page ${p.num}</span>`;
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'btn btn-ghost';
+      dlBtn.type = 'button';
+      dlBtn.textContent = 'Download';
+      dlBtn.onclick = () => downloadBlob(p.blob, `page-${p.num}.${format}`);
+      card.appendChild(dlBtn);
+      grid.appendChild(card);
+    });
+  }
+
+  document.getElementById('ptiDownloadAllBtn').onclick = async () => {
+    if (!ptiPages.length) return;
+    const format = document.getElementById('ptiFormat').value;
+    const zip = new JSZip();
+    ptiPages.forEach(p => zip.file(`page-${p.num}.${format}`, p.blob));
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(zipBlob, 'pdf-pages.zip');
+    toast('ZIP downloaded.');
+  };
+
+  document.getElementById('ptiQuality').addEventListener('input', (e) => {
+    document.getElementById('ptiQualityVal').textContent = e.target.value;
+  });
+  document.getElementById('ptiFormat').addEventListener('change', (e) => {
+    document.getElementById('ptiQualityRow').classList.toggle('hidden', e.target.value === 'png');
+  });
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
