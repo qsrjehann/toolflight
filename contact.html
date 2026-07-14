@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact ToolFlight — Support & Professional Image Editing Services</title>
+<meta name="description" content="Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="canonical" href="https://toolflight.com/contact.html">
+
+<meta property="og:title" content="Contact ToolFlight — Support & Professional Image Editing Services">
+<meta property="og:description" content="Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/contact.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Contact ToolFlight — Support & Professional Image Editing Services">
+<meta name="twitter:description" content="Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      <a href="contact.html" data-page="contact.html">Contact</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">Contact</span>
+</nav>
+  <h1>Contact ToolFlight</h1>
+  <p class="subtitle">Have a question, found a bug, need a custom tool, or want professional image editing services? We'd love to hear from you.</p>
+</div>
+
+<div class="container" style="max-width:720px;">
+
+  <div class="workspace">
+    <div class="view-title"><h2>Send a message</h2></div>
+    <div id="contactSuccessBanner" class="hidden" role="status" style="background:color-mix(in srgb, var(--ok) 10%, var(--card));border:1px solid var(--card-border);border-radius:12px;padding:14px;margin-bottom:16px;font-size:13.5px;">Thanks — your message has been sent. We'll get back to you within one to two business days.</div>
+
+    <form id="contactForm" name="contact" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" netlify>
+      <input type="hidden" name="form-name" value="contact">
+      <p class="hidden" style="display:none;">
+        <label>Don't fill this out if you're human: <input name="bot-field" tabindex="-1" autocomplete="off"></label>
+      </p>
+
+      <span class="field-label">Full Name</span>
+      <input type="text" id="contactName" name="name" placeholder="Your full name" required aria-required="true">
+      <span class="field-error" id="contactNameError"></span>
+
+      <span class="field-label" style="margin-top:14px;">Email Address</span>
+      <input type="email" id="contactEmail" name="email" placeholder="you@example.com" required aria-required="true">
+      <span class="field-error" id="contactEmailError"></span>
+
+      <span class="field-label" style="margin-top:14px;">WhatsApp Number</span>
+      <input type="tel" id="contactWhatsapp" name="whatsapp" placeholder="+1 555 123 4567" required aria-required="true">
+      <span class="field-error" id="contactWhatsappError"></span>
+
+      <span class="field-label" style="margin-top:14px;">Subject</span>
+      <input type="text" id="contactSubject" name="subject" placeholder="What's this about?" required aria-required="true">
+      <span class="field-error" id="contactSubjectError"></span>
+
+      <span class="field-label" style="margin-top:14px;">Message</span>
+      <textarea id="contactMessage" name="message" placeholder="Tell us a bit more..." required aria-required="true"></textarea>
+      <span class="field-error" id="contactMessageError"></span>
+
+      <div class="row">
+        <button class="btn btn-primary" id="contactSubmitBtn" type="submit" style="flex:1;">Send message</button>
+      </div>
+    </form>
+  </div>
+
+  <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--card-border);">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:10px;">Direct Contact</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Prefer email? Reach us directly:</p>
+    <a href="mailto:qsrjehan@gmail.com" class="btn btn-ghost" style="text-decoration:none;display:inline-flex;margin-top:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg> qsrjehan@gmail.com</a>
+  </div>
+
+  <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--card-border);">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;">Professional Image Editing Services</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-bottom:14px;">Beyond the free automated tools on this site, hands-on professional editing is available on request for projects that need a closer touch.</p>
+    <div class="related-grid">
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Background Removal</h3><p>Clean, precise background removal for product photos, portraits, and marketing images, refined by hand where automated tools fall short.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Product Photo Editing</h3><p>Color correction, cropping, and retouching to make product photos consistent and ready for your store or marketplace listing.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Transparent PNG Creation</h3><p>Convert any image into a clean transparent PNG, ready to drop into designs, presentations, or product mockups.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Background Replacement</h3><p>Swap an existing background for a solid color, gradient, or custom scene, matched carefully to lighting and edges.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Background Color Change</h3><p>Update background colors to match brand guidelines or marketplace requirements, such as white-background product listings.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Watermark Addition</h3><p>Add a text or logo watermark across a batch of images, positioned and sized consistently.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Image Cropping</h3><p>Precise cropping to exact dimensions or aspect ratios for web, print, or social media use.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Image Compression</h3><p>Reduce file size for faster-loading websites and smaller email attachments, without a noticeable quality drop.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Image Optimization</h3><p>Prepare images for real-world use — correctly sized, correctly formatted, and ready to publish.</p></div>
+    <div class="blog-card" style="cursor:default;"><span class="blog-tag">Service</span><h3>Social Media Image Preparation</h3><p>Resize and format images to fit specific platform requirements, including profile photos, banners, and post graphics.</p></div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--card-border);">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:12px;">Why Choose ToolFlight</h2>
+    <ul class="trust-list">
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>Privacy-first tools — most of ToolFlight's free tools run entirely in your browser, so your files are never uploaded to a server.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>No signup or account required to use any free tool on the site.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>Direct, personal communication — your message reaches a real person, not a support queue.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>Transparent, no-pressure conversations about custom tools or paid editing work.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>Free tools stay free — professional services are optional, never required.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span>Attentive replies, typically within one to two business days.</span></li>
+    </ul>
+  </div>
+
+  <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--card-border);padding-bottom:10px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>How quickly will I hear back?</strong><br>We aim to reply within one to two business days.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Can I request a custom tool?</strong><br>Yes — describe what you need in the message field, and we'll let you know if it's something we can build.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Do you offer paid image editing services?</strong><br>Yes, the professional editing services listed on this page are available on request — get in touch with details about your project and we'll follow up.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is my contact information kept private?</strong><br>Yes — your name, email, and message are used only to respond to your inquiry.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What's the best way to report a bug?</strong><br>Use the contact form and include the tool name, your browser, and what you were trying to do when the issue occurred.</p>
+  </div>
+
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Contact", "item": "https://toolflight.com/contact.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Contact ToolFlight", "description": "Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.", "url": "https://toolflight.com/contact.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How quickly will I hear back?", "acceptedAnswer": {"@type": "Answer", "text": "We aim to reply within one to two business days."}}, {"@type": "Question", "name": "Can I request a custom tool?", "acceptedAnswer": {"@type": "Answer", "text": "Yes \u2014 describe what you need in the message field, and we'll let you know if it's something we can build."}}, {"@type": "Question", "name": "Do you offer paid image editing services?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, the professional editing services listed on this page are available on request \u2014 get in touch with details about your project and we'll follow up."}}, {"@type": "Question", "name": "Is my contact information kept private?", "acceptedAnswer": {"@type": "Answer", "text": "Yes \u2014 your name, email, and message are used only to respond to your inquiry."}}, {"@type": "Question", "name": "What's the best way to report a bug?", "acceptedAnswer": {"@type": "Answer", "text": "Use the contact form and include the tool name, your browser, and what you were trying to do when the issue occurred."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="contact.html">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js"></script>
+</body>
+</html>
