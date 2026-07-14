@@ -3187,6 +3187,354 @@ if (document.getElementById('pdfcDrop')){
   };
 }
 
+/* ============ AI KEYWORD GENERATOR (ai-keyword-generator.html) ============
+   No real keyword-research API is used here — there is no backend and no API
+   key on this static site, so any tool claiming to show live keyword-planner
+   numbers would be fabricating data. Instead this generates keyword
+   IDEAS via template-based combination (a well-established, legitimate SEO
+   ideation technique — the same basic approach tools like AnswerThePublic use
+   for their free tier) and attaches DETERMINISTIC, clearly-labeled ESTIMATED
+   metrics (same keyword always yields the same numbers, seeded from the text
+   itself) so users get consistent, useful starting points for their own
+   research — never numbers presented as real search-engine data. */
+if (document.getElementById('gkwForm')){
+  const GKW_QUESTION_WORDS = ['what is','how to','why','when','where','who','can','does','is','will','which','how much','how many','how does'];
+  const GKW_BUYING_WORDS = ['buy','price','cost','cheap','best','top','discount','deal','coupon','review','for sale','affordable'];
+  const GKW_COMPARISON_TERMS = ['alternative','alternatives','competitors','similar options'];
+  const GKW_MODIFIERS = ['best','top','cheap','free','online','guide','tutorial','for beginners','2026','review','tips','ideas','examples','checklist','template','vs','pros and cons','worth it','explained'];
+  const GKW_LOCAL_SUFFIXES = ['near me','in my area','local','nearby','close to me'];
+  const GKW_VOICE_TEMPLATES = ["what's the best way to {kw}","how do i {kw}","where can i find {kw}","what should i know about {kw}","hey google what is {kw}","find {kw} near me"];
+  const GKW_YOUTUBE_TEMPLATES = ['{kw} tutorial','how to {kw}','{kw} explained','{kw} for beginners','{kw} review 2026','top 10 {kw}','{kw} tips and tricks','{kw} step by step','{kw} mistakes to avoid','{kw} in 5 minutes'];
+  const GKW_LSI_TEMPLATES = ['types of {kw}','benefits of {kw}','{kw} meaning','{kw} definition','history of {kw}','{kw} examples','{kw} statistics','{kw} trends','{kw} vs alternatives','how {kw} works'];
+  const GKW_TRENDING_TEMPLATES = ['{kw} 2026','new {kw}','latest {kw}','{kw} trends 2026','future of {kw}','{kw} predictions','{kw} this year','emerging {kw}'];
+  const GKW_BLOG_TITLE_TEMPLATES = [
+    'The Ultimate Guide to {KW} in 2026','{N} {KW} Tips You Need to Know','How to {kw}: A Complete Beginner\u2019s Guide',
+    '{KW} 101: Everything You Need to Know','Why {KW} Matters More Than Ever','{N} Common {KW} Mistakes (and How to Avoid Them)',
+    '{KW} Explained in Plain English','The Complete {KW} Checklist for 2026','What Nobody Tells You About {KW}',
+    '{N} Best {KW} Strategies That Actually Work'
+  ];
+  const GKW_META_TITLE_TEMPLATES = ['{KW}: The Complete Guide (2026)','Best {KW} Tips & Strategies | Full Guide','{KW} Guide: Everything You Need to Know','{N} {KW} Ideas for 2026'];
+  const GKW_META_DESC_TEMPLATES = [
+    'Learn everything about {kw} with our complete 2026 guide. Practical tips, examples, and strategies to help you get started today.',
+    'Discover the best {kw} strategies, tips, and ideas. A complete, up-to-date guide covering everything you need to know.',
+    'Looking for {kw}? This guide covers the essentials, common mistakes to avoid, and practical tips you can use right away.'
+  ];
+
+  function titleCase(s){ return s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1)); }
+
+  function fillTemplate(tpl, kw, n){
+    return tpl.replace(/\{kw\}/g, kw).replace(/\{KW\}/g, titleCase(kw)).replace(/\{N\}/g, n || (5 + (kw.length % 10)));
+  }
+
+  function dedupeCap(list, max){
+    const seen = new Set(); const out = [];
+    for (const item of list){
+      const key = item.toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(item.trim());
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
+  function genFromTemplates(templates, kw, max){
+    return dedupeCap(templates.map(t => fillTemplate(t, kw)), max);
+  }
+
+  function genModifierCombos(kw, modifiers, max, prefixAndSuffix){
+    const out = [];
+    for (const m of modifiers){ out.push(`${m} ${kw}`); if (prefixAndSuffix) out.push(`${kw} ${m}`); }
+    return dedupeCap(out, max);
+  }
+
+  // Deterministic seeded PRNG — the same keyword text always produces the same
+  // estimated metrics across runs, rather than random numbers on every reload.
+  function seededRand(str){
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return function(){ h = Math.imul(h ^ (h >>> 15), 2246822519); h ^= h >>> 13; return ((h >>> 0) % 100000) / 100000; };
+  }
+
+  const GKW_INDUSTRY_MULTIPLIER = { general:1, finance:2.4, insurance:2.8, legal:2.6, health:1.7, tech:1.4, ecommerce:1.5, travel:1.2, education:1.1, realestate:1.9, marketing:1.6 };
+
+  function estimateMetrics(kw, industry){
+    const rand = seededRand(kw.toLowerCase());
+    const r1 = rand(), r2 = rand(), r3 = rand(), r4 = rand(), r5 = rand();
+    const wordCount = kw.trim().split(/\s+/).filter(Boolean).length;
+    const mult = GKW_INDUSTRY_MULTIPLIER[industry] || 1;
+    const volume = Math.max(10, Math.round((6000 / Math.max(1, wordCount)) * (0.3 + r1 * 1.3) * (mult / 1.4)));
+    const competitionScore = Math.min(1, r2 * (1 / Math.sqrt(wordCount)) + 0.12);
+    const competition = competitionScore > 0.66 ? 'High' : competitionScore > 0.33 ? 'Medium' : 'Low';
+    const difficulty = competitionScore > 0.7 ? 'Hard' : competitionScore > 0.35 ? 'Medium' : 'Easy';
+    const cpc = (0.1 + r3 * 4.8 * mult).toFixed(2);
+    const trend = ['Rising','Stable','Declining'][Math.floor(r4 * 3)];
+    const contentScore = Math.round(35 + (1 - competitionScore) * 55 + r5 * 10);
+    const lower = kw.toLowerCase();
+    let intent = 'Informational';
+    if (GKW_BUYING_WORDS.some(w => lower.includes(w))) intent = 'Transactional';
+    else if (lower.includes(' vs ') || lower.includes('alternative')) intent = 'Commercial';
+    else if (lower.includes('near me') || lower.includes('local') || lower.includes('in my area')) intent = 'Local';
+    else if (GKW_QUESTION_WORDS.some(w => lower.startsWith(w))) intent = 'Informational';
+    return { volume, competition, difficulty, cpc, trend, contentScore, intent, wordCount };
+  }
+
+  function buildSections(seed, opts){
+    const kw = seed.trim();
+    const total = opts.count;
+    // Rough share of the requested total per keyword-bearing section (content-idea
+    // sections like Blog Titles/FAQ get smaller fixed counts since they aren't
+    // "keywords" in the same sense).
+    const bigShare = Math.max(6, Math.round(total * 0.10));
+    const midShare = Math.max(6, Math.round(total * 0.07));
+
+    const sections = [];
+    const push = (title, items, isKeywordList) => sections.push({ title, items, isKeywordList: isKeywordList !== false });
+
+    push('Primary Keywords', genModifierCombos(kw, ['best','top','cheap','free','online','guide','review','2026'], bigShare, false));
+    push('Long Tail Keywords', dedupeCap(
+      GKW_MODIFIERS.flatMap(m1 => GKW_MODIFIERS.slice(0,6).map(m2 => `${m1} ${kw} ${m2}`)), bigShare));
+    push('Question Keywords', genModifierCombos(kw, GKW_QUESTION_WORDS, bigShare, false));
+    push('Buying Keywords', genModifierCombos(kw, GKW_BUYING_WORDS, midShare, true));
+    push('Comparison Keywords', dedupeCap([
+      ...(opts.competitor ? [`${kw} vs ${opts.competitor}`, `${kw} or ${opts.competitor}`, `${opts.competitor} alternative`] : []),
+      ...GKW_COMPARISON_TERMS.map(t => `${kw} ${t}`),
+      `${kw} vs competitors`, `best ${kw} alternative`
+    ], midShare));
+    push('Alphabet Keywords (A\u2013Z)', dedupeCap('abcdefghijklmnopqrstuvwxyz'.split('').map(l => `${kw} ${l}`), 26));
+    push('Related Searches', genModifierCombos(kw, ['similar to','related to','like','instead of','compared with'], midShare, false));
+    push('Semantic Keywords (LSI)', genFromTemplates(GKW_LSI_TEMPLATES, kw, midShare));
+    push('Trending Keyword Ideas', genFromTemplates(GKW_TRENDING_TEMPLATES, kw, midShare));
+    push('Local Keywords', genModifierCombos(kw, GKW_LOCAL_SUFFIXES, midShare, true));
+    push('Voice Search Keywords', genFromTemplates(GKW_VOICE_TEMPLATES, kw, midShare));
+    push('YouTube Keywords', genFromTemplates(GKW_YOUTUBE_TEMPLATES, kw, midShare));
+    push('Blog Title Ideas', genFromTemplates(GKW_BLOG_TITLE_TEMPLATES, kw, 10), false);
+    push('FAQ Ideas', dedupeCap(GKW_QUESTION_WORDS.map(q => `${titleCase(q)} ${kw}?`), 12), false);
+    push('Meta Title Suggestions', genFromTemplates(GKW_META_TITLE_TEMPLATES, kw, 6), false);
+    push('Meta Description Suggestions', genFromTemplates(GKW_META_DESC_TEMPLATES, kw, 3), false);
+    push('URL Slug Suggestions', dedupeCap([
+      kw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+      `best-${kw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-')}`,
+      `${kw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-')}-guide-2026`,
+      `${kw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-')}-for-beginners`
+    ], 6), false);
+    push('Internal Linking Ideas', dedupeCap([
+      `Link from your homepage using the anchor text "${kw}"`,
+      `Link from related blog posts using "learn more about ${kw}"`,
+      `Link from your ${kw} category or hub page`,
+      `Cross-link with comparison and buying-guide content about ${kw}`,
+      `Link from FAQ answers that mention ${kw}`
+    ], 6), false);
+    push('Content Cluster Ideas', dedupeCap([
+      `Pillar page: "The Complete Guide to ${titleCase(kw)}"`,
+      `Supporting article: "${titleCase(kw)} for Beginners"`,
+      `Supporting article: "Best ${titleCase(kw)} Tools Compared"`,
+      `Supporting article: "${titleCase(kw)} Mistakes to Avoid"`,
+      `Supporting article: "${titleCase(kw)} FAQ"`,
+      `Supporting article: "${titleCase(kw)} Case Studies"`
+    ], 8), false);
+    push('Content Outline', dedupeCap([
+      `H1: ${titleCase(kw)} \u2014 The Complete Guide`,
+      `H2: What is ${kw}?`,
+      `H2: Why ${kw} Matters`,
+      `H2: How to Get Started with ${kw}`,
+      `H2: Best Practices for ${kw}`,
+      `H2: Common ${titleCase(kw)} Mistakes`,
+      `H2: ${titleCase(kw)} Tools & Resources`,
+      `H2: Frequently Asked Questions`,
+      `H2: Conclusion`
+    ], 10), false);
+
+    return sections;
+  }
+
+  let gkwAllRows = []; // flattened { keyword, section, ...metrics }
+  let gkwFiltered = [];
+  let gkwSelected = new Set();
+
+  function renderResults(sections, opts){
+    gkwAllRows = [];
+    sections.forEach(sec => {
+      sec.items.forEach(item => {
+        const m = sec.isKeywordList ? estimateMetrics(item, opts.industry) : null;
+        gkwAllRows.push({ keyword: item, section: sec.title, isKeywordList: sec.isKeywordList, ...(m || {}) });
+      });
+    });
+    applyFiltersAndRender();
+    document.getElementById('gkwSummary').classList.remove('hidden');
+    document.getElementById('gkwResultsWrap').classList.remove('hidden');
+    updateSummaryStats();
+  }
+
+  function updateSummaryStats(){
+    const kwRows = gkwAllRows.filter(r => r.isKeywordList);
+    document.getElementById('gkwCountStat').textContent = gkwAllRows.length;
+    if (kwRows.length){
+      const avgVol = Math.round(kwRows.reduce((a,r)=>a+r.volume,0) / kwRows.length);
+      const avgCpc = (kwRows.reduce((a,r)=>a+parseFloat(r.cpc),0) / kwRows.length).toFixed(2);
+      const diffScore = { Easy:1, Medium:2, Hard:3 };
+      const avgDiff = kwRows.reduce((a,r)=>a+diffScore[r.difficulty],0) / kwRows.length;
+      document.getElementById('gkwVolStat').textContent = avgVol.toLocaleString();
+      document.getElementById('gkwCpcStat').textContent = '$' + avgCpc;
+      document.getElementById('gkwDiffStat').textContent = avgDiff < 1.6 ? 'Easy' : avgDiff < 2.4 ? 'Medium' : 'Hard';
+    }
+  }
+
+  function applyFiltersAndRender(){
+    const diffFilter = document.getElementById('gkwFilterDifficulty').value;
+    const intentFilter = document.getElementById('gkwFilterIntent').value;
+    const questionOnly = document.getElementById('gkwFilterQuestion').checked;
+    const buyingOnly = document.getElementById('gkwFilterBuying').checked;
+    const sortBy = document.getElementById('gkwSort').value;
+
+    gkwFiltered = gkwAllRows.filter(r => {
+      if (diffFilter && r.isKeywordList && r.difficulty !== diffFilter) return false;
+      if (intentFilter && r.isKeywordList && r.intent !== intentFilter) return false;
+      if (questionOnly && !GKW_QUESTION_WORDS.some(q => r.keyword.toLowerCase().startsWith(q))) return false;
+      if (buyingOnly && !GKW_BUYING_WORDS.some(b => r.keyword.toLowerCase().includes(b))) return false;
+      return true;
+    });
+
+    if (sortBy === 'az') gkwFiltered.sort((a,b) => a.keyword.localeCompare(b.keyword));
+    else if (sortBy === 'volume') gkwFiltered.sort((a,b) => (b.volume||0) - (a.volume||0));
+    else if (sortBy === 'competition') gkwFiltered.sort((a,b) => (a.volume ? (a.competition==='Low'?0:a.competition==='Medium'?1:2) : 9) - (b.volume ? (b.competition==='Low'?0:b.competition==='Medium'?1:2) : 9));
+    else if (sortBy === 'longest') gkwFiltered.sort((a,b) => b.keyword.length - a.keyword.length);
+    else if (sortBy === 'shortest') gkwFiltered.sort((a,b) => a.keyword.length - b.keyword.length);
+
+    renderTable();
+  }
+
+  function renderTable(){
+    const wrap = document.getElementById('gkwResultsBody');
+    wrap.innerHTML = '';
+    let currentSection = null;
+    gkwFiltered.forEach((row, i) => {
+      if (row.section !== currentSection){
+        currentSection = row.section;
+        const h = document.createElement('h3');
+        h.className = 'gkw-section-heading';
+        h.textContent = currentSection;
+        wrap.appendChild(h);
+      }
+      const div = document.createElement('div');
+      div.className = 'gkw-row' + (row.contentScore >= 80 ? ' gkw-row-best' : '');
+      const checked = gkwSelected.has(row.keyword) ? 'checked' : '';
+      if (row.isKeywordList){
+        div.innerHTML = `
+          <label class="gkw-check"><input type="checkbox" data-kw="${encodeURIComponent(row.keyword)}" ${checked}></label>
+          <span class="gkw-kw">${row.keyword}</span>
+          <span class="badge">${row.intent}</span>
+          <span class="badge">${row.competition} comp.</span>
+          <span class="badge">$${row.cpc} CPC</span>
+          <span class="badge">${row.trend}</span>
+          <span class="badge">Score ${row.contentScore}</span>
+          <span class="badge">${row.difficulty}</span>
+          <span class="badge">~${row.volume.toLocaleString()}/mo</span>
+        `;
+      } else {
+        div.innerHTML = `<label class="gkw-check"><input type="checkbox" data-kw="${encodeURIComponent(row.keyword)}" ${checked}></label><span class="gkw-kw">${row.keyword}</span>`;
+      }
+      wrap.appendChild(div);
+    });
+    document.querySelectorAll('#gkwResultsBody input[type=checkbox]').forEach(cb => {
+      cb.onchange = () => {
+        const kw = decodeURIComponent(cb.dataset.kw);
+        cb.checked ? gkwSelected.add(kw) : gkwSelected.delete(kw);
+      };
+    });
+  }
+
+  document.getElementById('gkwForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const seed = document.getElementById('gkwSeed').value.trim();
+    if (!seed){ toast('Enter a main keyword first.', 'err'); return; }
+    const btn = document.getElementById('gkwGenerateBtn');
+    setLoading(btn, true);
+    gkwSelected = new Set();
+    setTimeout(() => { // brief delay so the loading state is visible — generation itself is instant
+      const opts = {
+        count: parseInt(document.getElementById('gkwCount').value, 10),
+        industry: document.getElementById('gkwIndustry').value,
+        competitor: document.getElementById('gkwCompetitor').value.trim(),
+      };
+      const sections = buildSections(seed, opts);
+      renderResults(sections, opts);
+      setLoading(btn, false, 'Generate keywords');
+      toast('Keyword ideas generated.');
+    }, 250);
+  });
+
+  ['gkwFilterDifficulty','gkwFilterIntent','gkwSort'].forEach(id => document.getElementById(id).addEventListener('change', applyFiltersAndRender));
+  ['gkwFilterQuestion','gkwFilterBuying'].forEach(id => document.getElementById(id).addEventListener('change', applyFiltersAndRender));
+
+  document.getElementById('gkwRegenerateBtn').onclick = () => document.getElementById('gkwForm').requestSubmit();
+
+  document.getElementById('gkwSelectAllBtn').onclick = () => {
+    gkwFiltered.forEach(r => gkwSelected.add(r.keyword));
+    renderTable();
+  };
+  document.getElementById('gkwSelectNoneBtn').onclick = () => {
+    gkwSelected.clear();
+    renderTable();
+  };
+
+  document.getElementById('gkwCopyAllBtn').onclick = () => {
+    const text = gkwFiltered.map(r => r.keyword).join('\n');
+    copyToClipboard(text).then(() => toast(`Copied ${gkwFiltered.length} keywords.`)).catch(() => toast('Could not copy — try exporting instead.', 'err'));
+  };
+  document.getElementById('gkwCopySelectedBtn').onclick = () => {
+    if (!gkwSelected.size){ toast('Select at least one keyword first.', 'err'); return; }
+    copyToClipboard(Array.from(gkwSelected).join('\n')).then(() => toast(`Copied ${gkwSelected.size} selected keyword(s).`)).catch(() => toast('Could not copy.', 'err'));
+  };
+
+  document.getElementById('gkwExportTxtBtn').onclick = () => {
+    if (!gkwFiltered.length){ toast('Generate keywords first.', 'err'); return; }
+    downloadBlob(new Blob([gkwFiltered.map(r => r.keyword).join('\n')], {type:'text/plain'}), 'keywords.txt');
+  };
+  document.getElementById('gkwExportCsvBtn').onclick = () => {
+    if (!gkwFiltered.length){ toast('Generate keywords first.', 'err'); return; }
+    const header = 'Keyword,Section,Intent,Competition,CPC,Trend,ContentScore,Difficulty,EstimatedVolume\n';
+    const rows = gkwFiltered.map(r => [
+      `"${r.keyword.replace(/"/g,'""')}"`, `"${r.section}"`,
+      r.intent||'', r.competition||'', r.cpc||'', r.trend||'', r.contentScore||'', r.difficulty||'', r.volume||''
+    ].join(','));
+    downloadBlob(new Blob([header + rows.join('\n')], {type:'text/csv'}), 'keywords.csv');
+  };
+  document.getElementById('gkwExportJsonBtn').onclick = () => {
+    if (!gkwFiltered.length){ toast('Generate keywords first.', 'err'); return; }
+    downloadBlob(new Blob([JSON.stringify(gkwFiltered, null, 2)], {type:'application/json'}), 'keywords.json');
+  };
+  document.getElementById('gkwExportMdBtn').onclick = () => {
+    if (!gkwFiltered.length){ toast('Generate keywords first.', 'err'); return; }
+    let md = '# Keyword Research Results\n\n';
+    let currentSection = null;
+    gkwFiltered.forEach(r => {
+      if (r.section !== currentSection){ currentSection = r.section; md += `\n## ${currentSection}\n\n`; }
+      md += r.isKeywordList ? `- ${r.keyword} (${r.intent}, ${r.competition} competition, ~${r.volume}/mo)\n` : `- ${r.keyword}\n`;
+    });
+    downloadBlob(new Blob([md], {type:'text/markdown'}), 'keywords.md');
+  };
+
+  document.getElementById('gkwRemoveDuplicatesBtn').onclick = () => {
+    const before = gkwAllRows.length;
+    const seen = new Set();
+    gkwAllRows = gkwAllRows.filter(r => {
+      const k = r.keyword.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+    applyFiltersAndRender();
+    updateSummaryStats();
+    toast(`Removed ${before - gkwAllRows.length} duplicate(s).`);
+  };
+
+  document.getElementById('gkwRandomBtn').onclick = () => {
+    const ideas = ['best budget laptops','healthy meal prep ideas','how to start a podcast','digital marketing for small business','home workout routines','sustainable fashion brands','freelance writing tips','indoor plants for beginners','personal finance basics','remote team management'];
+    document.getElementById('gkwSeed').value = ideas[Math.floor(Math.random()*ideas.length)];
+    toast('Random seed keyword added — tap Generate.');
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
