@@ -131,6 +131,19 @@ function setLoading(btn, loading, labelWhenIdle){
     btn.disabled = false;
   }
 }
+// Loads a classic (non-module) script exactly once, resolving once it's ready.
+// Used for CDN libraries distributed as UMD/global scripts rather than ESM,
+// where dynamic import() isn't reliable (e.g. onnxruntime-web's ort.min.js).
+function loadScriptOnce(src){
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3532,6 +3545,382 @@ if (document.getElementById('gkwForm')){
     const ideas = ['best budget laptops','healthy meal prep ideas','how to start a podcast','digital marketing for small business','home workout routines','sustainable fashion brands','freelance writing tips','indoor plants for beginners','personal finance basics','remote team management'];
     document.getElementById('gkwSeed').value = ideas[Math.floor(Math.random()*ideas.length)];
     toast('Random seed keyword added — tap Generate.');
+  };
+}
+
+/* ============ MAGIC ERASER / AI OBJECT REMOVER (magic-eraser.html) ============
+   Real generative inpainting, not a blur/clone/fill trick: uses LaMa (Large
+   Mask Inpainting, Apache 2.0, github.com/advimman/lama), a genuine neural
+   inpainting model, exported to ONNX and run entirely client-side via
+   onnxruntime-web (MIT license, Microsoft). No backend, no API key — the
+   model file (~200MB) downloads once from Hugging Face's public CDN and is
+   cached by the browser afterward. See the tool's own FAQ for the specific
+   honest limitations of this approach (fixed 512x512 model input, first-use
+   download size). */
+if (document.getElementById('meDrop')){
+  const ORT_VERSION = '1.17.3';
+  const LAMA_MODEL_URL = 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx';
+
+  let meOriginalImg = null;      // full-resolution source <img>
+  let meOriginalCanvas = null;   // full-res, never modified
+  let meMaskCanvas = null;       // full-res, white = "remove this"
+  let meEditCanvas = null;       // visible canvas (original + red mask overlay)
+  let meResultCanvas = null;     // full-res result after AI processing, once available
+  let meHistoryStack = [], meHistoryIndex = -1;
+  const ME_MAX_HISTORY = 25;
+  let meBrushSize = 40, meBrushSoftness = 60;
+  let meIsDrawing = false;
+  let meSession = null;
+  let ortLoadPromise = null;
+
+  async function ensureOrt(){
+    if (window.ort) return window.ort;
+    if (!ortLoadPromise){
+      ortLoadPromise = (async () => {
+        await loadScriptOnce(`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort.min.js`);
+        if (!window.ort) throw new Error('ONNX Runtime failed to initialize.');
+        window.ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+        return window.ort;
+      })().catch((err) => { ortLoadPromise = null; throw err; });
+    }
+    return ortLoadPromise;
+  }
+
+  async function ensureModel(onProgress){
+    if (meSession) return meSession;
+    const ort = await ensureOrt();
+    if (onProgress) onProgress('Downloading AI model (~200MB, one-time — cached by your browser after this)…');
+    meSession = await ort.InferenceSession.create(LAMA_MODEL_URL, { executionProviders: ['wasm'] });
+    return meSession;
+  }
+
+  setupDropZone('meDrop','meInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50MB.`, 'err'); return; }
+    try{
+      meOriginalImg = await loadImageFromFile(f);
+      initMagicEraser();
+      toast('Image loaded — brush over what you want removed.');
+    }catch(err){
+      toast(err.message || 'Could not read this image.', 'err');
+    }
+  });
+
+  function initMagicEraser(){
+    const w = meOriginalImg.naturalWidth, h = meOriginalImg.naturalHeight;
+    meOriginalCanvas = document.createElement('canvas');
+    meOriginalCanvas.width = w; meOriginalCanvas.height = h;
+    meOriginalCanvas.getContext('2d').drawImage(meOriginalImg, 0, 0); // re-drawing via canvas already strips EXIF, same as every other ToolFlight image tool
+
+    meMaskCanvas = document.createElement('canvas');
+    meMaskCanvas.width = w; meMaskCanvas.height = h;
+
+    meResultCanvas = null;
+    meEditCanvas = document.getElementById('meEditCanvas');
+    meEditCanvas.width = w; meEditCanvas.height = h;
+
+    meHistoryStack = []; meHistoryIndex = -1;
+    pushMeHistory();
+    renderMeComposite();
+
+    document.getElementById('meStage').classList.remove('hidden');
+    document.getElementById('meRemoveBtn').disabled = false;
+    document.getElementById('meDownloadRow').classList.add('hidden');
+    document.getElementById('meCompareWrap').classList.add('hidden');
+    setMeZoom(100);
+  }
+
+  function renderMeComposite(){
+    const w = meOriginalCanvas.width, h = meOriginalCanvas.height;
+    const ectx = meEditCanvas.getContext('2d');
+    ectx.drawImage(meResultCanvas || meOriginalCanvas, 0, 0);
+    // Red translucent overlay wherever the mask is painted, so the selection is
+    // always clearly visible against both light and dark source photos.
+    const maskData = meMaskCanvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const imgData = ectx.getImageData(0, 0, w, h);
+    for (let i = 0; i < maskData.length; i += 4){
+      const m = maskData[i+3];
+      if (m > 10){
+        const alpha = (m/255) * 0.55;
+        imgData.data[i]   = imgData.data[i]   * (1-alpha) + 255*alpha;
+        imgData.data[i+1] = imgData.data[i+1] * (1-alpha);
+        imgData.data[i+2] = imgData.data[i+2] * (1-alpha);
+      }
+    }
+    ectx.putImageData(imgData, 0, 0);
+  }
+
+  function pushMeHistory(){
+    const snap = meMaskCanvas.getContext('2d').getImageData(0, 0, meMaskCanvas.width, meMaskCanvas.height);
+    meHistoryStack = meHistoryStack.slice(0, meHistoryIndex + 1);
+    meHistoryStack.push(snap);
+    if (meHistoryStack.length > ME_MAX_HISTORY) meHistoryStack.shift();
+    meHistoryIndex = meHistoryStack.length - 1;
+  }
+  function restoreMeHistory(idx){
+    if (idx < 0 || idx >= meHistoryStack.length) return;
+    meMaskCanvas.getContext('2d').putImageData(meHistoryStack[idx], 0, 0);
+    meHistoryIndex = idx;
+    renderMeComposite();
+  }
+  function meUndo(){ if (meHistoryIndex > 0) restoreMeHistory(meHistoryIndex - 1); else toast('Nothing to undo.'); }
+  function meRedo(){ if (meHistoryIndex < meHistoryStack.length - 1) restoreMeHistory(meHistoryIndex + 1); else toast('Nothing to redo.'); }
+
+  function mePaintDab(x, y){
+    const mctx = meMaskCanvas.getContext('2d');
+    const hardStop = Math.max(0, 1 - meBrushSoftness/100);
+    const grad = mctx.createRadialGradient(x, y, (meBrushSize/2)*hardStop, x, y, meBrushSize/2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    mctx.fillStyle = grad;
+    mctx.beginPath();
+    mctx.arc(x, y, meBrushSize/2, 0, Math.PI*2);
+    mctx.fill();
+  }
+
+  function meCanvasPoint(e){
+    const rect = meEditCanvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * meEditCanvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * meEditCanvas.height,
+    };
+  }
+
+  const meStageWrap = document.getElementById('meStageWrap');
+  let meSpacePan = false;
+
+  meStageWrap.addEventListener('pointerdown', (e) => {
+    if (!meMaskCanvas || meSpacePan) return;
+    const canvas = document.getElementById('meEditCanvas');
+    canvas.setPointerCapture(e.pointerId);
+    meIsDrawing = true;
+    const pt = meCanvasPoint(e);
+    mePaintDab(pt.x, pt.y);
+    renderMeComposite();
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!meIsDrawing || meSpacePan) return;
+    const pt = meCanvasPoint(e);
+    mePaintDab(pt.x, pt.y);
+    renderMeComposite();
+  });
+  document.addEventListener('pointerup', () => {
+    if (meIsDrawing){ meIsDrawing = false; pushMeHistory(); }
+  });
+
+  function setMeZoom(pct){
+    const canvas = document.getElementById('meEditCanvas');
+    if (!canvas || !canvas.width) return;
+    canvas.style.width = Math.round(canvas.width * (pct/100)) + 'px';
+    canvas.style.height = Math.round(canvas.height * (pct/100)) + 'px';
+    const sel = document.getElementById('meZoomSelect');
+    if (sel) sel.value = String(pct);
+  }
+  document.getElementById('meZoomSelect').onchange = (e) => setMeZoom(+e.target.value);
+  document.getElementById('meFitScreenBtn').onclick = () => {
+    const canvas = document.getElementById('meEditCanvas');
+    const wrapWidth = meStageWrap.clientWidth - 20;
+    const pct = Math.max(10, Math.min(100, Math.round((wrapWidth / canvas.width) * 100)));
+    setMeZoom(pct);
+  };
+  meStageWrap.addEventListener('wheel', (e) => {
+    if (!meMaskCanvas) return;
+    e.preventDefault();
+    const sel = document.getElementById('meZoomSelect');
+    const current = sel ? +sel.value : 100;
+    setMeZoom(Math.max(25, Math.min(400, current + (e.deltaY < 0 ? 15 : -15))));
+  }, { passive: false });
+
+  // Space = pan (native container scroll does the actual panning)
+  document.addEventListener('keydown', (e) => {
+    const stage = document.getElementById('meStage');
+    if (!stage || stage.classList.contains('hidden')) return;
+    if (e.code === 'Space' && !meSpacePan){ meSpacePan = true; meStageWrap.style.cursor = 'grab'; e.preventDefault(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey){ meUndo(); e.preventDefault(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase()==='z' && e.shiftKey))){ meRedo(); e.preventDefault(); }
+  });
+  document.addEventListener('keyup', (e) => { if (e.code === 'Space'){ meSpacePan = false; meStageWrap.style.cursor = ''; } });
+
+  document.getElementById('meBrushSize').oninput = (e) => {
+    meBrushSize = +e.target.value;
+    document.getElementById('meBrushSizeVal').textContent = meBrushSize;
+  };
+  document.getElementById('meBrushSoftness').oninput = (e) => {
+    meBrushSoftness = +e.target.value;
+    document.getElementById('meBrushSoftnessVal').textContent = meBrushSoftness;
+  };
+  document.getElementById('meUndoBtn').onclick = meUndo;
+  document.getElementById('meRedoBtn').onclick = meRedo;
+  document.getElementById('meClearSelectionBtn').onclick = () => {
+    meMaskCanvas.getContext('2d').clearRect(0, 0, meMaskCanvas.width, meMaskCanvas.height);
+    renderMeComposite();
+    pushMeHistory();
+  };
+  document.getElementById('meResetImageBtn').onclick = () => {
+    if (!meOriginalImg) return;
+    initMagicEraser();
+    toast('Reset to the original image.');
+  };
+
+  function hasAnyMaskPainted(){
+    const d = meMaskCanvas.getContext('2d').getImageData(0, 0, meMaskCanvas.width, meMaskCanvas.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 10) return true;
+    return false;
+  }
+
+  document.getElementById('meRemoveBtn').onclick = async () => {
+    if (!meOriginalCanvas){ toast('Upload an image first.', 'err'); return; }
+    if (!hasAnyMaskPainted()){ toast('Brush over the object you want removed first.', 'err'); return; }
+    const btn = document.getElementById('meRemoveBtn');
+    setLoading(btn, true);
+    const progressWrap = document.getElementById('meProgressWrap');
+    const progressLabel = document.getElementById('meProgressLabel');
+    const progressFill = document.getElementById('meProgressFill');
+    progressWrap.classList.remove('hidden');
+    progressFill.style.width = '5%';
+    try{
+      const session = await ensureModel((msg) => { progressLabel.textContent = msg; progressFill.style.width = '20%'; });
+      progressLabel.textContent = 'Preparing image for the AI model…';
+      progressFill.style.width = '55%';
+      await nextFrame();
+
+      const w = meOriginalCanvas.width, h = meOriginalCanvas.height;
+      // This specific ONNX export requires a fixed 512x512 input (documented
+      // limitation — see the tool's FAQ). Resize the whole frame down for
+      // inference, matching the model's own documented reference usage, then
+      // composite only the newly-generated pixels back onto the untouched
+      // full-resolution original — so everything outside the brushed area
+      // keeps its true original resolution and quality.
+      const SZ = 512;
+      const smallImg = document.createElement('canvas'); smallImg.width = SZ; smallImg.height = SZ;
+      smallImg.getContext('2d').drawImage(meOriginalCanvas, 0, 0, SZ, SZ);
+      const smallMask = document.createElement('canvas'); smallMask.width = SZ; smallMask.height = SZ;
+      smallMask.getContext('2d').drawImage(meMaskCanvas, 0, 0, SZ, SZ);
+
+      const imgData = smallImg.getContext('2d').getImageData(0, 0, SZ, SZ).data;
+      const maskData = smallMask.getContext('2d').getImageData(0, 0, SZ, SZ).data;
+
+      const imgFloat = new Float32Array(3 * SZ * SZ);
+      const maskFloat = new Float32Array(1 * SZ * SZ);
+      const plane = SZ * SZ;
+      for (let p = 0; p < plane; p++){
+        const i = p * 4;
+        imgFloat[p] = imgData[i] / 255;
+        imgFloat[plane + p] = imgData[i+1] / 255;
+        imgFloat[plane*2 + p] = imgData[i+2] / 255;
+        maskFloat[p] = maskData[i+3] > 20 ? 1.0 : 0.0;
+      }
+
+      const ort = await ensureOrt();
+      const imageTensor = new ort.Tensor('float32', imgFloat, [1, 3, SZ, SZ]);
+      const maskTensor = new ort.Tensor('float32', maskFloat, [1, 1, SZ, SZ]);
+      const feeds = {};
+      feeds[session.inputNames[0]] = imageTensor;
+      feeds[session.inputNames[1]] = maskTensor;
+
+      progressLabel.textContent = 'Running AI inpainting…';
+      progressFill.style.width = '75%';
+      await nextFrame();
+      const results = await session.run(feeds);
+      const outTensor = results[session.outputNames[0]];
+      const outData = outTensor.data;
+      const maxVal = Math.max(1e-6, ...outData.slice(0, 3000)); // sample rather than scan millions of values
+      const scale = maxVal > 1.5 ? 255 : 255; // both branches end in 0-255 8-bit output; kept explicit for clarity
+      const isZeroToOne = maxVal <= 1.5;
+
+      progressLabel.textContent = 'Blending result into your photo…';
+      progressFill.style.width = '90%';
+      await nextFrame();
+
+      // Build the 512x512 RGBA result canvas from model output (channel order
+      // is [3,512,512] planar, matching the input layout).
+      const outCanvas = document.createElement('canvas'); outCanvas.width = SZ; outCanvas.height = SZ;
+      const outCtx = outCanvas.getContext('2d');
+      const outImgData = outCtx.createImageData(SZ, SZ);
+      for (let p = 0; p < plane; p++){
+        const r = outData[p], g = outData[plane+p], b = outData[plane*2+p];
+        outImgData.data[p*4]   = Math.max(0, Math.min(255, isZeroToOne ? r*255 : r));
+        outImgData.data[p*4+1] = Math.max(0, Math.min(255, isZeroToOne ? g*255 : g));
+        outImgData.data[p*4+2] = Math.max(0, Math.min(255, isZeroToOne ? b*255 : b));
+        outImgData.data[p*4+3] = 255;
+      }
+      outCtx.putImageData(outImgData, 0, 0);
+
+      // Upscale the AI result back to full resolution, then composite it into
+      // the untouched original ONLY where the mask was painted (feathered by
+      // the mask's own soft edge), so unedited pixels stay pixel-for-pixel
+      // original quality.
+      const upscaled = document.createElement('canvas'); upscaled.width = w; upscaled.height = h;
+      upscaled.getContext('2d').imageSmoothingEnabled = true;
+      upscaled.getContext('2d').drawImage(outCanvas, 0, 0, w, h);
+
+      const finalCanvas = document.createElement('canvas'); finalCanvas.width = w; finalCanvas.height = h;
+      const fctx = finalCanvas.getContext('2d');
+      const origData = meOriginalCanvas.getContext('2d').getImageData(0, 0, w, h);
+      const upscaledData = upscaled.getContext('2d').getImageData(0, 0, w, h);
+      const fullMaskData = meMaskCanvas.getContext('2d').getImageData(0, 0, w, h);
+      const finalImgData = fctx.createImageData(w, h);
+      for (let i = 0; i < origData.data.length; i += 4){
+        const alpha = fullMaskData.data[i+3] / 255;
+        finalImgData.data[i]   = origData.data[i]   * (1-alpha) + upscaledData.data[i]   * alpha;
+        finalImgData.data[i+1] = origData.data[i+1] * (1-alpha) + upscaledData.data[i+1] * alpha;
+        finalImgData.data[i+2] = origData.data[i+2] * (1-alpha) + upscaledData.data[i+2] * alpha;
+        finalImgData.data[i+3] = 255;
+      }
+      fctx.putImageData(finalImgData, 0, 0);
+
+      meResultCanvas = finalCanvas;
+      progressFill.style.width = '100%';
+      renderMeComposite();
+      showMeCompare();
+      document.getElementById('meDownloadRow').classList.remove('hidden');
+      toast('Object removed.');
+    }catch(err){
+      toast('AI processing failed: ' + (err.message || 'please try a different image or a smaller selection.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Remove Object');
+      setTimeout(() => progressWrap.classList.add('hidden'), 900);
+    }
+  };
+
+  function showMeCompare(){
+    if (!meResultCanvas) return;
+    document.getElementById('meCompareBefore').src = meOriginalCanvas.toDataURL('image/png');
+    document.getElementById('meCompareAfter').src = meResultCanvas.toDataURL('image/png');
+    document.getElementById('meCompareWrap').classList.remove('hidden');
+    document.getElementById('meCompareAfterWrap').style.width = '50%';
+    document.getElementById('meCompareHandle').style.left = '50%';
+  }
+  const meCompareHandle = document.getElementById('meCompareHandle');
+  const meCompareWrap = document.getElementById('meCompareWrap');
+  function setMeComparePct(clientX){
+    const rect = meCompareWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    document.getElementById('meCompareAfterWrap').style.width = pct + '%';
+    meCompareHandle.style.left = pct + '%';
+  }
+  meCompareHandle.addEventListener('pointerdown', (e) => {
+    meCompareHandle.setPointerCapture(e.pointerId);
+    function move(ev){ setMeComparePct(ev.clientX); }
+    function up(){ meCompareHandle.removeEventListener('pointermove', move); meCompareHandle.removeEventListener('pointerup', up); }
+    meCompareHandle.addEventListener('pointermove', move);
+    meCompareHandle.addEventListener('pointerup', up);
+  });
+
+  document.getElementById('meDownloadPngBtn').onclick = () => {
+    if (!meResultCanvas){ toast('Remove an object first.', 'err'); return; }
+    meResultCanvas.toBlob((blob) => {
+      if (!blob){ toast('Could not export this image.', 'err'); return; }
+      downloadBlob(blob, 'object-removed.png');
+    }, 'image/png');
+  };
+  document.getElementById('meDownloadJpgBtn').onclick = () => {
+    if (!meResultCanvas){ toast('Remove an object first.', 'err'); return; }
+    meResultCanvas.toBlob((blob) => {
+      if (!blob){ toast('Could not export this image.', 'err'); return; }
+      downloadBlob(blob, 'object-removed.jpg');
+    }, 'image/jpeg', 0.92);
   };
 }
 
