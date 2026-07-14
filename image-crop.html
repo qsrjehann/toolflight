@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Image Crop Tool — Free Online | ToolFlight</title>
 <meta name="description" content="Free online image crop tool. Crop freely or lock to 1:1, 16:9, or 9:16 ratios, rotate, and download at full original resolution.">
+<link rel="icon" href="assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="canonical" href="https://toolflight.com/image-crop.html">
 
 <meta property="og:title" content="Image Crop Tool — Free Online | ToolFlight">
@@ -76,7 +78,7 @@
 
 <div class="container">
   <div class="row" style="margin:0 0 18px;">
-    <a href="image-tools.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to Image Tools</a>
+    <a href="image-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Image Tools</a>
   </div>
 
   <div class="workspace">
@@ -116,8 +118,8 @@
         <canvas id="cropPreview" style="border:1px solid var(--card-border);border-radius:10px;max-width:100%;"></canvas>
 
         <div class="row">
-          <button class="btn btn-primary" id="cropDownloadBtn" style="flex:1;" type="button">Download cropped image</button>
-          <button class="btn btn-ghost" id="cropResetBtn" type="button">Reset</button>
+          <button class="btn btn-success" id="cropDownloadBtn" style="flex:1;" type="button">Download cropped image</button>
+          <button class="btn btn-danger" id="cropResetBtn" type="button">Reset</button>
         </div>
       </div>
   </div>

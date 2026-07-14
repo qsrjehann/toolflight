@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GST / VAT Calculator — Free Online | ToolFlight</title>
 <meta name="description" content="Free online GST and VAT calculator. Add or remove tax from any amount instantly, for any country's tax rate.">
+<link rel="icon" href="assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="canonical" href="https://toolflight.com/gst-calculator.html">
 
 <meta property="og:title" content="GST / VAT Calculator — Free Online | ToolFlight">
@@ -76,7 +78,7 @@
 
 <div class="container">
   <div class="row" style="margin:0 0 18px;">
-    <a href="calculators.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to Calculators</a>
+    <a href="calculators.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Calculators</a>
   </div>
 
   <div class="workspace">
@@ -91,7 +93,7 @@
       <input type="number" id="gstPercent" placeholder="e.g. 18" min="0" step="0.01">
       <div class="row">
         <button class="btn btn-primary" id="gstCalcBtn" style="flex:1;" type="button">Calculate</button>
-        <button class="btn btn-ghost" id="gstResetBtn" type="button">Reset</button>
+        <button class="btn btn-danger" id="gstResetBtn" type="button">Reset</button>
       </div>
       <div class="result-grid hidden" id="gstResultBox">
         <div class="result-stat"><div class="num" id="gstTaxAmount">0.00</div><div class="label">Tax Amount</div></div>

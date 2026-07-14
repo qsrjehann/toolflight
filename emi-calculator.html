@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EMI / Loan Calculator — Free Online | ToolFlight</title>
 <meta name="description" content="Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.">
+<link rel="icon" href="assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="canonical" href="https://toolflight.com/emi-calculator.html">
 
 <meta property="og:title" content="EMI / Loan Calculator — Free Online | ToolFlight">
@@ -76,7 +78,7 @@
 
 <div class="container">
   <div class="row" style="margin:0 0 18px;">
-    <a href="calculators.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to Calculators</a>
+    <a href="calculators.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Calculators</a>
   </div>
 
   <div class="workspace">
@@ -95,7 +97,7 @@
       </div>
       <div class="row">
         <button class="btn btn-primary" id="emiCalcBtn" style="flex:1;" type="button">Calculate EMI</button>
-        <button class="btn btn-ghost" id="emiResetBtn" type="button">Reset</button>
+        <button class="btn btn-danger" id="emiResetBtn" type="button">Reset</button>
       </div>
       <div class="result-grid hidden" id="emiResultBox">
         <div class="result-stat"><div class="num" id="emiMonthly">0.00</div><div class="label">Monthly EMI</div></div>

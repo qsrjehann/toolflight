@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QR Generator — Free Online | ToolFlight</title>
 <meta name="description" content="Free online QR code generator. Create a custom QR code with adjustable foreground/background colors, size, and PNG or SVG export.">
+<link rel="icon" href="assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="canonical" href="https://toolflight.com/qr-code-generator.html">
 
 <meta property="og:title" content="QR Generator — Free Online | ToolFlight">
@@ -76,7 +78,7 @@
 
 <div class="container">
   <div class="row" style="margin:0 0 18px;">
-    <a href="seo-tools.html" class="btn btn-ghost" style="text-decoration:none;flex:0;min-width:auto;">← Back to SEO Tools</a>
+    <a href="seo-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to SEO Tools</a>
   </div>
 
   <div class="workspace">
@@ -93,12 +95,12 @@
       </div>
       <div class="row">
         <button class="btn btn-primary" id="qrGenBtn" style="flex:1;" type="button">Generate code</button>
-        <button class="btn btn-ghost" id="qrClearBtn" type="button">Clear</button>
+        <button class="btn btn-danger" id="qrClearBtn" type="button">Clear</button>
       </div>
       <div class="viewfinder" id="qrViewfinder"><span class="placeholder-text">Your QR code will appear here</span></div>
       <div class="row hidden" id="qrDownloadRow">
-        <button class="btn btn-ghost" id="qrDownloadPngBtn" type="button">Download PNG</button>
-        <button class="btn btn-ghost" id="qrDownloadSvgBtn" type="button">Download SVG</button>
+        <button class="btn btn-success" id="qrDownloadPngBtn" type="button">Download PNG</button>
+        <button class="btn btn-success" id="qrDownloadSvgBtn" type="button">Download SVG</button>
       </div>
   </div>
 
