@@ -2950,8 +2950,40 @@ if (document.getElementById('pdfcDrop')){
   }
   function hidePdfcProgress(){ document.getElementById('pdfcProgressWrap').classList.add('hidden'); }
 
+  // Inflates raw zlib/FlateDecode bytes using the standard, documented Web
+  // Platform Compression Streams API — no pdf-lib internals involved. PDF's
+  // /FlateDecode filter uses standard zlib-wrapped DEFLATE data, which is
+  // exactly what DecompressionStream('deflate') is specified to decode
+  // (as distinct from 'deflate-raw' or 'gzip'). Returns null if the browser
+  // doesn't support it or the data fails to decompress, so callers can skip
+  // that image safely rather than fail.
+  async function inflateFlateBytes(bytes){
+    if (typeof DecompressionStream === 'undefined') return null;
+    try{
+      const ds = new DecompressionStream('deflate');
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const chunks = [];
+      const reader = ds.readable.getReader();
+      while (true){
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      let total = 0;
+      for (const c of chunks) total += c.length;
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks){ out.set(c, offset); offset += c.length; }
+      return out;
+    }catch(e){
+      return null;
+    }
+  }
+
   async function compressPdfImages(pdfDoc, level, onProgress){
-    const { PDFName, PDFDict, PDFRawStream } = PDFLib;
+    const { PDFName, PDFDict, PDFRawStream, PDFRef } = PDFLib;
     const maxDim = level === 'high' ? 1000 : level === 'medium' ? 1600 : 2400;
     const quality = level === 'high' ? 0.4 : level === 'medium' ? 0.6 : 0.82;
     const pages = pdfDoc.getPages();
@@ -2972,33 +3004,109 @@ if (document.getElementById('pdfcDrop')){
       if (!xObjects) continue;
 
       for (const key of xObjects.keys()){
+        const oldRef = xObjects.get(key);
         let obj;
-        try{ obj = pdfDoc.context.lookup(xObjects.get(key)); }catch(e){ continue; }
+        try{ obj = pdfDoc.context.lookup(oldRef); }catch(e){ continue; }
         if (!obj || !(obj instanceof PDFRawStream)) continue;
         const dict = obj.dict;
         const subtype = dict.get(PDFName.of('Subtype'));
         if (!subtype || subtype.toString() !== '/Image') continue;
         const filterEntry = dict.get(PDFName.of('Filter'));
         const filterName = filterEntry ? filterEntry.toString() : '';
-        if (!filterName.includes('DCTDecode')) { skipped++; continue; } // only re-encode JPEGs this pass — safest
 
-        try{
-          const sourceBlob = new Blob([obj.contents], { type: 'image/jpeg' });
-          const img = await loadImageFromFile(sourceBlob);
-          let w = img.naturalWidth, h = img.naturalHeight;
-          if (Math.max(w, h) > maxDim){ const sc = maxDim / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
-          const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const newBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
-          if (!newBlob) continue;
-          const newBytes = new Uint8Array(await newBlob.arrayBuffer());
-          if (newBytes.length >= obj.contents.length) continue; // never replace with something bigger
-          const embedded = await pdfDoc.embedJpg(newBytes);
-          xObjects.set(key, embedded.ref);
-          processed++;
-        }catch(e){ continue; } // skip any image that fails to decode/re-encode, never abort the whole file
-        await nextFrame();
+        if (filterName.includes('DCTDecode')){
+          try{
+            const sourceBlob = new Blob([obj.contents], { type: 'image/jpeg' });
+            const img = await loadImageFromFile(sourceBlob);
+            let w = img.naturalWidth, h = img.naturalHeight;
+            if (Math.max(w, h) > maxDim){ const sc = maxDim / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const newBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+            if (!newBlob) { skipped++; continue; }
+            const newBytes = new Uint8Array(await newBlob.arrayBuffer());
+            if (newBytes.length >= obj.contents.length) { skipped++; continue; } // never replace with something bigger
+            const embedded = await pdfDoc.embedJpg(newBytes);
+            xObjects.set(key, embedded.ref);
+            if (oldRef instanceof PDFRef){ pdfDoc.context.delete(oldRef); } // remove the now-orphaned original image bytes so the file actually shrinks (instanceof is robust against the minified bundle's mangled constructor names — a plain constructor.name check silently failed here)
+            processed++;
+          }catch(e){ skipped++; } // skip any image that fails to decode/re-encode, never abort the whole file
+          await nextFrame();
+          continue;
+        }
+
+        // FlateDecode (or no filter) raster images are extremely common — this is
+        // what every image ToolFlight's own Image to PDF tool produces, and what
+        // many scanners/PDF writers use instead of JPEG. The previous version of
+        // this tool skipped these entirely, which is the real reason compression
+        // often barely changed file size. Handle the common 8-bit DeviceRGB /
+        // DeviceGray case; anything more unusual (CMYK, Indexed, 16-bit, JPX,
+        // CCITT) is still safely skipped rather than risked. Decompression uses
+        // the standard, documented Web Platform Compression Streams API
+        // (DecompressionStream) — not any undocumented pdf-lib internal. Every
+        // pdf-lib call in this block (PDFName, PDFDict, PDFRawStream,
+        // context.lookup, embedJpg) is part of pdf-lib's documented public API.
+        if ((filterName.includes('FlateDecode') || !filterEntry) && typeof DecompressionStream !== 'undefined'){
+          try{
+            const bpcEntry = dict.get(PDFName.of('BitsPerComponent'));
+            const bitsPerComponent = bpcEntry ? Number(bpcEntry.toString()) : null;
+            if (bitsPerComponent !== 8) { skipped++; continue; }
+            const csEntry = dict.get(PDFName.of('ColorSpace'));
+            const csName = csEntry ? csEntry.toString() : '';
+            let channels = 0;
+            if (csName.includes('DeviceRGB')) channels = 3;
+            else if (csName.includes('DeviceGray') || csName.includes('CalGray')) channels = 1;
+            if (!channels) { skipped++; continue; }
+
+            const widthEntry = dict.get(PDFName.of('Width'));
+            const heightEntry = dict.get(PDFName.of('Height'));
+            const width = widthEntry ? Number(widthEntry.toString()) : 0;
+            const height = heightEntry ? Number(heightEntry.toString()) : 0;
+            if (!width || !height || width * height > 30000000) { skipped++; continue; }
+
+            const decoded = await inflateFlateBytes(obj.contents);
+            const expectedLen = width * height * channels;
+            if (!decoded || decoded.length < expectedLen) { skipped++; continue; }
+
+            const rawCanvas = document.createElement('canvas');
+            rawCanvas.width = width; rawCanvas.height = height;
+            const rawCtx = rawCanvas.getContext('2d');
+            const imgData = rawCtx.createImageData(width, height);
+            if (channels === 3){
+              for (let i = 0, j = 0; i < expectedLen; i += 3, j += 4){
+                imgData.data[j] = decoded[i]; imgData.data[j+1] = decoded[i+1]; imgData.data[j+2] = decoded[i+2]; imgData.data[j+3] = 255;
+              }
+            } else {
+              for (let i = 0, j = 0; i < expectedLen; i += 1, j += 4){
+                imgData.data[j] = decoded[i]; imgData.data[j+1] = decoded[i]; imgData.data[j+2] = decoded[i]; imgData.data[j+3] = 255;
+              }
+            }
+            rawCtx.putImageData(imgData, 0, 0);
+
+            let outCanvas = rawCanvas;
+            if (Math.max(width, height) > maxDim){
+              const sc = maxDim / Math.max(width, height);
+              const w2 = Math.round(width * sc), h2 = Math.round(height * sc);
+              const resized = document.createElement('canvas');
+              resized.width = w2; resized.height = h2;
+              resized.getContext('2d').drawImage(rawCanvas, 0, 0, w2, h2);
+              outCanvas = resized;
+            }
+            const newBlob = await new Promise((resolve) => outCanvas.toBlob(resolve, 'image/jpeg', quality));
+            if (!newBlob) { skipped++; continue; }
+            const newBytes = new Uint8Array(await newBlob.arrayBuffer());
+            if (newBytes.length >= obj.contents.length) { skipped++; continue; }
+            const embedded = await pdfDoc.embedJpg(newBytes);
+            xObjects.set(key, embedded.ref);
+            if (oldRef instanceof PDFRef){ pdfDoc.context.delete(oldRef); } // remove the now-orphaned original image bytes so the file actually shrinks (instanceof is robust against the minified bundle's mangled constructor names — a plain constructor.name check silently failed here)
+            processed++;
+          }catch(e){ skipped++; }
+          await nextFrame();
+          continue;
+        }
+
+        skipped++; // unsupported filter (CMYK/Indexed/JPX/CCITT/etc) — left untouched, never guessed at
       }
     }
     return { processed, skipped };
