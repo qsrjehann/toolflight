@@ -5511,6 +5511,503 @@ if (document.getElementById('ocrDrop')){
   };
 }
 
+/* ============ RESUME BUILDER + ATS CHECKER (resume-builder.html) ============
+   Two genuinely separate engines behind one set of tabs, both fully local:
+   1. Resume Builder: a plain data model rendered live into a styled preview,
+      exported to a real, selectable-text PDF via pdf-lib -- the same "no
+      rasterization" approach already used and disclosed for the Word to PDF
+      converter, reused here rather than duplicated with a screenshot-based
+      shortcut.
+   2. ATS Checker: genuinely rule-based analysis, explicitly NOT dressed up
+      as AI. It extracts text from an uploaded PDF (via PDF.js) or DOCX (via
+      mammoth.js) -- the same extraction libraries already integrated for the
+      PDF<->Word converter -- then runs a fixed, inspectable set of checks
+      (regex-based contact detection, heading-keyword matching, word-count
+      and bullet-density heuristics) and produces a transparent, explainable
+      score. Every point of the score maps to a specific, statable reason,
+      not a black box. */
+if (document.getElementById('resumeTabBuilder')){
+  const PDFJS_VER_RB = '4.5.136';
+
+  /* ---------- Shared tab switching ---------- */
+  function setResumeTab(tab){
+    document.getElementById('resumeTabBuilder').classList.toggle('active', tab === 'builder');
+    document.getElementById('resumeTabAts').classList.toggle('active', tab === 'ats');
+    document.getElementById('resumeBuilderPanel').classList.toggle('hidden', tab !== 'builder');
+    document.getElementById('atsCheckerPanel').classList.toggle('hidden', tab !== 'ats');
+  }
+  document.getElementById('resumeTabBuilder').onclick = () => setResumeTab('builder');
+  document.getElementById('resumeTabAts').onclick = () => setResumeTab('ats');
+
+  /* ================= RESUME BUILDER ================= */
+  const resumeData = {
+    personal: { name:'', phone:'', email:'', location:'', linkedin:'', portfolio:'' },
+    summary: '',
+    education: [], experience: [], projects: [], languages: [], certifications: [], references: [],
+    skills: [], achievements: [],
+    template: 'classic',
+  };
+  let resumeIdCounter = 0;
+  function nextResumeId(){ return 'r' + (resumeIdCounter++); }
+
+  const RESUME_FIELD_MAP = { name:'rbName', phone:'rbPhone', email:'rbEmail', location:'rbLocation', linkedin:'rbLinkedin', portfolio:'rbPortfolio' };
+  Object.entries(RESUME_FIELD_MAP).forEach(([key, id]) => {
+    document.getElementById(id).addEventListener('input', (e) => { resumeData.personal[key] = e.target.value; renderResumePreview(); });
+  });
+  document.getElementById('rbSummary').addEventListener('input', (e) => { resumeData.summary = e.target.value; renderResumePreview(); });
+  document.getElementById('rbSkills').addEventListener('input', (e) => {
+    resumeData.skills = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+    renderResumePreview();
+  });
+  document.getElementById('rbAchievements').addEventListener('input', (e) => {
+    resumeData.achievements = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+    renderResumePreview();
+  });
+
+  document.querySelectorAll('input[name="rbTemplate"]').forEach(radio => {
+    radio.addEventListener('change', (e) => { resumeData.template = e.target.value; renderResumePreview(); });
+  });
+
+  /* ---------- Repeatable sections (education, experience, projects, languages, certifications, references) ---------- */
+  const RESUME_SECTIONS = {
+    education: { arr: () => resumeData.education, fields: [
+      { key:'school', label:'School / University', type:'text' },
+      { key:'degree', label:'Degree', type:'text' },
+      { key:'field', label:'Field of Study', type:'text' },
+      { key:'startDate', label:'Start Date', type:'text' },
+      { key:'endDate', label:'End Date', type:'text' },
+      { key:'gpa', label:'GPA (optional)', type:'text' },
+    ]},
+    experience: { arr: () => resumeData.experience, fields: [
+      { key:'role', label:'Job Title', type:'text' },
+      { key:'company', label:'Company', type:'text' },
+      { key:'location', label:'Location', type:'text' },
+      { key:'startDate', label:'Start Date', type:'text' },
+      { key:'endDate', label:'End Date', type:'text' },
+      { key:'bullets', label:'Responsibilities / Achievements (one per line)', type:'textarea' },
+    ]},
+    projects: { arr: () => resumeData.projects, fields: [
+      { key:'name', label:'Project Name', type:'text' },
+      { key:'tech', label:'Technologies Used', type:'text' },
+      { key:'link', label:'Link (optional)', type:'text' },
+      { key:'description', label:'Description', type:'textarea' },
+    ]},
+    languages: { arr: () => resumeData.languages, fields: [
+      { key:'name', label:'Language', type:'text' },
+      { key:'level', label:'Proficiency', type:'text' },
+    ]},
+    certifications: { arr: () => resumeData.certifications, fields: [
+      { key:'name', label:'Certification Name', type:'text' },
+      { key:'issuer', label:'Issuing Organization', type:'text' },
+      { key:'date', label:'Date', type:'text' },
+    ]},
+    references: { arr: () => resumeData.references, fields: [
+      { key:'name', label:'Name', type:'text' },
+      { key:'relation', label:'Relationship / Title', type:'text' },
+      { key:'contact', label:'Contact Info', type:'text' },
+    ]},
+  };
+
+  function addResumeItem(sectionKey){
+    const item = { _id: nextResumeId() };
+    RESUME_SECTIONS[sectionKey].fields.forEach(f => { item[f.key] = ''; });
+    RESUME_SECTIONS[sectionKey].arr().push(item);
+    renderResumeSection(sectionKey);
+    renderResumePreview();
+  }
+  function removeResumeItem(sectionKey, id){
+    const arr = RESUME_SECTIONS[sectionKey].arr();
+    const idx = arr.findIndex(it => it._id === id);
+    if (idx > -1) arr.splice(idx, 1);
+    renderResumeSection(sectionKey);
+    renderResumePreview();
+  }
+
+  function renderResumeSection(sectionKey){
+    const listEl = document.getElementById('rbList_' + sectionKey);
+    const arr = RESUME_SECTIONS[sectionKey].arr();
+    const fields = RESUME_SECTIONS[sectionKey].fields;
+    listEl.innerHTML = '';
+    arr.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'resume-item-card';
+      card.draggable = true;
+      card.dataset.id = item._id;
+      const fieldsHtml = fields.map(f => {
+        const val = (item[f.key] || '').replace(/"/g, '&quot;');
+        const fid = `rb_${sectionKey}_${item._id}_${f.key}`;
+        if (f.type === 'textarea'){
+          return `<div class="resume-field-group"><label for="${fid}">${f.label}</label><textarea id="${fid}" rows="3" style="font-family:inherit;font-size:13px;padding:10px;border-radius:10px;border:1.5px solid var(--card-border);background:var(--bg1);color:var(--ink);resize:vertical;">${item[f.key] || ''}</textarea></div>`;
+        }
+        return `<div class="resume-field-group"><label for="${fid}">${f.label}</label><input type="text" id="${fid}" value="${val}"></div>`;
+      }).join('');
+      card.innerHTML = `
+        <div class="resume-item-card-head">
+          <span class="resume-item-drag-handle" aria-hidden="true">\u28ff\u28ff</span>
+          <span class="resume-item-title">Entry ${idx+1}</span>
+          <button class="btn btn-danger" type="button" data-remove="${item._id}" style="padding:6px 12px;font-size:12px;">Remove</button>
+        </div>
+        <div class="resume-form-grid resume-form-grid-full">${fieldsHtml}</div>
+      `;
+      card.querySelector('[data-remove]').onclick = () => removeResumeItem(sectionKey, item._id);
+      fields.forEach(f => {
+        const fid = `rb_${sectionKey}_${item._id}_${f.key}`;
+        card.querySelector('#' + fid).addEventListener('input', (e) => {
+          item[f.key] = e.target.value;
+          renderResumePreview();
+        });
+      });
+      listEl.appendChild(card);
+    });
+    enableDragReorder(listEl, arr, () => { renderResumeSection(sectionKey); renderResumePreview(); });
+  }
+
+  ['education','experience','projects','languages','certifications','references'].forEach(sectionKey => {
+    document.getElementById('rbAdd_' + sectionKey).onclick = () => addResumeItem(sectionKey);
+  });
+
+  /* ---------- Live preview ---------- */
+  function esc(s){ return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function renderResumePreview(){
+    const p = resumeData.personal;
+    const contactParts = [p.email, p.phone, p.location, p.linkedin, p.portfolio].filter(Boolean).map(esc);
+    let html = `<h1 class="resume-pv-name">${esc(p.name) || 'Your Name'}</h1>`;
+    html += `<div class="resume-pv-contact">${contactParts.map(c => `<span>${c}</span>`).join('')}</div>`;
+
+    if (resumeData.summary){
+      html += `<h2 class="resume-pv-heading">Summary</h2><div>${esc(resumeData.summary)}</div>`;
+    }
+    if (resumeData.experience.length){
+      html += `<h2 class="resume-pv-heading">Experience</h2>`;
+      resumeData.experience.forEach(e => {
+        const bullets = (e.bullets || '').split('\n').map(s => s.trim()).filter(Boolean);
+        html += `<div class="resume-pv-entry"><div class="resume-pv-entry-top"><span>${esc(e.role)}${e.company ? ' \u2014 ' + esc(e.company) : ''}</span><span>${esc(e.startDate)}${e.endDate ? ' \u2013 ' + esc(e.endDate) : ''}</span></div>`;
+        if (e.location) html += `<div class="resume-pv-entry-sub">${esc(e.location)}</div>`;
+        if (bullets.length) html += `<ul class="resume-pv-bullets">${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
+        html += `</div>`;
+      });
+    }
+    if (resumeData.education.length){
+      html += `<h2 class="resume-pv-heading">Education</h2>`;
+      resumeData.education.forEach(ed => {
+        html += `<div class="resume-pv-entry"><div class="resume-pv-entry-top"><span>${esc(ed.degree)}${ed.field ? ', ' + esc(ed.field) : ''}</span><span>${esc(ed.startDate)}${ed.endDate ? ' \u2013 ' + esc(ed.endDate) : ''}</span></div><div class="resume-pv-entry-sub">${esc(ed.school)}${ed.gpa ? ' \u00b7 GPA ' + esc(ed.gpa) : ''}</div></div>`;
+      });
+    }
+    if (resumeData.projects.length){
+      html += `<h2 class="resume-pv-heading">Projects</h2>`;
+      resumeData.projects.forEach(pr => {
+        html += `<div class="resume-pv-entry"><div class="resume-pv-entry-top"><span>${esc(pr.name)}</span><span>${esc(pr.tech)}</span></div>`;
+        if (pr.description) html += `<div>${esc(pr.description)}</div>`;
+        html += `</div>`;
+      });
+    }
+    if (resumeData.skills.length){
+      html += `<h2 class="resume-pv-heading">Skills</h2><div class="resume-pv-skills-list">${resumeData.skills.map(s => `<span class="resume-pv-skill-chip">${esc(s)}</span>`).join('')}</div>`;
+    }
+    if (resumeData.languages.length){
+      html += `<h2 class="resume-pv-heading">Languages</h2><div>${resumeData.languages.map(l => `${esc(l.name)}${l.level ? ' (' + esc(l.level) + ')' : ''}`).join(', ')}</div>`;
+    }
+    if (resumeData.certifications.length){
+      html += `<h2 class="resume-pv-heading">Certifications</h2>`;
+      resumeData.certifications.forEach(c => {
+        html += `<div class="resume-pv-entry"><div class="resume-pv-entry-top"><span>${esc(c.name)}${c.issuer ? ' \u2014 ' + esc(c.issuer) : ''}</span><span>${esc(c.date)}</span></div></div>`;
+      });
+    }
+    if (resumeData.achievements.length){
+      html += `<h2 class="resume-pv-heading">Achievements</h2><ul class="resume-pv-bullets">${resumeData.achievements.map(a => `<li>${esc(a)}</li>`).join('')}</ul>`;
+    }
+    if (resumeData.references.length){
+      html += `<h2 class="resume-pv-heading">References</h2>`;
+      resumeData.references.forEach(r => {
+        html += `<div class="resume-pv-entry"><div class="resume-pv-entry-top"><span>${esc(r.name)}</span><span>${esc(r.contact)}</span></div>${r.relation ? `<div class="resume-pv-entry-sub">${esc(r.relation)}</div>` : ''}</div>`;
+      });
+    }
+
+    const preview = document.getElementById('resumePreview');
+    preview.className = 'resume-preview resume-tpl-' + resumeData.template;
+    preview.innerHTML = html;
+  }
+  renderResumePreview();
+
+  /* ---------- PDF export: real selectable text, not a screenshot (same principle as Word to PDF) ---------- */
+  document.getElementById('rbDownloadPdfBtn').onclick = async () => {
+    const btn = document.getElementById('rbDownloadPdfBtn');
+    setLoading(btn, true);
+    try{
+      const { PDFDocument, StandardFonts, rgb } = PDFLib;
+      const pdfDoc = await PDFDocument.create();
+      const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+
+      const PAGE_W = 612, PAGE_H = 792, MARGIN = 50;
+      let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      let cursorY = PAGE_H - MARGIN;
+      const maxWidth = PAGE_W - MARGIN*2;
+
+      function newPage(){ page = pdfDoc.addPage([PAGE_W, PAGE_H]); cursorY = PAGE_H - MARGIN; }
+      function ensureSpace(h){ if (cursorY - h < MARGIN) newPage(); }
+      function wrapText(text, font, size){
+        const words = text.split(/\s+/).filter(Boolean);
+        const lines = []; let current = '';
+        for (const w of words){
+          const test = current ? current + ' ' + w : w;
+          if (font.widthOfTextAtSize(test, size) > maxWidth && current){ lines.push(current); current = w; }
+          else current = test;
+        }
+        if (current) lines.push(current);
+        return lines;
+      }
+      function drawLine(text, { size=10.5, font=fontRegular, indent=0, color=rgb(0.08,0.08,0.1), spacingAfter=3 } = {}){
+        if (!text.trim()){ cursorY -= spacingAfter; return; }
+        const lineHeight = size * 1.32;
+        wrapText(text, font, size - (indent?1:0)).forEach(line => {
+          ensureSpace(lineHeight);
+          page.drawText(line, { x: MARGIN + indent, y: cursorY - size, size, font, color });
+          cursorY -= lineHeight;
+        });
+        cursorY -= spacingAfter;
+      }
+      function drawHeading(text){
+        ensureSpace(24);
+        cursorY -= 6;
+        page.drawText(text.toUpperCase(), { x: MARGIN, y: cursorY - 12, size: 11.5, font: fontBold, color: rgb(0.05,0.05,0.06) });
+        cursorY -= 16;
+        page.drawLine({ start:{x:MARGIN,y:cursorY+4}, end:{x:PAGE_W-MARGIN,y:cursorY+4}, thickness:0.75, color: rgb(0.75,0.75,0.75) });
+        cursorY -= 6;
+      }
+
+      const p = resumeData.personal;
+      page.drawText(p.name || 'Your Name', { x: MARGIN, y: cursorY - 20, size: 19, font: fontBold });
+      cursorY -= 28;
+      const contactLine = [p.email, p.phone, p.location, p.linkedin, p.portfolio].filter(Boolean).join('   \u00b7   ');
+      if (contactLine) drawLine(contactLine, { size: 9.5, color: rgb(0.3,0.3,0.32), spacingAfter: 10 });
+      else cursorY -= 10;
+
+      if (resumeData.summary){ drawHeading('Summary'); drawLine(resumeData.summary, { spacingAfter: 8 }); }
+
+      if (resumeData.experience.length){
+        drawHeading('Experience');
+        resumeData.experience.forEach(e => {
+          const title = [e.role, e.company].filter(Boolean).join(' \u2014 ');
+          const dates = [e.startDate, e.endDate].filter(Boolean).join(' \u2013 ');
+          drawLine(title + (dates ? '   (' + dates + ')' : ''), { font: fontBold, spacingAfter: 1 });
+          if (e.location) drawLine(e.location, { font: fontItalic, size: 9.5, color: rgb(0.35,0.35,0.37), spacingAfter: 2 });
+          (e.bullets || '').split('\n').map(s => s.trim()).filter(Boolean).forEach(b => drawLine('\u2022  ' + b, { indent: 10, spacingAfter: 2 }));
+          cursorY -= 6;
+        });
+      }
+      if (resumeData.education.length){
+        drawHeading('Education');
+        resumeData.education.forEach(ed => {
+          const title = [ed.degree, ed.field].filter(Boolean).join(', ');
+          const dates = [ed.startDate, ed.endDate].filter(Boolean).join(' \u2013 ');
+          drawLine(title + (dates ? '   (' + dates + ')' : ''), { font: fontBold, spacingAfter: 1 });
+          drawLine([ed.school, ed.gpa ? 'GPA ' + ed.gpa : ''].filter(Boolean).join(' \u00b7 '), { size: 9.5, color: rgb(0.35,0.35,0.37), spacingAfter: 6 });
+        });
+      }
+      if (resumeData.projects.length){
+        drawHeading('Projects');
+        resumeData.projects.forEach(pr => {
+          drawLine([pr.name, pr.tech].filter(Boolean).join('   \u2014   '), { font: fontBold, spacingAfter: 1 });
+          if (pr.description) drawLine(pr.description, { spacingAfter: 6 });
+        });
+      }
+      if (resumeData.skills.length){ drawHeading('Skills'); drawLine(resumeData.skills.join('   \u00b7   '), { spacingAfter: 8 }); }
+      if (resumeData.languages.length){ drawHeading('Languages'); drawLine(resumeData.languages.map(l => l.name + (l.level ? ' (' + l.level + ')' : '')).join(', '), { spacingAfter: 8 }); }
+      if (resumeData.certifications.length){
+        drawHeading('Certifications');
+        resumeData.certifications.forEach(c => drawLine([c.name, c.issuer, c.date].filter(Boolean).join('   \u2014   '), { spacingAfter: 3 }));
+      }
+      if (resumeData.achievements.length){
+        drawHeading('Achievements');
+        resumeData.achievements.forEach(a => drawLine('\u2022  ' + a, { indent: 10, spacingAfter: 2 }));
+      }
+      if (resumeData.references.length){
+        drawHeading('References');
+        resumeData.references.forEach(r => drawLine([r.name, r.relation, r.contact].filter(Boolean).join('   \u2014   '), { spacingAfter: 3 }));
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), (p.name ? p.name.replace(/\s+/g,'-') : 'resume') + '.pdf');
+      toast('Resume PDF downloaded.');
+    }catch(err){
+      toast('Could not generate the PDF: ' + ((err && err.message) || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Download PDF');
+    }
+  };
+
+  document.getElementById('rbPrintBtn').onclick = () => window.print();
+
+  /* ================= ATS RESUME CHECKER ================= */
+  let atsFile = null;
+  let pdfjsLoadPromiseAts = null;
+  let mammothLoadPromiseAts = null;
+
+  async function ensurePdfJsAts(){
+    if (!pdfjsLoadPromiseAts){
+      pdfjsLoadPromiseAts = (async () => {
+        const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_RB}/build/pdf.min.mjs`);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_RB}/build/pdf.worker.min.mjs`;
+        return pdfjsLib;
+      })().catch((err) => { pdfjsLoadPromiseAts = null; throw err; });
+    }
+    return pdfjsLoadPromiseAts;
+  }
+  async function ensureMammothAts(){
+    if (!mammothLoadPromiseAts){
+      mammothLoadPromiseAts = (async () => {
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/mammoth@1.12.0/mammoth.browser.min.js');
+        if (!window.mammoth) throw new Error('Document reader failed to load.');
+        return window.mammoth;
+      })().catch((err) => { mammothLoadPromiseAts = null; throw err; });
+    }
+    return mammothLoadPromiseAts;
+  }
+
+  setupDropZone('atsDrop','atsInput', async (files) => {
+    const f = files.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.docx'));
+    if (!f){ if (files.length>0) toast('Please select a PDF or DOCX file.', 'err'); return; }
+    if (f.size > 20*1024*1024){ toast(`That file is ${fmtBytes(f.size)} — the limit is 20MB.`, 'err'); return; }
+    atsFile = f;
+    document.getElementById('atsFileInfo').classList.remove('hidden');
+    document.getElementById('atsFileName').textContent = f.name;
+    document.getElementById('atsFileSize').textContent = fmtBytes(f.size);
+    document.getElementById('atsAnalyzeBtn').disabled = false;
+    document.getElementById('atsResultWrap').classList.add('hidden');
+  });
+
+  async function extractAtsText(file){
+    if (file.type === 'application/pdf'){
+      const pdfjsLib = await ensurePdfJsAts();
+      const bytes = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      let text = '';
+      for (let p = 1; p <= pdf.numPages; p++){
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+        page.cleanup && page.cleanup();
+      }
+      return text;
+    } else {
+      const mammoth = await ensureMammothAts();
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return result.value;
+    }
+  }
+
+  /* ---------- Rule-based analysis (explicitly not AI) ---------- */
+  const ATS_SECTION_KEYWORDS = {
+    'Experience': ['experience','employment','work history'],
+    'Education': ['education','academic'],
+    'Skills': ['skills','technical skills','competencies'],
+    'Summary': ['summary','objective','profile'],
+    'Projects': ['projects'],
+    'Certifications': ['certifications','certificates','licenses'],
+  };
+  const ATS_ACTION_VERBS = ['managed','led','developed','built','created','designed','implemented','improved','increased','reduced','achieved','launched','coordinated','analyzed','optimized','delivered','collaborated','trained','negotiated','automated'];
+
+  function analyzeResumeText(text){
+    const lower = text.toLowerCase();
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const emailFound = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text);
+    const phoneFound = /(\+?\d[\d\s().-]{8,}\d)/.test(text);
+    const bulletCount = (text.match(/^[\s]*[\u2022\u25CF\-\*]/gm) || []).length;
+
+    const foundSections = [], missingSections = [];
+    Object.entries(ATS_SECTION_KEYWORDS).forEach(([label, keywords]) => {
+      const found = keywords.some(k => lower.includes(k));
+      (found ? foundSections : missingSections).push(label);
+    });
+
+    const verbsFound = ATS_ACTION_VERBS.filter(v => new RegExp('\\b' + v + '\\b', 'i').test(text));
+    const hasQuantifiedResults = /\d+%|\$\d|\b\d+\+?\s*(years?|users?|clients?|projects?)\b/i.test(text);
+
+    // Transparent, additive scoring -- every point maps to a stated reason.
+    let score = 0;
+    const strengths = [], weaknesses = [], suggestions = [];
+
+    if (emailFound){ score += 12; strengths.push('Email address detected.'); } else { weaknesses.push('No email address detected.'); suggestions.push('Add a professional email address near the top of your resume.'); }
+    if (phoneFound){ score += 10; strengths.push('Phone number detected.'); } else { weaknesses.push('No phone number detected.'); suggestions.push('Add a phone number so recruiters can reach you directly.'); }
+
+    const sectionScore = Math.round((foundSections.length / Object.keys(ATS_SECTION_KEYWORDS).length) * 30);
+    score += sectionScore;
+    if (foundSections.length) strengths.push(`Recognized section heading(s): ${foundSections.join(', ')}.`);
+    if (missingSections.length) suggestions.push(`Consider adding a clearly labeled section for: ${missingSections.join(', ')}.`);
+
+    if (wordCount >= 300 && wordCount <= 900){ score += 15; strengths.push(`Resume length (${wordCount} words) is in a typical, ATS-friendly range.`); }
+    else if (wordCount < 300){ weaknesses.push(`Resume is quite short (${wordCount} words) — it may look incomplete to an ATS or recruiter.`); suggestions.push('Add more detail to your experience and skills sections.'); }
+    else { weaknesses.push(`Resume is quite long (${wordCount} words) — many ATS systems and recruiters favor a more concise 1-2 page resume.`); suggestions.push('Consider trimming less relevant details to tighten your resume.'); }
+
+    if (bulletCount >= 3){ score += 10; strengths.push('Uses bullet points to organize experience — this is easier for both ATS parsers and human readers to scan.'); }
+    else { weaknesses.push('Few or no bullet points detected.'); suggestions.push('Use bullet points (•) to list responsibilities and achievements — this is more scannable than paragraphs.'); }
+
+    if (verbsFound.length >= 5){ score += 13; strengths.push(`Strong use of action verbs (e.g. ${verbsFound.slice(0,4).join(', ')}).`); }
+    else if (verbsFound.length > 0){ score += 6; suggestions.push('Use more strong action verbs (e.g. "led", "developed", "improved") to describe your accomplishments.'); }
+    else { weaknesses.push('Few action verbs detected.'); suggestions.push('Start bullet points with strong action verbs instead of passive phrases like "responsible for".'); }
+
+    if (hasQuantifiedResults){ score += 10; strengths.push('Includes quantified results (numbers, percentages, or dollar amounts) — this is one of the strongest signals of resume quality.'); }
+    else { weaknesses.push('No quantified results detected (e.g. percentages, dollar amounts, team sizes).'); suggestions.push('Add specific numbers where possible — e.g. "increased sales by 20%" is far stronger than "increased sales".'); }
+
+    score = Math.max(0, Math.min(100, score));
+
+    return { score, wordCount, emailFound, phoneFound, bulletCount, foundSections, missingSections, verbsFound, hasQuantifiedResults, strengths, weaknesses, suggestions };
+  }
+
+  document.getElementById('atsAnalyzeBtn').onclick = async () => {
+    if (!atsFile) return;
+    const btn = document.getElementById('atsAnalyzeBtn');
+    setLoading(btn, true);
+    const progressWrap = document.getElementById('atsProgressWrap');
+    progressWrap.classList.remove('hidden');
+    try{
+      const text = await extractAtsText(atsFile);
+      if (!text.trim()){
+        toast('No extractable text was found in this file. It may be a scanned image without a text layer.', 'err');
+        return;
+      }
+      const result = analyzeResumeText(text);
+      renderAtsResult(result);
+      document.getElementById('atsResultWrap').classList.remove('hidden');
+      toast('Analysis complete.');
+    }catch(err){
+      toast('Could not analyze this file: ' + ((err && err.message) || 'please try a different file.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Analyze Resume');
+      progressWrap.classList.add('hidden');
+    }
+  };
+
+  function renderAtsResult(r){
+    const scoreEl = document.getElementById('atsScoreNum');
+    scoreEl.textContent = r.score;
+    scoreEl.style.color = r.score >= 75 ? 'var(--ok-solid)' : r.score >= 50 ? 'var(--warn-solid)' : 'var(--err-solid)';
+    document.getElementById('atsScoreLabel').textContent = r.score >= 75 ? 'Strong — likely to parse well in most ATS systems.' : r.score >= 50 ? 'Moderate — some real improvements available.' : 'Needs work — see suggestions below.';
+
+    function fillList(id, items, iconColor){
+      const el = document.getElementById(id);
+      el.innerHTML = items.length ? items.map(i => `<li><span class="ats-icon" style="color:${iconColor};">\u25CF</span>${esc(i)}</li>`).join('') : '<li style="color:var(--ink-soft);">None found.</li>';
+    }
+    fillList('atsStrengthsList', r.strengths, 'var(--ok-solid)');
+    fillList('atsWeaknessesList', r.weaknesses, 'var(--err-solid)');
+    fillList('atsSuggestionsList', r.suggestions, 'var(--accent1-solid)');
+    fillList('atsMissingSectionsList', r.missingSections.length ? r.missingSections : [], 'var(--warn-solid)');
+    if (!r.missingSections.length) document.getElementById('atsMissingSectionsList').innerHTML = '<li style="color:var(--ink-soft);">No commonly-expected sections appear to be missing.</li>';
+  }
+
+  document.getElementById('atsAnotherBtn').onclick = () => {
+    atsFile = null;
+    document.getElementById('atsFileInfo').classList.add('hidden');
+    document.getElementById('atsResultWrap').classList.add('hidden');
+    document.getElementById('atsInput').value = '';
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
