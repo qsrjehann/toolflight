@@ -144,6 +144,23 @@ function loadScriptOnce(src){
     document.head.appendChild(s);
   });
 }
+// Shared ONNX Runtime Web loader (MIT, Microsoft) — used by Magic Eraser and
+// AI Image Upscaler. Promoted to a shared top-level helper once a second tool
+// needed it, matching the same pattern as loadScriptOnce/loadImageFromFile.
+const ORT_VERSION = '1.17.3';
+let ortLoadPromise = null;
+async function ensureOrt(){
+  if (window.ort) return window.ort;
+  if (!ortLoadPromise){
+    ortLoadPromise = (async () => {
+      await loadScriptOnce(`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort.min.js`);
+      if (!window.ort) throw new Error('ONNX Runtime failed to initialize.');
+      window.ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+      return window.ort;
+    })().catch((err) => { ortLoadPromise = null; throw err; });
+  }
+  return ortLoadPromise;
+}
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3603,7 +3620,6 @@ if (document.getElementById('gkwForm')){
    honest limitations of this approach (fixed 512x512 model input, first-use
    download size). */
 if (document.getElementById('meDrop')){
-  const ORT_VERSION = '1.17.3';
   const LAMA_MODEL_URL = 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx';
 
   let meOriginalImg = null;      // full-resolution source <img>
@@ -3616,20 +3632,6 @@ if (document.getElementById('meDrop')){
   let meBrushSize = 40, meBrushSoftness = 60;
   let meIsDrawing = false;
   let meSession = null;
-  let ortLoadPromise = null;
-
-  async function ensureOrt(){
-    if (window.ort) return window.ort;
-    if (!ortLoadPromise){
-      ortLoadPromise = (async () => {
-        await loadScriptOnce(`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort.min.js`);
-        if (!window.ort) throw new Error('ONNX Runtime failed to initialize.');
-        window.ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
-        return window.ort;
-      })().catch((err) => { ortLoadPromise = null; throw err; });
-    }
-    return ortLoadPromise;
-  }
 
   async function ensureModel(onProgress){
     if (meSession) return meSession;
@@ -5016,6 +5018,261 @@ if (document.getElementById('pwDrop')){
     onProgress(100, 'Done.');
     return new Blob([pdfBytes], { type: 'application/pdf' });
   }
+}
+
+/* ============ AI IMAGE UPSCALER (ai-image-upscaler.html) ============
+   Real AI, not a canvas resize dressed up as one: UpscalerJS (MIT), a
+   TensorFlow.js-based library built specifically for in-browser super-
+   resolution, running an ESRGAN-family model (Apache 2.0-licensed weights,
+   trained via the image-super-resolution project). Model tier defaults to
+   "esrgan-slim" -- explicitly the tier UpscalerJS's own maintainers document
+   as "the fastest available ESRGAN models, intended to run in a browser."
+   The larger "esrgan-thick" tier exists but its own docs state it's "best
+   suited to a Node.js environment with a GPU... significant latency" in a
+   browser, so it is intentionally NOT the default here -- offered only as an
+   opt-in "Higher quality (slower)" choice, not the automatic pick. 8x scale
+   is not offered at all: UpscalerJS's own model docs state the 8x model
+   "does not work reliably in a browser," so this isn't a guess -- it's
+   passing along the library authors' own documented limitation rather than
+   silently shipping something known to be unreliable. */
+if (document.getElementById('upsDrop')){
+  const TFJS_VERSION = '4.20.0';
+  const UPSCALER_VERSION = '1.0.0';
+  const UPS_MAX_DIM = 1600; // safe input-size ceiling to avoid exhausting browser memory during inference
+
+  let upsOriginalImg = null, upsOriginalCanvas = null;
+  let upsResultCanvas = null;
+  let upsCancelled = false;
+  let tfjsLoadPromise = null;
+  const upsModelPromises = {}; // cached per (tier, scale) combo so re-runs don't re-download
+
+  async function ensureTfjs(){
+    if (window.tf) return window.tf;
+    if (!tfjsLoadPromise){
+      tfjsLoadPromise = (async () => {
+        await loadScriptOnce(`https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@${TFJS_VERSION}/dist/tf.min.js`);
+        if (!window.tf) throw new Error('TensorFlow.js failed to load.');
+        return window.tf;
+      })().catch((err) => { tfjsLoadPromise = null; throw err; });
+    }
+    return tfjsLoadPromise;
+  }
+
+  async function ensureUpscaler(tier, scale){
+    const key = tier + '-' + scale;
+    if (!upsModelPromises[key]){
+      upsModelPromises[key] = (async () => {
+        await ensureTfjs();
+        const pkg = tier === 'thick' ? 'esrgan-thick' : 'esrgan-slim';
+        await loadScriptOnce(`https://cdn.jsdelivr.net/npm/@upscalerjs/${pkg}@latest/dist/umd/${scale}x.min.js`);
+        await loadScriptOnce(`https://cdn.jsdelivr.net/npm/upscaler@${UPSCALER_VERSION}/dist/browser/umd/upscaler.min.js`);
+        const globalName = tier === 'thick' ? 'ESRGANThick' : 'ESRGANSlim';
+        const modelNs = window[globalName];
+        if (!modelNs || !window.Upscaler) throw new Error('Upscaling model failed to load.');
+        const modelConfig = modelNs[`${scale}x`] || modelNs[Object.keys(modelNs)[0]];
+        return new window.Upscaler({ model: modelConfig });
+      })().catch((err) => { delete upsModelPromises[key]; throw err; });
+    }
+    return upsModelPromises[key];
+  }
+
+  /* ---------- Upload: drag/drop, browse, paste ---------- */
+  setupDropZone('upsDrop','upsInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    await loadUpsImage(f);
+  });
+  document.addEventListener('paste', async (e) => {
+    const stage = document.getElementById('upsStage');
+    const drop = document.getElementById('upsDrop');
+    if ((!stage || stage.classList.contains('hidden')) && (!drop || drop.offsetParent === null)) return;
+    const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (!imgItem) return;
+    const file = imgItem.getAsFile();
+    if (file) { e.preventDefault(); await loadUpsImage(file); toast('Image pasted.'); }
+  });
+
+  async function loadUpsImage(f){
+    if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
+    try{
+      upsOriginalImg = await loadImageFromFile(f);
+    }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+
+    const ow = upsOriginalImg.naturalWidth, oh = upsOriginalImg.naturalHeight;
+    if (ow > UPS_MAX_DIM || oh > UPS_MAX_DIM){
+      toast(`This image is ${ow}\u00d7${oh} — please use an image no larger than ${UPS_MAX_DIM}px on its longest side. Very large images can crash the browser tab during AI processing.`, 'err');
+      upsOriginalImg = null;
+      return;
+    }
+
+    upsOriginalCanvas = document.createElement('canvas');
+    upsOriginalCanvas.width = ow; upsOriginalCanvas.height = oh;
+    upsOriginalCanvas.getContext('2d').drawImage(upsOriginalImg, 0, 0); // re-drawn via canvas, stripping EXIF same as every other ToolFlight image tool
+
+    upsResultCanvas = null;
+    document.getElementById('upsStage').classList.remove('hidden');
+    document.getElementById('upsPreviewCanvas').width = ow;
+    document.getElementById('upsPreviewCanvas').height = oh;
+    document.getElementById('upsPreviewCanvas').getContext('2d').drawImage(upsOriginalCanvas, 0, 0);
+    document.getElementById('upsDims').textContent = `${ow} \u00d7 ${oh}px`;
+    document.getElementById('upsUpscaleBtn').disabled = false;
+    document.getElementById('upsDownloadRow').classList.add('hidden');
+    document.getElementById('upsCompareWrap').classList.add('hidden');
+    setUpsZoom(100);
+    toast('Image loaded.');
+  }
+
+  /* ---------- Zoom / pan (same proven pattern used elsewhere in ToolFlight) ---------- */
+  const upsStageWrap = document.getElementById('upsStageWrap');
+  function setUpsZoom(pct){
+    const canvas = document.getElementById('upsPreviewCanvas');
+    if (!canvas || !canvas.width) return;
+    canvas.style.width = Math.round(canvas.width * (pct/100)) + 'px';
+    canvas.style.height = Math.round(canvas.height * (pct/100)) + 'px';
+    const sel = document.getElementById('upsZoomSelect');
+    if (sel) sel.value = String(pct);
+  }
+  document.getElementById('upsZoomSelect').onchange = (e) => setUpsZoom(+e.target.value);
+  document.getElementById('upsFitScreenBtn').onclick = () => {
+    const canvas = document.getElementById('upsPreviewCanvas');
+    const wrapWidth = upsStageWrap.clientWidth - 20;
+    setUpsZoom(Math.max(10, Math.min(100, Math.round((wrapWidth / canvas.width) * 100))));
+  };
+  upsStageWrap.addEventListener('wheel', (e) => {
+    if (!upsOriginalCanvas) return;
+    e.preventDefault();
+    const sel = document.getElementById('upsZoomSelect');
+    const current = sel ? +sel.value : 100;
+    setUpsZoom(Math.max(25, Math.min(400, current + (e.deltaY < 0 ? 15 : -15))));
+  }, { passive: false });
+
+  document.getElementById('upsResetBtn').onclick = () => {
+    upsOriginalImg = null; upsOriginalCanvas = null; upsResultCanvas = null;
+    document.getElementById('upsStage').classList.add('hidden');
+    document.getElementById('upsInput').value = '';
+  };
+
+  /* ---------- Upscale ---------- */
+  document.getElementById('upsCancelBtn').onclick = () => { upsCancelled = true; };
+
+  document.getElementById('upsUpscaleBtn').onclick = async () => {
+    if (!upsOriginalCanvas) return;
+    upsCancelled = false;
+    const btn = document.getElementById('upsUpscaleBtn');
+    setLoading(btn, true);
+    document.getElementById('upsCancelBtn').classList.remove('hidden');
+    const progressWrap = document.getElementById('upsProgressWrap');
+    const progressLabel = document.getElementById('upsProgressLabel');
+    const progressFill = document.getElementById('upsProgressFill');
+    progressWrap.classList.remove('hidden');
+    progressFill.style.width = '4%';
+    const startTime = Date.now();
+
+    try{
+      const scale = +document.querySelector('input[name="upsScale"]:checked').value;
+      const tier = document.getElementById('upsHighQuality').checked ? 'thick' : 'slim';
+
+      progressLabel.textContent = 'Downloading AI model (one-time, cached after)\u2026';
+      const upscaler = await ensureUpscaler(tier, scale);
+      if (upsCancelled) throw { cancelled: true };
+      progressFill.style.width = '25%';
+
+      const ow = upsOriginalCanvas.width, oh = upsOriginalCanvas.height;
+      const estSeconds = Math.max(2, Math.round((ow*oh) / 220000) * (tier === 'thick' ? 2.2 : 1));
+      progressLabel.textContent = `Running AI upscale \u2014 est. ${estSeconds}s\u2026`;
+      await nextFrame();
+
+      // Patch-based processing (UpscalerJS's built-in tiling) keeps memory
+      // bounded on larger images instead of running the whole image through
+      // the network at once.
+      const resultSrc = await upscaler.upscale(upsOriginalCanvas, {
+        patchSize: 64,
+        padding: 6,
+        progress: (rate) => {
+          if (upsCancelled) return;
+          progressFill.style.width = (25 + Math.round(rate*70)) + '%';
+        },
+      });
+      if (upsCancelled) throw { cancelled: true };
+
+      progressLabel.textContent = 'Finalizing\u2026';
+      const resultImg = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Could not read the upscaled result.'));
+        img.src = resultSrc;
+      });
+      upsResultCanvas = document.createElement('canvas');
+      upsResultCanvas.width = resultImg.naturalWidth;
+      upsResultCanvas.height = resultImg.naturalHeight;
+      upsResultCanvas.getContext('2d').drawImage(resultImg, 0, 0);
+
+      document.getElementById('upsPreviewCanvas').width = upsResultCanvas.width;
+      document.getElementById('upsPreviewCanvas').height = upsResultCanvas.height;
+      document.getElementById('upsPreviewCanvas').getContext('2d').drawImage(upsResultCanvas, 0, 0);
+      document.getElementById('upsDims').textContent = `${ow}\u00d7${oh}px \u2192 ${upsResultCanvas.width}\u00d7${upsResultCanvas.height}px`;
+      setUpsZoom(Math.min(100, Math.round((upsStageWrap.clientWidth-20)/upsResultCanvas.width*100)));
+
+      showUpsCompare();
+      document.getElementById('upsDownloadRow').classList.remove('hidden');
+      progressFill.style.width = '100%';
+      const elapsed = ((Date.now()-startTime)/1000).toFixed(1);
+      toast(`Upscaled in ${elapsed}s.`);
+    }catch(err){
+      if (err && err.cancelled){ toast('Cancelled.'); }
+      else{
+        toast('Upscaling failed: ' + ((err && err.message) || 'please try a smaller image or a different browser.'), 'err');
+      }
+    }finally{
+      setLoading(btn, false, 'AI Upscale');
+      document.getElementById('upsCancelBtn').classList.add('hidden');
+      setTimeout(() => progressWrap.classList.add('hidden'), 900);
+    }
+  };
+
+  /* ---------- Before / After compare (same proven pattern used elsewhere) ---------- */
+  function showUpsCompare(){
+    if (!upsResultCanvas || !upsOriginalCanvas) return;
+    document.getElementById('upsCompareBefore').src = upsOriginalCanvas.toDataURL('image/png');
+    document.getElementById('upsCompareAfter').src = upsResultCanvas.toDataURL('image/png');
+    document.getElementById('upsCompareWrap').classList.remove('hidden');
+    document.getElementById('upsCompareAfterWrap').style.width = '50%';
+    document.getElementById('upsCompareHandle').style.left = '50%';
+  }
+  const upsCompareHandle = document.getElementById('upsCompareHandle');
+  const upsCompareWrap = document.getElementById('upsCompareWrap');
+  function setUpsComparePct(clientX){
+    const rect = upsCompareWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    document.getElementById('upsCompareAfterWrap').style.width = pct + '%';
+    upsCompareHandle.style.left = pct + '%';
+  }
+  upsCompareHandle.addEventListener('pointerdown', (e) => {
+    upsCompareHandle.setPointerCapture(e.pointerId);
+    function move(ev){ setUpsComparePct(ev.clientX); }
+    function up(){ upsCompareHandle.removeEventListener('pointermove', move); upsCompareHandle.removeEventListener('pointerup', up); }
+    upsCompareHandle.addEventListener('pointermove', move);
+    upsCompareHandle.addEventListener('pointerup', up);
+  });
+
+  /* ---------- Export ---------- */
+  document.getElementById('upsQuality').addEventListener('input', (e) => {
+    document.getElementById('upsQualityVal').textContent = e.target.value;
+  });
+  ['upsDownloadPngBtn','upsDownloadJpgBtn','upsDownloadWebpBtn'].forEach(id => {
+    document.getElementById(id).onclick = () => {
+      if (!upsResultCanvas){ toast('Upscale an image first.', 'err'); return; }
+      const format = id.includes('Png') ? 'png' : id.includes('Jpg') ? 'jpeg' : 'webp';
+      const ext = format === 'jpeg' ? 'jpg' : format;
+      const quality = +document.getElementById('upsQuality').value / 100;
+      upsResultCanvas.toBlob((blob) => {
+        if (!blob){ toast('This browser could not encode that format — try PNG instead.', 'err'); return; }
+        downloadBlob(blob, 'upscaled-image.' + ext);
+      }, 'image/' + format, format === 'png' ? undefined : quality);
+    };
+  });
+  document.getElementById('upsConvertAnotherBtn').onclick = () => { document.getElementById('upsResetBtn').click(); };
 }
 
 /* ============ FAQ (index.html) ============ */
