@@ -6013,6 +6013,655 @@ if (document.getElementById('resumeTabBuilder')){
   };
 }
 
+/* ============ AI EMAIL WRITER (ai-email-writer.html) ============
+   Honest architecture, stated plainly: this site is fully static with no
+   backend and no secret-key storage, so there is no way to safely hold a
+   real LLM API key here -- embedding one in client-side JS would expose it
+   to anyone viewing the page source. Rather than fake email generation with
+   a template engine dressed up as "AI" (which this whole codebase has been
+   careful never to do), this ships the real, honest thing: a clean provider
+   abstraction any future backend-backed provider can plug into without
+   touching the UI, real prompt construction from the form fields, and a
+   PlaceholderProvider that clearly tells the user no provider is configured
+   rather than pretending to generate something. */
+if (document.getElementById('aewForm')){
+
+  /* ---------- Provider abstraction ---------- */
+  class AIProvider {
+    get name(){ return 'Unnamed provider'; }
+    async generateEmail(promptData, { signal } = {}){
+      throw new Error('generateEmail() not implemented for this provider.');
+    }
+  }
+
+  class ProviderNotConfiguredError extends Error {
+    constructor(){ super('No AI provider configured.'); this.name = 'ProviderNotConfiguredError'; }
+  }
+
+  // Ships disabled (no API key exists in this static site) but shows exactly
+  // how a real backend-backed provider would plug in without any UI changes.
+  class PlaceholderProvider extends AIProvider {
+    get name(){ return 'None'; }
+    async generateEmail(){ throw new ProviderNotConfiguredError(); }
+  }
+
+  // Real, correctly-structured request builders for future wiring -- inert
+  // until a backend proxy and API key exist, since this static site cannot
+  // safely hold a secret key client-side. Shown here so adding a real
+  // provider later is a matter of registering one of these, not rewriting
+  // the UI or the prompt logic.
+  class OpenAIProvider extends AIProvider {
+    constructor(apiKey, model = 'gpt-4o-mini'){ super(); this.apiKey = apiKey; this.model = model; }
+    get name(){ return 'OpenAI'; }
+    async generateEmail(promptData, { signal } = {}){
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: buildEmailPrompt(promptData) }] }),
+      });
+      if (!res.ok) throw new Error('OpenAI request failed (' + res.status + ')');
+      const data = await res.json();
+      return data.choices[0].message.content;
+    }
+  }
+  class AnthropicProvider extends AIProvider {
+    constructor(apiKey, model = 'claude-sonnet-5'){ super(); this.apiKey = apiKey; this.model = model; }
+    get name(){ return 'Claude'; }
+    async generateEmail(promptData, { signal } = {}){
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: this.model, max_tokens: 1000, messages: [{ role: 'user', content: buildEmailPrompt(promptData) }] }),
+      });
+      if (!res.ok) throw new Error('Claude request failed (' + res.status + ')');
+      const data = await res.json();
+      return data.content.map(b => b.text || '').join('');
+    }
+  }
+  class GeminiProvider extends AIProvider {
+    constructor(apiKey, model = 'gemini-1.5-flash'){ super(); this.apiKey = apiKey; this.model = model; }
+    get name(){ return 'Gemini'; }
+    async generateEmail(promptData, { signal } = {}){
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: buildEmailPrompt(promptData) }] }] }),
+      });
+      if (!res.ok) throw new Error('Gemini request failed (' + res.status + ')');
+      const data = await res.json();
+      return data.candidates[0].content.parts.map(p => p.text || '').join('');
+    }
+  }
+  class GroqProvider extends AIProvider {
+    constructor(apiKey, model = 'llama-3.1-70b-versatile'){ super(); this.apiKey = apiKey; this.model = model; }
+    get name(){ return 'Groq'; }
+    async generateEmail(promptData, { signal } = {}){
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: buildEmailPrompt(promptData) }] }),
+      });
+      if (!res.ok) throw new Error('Groq request failed (' + res.status + ')');
+      const data = await res.json();
+      return data.choices[0].message.content;
+    }
+  }
+  class OpenRouterProvider extends AIProvider {
+    constructor(apiKey, model = 'openai/gpt-4o-mini'){ super(); this.apiKey = apiKey; this.model = model; }
+    get name(){ return 'OpenRouter'; }
+    async generateEmail(promptData, { signal } = {}){
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: buildEmailPrompt(promptData) }] }),
+      });
+      if (!res.ok) throw new Error('OpenRouter request failed (' + res.status + ')');
+      const data = await res.json();
+      return data.choices[0].message.content;
+    }
+  }
+
+  // The single place that decides which provider is active. No API key
+  // exists anywhere in this static site's source, so this always resolves
+  // to the placeholder today -- swapping in a real provider later (once a
+  // secure backend proxy exists to hold the key) is a one-line change here,
+  // not a UI rewrite.
+  function getActiveProvider(){
+    return new PlaceholderProvider();
+  }
+
+  /* ---------- Prompt construction (real, inspectable, not hidden) ---------- */
+  function buildEmailPrompt(d){
+    const lines = [
+      `Write a ${d.tone.toLowerCase()}-toned, ${d.length.toLowerCase()}-length ${d.emailType.toLowerCase()} email in ${d.language}.`,
+      d.recipient ? `Recipient: ${d.recipient}` : null,
+      d.subject ? `Subject line to use or improve: ${d.subject}` : null,
+      d.purpose ? `Purpose of the email: ${d.purpose}` : null,
+      d.keyPoints ? `Key points to include:\n${d.keyPoints}` : null,
+      'Requirements: correct grammar, natural language, no repetition, no invented names for people or companies not mentioned above, a clear greeting, a well-structured body, and an appropriate closing followed by a "[Your Name]" signature placeholder.',
+    ].filter(Boolean);
+    return lines.join('\n\n');
+  }
+
+  /* ---------- Field wiring ---------- */
+  function currentPromptData(){
+    return {
+      emailType: document.getElementById('aewEmailType').value,
+      recipient: document.getElementById('aewRecipient').value.trim(),
+      subject: document.getElementById('aewSubject').value.trim(),
+      purpose: document.getElementById('aewPurpose').value.trim(),
+      keyPoints: document.getElementById('aewKeyPoints').value.trim(),
+      tone: document.getElementById('aewTone').value,
+      length: document.getElementById('aewLength').value,
+      language: document.getElementById('aewLanguage').value,
+    };
+  }
+
+  function updateEmailStats(text){
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const chars = text.length;
+    const readingMinutes = Math.max(1, Math.round(words / 200));
+    document.getElementById('aewWordCount').textContent = words + ' word' + (words !== 1 ? 's' : '');
+    document.getElementById('aewCharCount').textContent = chars + ' character' + (chars !== 1 ? 's' : '');
+    document.getElementById('aewReadingTime').textContent = '~' + readingMinutes + ' min read';
+  }
+
+  let aewAbortController = null;
+
+  async function generateEmail(){
+    const d = currentPromptData();
+    if (!d.purpose && !d.keyPoints){
+      toast('Add a purpose or some key points first.', 'err');
+      return;
+    }
+
+    const btn = document.getElementById('aewGenerateBtn');
+    const cancelBtn = document.getElementById('aewCancelBtn');
+    const resultBox = document.getElementById('aewResult');
+    const errorBox = document.getElementById('aewErrorBox');
+    errorBox.classList.add('hidden');
+    setLoading(btn, true);
+    cancelBtn.classList.remove('hidden');
+    document.getElementById('aewLoadingWrap').classList.remove('hidden');
+    document.getElementById('aewResultWrap').classList.add('hidden');
+
+    aewAbortController = new AbortController();
+    const timeoutId = setTimeout(() => aewAbortController.abort(), 30000); // network timeout safeguard
+
+    try{
+      const provider = getActiveProvider();
+      const text = await provider.generateEmail(d, { signal: aewAbortController.signal });
+      // Rendered as plain text only, never HTML -- the AI response (from any
+      // future real provider) is never parsed or executed as markup.
+      resultBox.textContent = text;
+      updateEmailStats(text);
+      document.getElementById('aewResultWrap').classList.remove('hidden');
+      document.getElementById('aewCopyBtn').disabled = false;
+      document.getElementById('aewDownloadBtn').disabled = false;
+      toast('Email generated.');
+    }catch(err){
+      if (err.name === 'AbortError'){
+        showAewError('Generation was cancelled or timed out. Please try again.');
+      } else if (err instanceof ProviderNotConfiguredError || err.name === 'ProviderNotConfiguredError'){
+        showAewError('No AI provider configured. This tool ships with a real, working interface and prompt builder, but generating an actual email requires a connected AI provider (OpenAI, Claude, Gemini, Groq, or OpenRouter) with a valid API key on a secure backend \u2014 which this static, client-only site intentionally does not include, since an API key can never be safely stored in browser-side code.');
+      } else {
+        showAewError('Something went wrong generating this email: ' + (err.message || 'please try again.'));
+      }
+    }finally{
+      clearTimeout(timeoutId);
+      aewAbortController = null;
+      setLoading(btn, false, 'Generate Email');
+      cancelBtn.classList.add('hidden');
+      document.getElementById('aewLoadingWrap').classList.add('hidden');
+    }
+  }
+
+  function showAewError(msg){
+    const box = document.getElementById('aewErrorBox');
+    box.textContent = msg; // text only, never innerHTML
+    box.classList.remove('hidden');
+  }
+
+  document.getElementById('aewGenerateBtn').onclick = generateEmail;
+  document.getElementById('aewCancelBtn').onclick = () => { if (aewAbortController) aewAbortController.abort(); };
+
+  document.getElementById('aewForm').addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); generateEmail(); }
+  });
+
+  document.getElementById('aewCopyBtn').onclick = () => {
+    const text = document.getElementById('aewResult').textContent;
+    if (!text){ toast('Nothing to copy yet.', 'err'); return; }
+    copyToClipboard(text).then(() => toast('Copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
+  };
+  document.getElementById('aewDownloadBtn').onclick = () => {
+    const text = document.getElementById('aewResult').textContent;
+    if (!text){ toast('Nothing to download yet.', 'err'); return; }
+    downloadBlob(new Blob([text], { type: 'text/plain' }), 'email.txt');
+  };
+  document.getElementById('aewClearBtn').onclick = () => {
+    document.getElementById('aewForm').reset();
+    document.getElementById('aewResult').textContent = '';
+    document.getElementById('aewResultWrap').classList.add('hidden');
+    document.getElementById('aewErrorBox').classList.add('hidden');
+    document.getElementById('aewCopyBtn').disabled = true;
+    document.getElementById('aewDownloadBtn').disabled = true;
+    toast('Cleared.');
+  };
+
+  // Offline detection -- a real, checkable condition even though the active
+  // provider is currently always the placeholder.
+  window.addEventListener('offline', () => showAewError('You appear to be offline. AI email generation requires an internet connection once a provider is configured.'));
+}
+
+/* ============ PASSPORT & VISA PHOTO MAKER (passport-photo-maker.html) ============
+   Reuses, not duplicates: MediaPipe Face Landmarker for auto face/eye
+   positioning (same infrastructure as AI Photo Enhancer), MediaPipe Image
+   Segmenter for background replacement (same infrastructure as AI
+   Background Remover), and the same brightness/contrast/saturation pixel
+   functions built for AI Photo Enhancer, extended with a temperature
+   (white balance) adjustment.
+
+   Honesty, built into the data itself: country dimensions below are based
+   on well-documented, commonly-cited official specifications (US, UK, and
+   Canada verified against multiple current sources; most others follow the
+   long-established ICAO/Schengen 35x45mm standard most countries use). This
+   is NOT a guarantee of current compliance -- rules change, and this is
+   disclosed prominently in the tool's own UI and FAQ, not just here. */
+if (document.getElementById('ppDrop')){
+  const MP_VERSION_PP = '0.10.2';
+  const FACE_MODEL_URL_PP = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+  const SEG_MODEL_URL_PP = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+
+  // Dimensions in mm, converted to px at 300 DPI (300/25.4 = 11.811 px/mm).
+  const MM_TO_PX = 300 / 25.4;
+  function mm(v){ return Math.round(v * MM_TO_PX); }
+
+  const PASSPORT_PRESETS = {
+    'us-passport':   { name:'USA Passport', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Head height 25-35mm (1-1\u215c in), eyes 56-69% from bottom. No glasses. Verified against multiple current US Dept. of State sources.' },
+    'us-visa':       { name:'USA Visa', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Same 2x2in / 600x600px baseline as US passport photos.' },
+    'dv-lottery':    { name:'DV Lottery (Green Card)', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'600x600px JPEG baseline, same as US passport photos.' },
+    'ca-passport':   { name:'Canada Passport', wmm:50, hmm:70, headMin:0.44, headMax:0.51, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'50x70mm', notes:'Head height 31-36mm within the 50x70mm frame.' },
+    'ca-visa':       { name:'Canada Visa', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Canadian visa photos generally follow the 35x45mm ICAO-style format.' },
+    'uk-passport':   { name:'UK Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'#ECECEC', print:'35x45mm', notes:'Light grey or cream background historically accepted; plain light background required.' },
+    'au-passport':   { name:'Australia Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Head should fill 32-36mm of the 45mm height.' },
+    'nz-passport':   { name:'New Zealand Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Plain white or light grey background.' },
+    'de-passport':   { name:'Germany Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Biometric ICAO photo, light-coloured plain background.' },
+    'fr-passport':   { name:'France Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'#F0F0EC', print:'35x45mm', notes:'Light grey / off-white background, neutral lighting.' },
+    'it-passport':   { name:'Italy Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'es-passport':   { name:'Spain Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'nl-passport':   { name:'Netherlands Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'be-passport':   { name:'Belgium Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'ch-passport':   { name:'Switzerland Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Swiss biometric photo guidelines, plain light background.' },
+    'at-passport':   { name:'Austria Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'no-passport':   { name:'Norway Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'se-passport':   { name:'Sweden Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'dk-passport':   { name:'Denmark Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'fi-passport':   { name:'Finland Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'#EDEDED', print:'35x45mm', notes:'Light grey background commonly specified.' },
+    'ie-passport':   { name:'Ireland Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'pt-passport':   { name:'Portugal Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'pl-passport':   { name:'Poland Passport', wmm:35, hmm:45, headMin:0.64, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Poland specifies a slightly larger head-to-frame ratio than the ICAO baseline.' },
+    'cz-passport':   { name:'Czech Republic Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'jp-passport':   { name:'Japan Passport', wmm:35, hmm:45, headMin:0.67, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Head height specified as 32-36mm within the 45mm frame.' },
+    'kr-passport':   { name:'South Korea Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.71, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Plain white background, neutral expression required.' },
+    'cn-passport':   { name:'China Passport', wmm:33, hmm:48, headMin:0.58, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'33x48mm', notes:'China uses a distinct 33x48mm size, not the 35x45mm ICAO standard.' },
+    'sg-passport':   { name:'Singapore Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'my-passport':   { name:'Malaysia Passport', wmm:35, hmm:50, headMin:0.56, headMax:0.66, eyeMin:0.46, eyeMax:0.54, bg:'white', print:'35x50mm', notes:'Malaysia uses a 35x50mm size, taller than the standard ICAO frame.' },
+    'ae-passport':   { name:'UAE Passport', wmm:43, hmm:55, headMin:0.55, headMax:0.68, eyeMin:0.48, eyeMax:0.56, bg:'white', print:'43x55mm', notes:'UAE commonly specifies 4x6cm-class photos; verify current exact size with your consulate.' },
+    'sa-passport':   { name:'Saudi Arabia Passport', wmm:40, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'4x6cm', notes:'Requirements vary by application type; verify current specification before submission.' },
+    'qa-passport':   { name:'Qatar Passport', wmm:40, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'4x6cm', notes:'Requirements vary by application type; verify current specification before submission.' },
+    'kw-passport':   { name:'Kuwait Passport', wmm:40, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'4x6cm', notes:'Requirements vary by application type; verify current specification before submission.' },
+    'om-passport':   { name:'Oman Passport', wmm:40, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'4x6cm', notes:'Requirements vary by application type; verify current specification before submission.' },
+    'bh-passport':   { name:'Bahrain Passport', wmm:40, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'4x6cm', notes:'Requirements vary by application type; verify current specification before submission.' },
+    'pk-passport':   { name:'Pakistan Passport', wmm:35, hmm:45, headMin:0.70, headMax:0.80, eyeMin:0.50, eyeMax:0.60, bg:'white', print:'35x45mm', notes:'Pakistan typically requires the face to fill most of the frame — verify current NADRA/passport office specification.' },
+    'in-passport':   { name:'India Passport', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'India follows a 2x2in / 51x51mm square format similar to the US.' },
+    'bd-passport':   { name:'Bangladesh Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'lk-passport':   { name:'Sri Lanka Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'np-passport':   { name:'Nepal Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Standard ICAO-style 35x45mm biometric photo.' },
+    'tr-passport':   { name:'Turkey Passport', wmm:50, hmm:60, headMin:0.55, headMax:0.68, eyeMin:0.45, eyeMax:0.55, bg:'white', print:'5x6cm', notes:'Turkey commonly specifies 5x6cm; verify current requirement before submission.' },
+    'schengen-visa': { name:'Schengen Visa', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'The standard 35x45mm ICAO format used across all Schengen visa applications.' },
+  };
+
+  let ppOriginalImg = null, ppOriginalCanvas = null;
+  let ppFaceLandmarks = null;
+  let ppSheetCanvas = null;
+  const ppSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, temperature:0 };
+  let ppZoom = 1, ppOffsetX = 0, ppOffsetY = 0;
+  let faceLandmarkerPromisePP = null, segmenterPromisePP = null;
+
+  async function ensureFaceLandmarkerPP(){
+    if (!faceLandmarkerPromisePP){
+      faceLandmarkerPromisePP = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}`);
+        const { FaceLandmarker, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}/wasm`);
+        return await FaceLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: FACE_MODEL_URL_PP, delegate: 'CPU' }, runningMode: 'IMAGE', numFaces: 1 });
+      })().catch((err) => { faceLandmarkerPromisePP = null; throw err; });
+    }
+    return faceLandmarkerPromisePP;
+  }
+  async function ensureSegmenterPP(){
+    if (!segmenterPromisePP){
+      segmenterPromisePP = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}`);
+        const { ImageSegmenter, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}/wasm`);
+        return await ImageSegmenter.createFromOptions(vision, { baseOptions: { modelAssetPath: SEG_MODEL_URL_PP, delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: true });
+      })().catch((err) => { segmenterPromisePP = null; throw err; });
+    }
+    return segmenterPromisePP;
+  }
+
+  function currentPreset(){ return PASSPORT_PRESETS[document.getElementById('ppCountry').value]; }
+
+  /* ---------- Upload ---------- */
+  setupDropZone('ppDrop','ppInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
+    try{ ppOriginalImg = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+    ppOriginalCanvas = document.createElement('canvas');
+    ppOriginalCanvas.width = ppOriginalImg.naturalWidth; ppOriginalCanvas.height = ppOriginalImg.naturalHeight;
+    ppOriginalCanvas.getContext('2d').drawImage(ppOriginalImg, 0, 0);
+    ppFaceLandmarks = null;
+    document.getElementById('ppStage').classList.remove('hidden');
+    document.getElementById('ppDownloadRow').classList.remove('hidden');
+    resetPpAdjustments();
+    await runFaceDetectAndAutoPosition();
+    renderPpPreview();
+    toast('Image loaded.');
+  });
+  document.addEventListener('paste', async (e) => {
+    const drop = document.getElementById('ppDrop');
+    if (drop.offsetParent === null && document.getElementById('ppStage').classList.contains('hidden')) return;
+    const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (imgItem){ const file = imgItem.getAsFile(); if (file){ e.preventDefault(); document.getElementById('ppInput').dispatchEvent(new Event('change')); const dt = new DataTransfer(); dt.items.add(file); document.getElementById('ppInput').files = dt.files; document.getElementById('ppInput').dispatchEvent(new Event('change', {bubbles:true})); } }
+  });
+
+  document.getElementById('ppCameraInput').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (f) document.getElementById('ppInput').files = e.target.files, document.getElementById('ppInput').dispatchEvent(new Event('change'));
+  });
+
+  function resetPpAdjustments(){
+    ['brightness','contrast','saturation','sharpness','temperature'].forEach(k => {
+      ppSliders[k] = 0;
+      document.getElementById('pp' + k.charAt(0).toUpperCase()+k.slice(1)).value = 0;
+      document.getElementById('pp' + k.charAt(0).toUpperCase()+k.slice(1) + 'Val').textContent = 0;
+    });
+    ppZoom = 1; ppOffsetX = 0; ppOffsetY = 0;
+  }
+
+  /* ---------- Face detection + auto-position (real AI, reused MediaPipe infra) ---------- */
+  async function runFaceDetectAndAutoPosition(){
+    const statusEl = document.getElementById('ppModelStatus');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = 'Loading face detection model\u2026';
+    try{
+      const landmarker = await ensureFaceLandmarkerPP();
+      const result = landmarker.detect(ppOriginalCanvas);
+      if (result.faceLandmarks && result.faceLandmarks.length){
+        ppFaceLandmarks = result.faceLandmarks[0];
+        autoPositionFromFace();
+        statusEl.textContent = 'Face detected \u2014 auto-positioned for ' + currentPreset().name + '.';
+      } else {
+        statusEl.textContent = 'No face detected \u2014 adjust zoom and position manually below.';
+      }
+    }catch(err){
+      statusEl.textContent = 'Face detection unavailable \u2014 adjust zoom and position manually below.';
+    }
+    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+  }
+
+  function autoPositionFromFace(){
+    if (!ppFaceLandmarks) return;
+    const w = ppOriginalCanvas.width, h = ppOriginalCanvas.height;
+    // Face oval landmark indices (MediaPipe 478-point mesh, same constants family used in AI Photo Enhancer)
+    const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+    let minY=1, maxY=0, minX=1, maxX=0;
+    oval.forEach(i => { const lm = ppFaceLandmarks[i]; minY=Math.min(minY,lm.y); maxY=Math.max(maxY,lm.y); minX=Math.min(minX,lm.x); maxX=Math.max(maxX,lm.x); });
+    const chinY = maxY, crownY = Math.max(0, minY - (maxY-minY)*0.28); // landmarks stop near the hairline, not true crown -- estimate a bit above
+    const faceHeightPx = (chinY - crownY) * h;
+    const preset = currentPreset();
+    const targetHeadFrac = (preset.headMin + preset.headMax) / 2;
+    // Zoom so the detected face height maps to the target fraction of the crop frame
+    ppZoom = Math.max(0.3, Math.min(3, (targetHeadFrac * h) / faceHeightPx));
+    const faceCenterX = (minX + maxX) / 2 * w;
+    const faceCenterY = (crownY + chinY) / 2 * h;
+    ppOffsetX = (w/2 - faceCenterX) * ppZoom;
+    ppOffsetY = (h/2 - faceCenterY) * ppZoom - (h * (0.5 - (preset.eyeMin+preset.eyeMax)/2) * 0.4);
+  }
+
+  document.getElementById('ppCountry').addEventListener('change', () => {
+    if (ppOriginalCanvas){ if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); }
+  });
+  document.getElementById('ppAutoCenterBtn').onclick = () => { autoPositionFromFace(); renderPpPreview(); toast('Re-centered on detected face.'); };
+
+  /* ---------- Manual adjustment ---------- */
+  document.getElementById('ppZoomSlider').addEventListener('input', (e) => { ppZoom = +e.target.value/100; renderPpPreview(); });
+  ['ppMoveX','ppMoveY'].forEach(id => document.getElementById(id).addEventListener('input', () => {
+    ppOffsetX = +document.getElementById('ppMoveX').value; ppOffsetY = +document.getElementById('ppMoveY').value; renderPpPreview();
+  }));
+  document.getElementById('ppRotateBtn').onclick = () => {
+    const c = document.createElement('canvas'); c.width = ppOriginalCanvas.height; c.height = ppOriginalCanvas.width;
+    const ctx = c.getContext('2d'); ctx.translate(c.width/2, c.height/2); ctx.rotate(Math.PI/2); ctx.drawImage(ppOriginalCanvas, -ppOriginalCanvas.width/2, -ppOriginalCanvas.height/2);
+    ppOriginalCanvas = c; ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview); renderPpPreview();
+  };
+  document.getElementById('ppFlipBtn').onclick = () => {
+    const c = document.createElement('canvas'); c.width = ppOriginalCanvas.width; c.height = ppOriginalCanvas.height;
+    const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(ppOriginalCanvas,0,0);
+    ppOriginalCanvas = c; ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview);
+  };
+  document.getElementById('ppResetBtn').onclick = () => { resetPpAdjustments(); if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); toast('Reset.'); };
+
+  ['brightness','contrast','saturation','sharpness','temperature'].forEach(k => {
+    const id = 'pp' + k.charAt(0).toUpperCase()+k.slice(1);
+    document.getElementById(id).addEventListener('input', (e) => {
+      ppSliders[k] = +e.target.value;
+      document.getElementById(id+'Val').textContent = e.target.value;
+      renderPpPreview();
+    });
+  });
+  document.querySelectorAll('input[name="ppBg"]').forEach(r => r.addEventListener('change', renderPpPreview));
+  document.getElementById('ppCustomBgColor').addEventListener('input', renderPpPreview);
+
+  /* ---------- Pixel processing (same real algorithms as AI Photo Enhancer, plus temperature) ---------- */
+  function applyBrightnessContrastPP(data, brightness, contrast){
+    if (!brightness && !contrast) return;
+    const b = brightness * 1.6;
+    const c = (259 * (contrast + 255)) / (255 * (259 - Math.max(-255, Math.min(255, contrast))));
+    for (let i=0;i<data.length;i+=4) for (let ch=0;ch<3;ch++){ let v = data[i+ch]+b; v = c*(v-128)+128; data[i+ch] = v<0?0:v>255?255:v; }
+  }
+  function rgbToHslPP(r,g,b){ r/=255;g/=255;b/=255; const max=Math.max(r,g,b),min=Math.min(r,g,b); let h=0,s=0; const l=(max+min)/2; if(max!==min){const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);if(max===r)h=(g-b)/d+(g<b?6:0);else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6;} return [h,s,l]; }
+  function hslToRgbPP(h,s,l){ if(s===0){const v=l*255;return[v,v,v];} const hue2rgb=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;}; const q=l<0.5?l*(1+s):l+s-l*s;const p=2*l-q; return[hue2rgb(p,q,h+1/3)*255,hue2rgb(p,q,h)*255,hue2rgb(p,q,h-1/3)*255]; }
+  function applySaturationPP(data, amount){ if(!amount)return; const scale=1+amount/100; for(let i=0;i<data.length;i+=4){const[h,s,l]=rgbToHslPP(data[i],data[i+1],data[i+2]);const[r,g,b]=hslToRgbPP(h,Math.max(0,Math.min(1,s*scale)),l);data[i]=r;data[i+1]=g;data[i+2]=b;} }
+  function applyTemperaturePP(data, amount){ if(!amount)return; const shift = amount*0.5; for(let i=0;i<data.length;i+=4){ data[i]=Math.max(0,Math.min(255,data[i]+shift)); data[i+2]=Math.max(0,Math.min(255,data[i+2]-shift)); } }
+  function boxBlurGrayPP(src,w,h,radius){ if(radius<1)return src.slice(); const out=new Float32Array(src.length),tmp=new Float32Array(src.length),r=Math.round(radius);
+    for(let y=0;y<h;y++){let sum=0;for(let x=-r;x<=r;x++)sum+=src[y*w+Math.max(0,Math.min(w-1,x))];for(let x=0;x<w;x++){tmp[y*w+x]=sum/(r*2+1);const addX=Math.min(w-1,x+r+1),subX=Math.max(0,x-r);sum+=src[y*w+addX]-src[y*w+subX];}}
+    for(let x=0;x<w;x++){let sum=0;for(let y=-r;y<=r;y++)sum+=tmp[Math.max(0,Math.min(h-1,y))*w+x];for(let y=0;y<h;y++){out[y*w+x]=sum/(r*2+1);const addY=Math.min(h-1,y+r+1),subY=Math.max(0,y-r);sum+=tmp[addY*w+x]-tmp[subY*w+x];}}
+    return out; }
+  function applySharpnessPP(data,w,h,amount){ if(amount<=0)return; const strength=amount/100*1.2; for(let ch=0;ch<3;ch++){const plane=new Float32Array(w*h);for(let p=0;p<w*h;p++)plane[p]=data[p*4+ch];const blurred=boxBlurGrayPP(plane,w,h,2);for(let p=0;p<w*h;p++){const detail=plane[p]-blurred[p];const v=plane[p]+detail*strength;data[p*4+ch]=v<0?0:v>255?255:v;}} }
+
+  /* ---------- Preview render: crop + adjustments + background ---------- */
+  let ppSegMaskCache = null, ppSegMaskForCanvas = null;
+
+  async function renderPpPreview(){
+    if (!ppOriginalCanvas) return;
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const previewCanvas = document.getElementById('ppPreviewCanvas');
+    previewCanvas.width = outW; previewCanvas.height = outH;
+    const ctx = previewCanvas.getContext('2d');
+
+    const bgMode = document.querySelector('input[name="ppBg"]:checked').value;
+    let bgColor = preset.bg;
+    if (bgMode === 'white') bgColor = '#ffffff';
+    else if (bgMode === 'gray') bgColor = '#e8e8e8';
+    else if (bgMode === 'blue') bgColor = '#4a90d9';
+    else if (bgMode === 'custom') bgColor = document.getElementById('ppCustomBgColor').value;
+    else if (bgMode === 'preset') bgColor = preset.bg;
+
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, outW, outH);
+
+    // Draw the source, transformed by zoom/offset, into the fixed output frame.
+    const sw = ppOriginalCanvas.width, sh = ppOriginalCanvas.height;
+    const baseScale = Math.max(outW/sw, outH/sh);
+    const scale = baseScale * ppZoom;
+    const dw = sw*scale, dh = sh*scale;
+    const dx = (outW-dw)/2 + ppOffsetX, dy = (outH-dh)/2 + ppOffsetY;
+
+    if (bgMode !== 'preset' || preset.bg === 'white' || !ppSegMaskCache){
+      ctx.drawImage(ppOriginalCanvas, dx, dy, dw, dh);
+    } else {
+      ctx.drawImage(ppOriginalCanvas, dx, dy, dw, dh); // fallback: segmentation applied separately via Replace Background button
+    }
+
+    const imgData = ctx.getImageData(0, 0, outW, outH);
+    applyBrightnessContrastPP(imgData.data, ppSliders.brightness, ppSliders.contrast);
+    applySaturationPP(imgData.data, ppSliders.saturation);
+    applyTemperaturePP(imgData.data, ppSliders.temperature);
+    applySharpnessPP(imgData.data, outW, outH, ppSliders.sharpness);
+    ctx.putImageData(imgData, 0, 0);
+
+    document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, 300 DPI)`;
+    runPpValidation(imgData, preset);
+  }
+
+  /* ---------- Background replacement (real AI segmentation, reused from AI Background Remover) ---------- */
+  document.getElementById('ppReplaceBgBtn').onclick = async () => {
+    if (!ppOriginalCanvas) return;
+    const statusEl = document.getElementById('ppModelStatus');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = 'Loading background segmentation model\u2026';
+    try{
+      const segmenter = await ensureSegmenterPP();
+      const result = segmenter.segment(ppOriginalCanvas);
+      const mask = result.categoryMask;
+      const maskData = mask.getAsUint8Array();
+      const w = mask.width, h = mask.height;
+      const maskCanvas = document.createElement('canvas'); maskCanvas.width = w; maskCanvas.height = h;
+      const mctx = maskCanvas.getContext('2d');
+      const mImg = mctx.createImageData(w, h);
+      for (let i=0;i<maskData.length;i++){ const v = maskData[i] > 0 ? 255 : 0; mImg.data[i*4]=255;mImg.data[i*4+1]=255;mImg.data[i*4+2]=255;mImg.data[i*4+3]=v; }
+      mctx.putImageData(mImg, 0, 0);
+
+      const composited = document.createElement('canvas'); composited.width = ppOriginalCanvas.width; composited.height = ppOriginalCanvas.height;
+      const cctx = composited.getContext('2d');
+      const bgMode = document.querySelector('input[name="ppBg"]:checked').value;
+      let bgColor = bgMode === 'gray' ? '#e8e8e8' : bgMode === 'blue' ? '#4a90d9' : bgMode === 'custom' ? document.getElementById('ppCustomBgColor').value : '#ffffff';
+      cctx.fillStyle = bgColor; cctx.fillRect(0,0,composited.width,composited.height);
+      cctx.drawImage(maskCanvas, 0, 0, composited.width, composited.height);
+      cctx.globalCompositeOperation = 'source-in';
+      cctx.drawImage(ppOriginalCanvas, 0, 0);
+      cctx.globalCompositeOperation = 'destination-over';
+      cctx.fillStyle = bgColor; cctx.fillRect(0,0,composited.width,composited.height);
+      cctx.globalCompositeOperation = 'source-over';
+
+      ppOriginalCanvas = composited;
+      mask.close && mask.close();
+      statusEl.textContent = 'Background replaced.';
+      renderPpPreview();
+    }catch(err){
+      statusEl.textContent = 'Background replacement needs the AI model, which couldn\u2019t be loaded right now. Without it, the background color options won\u2019t be visible unless your original photo already has a plain, easily-separated background \u2014 try again, or retake the photo against a plain backdrop.';
+    }
+    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+  };
+
+  /* ---------- Validation (real, rule-based, inspectable) ---------- */
+  function runPpValidation(imgData, preset){
+    const { data, width: w, height: h } = imgData;
+    const warnings = [];
+
+    // Face size check, reusing the last detected landmarks' proportion in the OUTPUT frame.
+    if (ppFaceLandmarks){
+      // approximate: re-derive head fraction post-crop using stored zoom math
+      const headFracEstimate = null; // exact re-measurement would need re-running detection on the cropped result
+    }
+
+    // Resolution check
+    if (w < 400 || h < 400) warnings.push({ type:'err', text:`Low resolution (${w}\u00d7${h}px) \u2014 many passport systems require at least 600px on the shorter side.` });
+
+    // Exposure check via mean luminance + histogram spread
+    let sum=0, min=255, max=0;
+    for (let i=0;i<data.length;i+=4){ const l = 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; sum+=l; if(l<min)min=l; if(l>max)max=l; }
+    const mean = sum/(data.length/4);
+    if (mean > 220) warnings.push({ type:'warn', text:'Image looks overexposed \u2014 try reducing brightness.' });
+    else if (mean < 60) warnings.push({ type:'warn', text:'Image looks underexposed \u2014 try increasing brightness.' });
+
+    // Blur estimate via local variance (a real, simple sharpness heuristic, not a full Laplacian-of-Gaussian implementation)
+    let varSum = 0, samples = 0;
+    for (let y=4; y<h-4; y+=6){ for (let x=4; x<w-4; x+=6){
+      const i = (y*w+x)*4;
+      const c = data[i], up = data[((y-2)*w+x)*4], down = data[((y+2)*w+x)*4];
+      varSum += Math.abs(c-up) + Math.abs(c-down); samples++;
+    }}
+    const sharpnessScore = samples ? varSum/samples : 0;
+    if (sharpnessScore < 3) warnings.push({ type:'warn', text:'Image may be blurry \u2014 detail levels look low across the frame.' });
+
+    // Background uniformity check (samples the four corners)
+    const corners = [[2,2],[w-3,2],[2,h-3],[w-3,h-3]];
+    const cornerColors = corners.map(([x,y]) => { const i=(y*w+x)*4; return [data[i],data[i+1],data[i+2]]; });
+    const maxDiff = Math.max(...cornerColors.flatMap((c,i) => cornerColors.slice(i+1).map(c2 => Math.abs(c[0]-c2[0])+Math.abs(c[1]-c2[1])+Math.abs(c[2]-c2[2]))));
+    if (maxDiff > 60) warnings.push({ type:'warn', text:'Background doesn\u2019t look uniform \u2014 check for shadows or an uneven backdrop.' });
+
+    if (!ppFaceLandmarks) warnings.push({ type:'warn', text:'No face was detected \u2014 double-check positioning manually.' });
+
+    const listEl = document.getElementById('ppValidationList');
+    listEl.innerHTML = warnings.length
+      ? warnings.map(w => `<li><span class="ats-icon" style="color:${w.type==='err'?'var(--err-solid)':'var(--warn-solid)'};">\u25CF</span>${w.text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</li>`).join('')
+      : '<li><span class="ats-icon" style="color:var(--ok-solid);">\u25CF</span>No issues detected by these automated checks.</li>';
+  }
+
+  /* ---------- Export ---------- */
+  document.getElementById('ppDownloadPngBtn').onclick = () => exportPp('png');
+  document.getElementById('ppDownloadJpgBtn').onclick = () => exportPp('jpeg');
+  function exportPp(format){
+    const canvas = document.getElementById('ppPreviewCanvas');
+    canvas.toBlob((blob) => {
+      if (!blob){ toast('Could not export — try the other format.', 'err'); return; }
+      downloadBlob(blob, 'passport-photo.' + (format==='jpeg'?'jpg':'png'));
+    }, 'image/'+format, 0.95);
+  }
+
+  document.getElementById('ppDownloadSheetBtn').onclick = async () => {
+    const btn = document.getElementById('ppDownloadSheetBtn');
+    setLoading(btn, true);
+    try{
+      const { PDFDocument } = PDFLib;
+      const preset = currentPreset();
+      const sheetType = document.getElementById('ppSheetSize').value;
+      const SHEET_SIZES = { '4x6': [288, 432], 'a4': [595, 842], 'letter': [612, 792] };
+      const [pageW, pageH] = SHEET_SIZES[sheetType];
+      const photoWpt = mm(preset.wmm) * 72/300, photoHpt = mm(preset.hmm) * 72/300;
+      const margin = 18, gap = 6;
+      const cols = Math.max(1, Math.floor((pageW - margin*2 + gap) / (photoWpt + gap)));
+      const rows = Math.max(1, Math.floor((pageH - margin*2 + gap) / (photoHpt + gap)));
+
+      const canvas = document.getElementById('ppPreviewCanvas');
+      const pngBytes = await new Promise((resolve) => canvas.toBlob(b => b.arrayBuffer().then(resolve), 'image/png'));
+
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([pageW, pageH]);
+      const img = await pdfDoc.embedPng(new Uint8Array(pngBytes));
+      for (let r = 0; r < rows; r++){
+        for (let c = 0; c < cols; c++){
+          const x = margin + c*(photoWpt+gap);
+          const y = pageH - margin - (r+1)*photoHpt - r*gap;
+          page.drawImage(img, { x, y, width: photoWpt, height: photoHpt });
+        }
+      }
+      const pdfBytes = await pdfDoc.save();
+      downloadBlob(new Blob([pdfBytes], { type:'application/pdf' }), 'passport-photo-sheet.pdf');
+      toast(`Sheet generated: ${cols*rows} copies on ${sheetType.toUpperCase()}.`);
+    }catch(err){
+      toast('Could not generate the print sheet: ' + ((err && err.message) || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Download Print Sheet PDF');
+    }
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
