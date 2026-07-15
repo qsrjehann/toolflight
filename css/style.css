@@ -30,6 +30,7 @@ body{
     radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 45%),
     linear-gradient(160deg, var(--bg1), var(--bg2) 55%, var(--bg3));
   min-height:100vh;
+  min-height:100dvh; /* progressive enhancement — accounts for mobile Safari's dynamic toolbar; ignored by browsers that don't recognize dvh, which keep the vh value above */
   transition:background .4s ease, color .3s ease;
 }
 a{color:inherit;}
@@ -38,7 +39,7 @@ a{color:inherit;}
 /* ---- Navbar ---- */
 .navbar{
   position:sticky; top:0; z-index:50;
-  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
   background:color-mix(in srgb, var(--bg1) 55%, transparent);
   border-bottom:1px solid var(--card-border);
 }
@@ -101,7 +102,7 @@ a{color:inherit;}
 }
 .tool-card{
   background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
-  padding:22px;cursor:pointer;text-align:left;backdrop-filter:blur(10px);
+  padding:22px;cursor:pointer;text-align:left;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   box-shadow:var(--shadow);transition:transform .25s ease, box-shadow .25s ease;
 }
 .tool-card:hover{transform:translateY(-5px);}
@@ -117,7 +118,7 @@ a{color:inherit;}
 /* ---- Workspace panel ---- */
 .workspace{
   margin-top:30px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
-  padding:28px;backdrop-filter:blur(10px);box-shadow:var(--shadow);
+  padding:28px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
 }
 .tool-view{display:none;}
 .tool-view.active{display:block;animation:fadein .35s ease;}
@@ -294,7 +295,29 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   }
 }
 
-input[type=range]{width:100%;accent-color:var(--accent1);}
+input[type=range]{
+  width:100%;accent-color:var(--accent1);cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background:transparent;height:20px;outline:none;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:6px;border-radius:999px;background:var(--card-border);
+}
+input[type=range]::-moz-range-track{
+  height:6px;border-radius:999px;background:var(--card-border);
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:18px;height:18px;border-radius:50%;margin-top:-6px;
+  background:var(--accent1-solid);border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;border:2px solid #fff;
+  background:var(--accent1-solid);box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
+}
+input[type=range]:focus-visible::-webkit-slider-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
+input[type=range]:focus-visible::-moz-range-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
 input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:pointer;background:none;padding:0;}
 
 /* Page grid for split */
@@ -341,9 +364,9 @@ input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:po
 .placeholder-text{color:var(--ink-soft);font-size:12.5px;text-align:center;padding:0 20px;}
 
 /* Toasts */
-.toast-stack{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:10px;max-width:320px;}
+.toast-stack{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom, 0px));right:calc(20px + env(safe-area-inset-right, 0px));z-index:100;display:flex;flex-direction:column;gap:10px;max-width:320px;}
 .toast{
-  background:var(--card);backdrop-filter:blur(12px);border:1px solid var(--card-border);border-radius:12px;
+  background:var(--card);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--card-border);border-radius:12px;
   padding:13px 16px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);
   display:flex;align-items:center;gap:10px;animation:toastin .25s ease;
 }
@@ -372,7 +395,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 @media (max-width:700px){ .footer-grid{grid-template-columns:1fr 1fr;} }
 
 .legal-modal{
-  position:fixed;inset:0;background:rgba(10,8,30,0.55);backdrop-filter:blur(3px);
+  position:fixed;inset:0;background:rgba(10,8,30,0.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
   display:none;align-items:center;justify-content:center;z-index:200;padding:20px;
 }
 .legal-modal.show{display:flex;}
@@ -406,7 +429,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .category-hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:36px 0;}
 .category-hub-card{
   background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:24px;
-  text-decoration:none;color:var(--ink);backdrop-filter:blur(10px);box-shadow:var(--shadow);
+  text-decoration:none;color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
   transition:transform .25s ease;display:block;
 }
 .category-hub-card:hover{transform:translateY(-5px);}
@@ -426,7 +449,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 }
 .feature-chip{
   background:var(--card);border:1px solid var(--card-border);border-radius:14px;
-  padding:14px 12px;text-align:center;backdrop-filter:blur(8px);box-shadow:var(--shadow);
+  padding:14px 12px;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:var(--shadow);
   opacity:0;transform:translateY(14px);transition:opacity .5s ease, transform .5s ease;
 }
 .feature-chip.in-view{opacity:1;transform:translateY(0);}
@@ -467,7 +490,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .blog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin:36px 0;}
 .blog-card{
   background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
-  padding:22px;text-decoration:none;color:var(--ink);backdrop-filter:blur(10px);box-shadow:var(--shadow);
+  padding:22px;text-decoration:none;color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
   transition:transform .25s ease;display:flex;flex-direction:column;gap:10px;
 }
 .blog-card:hover{transform:translateY(-5px);}
