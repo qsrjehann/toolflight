@@ -131,11 +131,12 @@ def footer():
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 """
 
-def page_shell(active_file, title, description, body):
+def page_shell(active_file, title, description, body, og_path_override=None):
+    og_path = active_file if og_path_override is None else og_path_override
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{head(title, description, active_file)}
+{head(title, description, og_path)}
 </head>
 <body>
 {navbar(active_file)}
@@ -2282,7 +2283,13 @@ PAGE_DEFS = [
 ]
 
 for filename, title, desc, body in PAGE_DEFS:
-    html = ensure_button_types(page_shell(filename, title, desc, body))
+    # Homepage canonicalizes to the root URL (https://toolflight.com/) instead
+    # of https://toolflight.com/index.html — every other page keeps its
+    # existing canonical/OG URL exactly as before (og_path_override=None
+    # preserves prior behavior identically). The output filename and navbar
+    # active-link detection both still use "index.html" as before, unaffected.
+    og_override = "" if filename == "index.html" else None
+    html = ensure_button_types(page_shell(filename, title, desc, body, og_path_override=og_override))
     with open(os.path.join(OUT, filename), "w") as f:
         f.write(html)
     print("wrote", filename, len(html), "chars")
