@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI OCR — Image & PDF to Text — Free Online | ToolFlight</title>
+<meta name="description" content="Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser — no upload, no signup.">
+<link rel="icon" href="assets/favicon.ico?v=20260715-1709" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260715-1709">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260715-1709">
+<link rel="canonical" href="https://toolflight.com/ai-ocr.html">
+
+<meta property="og:title" content="AI OCR — Image & PDF to Text — Free Online | ToolFlight">
+<meta property="og:description" content="Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser — no upload, no signup.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/ai-ocr.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI OCR — Image & PDF to Text — Free Online | ToolFlight">
+<meta name="twitter:description" content="Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser — no upload, no signup.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20260715-1709">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser — no upload, no signup.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg?v=20260715-1709" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="image-tools.html" style="color:var(--ink-soft);text-decoration:none;">Image Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">AI OCR — Image & PDF to Text</span>
+</nav>
+  <h1>AI OCR — Image & PDF to Text</h1>
+  <p class="subtitle">Extract editable, searchable text from images and scanned PDFs — real OCR, running entirely in your browser.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="image-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Image Tools</a>
+  </div>
+
+  <div class="workspace">
+      <div class="view-title"><h2>AI OCR — Image &amp; PDF to Text</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real OCR (Tesseract.js), running entirely in your browser — nothing is uploaded. For PDFs, each page is rendered as an image first, then read with the same OCR engine (Tesseract.js itself doesn't read PDF files directly — see the FAQ).</p>
+
+      <span class="field-label">Language(s)</span>
+      <div class="row" style="margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="eng" checked style="width:15px;height:15px;accent-color:var(--accent1);"> English</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="urd" style="width:15px;height:15px;accent-color:var(--accent1);"> Urdu</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="ara" style="width:15px;height:15px;accent-color:var(--accent1);"> Arabic</label>
+      </div>
+      <p class="editor-hint">Select every language actually present in your file — selecting languages that aren't there can reduce accuracy.</p>
+
+      <span class="field-label" style="margin-top:14px;">Choose a file</span>
+      <div class="drop-zone" id="ocrDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image or PDF here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, WEBP, or PDF — up to 30MB</div>
+        <input type="file" id="ocrInput" accept="image/jpeg, image/png, image/webp, application/pdf">
+      </div>
+
+      <div id="ocrStage" class="hidden">
+        <div style="margin-top:12px;font-size:12.5px;color:var(--ink-soft);">
+          <strong id="ocrFileName" style="color:var(--ink);"></strong> · <span id="ocrFileSize"></span>
+        </div>
+        <div class="canvas-stage" style="margin-top:10px;max-height:280px;overflow:auto;display:flex;align-items:center;justify-content:center;">
+          <img id="ocrPreviewImg" alt="File preview" class="hidden" style="max-width:100%;max-height:260px;">
+          <span id="ocrPreviewPdfNote" class="hidden" style="font-size:13px;color:var(--ink-soft);"></span>
+        </div>
+
+        <div class="progress-wrap hidden" id="ocrProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="ocrProgressFill"></div></div>
+          <div class="progress-label" id="ocrProgressLabel">Processing…</div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="ocrExtractBtn" type="button" style="flex:1;" disabled>Extract Text</button>
+          <button class="btn btn-danger hidden" id="ocrCancelBtn" type="button">Cancel</button>
+        </div>
+
+        <div id="ocrResultWrap" class="hidden" style="margin-top:14px;">
+          <div class="row" style="margin-top:0;">
+            <input type="text" id="ocrSearchInput" placeholder="Search extracted text…" style="flex:1;" aria-label="Search extracted text">
+            <span id="ocrSearchCount" style="font-size:12px;color:var(--ink-soft);align-self:center;white-space:nowrap;"></span>
+          </div>
+          <textarea id="ocrResultText" readonly rows="12" style="width:100%;margin-top:10px;font-family:inherit;font-size:13.5px;padding:13px 14px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;" aria-label="Extracted text"></textarea>
+          <div id="ocrCharCount" style="font-size:12px;color:var(--ink-soft);margin-top:4px;"></div>
+
+          <div class="row">
+            <button class="btn btn-secondary" id="ocrCopyBtn" type="button">Copy Text</button>
+            <button class="btn btn-success" id="ocrDownloadTxtBtn" type="button">Download TXT</button>
+            <button class="btn btn-success" id="ocrDownloadDocxBtn" type="button">Download DOCX</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ocrConvertAnotherBtn" type="button">Extract from another file</button>
+          </div>
+        </div>
+      </div>
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the AI OCR — Image & PDF to Text</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">AI OCR reads the actual text in your images and scanned PDFs using Tesseract.js, a real open-source OCR engine — not a fake preview or a placeholder. Supports English, Urdu, and Arabic, individually or combined. For PDFs specifically, each page is rendered as an image first and then read with the same OCR engine, since Tesseract.js's own documentation states it doesn't read PDF files directly — this tool is upfront about that rather than pretending otherwise.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Real OCR text extraction, not a placeholder or preview</li><li>English, Urdu, and Arabic — select any combination</li><li>Works on images and multi-page scanned PDFs</li><li>Search within the extracted text</li><li>Copy to clipboard, or download as TXT or DOCX</li><li>Cancel a running extraction at any time</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Choose the language(s) present in your file, upload an image or PDF (drag and drop, browse, or paste from clipboard), then tap Extract Text. For PDFs, each page is processed in turn with its own progress. Copy the result, search within it, or download as TXT or DOCX.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Nothing is uploaded — the OCR engine and all processing run locally in your browser</li><li>No signup, no page limit imposed by a server</li><li>Genuinely editable output you can search, copy, and reuse</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Does this actually read PDF files directly?</strong><br>Not literally — and we'd rather tell you that plainly than pretend otherwise. The OCR engine this tool uses (Tesseract.js) explicitly does not support PDF files in its own documentation. So for PDFs, each page is rendered as an image first, then read with the same real OCR engine used for images. The result is genuine extracted text either way.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>How accurate is the text extraction?</strong><br>Accuracy depends heavily on image quality — clean, high-resolution scans of printed text typically extract very well. Handwriting, low-resolution photos, unusual fonts, or unselected languages will reduce accuracy. This is a real limitation of OCR technology generally, not specific to this tool.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Why choose the language before extracting?</strong><br>The OCR engine loads a language-specific model to recognize characters, so it needs to know which script(s) to expect. Selecting a language that isn't actually in your file — or missing one that is — will reduce accuracy.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is my file uploaded anywhere?</strong><br>No — both the OCR engine and all processing run entirely inside your browser. Your file is never sent to a server.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+      <a href="magic-eraser.html" class="blog-card"><span class="blog-tag">Image Tool</span><h3>Magic Eraser (AI Object Remover)</h3><p>Brush over unwanted objects and remove them with real AI inpainting.</p></a>
+      <a href="ai-image-upscaler.html" class="blog-card"><span class="blog-tag">Image Tool</span><h3>AI Image Upscaler</h3><p>Upscale images 2x or 4x with real AI — a browser-optimized model, not the largest available.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Image Tools", "item": "https://toolflight.com/image-tools.html"}, {"@type": "ListItem", "position": 3, "name": "AI OCR \u2014 Image & PDF to Text", "item": "https://toolflight.com/ai-ocr.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "AI OCR \u2014 Image & PDF to Text", "description": "Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser \u2014 no upload, no signup.", "url": "https://toolflight.com/ai-ocr.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "AI OCR \u2014 Image & PDF to Text", "applicationCategory": "BusinessApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does this actually read PDF files directly?", "acceptedAnswer": {"@type": "Answer", "text": "Not literally \u2014 and we'd rather tell you that plainly than pretend otherwise. The OCR engine this tool uses (Tesseract.js) explicitly does not support PDF files in its own documentation. So for PDFs, each page is rendered as an image first, then read with the same real OCR engine used for images. The result is genuine extracted text either way."}}, {"@type": "Question", "name": "How accurate is the text extraction?", "acceptedAnswer": {"@type": "Answer", "text": "Accuracy depends heavily on image quality \u2014 clean, high-resolution scans of printed text typically extract very well. Handwriting, low-resolution photos, unusual fonts, or unselected languages will reduce accuracy. This is a real limitation of OCR technology generally, not specific to this tool."}}, {"@type": "Question", "name": "Why choose the language before extracting?", "acceptedAnswer": {"@type": "Answer", "text": "The OCR engine loads a language-specific model to recognize characters, so it needs to know which script(s) to expect. Selecting a language that isn't actually in your file \u2014 or missing one that is \u2014 will reduce accuracy."}}, {"@type": "Question", "name": "Is my file uploaded anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No \u2014 both the OCR engine and all processing run entirely inside your browser. Your file is never sent to a server."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260715-1709" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js?v=20260715-1709"></script>
+</body>
+</html>
