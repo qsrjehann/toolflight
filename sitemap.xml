@@ -106,6 +106,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/passport-photo-maker.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/calculators.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -166,6 +171,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/ai-tools.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/qr-code-generator.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -177,6 +187,11 @@
   </url>
   <url>
     <loc>https://toolflight.com/meta-tag-generator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/ai-email-writer.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

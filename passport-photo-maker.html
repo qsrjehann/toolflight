@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
+<meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
+<link rel="icon" href="assets/favicon.ico?v=20260715-2113" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260715-2113">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260715-2113">
+<link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
+
+<meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
+<meta property="og:description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/passport-photo-maker.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
+<meta name="twitter:description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
+
+<script>
+/* Runs synchronously, before CSS or body paint -- the only way to avoid a
+   flash of the wrong theme, since an external script (even with defer)
+   always executes after the DOM is parsed. Prefers a saved user choice over
+   the OS-level prefers-color-scheme, so a manual theme selection survives
+   navigating between ToolFlight's pages instead of resetting on every load. */
+(function(){
+  try{
+    var saved = localStorage.getItem('toolflight_theme');
+    var isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) document.documentElement.classList.add('dark');
+  }catch(e){}
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20260715-2113">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg?v=20260715-2113" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="ai-tools.html" data-page="ai-tools.html">AI Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="image-tools.html" style="color:var(--ink-soft);text-decoration:none;">Image Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">Passport & Visa Photo Maker</span>
+</nav>
+  <h1>Passport & Visa Photo Maker</h1>
+  <p class="subtitle">Professional passport and visa photos for 42 countries, with AI face detection and automatic sizing — entirely in your browser.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="image-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Image Tools</a>
+  </div>
+
+  <div class="workspace">
+      <div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser. <strong>Requirements change and vary by country and application type — always verify current requirements on your country's official passport or embassy website before submitting.</strong></p>
+
+      <span class="field-label">Country / Document</span>
+      <select id="ppCountry" style="margin-bottom:12px;">
+              <option value="us-passport" selected>USA Passport</option>
+              <option value="us-visa">USA Visa</option>
+              <option value="dv-lottery">DV Lottery (Green Card)</option>
+              <option value="ca-passport">Canada Passport</option>
+              <option value="ca-visa">Canada Visa</option>
+              <option value="uk-passport">UK Passport</option>
+              <option value="au-passport">Australia Passport</option>
+              <option value="nz-passport">New Zealand Passport</option>
+              <option value="de-passport">Germany Passport</option>
+              <option value="fr-passport">France Passport</option>
+              <option value="it-passport">Italy Passport</option>
+              <option value="es-passport">Spain Passport</option>
+              <option value="nl-passport">Netherlands Passport</option>
+              <option value="be-passport">Belgium Passport</option>
+              <option value="ch-passport">Switzerland Passport</option>
+              <option value="at-passport">Austria Passport</option>
+              <option value="no-passport">Norway Passport</option>
+              <option value="se-passport">Sweden Passport</option>
+              <option value="dk-passport">Denmark Passport</option>
+              <option value="fi-passport">Finland Passport</option>
+              <option value="ie-passport">Ireland Passport</option>
+              <option value="pt-passport">Portugal Passport</option>
+              <option value="pl-passport">Poland Passport</option>
+              <option value="cz-passport">Czech Republic Passport</option>
+              <option value="jp-passport">Japan Passport</option>
+              <option value="kr-passport">South Korea Passport</option>
+              <option value="cn-passport">China Passport</option>
+              <option value="sg-passport">Singapore Passport</option>
+              <option value="my-passport">Malaysia Passport</option>
+              <option value="ae-passport">UAE Passport</option>
+              <option value="sa-passport">Saudi Arabia Passport</option>
+              <option value="qa-passport">Qatar Passport</option>
+              <option value="kw-passport">Kuwait Passport</option>
+              <option value="om-passport">Oman Passport</option>
+              <option value="bh-passport">Bahrain Passport</option>
+              <option value="pk-passport">Pakistan Passport</option>
+              <option value="in-passport">India Passport</option>
+              <option value="bd-passport">Bangladesh Passport</option>
+              <option value="lk-passport">Sri Lanka Passport</option>
+              <option value="np-passport">Nepal Passport</option>
+              <option value="tr-passport">Turkey Passport</option>
+              <option value="schengen-visa">Schengen Visa</option>
+      </select>
+
+      <div class="drop-zone" id="ppDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a photo here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, or WEBP — up to 30MB</div>
+        <input type="file" id="ppInput" accept="image/jpeg, image/png, image/webp">
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label class="btn btn-ghost" style="cursor:pointer;">Use Camera<input type="file" id="ppCameraInput" accept="image/*" capture="user" style="display:none;"></label>
+      </div>
+      <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
+
+      <div id="ppStage" class="hidden">
+        <div class="editor-stage-wrap" style="margin-top:14px;cursor:default;">
+          <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
+        </div>
+        <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+
+        <span class="field-label" style="margin-top:14px;">Position &amp; Size</span>
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppZoomSlider">Zoom</label><input type="range" id="ppZoomSlider" min="30" max="300" value="100"></div>
+          <div class="resume-field-group"><label for="ppMoveX">Move Horizontal</label><input type="range" id="ppMoveX" min="-200" max="200" value="0"></div>
+          <div class="resume-field-group"><label for="ppMoveY">Move Vertical</label><input type="range" id="ppMoveY" min="-200" max="200" value="0"></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppAutoCenterBtn" type="button">Auto Center Face</button>
+          <button class="btn btn-ghost" id="ppRotateBtn" type="button">Rotate 90°</button>
+          <button class="btn btn-ghost" id="ppFlipBtn" type="button">Flip</button>
+          <button class="btn btn-danger" id="ppResetBtn" type="button">Reset</button>
+        </div>
+
+        <span class="field-label" style="margin-top:14px;">Background</span>
+        <div class="row" style="margin-top:6px;">
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="preset" checked style="margin-right:6px;accent-color:var(--accent1);">Country Default</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="white" style="margin-right:6px;accent-color:var(--accent1);">Pure White</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="gray" style="margin-right:6px;accent-color:var(--accent1);">Light Gray</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="blue" style="margin-right:6px;accent-color:var(--accent1);">Blue</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="custom" style="margin-right:6px;accent-color:var(--accent1);">Custom<input type="color" id="ppCustomBgColor" value="#ffffff" style="margin-left:6px;vertical-align:middle;"></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppReplaceBgBtn" type="button">Replace Background (AI)</button>
+        </div>
+        <p class="editor-hint">Choosing a background color sets the target for AI background replacement below — tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
+
+        <span class="field-label" style="margin-top:14px;">Adjustments</span>
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppBrightness">Brightness: <span id="ppBrightnessVal">0</span></label><input type="range" id="ppBrightness" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppContrast">Contrast: <span id="ppContrastVal">0</span></label><input type="range" id="ppContrast" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppSaturation">Saturation: <span id="ppSaturationVal">0</span></label><input type="range" id="ppSaturation" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppSharpness">Sharpness: <span id="ppSharpnessVal">0</span></label><input type="range" id="ppSharpness" min="0" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppTemperature">Temperature: <span id="ppTemperatureVal">0</span></label><input type="range" id="ppTemperature" min="-100" max="100" value="0"></div>
+        </div>
+
+        <span class="field-label" style="margin-top:14px;">Automated Checks</span>
+        <ul class="ats-result-list" id="ppValidationList" style="margin-top:6px;"></ul>
+        <p class="editor-hint">These are automated, best-effort checks — not a guarantee of official acceptance. Always verify against your country's current official requirements.</p>
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--card-border);">
+          <span class="field-label">Export</span>
+          <div class="row hidden" id="ppDownloadRow">
+            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
+            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
+          </div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl">
+              <label for="ppSheetSize">Print Sheet Size</label>
+              <select id="ppSheetSize"><option value="4x6">4x6 inch</option><option value="a4">A4</option><option value="letter">Letter</option></select>
+            </div>
+            <div class="ctrl" style="display:flex;align-items:flex-end;">
+              <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the Passport & Visa Photo Maker</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Passport & Visa Photo Maker uses real AI face detection (the same MediaPipe technology behind ToolFlight's AI Background Remover and AI Photo Enhancer) to automatically position and size your photo to a selected country's typical passport or visa specification, with manual fine-tuning, background replacement, and automated compliance checks — all running locally in your browser. Photo requirements genuinely do change and vary by application type, so always verify current requirements on your country's official passport or embassy website before submitting.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>42 built-in country and document presets</li><li>Real AI face detection for automatic positioning</li><li>AI-powered background replacement, plus solid color options</li><li>Brightness, contrast, saturation, sharpness, and temperature adjustment</li><li>Automated checks for resolution, exposure, blur, and background uniformity</li><li>Printable photo sheets (4x6in, A4, Letter) with automatic duplication</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Choose your country or document type, upload a photo (or use your camera), and the AI will automatically detect your face and position the crop. Fine-tune with the zoom and move controls, choose a background, adjust lighting if needed, then review the automated checks before downloading your photo or a printable sheet.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Nothing is uploaded — face detection and all processing run locally in your browser</li><li>No signup, no per-photo fee, no watermark</li><li>One tool for dozens of countries instead of hunting for country-specific templates</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>How do I make a passport photo online for free?</strong><br>Choose your country from the dropdown, upload a clear, front-facing photo with a plain background, let the AI auto-position your face, review the automated checks, and download the result — no signup or payment required.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What are the US passport photo requirements?</strong><br>2 x 2 inches (51 x 51mm), plain white or off-white background, with your head measuring 1 to 1⅜ inches (25-35mm) from chin to crown — roughly 50-69% of the frame height. This tool's US preset is built to that specification, cross-checked against multiple current sources, but always confirm against travel.state.gov before submitting.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What size is a UK passport photo?</strong><br>35 x 45mm, a size shared by many other countries' passport and Schengen visa photos. This tool's UK preset uses that size by default.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What is the Schengen visa photo size?</strong><br>35 x 45mm, the same widely-used ICAO-style format as most European passport photos.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Can I print passport photos at home?</strong><br>Yes — use the Print Sheet PDF export, which tiles multiple copies onto a 4x6in, A4, or Letter page sized for standard photo paper. Home printing quality varies, so check your specific application's rules about home-printed photos.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is this guaranteed to be accepted?</strong><br>No tool can guarantee that, including this one — passport and visa photo rules are set and enforced by each country's government and can change at any time. This tool is a genuinely useful starting point built on commonly-documented specifications, not an official verification service. Always check your country's current official requirements before submitting.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+      <a href="background-remover.html" class="blog-card"><span class="blog-tag">Image Tool</span><h3>AI Background Remover</h3><p>Automatic AI-powered background removal, plus a full manual refine editor.</p></a>
+      <a href="image-crop.html" class="blog-card"><span class="blog-tag">Image Tool</span><h3>Image Crop Tool</h3><p>Free crop or locked ratios (1:1, 16:9, 9:16), plus rotate.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Image Tools", "item": "https://toolflight.com/image-tools.html"}, {"@type": "ListItem", "position": 3, "name": "Passport & Visa Photo Maker", "item": "https://toolflight.com/passport-photo-maker.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Passport & Visa Photo Maker", "description": "Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.", "url": "https://toolflight.com/passport-photo-maker.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Passport & Visa Photo Maker", "applicationCategory": "MultimediaApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I make a passport photo online for free?", "acceptedAnswer": {"@type": "Answer", "text": "Choose your country from the dropdown, upload a clear, front-facing photo with a plain background, let the AI auto-position your face, review the automated checks, and download the result \u2014 no signup or payment required."}}, {"@type": "Question", "name": "What are the US passport photo requirements?", "acceptedAnswer": {"@type": "Answer", "text": "2 x 2 inches (51 x 51mm), plain white or off-white background, with your head measuring 1 to 1\u215c inches (25-35mm) from chin to crown \u2014 roughly 50-69% of the frame height. This tool's US preset is built to that specification, cross-checked against multiple current sources, but always confirm against travel.state.gov before submitting."}}, {"@type": "Question", "name": "What size is a UK passport photo?", "acceptedAnswer": {"@type": "Answer", "text": "35 x 45mm, a size shared by many other countries' passport and Schengen visa photos. This tool's UK preset uses that size by default."}}, {"@type": "Question", "name": "What is the Schengen visa photo size?", "acceptedAnswer": {"@type": "Answer", "text": "35 x 45mm, the same widely-used ICAO-style format as most European passport photos."}}, {"@type": "Question", "name": "Can I print passport photos at home?", "acceptedAnswer": {"@type": "Answer", "text": "Yes \u2014 use the Print Sheet PDF export, which tiles multiple copies onto a 4x6in, A4, or Letter page sized for standard photo paper. Home printing quality varies, so check your specific application's rules about home-printed photos."}}, {"@type": "Question", "name": "Is this guaranteed to be accepted?", "acceptedAnswer": {"@type": "Answer", "text": "No tool can guarantee that, including this one \u2014 passport and visa photo rules are set and enforced by each country's government and can change at any time. This tool is a genuinely useful starting point built on commonly-documented specifications, not an official verification service. Always check your country's current official requirements before submitting."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260715-2113" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+        <a href="ai-tools.html">AI Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js?v=20260715-2113"></script>
+</body>
+</html>
