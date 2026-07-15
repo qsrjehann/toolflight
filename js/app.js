@@ -3,7 +3,8 @@
    so this single file works whether that tool exists on the page or not. */
 
 /* ============ THEME ============ */
-let isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const THEME_KEY = 'toolflight_theme';
+let isDark = document.documentElement.classList.contains('dark'); // already set by the early inline <head> script, before this deferred script ever runs
 function applyTheme(){
   document.documentElement.classList.toggle('dark', isDark);
   const sun = document.getElementById('themeIconSun');
@@ -12,7 +13,11 @@ function applyTheme(){
   if (moon) moon.classList.toggle('hidden', !isDark);
 }
 const themeToggleBtn = document.getElementById('themeToggle');
-if (themeToggleBtn) themeToggleBtn.onclick = () => { isDark = !isDark; applyTheme(); };
+if (themeToggleBtn) themeToggleBtn.onclick = () => {
+  isDark = !isDark;
+  applyTheme();
+  try{ localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light'); }catch(e){}
+};
 applyTheme();
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
