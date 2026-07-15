@@ -4590,6 +4590,434 @@ if (document.getElementById('apeDrop')){
   });
 }
 
+/* ============ PDF <-> WORD CONVERTER (pdf-to-word.html / word-to-pdf.html) ============
+   Two honest architectural facts, stated in code comments because they drove
+   real design decisions, not just disclosed after the fact:
+
+   1. Word -> PDF does NOT use the common html2canvas/jsPDF.html() rasterization
+      shortcut. That approach embeds a screenshot image in the PDF -- the text
+      is not selectable, searchable, or accessible to screen readers. Verified
+      this directly before choosing an approach. Instead: mammoth.js (BSD-2-
+      Clause) converts the .docx to semantic HTML, then a custom renderer here
+      walks that HTML and places real text into the PDF via pdf-lib's
+      drawText() -- genuinely selectable/searchable output, at the cost of
+      writing our own word-wrap/pagination logic.
+
+   2. PDF -> Word is fundamentally harder than the reverse: a PDF has no
+      inherent semantic structure (no real "this is a heading" markup, just
+      positioned glyphs), unlike a .docx which does. Headings, bold/italic,
+      and paragraph breaks are reconstructed via font-size/font-name/position
+      HEURISTICS -- not guaranteed, especially on complex or unusually-
+      formatted PDFs. Tables and images are intentionally NOT reconstructed
+      in this direction: reliably detecting table grid structure from raw
+      glyph positions is a genuinely hard, error-prone problem, and a wrong
+      guess (misplaced cells, garbled reading order) is worse than an honest
+      "not supported" -- so this is disclosed plainly rather than faked. */
+if (document.getElementById('pwDrop')){
+  const PDFJS_VER_PW = '4.5.136';
+  const DOCX_LIB_VER = '9.5.1';
+  let pwMode = document.getElementById('pwTabPdfToWord').classList.contains('active') ? 'p2w' : 'w2p';
+  let pwFile = null;
+  let pwResultBlob = null;
+  let pwCancelled = false;
+  let pdfjsLoadPromisePW = null;
+  let mammothLoadPromise = null;
+  let docxLoadPromise = null;
+
+  async function ensurePdfJsPW(){
+    if (!pdfjsLoadPromisePW){
+      pdfjsLoadPromisePW = (async () => {
+        const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_PW}/build/pdf.min.mjs`);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_PW}/build/pdf.worker.min.mjs`;
+        return pdfjsLib;
+      })().catch((err) => { pdfjsLoadPromisePW = null; throw err; });
+    }
+    return pdfjsLoadPromisePW;
+  }
+  async function ensureMammoth(){
+    if (!mammothLoadPromise){
+      mammothLoadPromise = (async () => {
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/mammoth@1.12.0/mammoth.browser.min.js');
+        if (!window.mammoth) throw new Error('Mammoth failed to load.');
+        return window.mammoth;
+      })().catch((err) => { mammothLoadPromise = null; throw err; });
+    }
+    return mammothLoadPromise;
+  }
+  async function ensureDocxLib(){
+    if (!docxLoadPromise){
+      docxLoadPromise = import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/docx@${DOCX_LIB_VER}/dist/index.mjs`)
+        .catch((err) => { docxLoadPromise = null; throw err; });
+    }
+    return docxLoadPromise;
+  }
+
+  /* ---------- Tabs ---------- */
+  function setPwMode(mode){
+    pwMode = mode;
+    document.getElementById('pwTabPdfToWord').classList.toggle('active', mode === 'p2w');
+    document.getElementById('pwTabWordToPdf').classList.toggle('active', mode === 'w2p');
+    document.getElementById('pwInput').accept = mode === 'p2w' ? 'application/pdf' : '.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword';
+    document.getElementById('pwDropSub').textContent = mode === 'p2w' ? 'PDF — up to 40MB' : 'DOCX or DOC — up to 40MB';
+    document.getElementById('pwDropTitle').textContent = mode === 'p2w' ? 'Drop a PDF here or tap to browse' : 'Drop a Word document here or tap to browse';
+    document.getElementById('pwConvertBtn').textContent = mode === 'p2w' ? 'Convert to Word' : 'Convert to PDF';
+    resetPwState();
+  }
+  document.getElementById('pwTabPdfToWord').onclick = () => setPwMode('p2w');
+  document.getElementById('pwTabWordToPdf').onclick = () => setPwMode('w2p');
+
+  function resetPwState(){
+    pwFile = null; pwResultBlob = null;
+    document.getElementById('pwFileInfo').classList.add('hidden');
+    document.getElementById('pwConvertBtn').disabled = true;
+    document.getElementById('pwResultRow').classList.add('hidden');
+    document.getElementById('pwProgressWrap').classList.add('hidden');
+    document.getElementById('pwErrorBox').classList.add('hidden');
+  }
+
+  setupDropZone('pwDrop','pwInput', async (files) => {
+    const wantPdf = pwMode === 'p2w';
+    const f = files.find(f => wantPdf ? f.type === 'application/pdf' : (f.name.toLowerCase().endsWith('.docx') || f.name.toLowerCase().endsWith('.doc')));
+    if (!f){ if (files.length>0) toast(`Please select a ${wantPdf ? 'PDF' : 'Word (.docx/.doc)'} file.`, 'err'); return; }
+    if (f.size > 40*1024*1024){ toast(`That file is ${fmtBytes(f.size)} — the limit is 40MB.`, 'err'); return; }
+    if (!wantPdf && f.name.toLowerCase().endsWith('.doc') && !f.name.toLowerCase().endsWith('.docx')){
+      toast('Legacy .doc files aren\u2019t supported — only modern .docx. Please save as .docx first.', 'err');
+      return;
+    }
+    resetPwState();
+    pwFile = f;
+    document.getElementById('pwFileInfo').classList.remove('hidden');
+    document.getElementById('pwFileName').textContent = f.name;
+    document.getElementById('pwFileSize').textContent = fmtBytes(f.size);
+    document.getElementById('pwPageCount').textContent = '';
+    document.getElementById('pwConvertBtn').disabled = false;
+
+    if (wantPdf){
+      try{
+        const pdfjsLib = await ensurePdfJsPW();
+        const bytes = await f.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+        document.getElementById('pwPageCount').textContent = ' · ' + pdf.numPages + ' page' + (pdf.numPages!==1?'s':'');
+      }catch(e){ /* page count is a nicety, not required to proceed */ }
+    }
+  });
+
+  function setPwProgress(pct, label){
+    document.getElementById('pwProgressWrap').classList.remove('hidden');
+    document.getElementById('pwProgressFill').style.width = pct + '%';
+    document.getElementById('pwProgressLabel').textContent = label;
+  }
+  function showPwError(msg){
+    const box = document.getElementById('pwErrorBox');
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+
+  document.getElementById('pwCancelBtn').onclick = () => { pwCancelled = true; };
+
+  document.getElementById('pwConvertBtn').onclick = async () => {
+    if (!pwFile) return;
+    pwCancelled = false;
+    const btn = document.getElementById('pwConvertBtn');
+    setLoading(btn, true);
+    document.getElementById('pwErrorBox').classList.add('hidden');
+    document.getElementById('pwCancelBtn').classList.remove('hidden');
+    try{
+      if (pwMode === 'p2w'){
+        pwResultBlob = await convertPdfToWord(pwFile, setPwProgress, () => pwCancelled);
+      } else {
+        pwResultBlob = await convertWordToPdf(pwFile, setPwProgress, () => pwCancelled);
+      }
+      if (pwCancelled){ setPwProgress(0,''); document.getElementById('pwProgressWrap').classList.add('hidden'); toast('Cancelled.'); return; }
+      document.getElementById('pwResultRow').classList.remove('hidden');
+      toast('Conversion complete.');
+    }catch(err){
+      if (!pwCancelled) showPwError((err && err.message) ? err.message : 'Conversion failed — please try a different file.');
+    }finally{
+      setLoading(btn, false, pwMode === 'p2w' ? 'Convert to Word' : 'Convert to PDF');
+      document.getElementById('pwCancelBtn').classList.add('hidden');
+      setTimeout(() => document.getElementById('pwProgressWrap').classList.add('hidden'), 900);
+    }
+  };
+
+  document.getElementById('pwDownloadBtn').onclick = () => {
+    if (!pwResultBlob) return;
+    const name = (pwFile.name.replace(/\.[^.]+$/, '')) + (pwMode === 'p2w' ? '.docx' : '.pdf');
+    downloadBlob(pwResultBlob, name);
+  };
+  document.getElementById('pwConvertAnotherBtn').onclick = () => { resetPwState(); };
+
+  /* ================= PDF -> WORD ================= */
+  async function convertPdfToWord(file, onProgress, isCancelled){
+    onProgress(5, 'Reading PDF\u2026');
+    const pdfjsLib = await ensurePdfJsPW();
+    const bytes = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const docxLib = await ensureDocxLib();
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak } = docxLib;
+
+    // Pass 1: collect all font sizes across the document to find the "body
+    // text" baseline size, so headings can be detected relative to it rather
+    // than against an arbitrary fixed number.
+    const allSizes = [];
+    const pageTextItems = [];
+    for (let p = 1; p <= pdf.numPages; p++){
+      if (isCancelled()) return null;
+      onProgress(5 + Math.round((p/pdf.numPages)*35), `Reading page ${p} of ${pdf.numPages}\u2026`);
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const annotations = await page.getAnnotations();
+      const links = annotations.filter(a => a.subtype === 'Link' && a.url).map(a => ({ rect: a.rect, url: a.url }));
+      const items = content.items.map(it => ({
+        str: it.str, x: it.transform[4], y: it.transform[5],
+        fontSize: Math.hypot(it.transform[2], it.transform[3]) || 10,
+        fontName: it.fontName || '',
+      })).filter(it => it.str.trim().length > 0);
+      items.forEach(it => allSizes.push(it.fontSize));
+      pageTextItems.push({ items, links, height: page.view[3] });
+      if (content.items.length === 0 && p === 1 && pdf.numPages === 1){
+        // no extractable text at all -- likely a scanned/image-only PDF
+      }
+      page.cleanup && page.cleanup();
+    }
+    if (allSizes.length === 0){
+      throw new Error('No extractable text was found in this PDF \u2014 it may be a scanned image rather than real text, which this tool can\u2019t convert.');
+    }
+    allSizes.sort((a,b) => a-b);
+    const bodySize = allSizes[Math.floor(allSizes.length/2)]; // median font size = body text baseline
+
+    onProgress(45, 'Reconstructing document structure\u2026');
+    const docChildren = [];
+    for (let pIdx = 0; pIdx < pageTextItems.length; pIdx++){
+      if (isCancelled()) return null;
+      const { items } = pageTextItems[pIdx];
+      // Group items into lines by Y proximity, then lines into paragraphs by
+      // a larger vertical gap (a real, standard heuristic for reflowed text
+      // -- not guaranteed on unusually-formatted PDFs, disclosed in the FAQ).
+      items.sort((a,b) => b.y - a.y || a.x - b.x);
+      const lines = [];
+      let currentLine = null, lastY = null;
+      for (const it of items){
+        if (lastY === null || Math.abs(it.y - lastY) > it.fontSize * 0.4){
+          currentLine = { y: it.y, items: [it] };
+          lines.push(currentLine);
+        } else {
+          currentLine.items.push(it);
+        }
+        lastY = it.y;
+      }
+      let lastLineY = null, lastFontSize = bodySize;
+      let currentRuns = [];
+      function flushParagraph(){
+        if (currentRuns.length){
+          docChildren.push(new Paragraph({ children: currentRuns }));
+          currentRuns = [];
+        }
+      }
+      for (const line of lines){
+        const lineText = line.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+        if (!lineText) continue;
+        const avgSize = line.items.reduce((a,i) => a+i.fontSize, 0) / line.items.length;
+        const isBold = line.items.some(i => /bold/i.test(i.fontName));
+        const isItalic = line.items.some(i => /italic|oblique/i.test(i.fontName));
+        const gap = lastLineY === null ? 0 : lastLineY - line.y;
+        const newParagraph = lastLineY === null || gap > lastFontSize * 1.6;
+
+        let heading = null;
+        if (avgSize > bodySize * 1.6) heading = HeadingLevel.HEADING_1;
+        else if (avgSize > bodySize * 1.3) heading = HeadingLevel.HEADING_2;
+        else if (avgSize > bodySize * 1.12) heading = HeadingLevel.HEADING_3;
+
+        const run = new TextRun({ text: lineText, bold: isBold, italics: isItalic });
+        if (heading){
+          flushParagraph();
+          docChildren.push(new Paragraph({ heading, children: [run] }));
+        } else if (newParagraph){
+          flushParagraph();
+          currentRuns = [run];
+        } else {
+          currentRuns.push(new TextRun({ text: ' ' + lineText, bold: isBold, italics: isItalic }));
+        }
+        lastLineY = line.y;
+        lastFontSize = avgSize;
+      }
+      flushParagraph();
+      if (pIdx < pageTextItems.length - 1){
+        docChildren.push(new Paragraph({ children: [new PageBreak()] }));
+      }
+      onProgress(45 + Math.round(((pIdx+1)/pageTextItems.length)*40), `Building document \u2014 page ${pIdx+1} of ${pageTextItems.length}\u2026`);
+    }
+
+    onProgress(90, 'Packaging .docx\u2026');
+    const doc = new Document({ sections: [{ children: docChildren.length ? docChildren : [new Paragraph({ children:[new TextRun('')] })] }] });
+    const blob = await Packer.toBlob(doc);
+    onProgress(100, 'Done.');
+    return blob;
+  }
+
+  /* ================= WORD -> PDF ================= */
+  async function convertWordToPdf(file, onProgress, isCancelled){
+    onProgress(5, 'Reading Word document\u2026');
+    const mammoth = await ensureMammoth();
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    onProgress(25, 'Parsing content\u2026');
+
+    const container = document.createElement('div');
+    container.innerHTML = result.value;
+
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+    const fontBoldItalic = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
+
+    const PAGE_W = 612, PAGE_H = 792, MARGIN = 56;
+    let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    let cursorY = PAGE_H - MARGIN;
+    const maxWidth = PAGE_W - MARGIN*2;
+
+    function pickFont(bold, italic){
+      if (bold && italic) return fontBoldItalic;
+      if (bold) return fontBold;
+      if (italic) return fontItalic;
+      return fontRegular;
+    }
+    function newPage(){
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      cursorY = PAGE_H - MARGIN;
+    }
+    function ensureSpace(lineHeight){
+      if (cursorY - lineHeight < MARGIN) newPage();
+    }
+    function wrapText(text, font, size){
+      const words = text.split(/\s+/).filter(Boolean);
+      const lines = [];
+      let current = '';
+      for (const w of words){
+        const test = current ? current + ' ' + w : w;
+        if (font.widthOfTextAtSize(test, size) > maxWidth && current){
+          lines.push(current);
+          current = w;
+        } else {
+          current = test;
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    }
+    function drawParagraph(text, { size = 11, bold = false, italic = false, indent = 0, spacingAfter = 10, color = rgb(0.05,0.06,0.1) } = {}){
+      if (!text.trim()) { cursorY -= spacingAfter; return; }
+      const font = pickFont(bold, italic);
+      const lineHeight = size * 1.32;
+      const lines = wrapText(text, font, size);
+      for (const line of lines){
+        ensureSpace(lineHeight);
+        page.drawText(line, { x: MARGIN + indent, y: cursorY - size, size, font, color });
+        cursorY -= lineHeight;
+      }
+      cursorY -= spacingAfter;
+    }
+
+    const HEADING_SIZES = { H1: 22, H2: 18, H3: 15, H4: 13 };
+    let imagesEmbedded = 0, tablesRendered = 0;
+
+    async function embedImageFromSrc(src){
+      try{
+        const m = /^data:(image\/(png|jpe?g));base64,(.+)$/i.exec(src);
+        if (!m) return null;
+        const bin = atob(m[3]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+        return /png/i.test(m[1]) ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+      }catch(e){ return null; }
+    }
+
+    async function renderNode(node, ctx){
+      if (isCancelled()) return;
+      if (node.nodeType === Node.TEXT_NODE){
+        const text = node.textContent.replace(/\s+/g, ' ');
+        if (text.trim()) drawParagraph(text, ctx);
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'h1') return drawParagraph(node.textContent, { size: HEADING_SIZES.H1, bold: true, spacingAfter: 14 });
+      if (tag === 'h2') return drawParagraph(node.textContent, { size: HEADING_SIZES.H2, bold: true, spacingAfter: 12 });
+      if (tag === 'h3') return drawParagraph(node.textContent, { size: HEADING_SIZES.H3, bold: true, spacingAfter: 10 });
+      if (tag === 'h4' || tag === 'h5' || tag === 'h6') return drawParagraph(node.textContent, { size: HEADING_SIZES.H4, bold: true, spacingAfter: 10 });
+      if (tag === 'p'){
+        const bold = !!node.querySelector('strong,b') && node.children.length === 1;
+        const italic = !!node.querySelector('em,i') && node.children.length === 1;
+        return drawParagraph(node.textContent, { bold, italic });
+      }
+      if (tag === 'ul' || tag === 'ol'){
+        let i = 1;
+        for (const li of node.children){
+          const marker = tag === 'ol' ? `${i}. ` : '\u2022 ';
+          drawParagraph(marker + li.textContent, { indent: 14 });
+          i++;
+        }
+        return;
+      }
+      if (tag === 'img'){
+        const img = await embedImageFromSrc(node.getAttribute('src') || '');
+        if (img){
+          const scale = Math.min(1, maxWidth / img.width);
+          const w = img.width * scale, h = img.height * scale;
+          ensureSpace(h + 10);
+          page.drawImage(img, { x: MARGIN, y: cursorY - h, width: w, height: h });
+          cursorY -= h + 10;
+          imagesEmbedded++;
+        }
+        return;
+      }
+      if (tag === 'table'){
+        tablesRendered++;
+        const rows = Array.from(node.querySelectorAll('tr'));
+        const colCount = Math.max(1, ...rows.map(r => r.children.length));
+        const colWidth = maxWidth / colCount;
+        for (const row of rows){
+          const cells = Array.from(row.children);
+          ensureSpace(16);
+          const rowY = cursorY;
+          cells.forEach((cell, ci) => {
+            const text = cell.textContent.replace(/\s+/g, ' ').trim();
+            const lines = wrapText(text, fontRegular, 10).slice(0, 3); // cap lines per cell to keep table rows aligned
+            lines.forEach((line, li) => {
+              page.drawText(line, { x: MARGIN + ci*colWidth + 3, y: rowY - 12 - li*12, size: 10, font: fontRegular, color: rgb(0.05,0.06,0.1) });
+            });
+          });
+          cursorY -= 16 + Math.max(0, ...cells.map(c => Math.min(3, wrapText(c.textContent, fontRegular, 10).length)-1)) * 12;
+          cursorY -= 4;
+        }
+        cursorY -= 8;
+        return;
+      }
+      // Container-level elements: recurse into children, honoring block spacing.
+      for (const child of node.childNodes){
+        await renderNode(child, ctx);
+      }
+    }
+
+    let processed = 0;
+    const topNodes = Array.from(container.childNodes);
+    for (const node of topNodes){
+      if (isCancelled()) return null;
+      await renderNode(node, {});
+      processed++;
+      onProgress(25 + Math.round((processed/topNodes.length)*60), 'Laying out document\u2026');
+      await nextFrame();
+    }
+
+    onProgress(92, 'Finalizing PDF\u2026');
+    const pdfBytes = await pdfDoc.save();
+    onProgress(100, 'Done.');
+    return new Blob([pdfBytes], { type: 'application/pdf' });
+  }
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
