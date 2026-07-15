@@ -5275,6 +5275,242 @@ if (document.getElementById('upsDrop')){
   document.getElementById('upsConvertAnotherBtn').onclick = () => { document.getElementById('upsResetBtn').click(); };
 }
 
+/* ============ AI OCR — IMAGE & PDF TO TEXT (ai-ocr.html) ============
+   Real OCR, not a fake preview: Tesseract.js (Apache 2.0), a WebAssembly
+   port of the Tesseract OCR engine, running entirely in a Web Worker so the
+   page stays responsive. One important honesty note that shaped the
+   architecture here: Tesseract.js's own documentation states plainly that
+   it "does not support PDF files." So for PDF input, this tool does NOT
+   pretend to OCR the PDF directly -- it uses PDF.js (already used elsewhere
+   in ToolFlight) to render each page to an image first, then runs the same
+   real OCR engine on each rendered page. That's a genuine, working pipeline,
+   just not literally "OCR that reads PDF bytes," and the FAQ says so. */
+if (document.getElementById('ocrDrop')){
+  const TESS_VERSION = '5';
+  const PDFJS_VER_OCR = '4.5.136';
+  const OCR_MAX_DIM = 3000; // safety cap on page/image dimensions before OCR
+
+  let ocrFile = null;
+  let ocrFullText = '';
+  let ocrPageTexts = []; // [{page, text}] for multi-page PDFs
+  let ocrCancelled = false;
+  let ocrWorker = null;
+  let pdfjsLoadPromiseOcr = null;
+
+  async function ensurePdfJsOcr(){
+    if (!pdfjsLoadPromiseOcr){
+      pdfjsLoadPromiseOcr = (async () => {
+        const pdfjsLib = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_OCR}/build/pdf.min.mjs`);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VER_OCR}/build/pdf.worker.min.mjs`;
+        return pdfjsLib;
+      })().catch((err) => { pdfjsLoadPromiseOcr = null; throw err; });
+    }
+    return pdfjsLoadPromiseOcr;
+  }
+
+  function ocrSelectedLangs(){
+    return Array.from(document.querySelectorAll('.ocr-lang-check:checked')).map(cb => cb.value);
+  }
+
+  /* ---------- Upload: drag/drop, browse, paste ---------- */
+  setupDropZone('ocrDrop','ocrInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp','application/pdf'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, WEBP, or PDF file.', 'err'); return; }
+    await loadOcrFile(f);
+  });
+  document.addEventListener('paste', async (e) => {
+    const stage = document.getElementById('ocrStage');
+    const drop = document.getElementById('ocrDrop');
+    if ((!stage || stage.classList.contains('hidden')) && (!drop || drop.offsetParent === null)) return;
+    const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (!imgItem) return;
+    const file = imgItem.getAsFile();
+    if (file) { e.preventDefault(); await loadOcrFile(file); toast('Image pasted.'); }
+  });
+
+  async function loadOcrFile(f){
+    if (f.size > 30*1024*1024){ toast(`That file is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
+    ocrFile = f;
+    ocrFullText = ''; ocrPageTexts = [];
+    document.getElementById('ocrStage').classList.remove('hidden');
+    document.getElementById('ocrFileName').textContent = f.name;
+    document.getElementById('ocrFileSize').textContent = fmtBytes(f.size);
+    document.getElementById('ocrExtractBtn').disabled = false;
+    document.getElementById('ocrResultWrap').classList.add('hidden');
+    document.getElementById('ocrPreviewImg').classList.add('hidden');
+    document.getElementById('ocrPreviewPdfNote').classList.add('hidden');
+
+    if (f.type === 'application/pdf'){
+      document.getElementById('ocrPreviewPdfNote').classList.remove('hidden');
+      try{
+        const pdfjsLib = await ensurePdfJsOcr();
+        const bytes = await f.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+        document.getElementById('ocrPreviewPdfNote').textContent = `PDF \u2014 ${pdf.numPages} page${pdf.numPages!==1?'s':''}`;
+      }catch(e){ document.getElementById('ocrPreviewPdfNote').textContent = 'PDF'; }
+    } else {
+      const url = URL.createObjectURL(f);
+      const img = document.getElementById('ocrPreviewImg');
+      img.src = url;
+      img.classList.remove('hidden');
+      img.onload = () => URL.revokeObjectURL(url);
+    }
+    toast('File loaded.');
+  }
+
+  /* ---------- OCR ---------- */
+  document.getElementById('ocrCancelBtn').onclick = async () => {
+    ocrCancelled = true;
+    if (ocrWorker){ try{ await ocrWorker.terminate(); }catch(e){} ocrWorker = null; }
+  };
+
+  async function ocrImageSource(source, langs, onProgress){
+    if (!ocrWorker){
+      const logger = (m) => {
+        if (m.status === 'recognizing text' && typeof m.progress === 'number') onProgress(m.progress);
+      };
+      try{
+        ocrWorker = await Tesseract.createWorker(langs.join('+'), 1, { logger });
+      }catch(e1){
+        try{
+          ocrWorker = await Tesseract.createWorker(langs.join('+'), undefined, { logger });
+        }catch(e2){
+          ocrWorker = await Tesseract.createWorker(langs.join('+'));
+        }
+      }
+    }
+    const { data } = await ocrWorker.recognize(source);
+    return data.text;
+  }
+
+  document.getElementById('ocrExtractBtn').onclick = async () => {
+    if (!ocrFile) return;
+    const langs = ocrSelectedLangs();
+    if (!langs.length){ toast('Choose at least one language first.', 'err'); return; }
+    ocrCancelled = false;
+    const btn = document.getElementById('ocrExtractBtn');
+    setLoading(btn, true);
+    document.getElementById('ocrCancelBtn').classList.remove('hidden');
+    const progressWrap = document.getElementById('ocrProgressWrap');
+    const progressLabel = document.getElementById('ocrProgressLabel');
+    const progressFill = document.getElementById('ocrProgressFill');
+    progressWrap.classList.remove('hidden');
+    progressFill.style.width = '3%';
+
+    try{
+      await loadScriptOnce(`https://cdn.jsdelivr.net/npm/tesseract.js@${TESS_VERSION}/dist/tesseract.min.js`);
+      if (!window.Tesseract) throw new Error('OCR engine failed to load.');
+
+      ocrPageTexts = [];
+      if (ocrFile.type === 'application/pdf'){
+        progressLabel.textContent = 'Reading PDF\u2026';
+        const pdfjsLib = await ensurePdfJsOcr();
+        const bytes = await ocrFile.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+        for (let p = 1; p <= pdf.numPages; p++){
+          if (ocrCancelled) break;
+          progressLabel.textContent = `Rendering page ${p} of ${pdf.numPages}\u2026`;
+          const page = await pdf.getPage(p);
+          const scale = Math.min(2.5, OCR_MAX_DIM / Math.max(page.view[2], page.view[3]));
+          const viewport = page.getViewport({ scale: Math.max(1, scale) });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          page.cleanup && page.cleanup();
+          if (ocrCancelled) break;
+
+          progressLabel.textContent = `Running OCR \u2014 page ${p} of ${pdf.numPages}\u2026`;
+          const pageText = await ocrImageSource(canvas, langs, (frac) => {
+            const base = ((p-1)/pdf.numPages)*100;
+            const span = 100/pdf.numPages;
+            progressFill.style.width = Math.min(98, Math.round(base + frac*span)) + '%';
+          });
+          ocrPageTexts.push({ page: p, text: pageText.trim() });
+          await nextFrame();
+        }
+      } else {
+        progressLabel.textContent = 'Running OCR\u2026';
+        const img = await loadImageFromFile(ocrFile);
+        const canvas = document.createElement('canvas');
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (Math.max(w,h) > OCR_MAX_DIM){ const sc = OCR_MAX_DIM/Math.max(w,h); w = Math.round(w*sc); h = Math.round(h*sc); }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const text = await ocrImageSource(canvas, langs, (frac) => {
+          progressFill.style.width = Math.min(98, Math.round(frac*100)) + '%';
+        });
+        ocrPageTexts.push({ page: 1, text: text.trim() });
+      }
+
+      if (ocrCancelled){
+        toast('Cancelled.');
+      } else {
+        ocrFullText = ocrPageTexts.length > 1
+          ? ocrPageTexts.map(p => `--- Page ${p.page} ---\n${p.text}`).join('\n\n')
+          : (ocrPageTexts[0] ? ocrPageTexts[0].text : '');
+        document.getElementById('ocrResultText').value = ocrFullText;
+        document.getElementById('ocrResultWrap').classList.remove('hidden');
+        document.getElementById('ocrCharCount').textContent = ocrFullText.length + ' characters';
+        progressFill.style.width = '100%';
+        if (!ocrFullText.trim()){
+          toast('No text was detected in this file. It may be blank, too low-resolution, or in a language not selected.', 'err');
+        } else {
+          toast('Text extracted.');
+        }
+      }
+    }catch(err){
+      if (!ocrCancelled) toast('OCR failed: ' + ((err && err.message) || 'please try a different file.'), 'err');
+    }finally{
+      if (ocrWorker){ try{ await ocrWorker.terminate(); }catch(e){} ocrWorker = null; }
+      setLoading(btn, false, 'Extract Text');
+      document.getElementById('ocrCancelBtn').classList.add('hidden');
+      setTimeout(() => progressWrap.classList.add('hidden'), 900);
+    }
+  };
+
+  /* ---------- Search within extracted text ---------- */
+  document.getElementById('ocrSearchInput').addEventListener('input', (e) => {
+    const q = e.target.value.trim();
+    const countEl = document.getElementById('ocrSearchCount');
+    if (!q){ countEl.textContent = ''; return; }
+    const matches = ocrFullText.split(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')).length - 1;
+    countEl.textContent = matches ? `${matches} match${matches!==1?'es':''}` : 'No matches';
+  });
+
+  /* ---------- Copy / Export ---------- */
+  document.getElementById('ocrCopyBtn').onclick = () => {
+    if (!ocrFullText){ toast('Extract text first.', 'err'); return; }
+    copyToClipboard(ocrFullText).then(() => toast('Copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
+  };
+  document.getElementById('ocrDownloadTxtBtn').onclick = () => {
+    if (!ocrFullText){ toast('Extract text first.', 'err'); return; }
+    downloadBlob(new Blob([ocrFullText], { type: 'text/plain' }), 'extracted-text.txt');
+  };
+  document.getElementById('ocrDownloadDocxBtn').onclick = async () => {
+    if (!ocrFullText){ toast('Extract text first.', 'err'); return; }
+    const btn = document.getElementById('ocrDownloadDocxBtn');
+    setLoading(btn, true);
+    try{
+      const docxLib = await import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/docx@9.5.1/dist/index.mjs');
+      const { Document, Packer, Paragraph, TextRun } = docxLib;
+      const paragraphs = ocrFullText.split('\n').map(line => new Paragraph({ children: [new TextRun(line)] }));
+      const doc = new Document({ sections: [{ children: paragraphs.length ? paragraphs : [new Paragraph({children:[new TextRun('')]})] }] });
+      const blob = await Packer.toBlob(doc);
+      downloadBlob(blob, 'extracted-text.docx');
+    }catch(err){
+      toast('Could not build the DOCX file: ' + ((err && err.message) || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, 'Download DOCX');
+    }
+  };
+  document.getElementById('ocrConvertAnotherBtn').onclick = () => {
+    ocrFile = null; ocrFullText = ''; ocrPageTexts = [];
+    document.getElementById('ocrStage').classList.add('hidden');
+    document.getElementById('ocrInput').value = '';
+  };
+}
+
 /* ============ FAQ (index.html) ============ */
 if (document.getElementById('faqList')){
   const faqs = [
