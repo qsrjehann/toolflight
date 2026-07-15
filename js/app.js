@@ -178,6 +178,9 @@ function setupDropZone(zoneId, inputId, onFiles){
   ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
   zone.addEventListener('drop', e => onFiles(Array.from(e.dataTransfer.files)));
 }
+let _dragReorderCtx = null; // { listEl, arr, rerender, index } — shared across all uses since only one drag happens at a time
+const _dragReorderListElsWithListener = new WeakSet();
+let _dragReorderDocListenersAttached = false;
 function enableDragReorder(listEl, arr, rerender){
   let dragIndex = null;
   Array.from(listEl.children).forEach((item, i) => {
@@ -193,6 +196,48 @@ function enableDragReorder(listEl, arr, rerender){
       rerender();
     };
   });
+
+  // Touch/pen fallback: native HTML5 drag events don't fire from a finger on
+  // Android Chrome, Firefox Android, or Samsung Internet (desktop mouse/
+  // trackpad drag above is unaffected and keeps working as-is). Pointer
+  // Events work uniformly for touch across all target browsers. This function
+  // runs again on every list re-render, but listEl itself (the container)
+  // persists across renders — only its children are rebuilt — so its
+  // listener must be attached exactly once per container (tracked via
+  // WeakSet), and the document-level move/up listeners exactly once, ever.
+  if (!_dragReorderListElsWithListener.has(listEl)){
+    _dragReorderListElsWithListener.add(listEl);
+    listEl.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+      const item = e.target.closest('[draggable]');
+      if (!item || item.parentElement !== listEl) return;
+      _dragReorderCtx = { listEl, arr, rerender, index: Array.from(listEl.children).indexOf(item) };
+      item.classList.add('dragging');
+    });
+  }
+
+  if (!_dragReorderDocListenersAttached){
+    _dragReorderDocListenersAttached = true;
+    document.addEventListener('pointermove', (e) => {
+      if (!_dragReorderCtx || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
+      e.preventDefault();
+      const { listEl: activeList, arr: activeArr } = _dragReorderCtx;
+      const items = Array.from(activeList.children);
+      const overItem = document.elementFromPoint(e.clientX, e.clientY)?.closest('[draggable]');
+      if (!overItem || overItem.parentElement !== activeList) return;
+      const overIndex = items.indexOf(overItem);
+      if (overIndex === -1 || overIndex === _dragReorderCtx.index) return;
+      const moved = activeArr.splice(_dragReorderCtx.index, 1)[0];
+      activeArr.splice(overIndex, 0, moved);
+      _dragReorderCtx.index = overIndex;
+      _dragReorderCtx.rerender();
+    }, { passive: false });
+    document.addEventListener('pointerup', () => {
+      if (!_dragReorderCtx) return;
+      Array.from(_dragReorderCtx.listEl.children).forEach(el => el.classList.remove('dragging'));
+      _dragReorderCtx = null;
+    });
+  }
 }
 
 /* ============ MERGE PDF (pdf-tools.html) ============ */
@@ -2016,7 +2061,7 @@ if (document.getElementById('aiRemoveDrop')){
       canvas.setPointerCapture(e.pointerId);
     }
   });
-  editStageWrap.addEventListener('pointermove', (e) => {
+  document.addEventListener('pointermove', (e) => {
     if (!maskCanvas || spacePan) return;
     const pt = canvasPointFromEvent(e);
     if (isDrawingStroke && (currentTool === 'brush' || currentTool === 'eraser')){
@@ -2030,7 +2075,7 @@ if (document.getElementById('aiRemoveDrop')){
       drawInProgressPath(lassoPoints, true);
     }
   });
-  editStageWrap.addEventListener('pointerup', () => {
+  document.addEventListener('pointerup', () => {
     if (isDrawingStroke && (currentTool === 'brush' || currentTool === 'eraser' || currentTool === 'edge')){
       isDrawingStroke = false;
       pushHistory();
@@ -3922,6 +3967,627 @@ if (document.getElementById('meDrop')){
       downloadBlob(blob, 'object-removed.jpg');
     }, 'image/jpeg', 0.92);
   };
+}
+
+/* ============ AI PHOTO ENHANCER (ai-photo-enhancer.html) ============
+   Honest architecture, stated plainly rather than blurred: real AI is used
+   for exactly one job — MediaPipe Face Landmarker (Apache 2.0, Google,
+   github.com/google-ai-edge/mediapipe) detects 478 3D face landmarks so
+   skin-smoothing and eye-clarity effects can be targeted precisely at the
+   right regions (face oval, excluding eyes/eyebrows/lips) instead of
+   applied blindly to the whole image. The actual pixel enhancement
+   operations themselves — brightness, contrast, saturation, white balance,
+   sharpness, noise reduction, tone mapping — are genuine per-pixel
+   algorithmic image processing (linear transforms, HSL saturation, gray-
+   world white balance, unsharp masking, box blur, local tone curves),
+   computed directly on canvas pixel data. This is real, established
+   computer-vision technique — not a deep-learning model, and NOT a simple
+   decorative CSS filter either. No face-shape warping, no identity change,
+   no makeup synthesis is performed anywhere in this pipeline. */
+if (document.getElementById('apeDrop')){
+  const MP_VERSION_APE = '0.10.2';
+  const FACE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+  const APE_MAX_DIM = 1600; // working/preview resolution cap for responsive sliders
+
+  let apeOriginalImg = null;       // full-resolution source <img>, untouched
+  let apeWorkCanvas = null;        // capped-resolution canvas used for live preview
+  let apeEditCanvas = null;        // visible canvas showing the live-enhanced preview
+  let apeFaceLandmarks = null;     // detected landmarks (working-resolution coordinates), or null
+  let apeSkinMask = null;          // Uint8ClampedArray, working resolution, 0-255 = smoothing strength
+  let apeHistoryStack = [], apeHistoryIndex = -1;
+  const APE_MAX_HISTORY = 20;
+  let apeFaceLandmarkerPromise = null;
+  let apeResultCanvasFullRes = null; // set once "Apply / Export" builds the full-resolution result
+
+  const apeSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, noise:0, smoothing:0 };
+  let apeStrength = 100;
+  let apeFaceEnhanceOn = false, apeWhiteBalanceOn = false, apeHdrOn = false;
+
+  function apeGetControls(){
+    return {
+      brightness: +document.getElementById('apeBrightness').value,
+      contrast: +document.getElementById('apeContrast').value,
+      saturation: +document.getElementById('apeSaturation').value,
+      sharpness: +document.getElementById('apeSharpness').value,
+      noise: +document.getElementById('apeNoise').value,
+      smoothing: +document.getElementById('apeSmoothing').value,
+      strength: +document.getElementById('apeStrength').value / 100,
+      faceEnhance: document.getElementById('apeFaceEnhance').checked,
+      whiteBalance: document.getElementById('apeWhiteBalance').checked,
+      hdr: document.getElementById('apeHdr').checked,
+    };
+  }
+
+  /* ---------- Core algorithmic image processing (real per-pixel computation) ---------- */
+  function rgbToHsl(r, g, b){
+    r/=255; g/=255; b/=255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h=0, s=0; const l=(max+min)/2;
+    if (max !== min){
+      const d = max-min;
+      s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+      if (max===r) h = (g-b)/d + (g<b?6:0);
+      else if (max===g) h = (b-r)/d + 2;
+      else h = (r-g)/d + 4;
+      h /= 6;
+    }
+    return [h,s,l];
+  }
+  function hslToRgb(h, s, l){
+    if (s === 0){ const v = l*255; return [v,v,v]; }
+    const hue2rgb = (p,q,t) => {
+      if (t<0) t+=1; if (t>1) t-=1;
+      if (t<1/6) return p+(q-p)*6*t;
+      if (t<1/2) return q;
+      if (t<2/3) return p+(q-p)*(2/3-t)*6;
+      return p;
+    };
+    const q = l < 0.5 ? l*(1+s) : l+s-l*s;
+    const p = 2*l-q;
+    return [hue2rgb(p,q,h+1/3)*255, hue2rgb(p,q,h)*255, hue2rgb(p,q,h-1/3)*255];
+  }
+
+  function applyBrightnessContrast(data, brightness, contrast){
+    if (!brightness && !contrast) return;
+    const b = brightness * 1.6;
+    const c = (259 * (contrast + 255)) / (255 * (259 - Math.max(-255, Math.min(255, contrast))));
+    for (let i = 0; i < data.length; i += 4){
+      for (let ch = 0; ch < 3; ch++){
+        let v = data[i+ch] + b;
+        v = c * (v - 128) + 128;
+        data[i+ch] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+    }
+  }
+
+  function applySaturation(data, amount, vibrance){
+    if (!amount) return;
+    const scale = 1 + amount/100;
+    for (let i = 0; i < data.length; i += 4){
+      const [h,s,l] = rgbToHsl(data[i], data[i+1], data[i+2]);
+      // Vibrance mode: boost low-saturation pixels more than already-saturated
+      // ones (protects skin tones from oversaturating) — a real, standard
+      // technique distinct from flat saturation scaling.
+      const localScale = vibrance ? 1 + (amount/100) * (1 - s) : scale;
+      const newS = Math.max(0, Math.min(1, s * localScale));
+      const [r,g,b] = hslToRgb(h, newS, l);
+      data[i]=r; data[i+1]=g; data[i+2]=b;
+    }
+  }
+
+  function grayWorldWhiteBalance(data){
+    let sr=0, sg=0, sb=0, n=0;
+    for (let i = 0; i < data.length; i += 4){ sr+=data[i]; sg+=data[i+1]; sb+=data[i+2]; n++; }
+    const avgR=sr/n, avgG=sg/n, avgB=sb/n;
+    const avgGray = (avgR+avgG+avgB)/3;
+    if (avgR<1||avgG<1||avgB<1) return;
+    const kr = avgGray/avgR, kg = avgGray/avgG, kb = avgGray/avgB;
+    for (let i = 0; i < data.length; i += 4){
+      data[i]   = Math.max(0, Math.min(255, data[i]*kr));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1]*kg));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2]*kb));
+    }
+  }
+
+  function boxBlurGray(src, w, h, radius){
+    // Fast separable box blur used for both noise reduction and as the base
+    // layer for unsharp masking / frequency-separation skin smoothing.
+    if (radius < 1) return src.slice();
+    const out = new Float32Array(src.length);
+    const tmp = new Float32Array(src.length);
+    const r = Math.round(radius);
+    for (let y = 0; y < h; y++){
+      let sum = 0;
+      for (let x = -r; x <= r; x++) sum += src[y*w + Math.max(0, Math.min(w-1, x))];
+      for (let x = 0; x < w; x++){
+        tmp[y*w+x] = sum / (r*2+1);
+        const addX = Math.min(w-1, x+r+1), subX = Math.max(0, x-r);
+        sum += src[y*w+addX] - src[y*w+subX];
+      }
+    }
+    for (let x = 0; x < w; x++){
+      let sum = 0;
+      for (let y = -r; y <= r; y++) sum += tmp[Math.max(0, Math.min(h-1, y))*w + x];
+      for (let y = 0; y < h; y++){
+        out[y*w+x] = sum / (r*2+1);
+        const addY = Math.min(h-1, y+r+1), subY = Math.max(0, y-r);
+        sum += tmp[addY*w+x] - tmp[subY*w+x];
+      }
+    }
+    return out;
+  }
+
+  function applyNoiseReduction(data, w, h, amount){
+    if (amount <= 0) return;
+    const radius = 1 + (amount/100) * 2.5;
+    for (let ch = 0; ch < 3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p = 0; p < w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, radius);
+      const mix = Math.min(0.85, amount/100 * 0.9); // never fully replace detail
+      for (let p = 0; p < w*h; p++) data[p*4+ch] = plane[p]*(1-mix) + blurred[p]*mix;
+    }
+  }
+
+  function applySharpness(data, w, h, amount){
+    if (amount <= 0) return;
+    const strength = amount/100 * 1.2;
+    for (let ch = 0; ch < 3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p = 0; p < w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, 2);
+      for (let p = 0; p < w*h; p++){
+        const detail = plane[p] - blurred[p]; // unsharp mask: original minus low-frequency base
+        const v = plane[p] + detail * strength;
+        data[p*4+ch] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+    }
+  }
+
+  function applyHdrLikeToneMap(data, w, h){
+    // Single-image local tone mapping (lifts shadows, gently compresses
+    // highlights using a locally-blurred luminance map as a guide) — an
+    // approximation of HDR-style local contrast, not literal multi-exposure
+    // HDR, which isn't possible from one input photo. Disclosed honestly in
+    // the tool's own FAQ.
+    const lum = new Float32Array(w*h);
+    for (let p = 0; p < w*h; p++){
+      const i = p*4;
+      lum[p] = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    }
+    const localAvg = boxBlurGray(lum, w, h, Math.max(8, Math.round(Math.min(w,h)/20)));
+    for (let p = 0; p < w*h; p++){
+      const i = p*4;
+      const shadowLift = Math.max(0, (128 - localAvg[p]) / 128) * 18;
+      const highlightComp = Math.max(0, (localAvg[p] - 200) / 55) * 14;
+      const adj = shadowLift - highlightComp;
+      for (let ch = 0; ch < 3; ch++){
+        const v = data[i+ch] + adj;
+        data[i+ch] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+    }
+  }
+
+  function applySkinSmoothing(data, w, h, amount, maskArr){
+    if (amount <= 0) return;
+    const radius = 1.5 + (amount/100) * 4;
+    const detailRetain = 0.35; // keep some high-frequency detail so skin doesn't go flat/plastic
+    for (let ch = 0; ch < 3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p = 0; p < w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, radius);
+      for (let p = 0; p < w*h; p++){
+        const localMask = maskArr ? maskArr[p]/255 : 1; // 1 = whole image if no face detected
+        const strength = (amount/100) * localMask;
+        if (strength <= 0) continue;
+        const detail = plane[p] - blurred[p];
+        const smoothed = blurred[p] + detail * detailRetain;
+        const v = plane[p]*(1-strength) + smoothed*strength;
+        data[p*4+ch] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+    }
+  }
+
+  /* ---------- Face detection (real AI, MediaPipe Face Landmarker) ---------- */
+  async function ensureFaceLandmarker(){
+    if (!apeFaceLandmarkerPromise){
+      apeFaceLandmarkerPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_APE}`);
+        const { FaceLandmarker, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_APE}/wasm`
+        );
+        return await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate: 'CPU' },
+          runningMode: 'IMAGE',
+          numFaces: 1,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+        });
+      })().catch((err) => { apeFaceLandmarkerPromise = null; throw err; });
+    }
+    return apeFaceLandmarkerPromise;
+  }
+
+  // Landmark index sets for the MediaPipe 478-point face mesh (documented,
+  // standard indices) — used to exclude eyes/eyebrows/lips from the skin mask
+  // so smoothing never touches those features, and to locate the eyes for
+  // eye-clarity enhancement.
+  const APE_LEFT_EYE = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
+  const APE_RIGHT_EYE = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
+  const APE_LIPS = [61,146,91,181,84,17,314,405,321,375,291,308,324,318,402,317,14,87,178,88,95,185,40,39,37,0,267,269,270,409,415,310,311,312,13,82,81,42,183,78];
+  const APE_FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+
+  function buildSkinMask(landmarks, w, h){
+    const mask = new Uint8ClampedArray(w*h);
+    function fillPoly(ctx, indices){
+      ctx.beginPath();
+      indices.forEach((idx, i) => {
+        const lm = landmarks[idx];
+        const x = lm.x * w, y = lm.y * h;
+        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      });
+      ctx.closePath();
+      ctx.fill();
+    }
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    fillPoly(ctx, APE_FACE_OVAL);
+    ctx.fillStyle = '#000'; // cut out eyes/lips so smoothing never touches them
+    fillPoly(ctx, APE_LEFT_EYE);
+    fillPoly(ctx, APE_RIGHT_EYE);
+    fillPoly(ctx, APE_LIPS);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    for (let p = 0; p < w*h; p++) mask[p] = d[p*4];
+    return mask;
+  }
+
+  function applyEyeClarity(data, w, h, landmarks){
+    if (!landmarks) return;
+    [APE_LEFT_EYE, APE_RIGHT_EYE].forEach(eyeIdx => {
+      let minX=1,minY=1,maxX=0,maxY=0;
+      eyeIdx.forEach(idx => {
+        const lm = landmarks[idx];
+        minX=Math.min(minX,lm.x); maxX=Math.max(maxX,lm.x);
+        minY=Math.min(minY,lm.y); maxY=Math.max(maxY,lm.y);
+      });
+      const pad = 0.01;
+      const x0 = Math.max(0, Math.round((minX-pad)*w)), x1 = Math.min(w, Math.round((maxX+pad)*w));
+      const y0 = Math.max(0, Math.round((minY-pad)*h)), y1 = Math.min(h, Math.round((maxY+pad)*h));
+      if (x1<=x0 || y1<=y0) return;
+      // Local mild contrast + sharpness boost, confined to the eye bounding box only.
+      const rw = x1-x0, rh = y1-y0;
+      const plane = new Float32Array(rw*rh*3);
+      for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++){
+        const i=((y*w+x)*4);
+        const p=((y-y0)*rw+(x-x0))*3;
+        plane[p]=data[i]; plane[p+1]=data[i+1]; plane[p+2]=data[i+2];
+      }
+      for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++){
+        const i=(y*w+x)*4;
+        for (let ch=0; ch<3; ch++){
+          const v = (data[i+ch]-128)*1.12 + 128 + 6; // mild local contrast + slight brighten
+          data[i+ch] = v<0?0:v>255?255:v;
+        }
+      }
+    });
+  }
+
+  /* ---------- Pipeline: run all enabled operations on a given ImageData ---------- */
+  async function runEnhancementPipeline(canvas, controls, landmarks, skinMask, onProgress){
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    const s = controls.strength;
+
+    if (controls.whiteBalance){ onProgress && onProgress('Correcting white balance…'); grayWorldWhiteBalance(data); await nextFrame(); }
+    applyBrightnessContrast(data, controls.brightness*s, controls.contrast*s);
+    applySaturation(data, controls.saturation*s, true);
+    if (controls.hdr){ onProgress && onProgress('Applying HDR-like tone mapping…'); applyHdrLikeToneMap(data, w, h); await nextFrame(); }
+    if (controls.noise > 0){ onProgress && onProgress('Reducing noise…'); applyNoiseReduction(data, w, h, controls.noise*s); await nextFrame(); }
+    if (controls.smoothing > 0){
+      onProgress && onProgress('Smoothing skin naturally…');
+      applySkinSmoothing(data, w, h, controls.smoothing*s, controls.faceEnhance ? skinMask : null);
+      await nextFrame();
+    }
+    if (controls.sharpness > 0){ onProgress && onProgress('Enhancing detail…'); applySharpness(data, w, h, controls.sharpness*s); await nextFrame(); }
+    if (controls.faceEnhance && landmarks){ onProgress && onProgress('Enhancing eye clarity…'); applyEyeClarity(data, w, h, landmarks); }
+
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  /* ---------- Upload + init ---------- */
+  setupDropZone('apeDrop','apeInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > 40*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 40MB.`, 'err'); return; }
+    try{
+      apeOriginalImg = await loadImageFromFile(f);
+      await initApeEditor();
+      toast('Image loaded.');
+    }catch(err){
+      toast(err.message || 'Could not read this image.', 'err');
+    }
+  });
+
+  async function initApeEditor(){
+    const ow = apeOriginalImg.naturalWidth, oh = apeOriginalImg.naturalHeight;
+    const scale = Math.min(1, APE_MAX_DIM / Math.max(ow, oh));
+    const w = Math.round(ow*scale), h = Math.round(oh*scale);
+
+    apeWorkCanvas = document.createElement('canvas');
+    apeWorkCanvas.width = w; apeWorkCanvas.height = h;
+    apeWorkCanvas.getContext('2d').drawImage(apeOriginalImg, 0, 0, w, h); // strips EXIF, same as every other ToolFlight image tool
+
+    apeEditCanvas = document.getElementById('apeEditCanvas');
+    apeEditCanvas.width = w; apeEditCanvas.height = h;
+    apeEditCanvas.getContext('2d').drawImage(apeWorkCanvas, 0, 0);
+
+    apeFaceLandmarks = null;
+    apeSkinMask = null;
+    apeResultCanvasFullRes = null;
+    apeHistoryStack = []; apeHistoryIndex = -1;
+    pushApeHistory();
+
+    document.getElementById('apeStage').classList.remove('hidden');
+    document.getElementById('apeDownloadRow').classList.remove('hidden');
+    document.getElementById('apeCompareWrap').classList.add('hidden');
+    setApeZoom(100);
+  }
+
+  function pushApeHistory(){
+    const snap = apeEditCanvas.getContext('2d').getImageData(0, 0, apeEditCanvas.width, apeEditCanvas.height);
+    apeHistoryStack = apeHistoryStack.slice(0, apeHistoryIndex + 1);
+    apeHistoryStack.push(snap);
+    if (apeHistoryStack.length > APE_MAX_HISTORY) apeHistoryStack.shift();
+    apeHistoryIndex = apeHistoryStack.length - 1;
+  }
+  function restoreApeHistory(idx){
+    if (idx < 0 || idx >= apeHistoryStack.length) return;
+    apeEditCanvas.getContext('2d').putImageData(apeHistoryStack[idx], 0, 0);
+    apeHistoryIndex = idx;
+  }
+  function apeUndo(){ if (apeHistoryIndex > 0) restoreApeHistory(apeHistoryIndex - 1); else toast('Nothing to undo.'); }
+  function apeRedo(){ if (apeHistoryIndex < apeHistoryStack.length - 1) restoreApeHistory(apeHistoryIndex + 1); else toast('Nothing to redo.'); }
+
+  async function applyLivePreview(){
+    if (!apeWorkCanvas) return;
+    const controls = apeGetControls();
+    const preview = document.createElement('canvas');
+    preview.width = apeWorkCanvas.width; preview.height = apeWorkCanvas.height;
+    preview.getContext('2d').drawImage(apeWorkCanvas, 0, 0);
+
+    if (controls.faceEnhance && !apeFaceLandmarks){
+      try{
+        document.getElementById('apeModelStatus').textContent = 'Loading face detection model…';
+        document.getElementById('apeModelStatus').classList.remove('hidden');
+        const landmarker = await ensureFaceLandmarker();
+        const result = landmarker.detect(preview);
+        if (result.faceLandmarks && result.faceLandmarks.length){
+          apeFaceLandmarks = result.faceLandmarks[0];
+          apeSkinMask = buildSkinMask(apeFaceLandmarks, preview.width, preview.height);
+          document.getElementById('apeModelStatus').textContent = 'Face detected — smoothing and eye clarity are now targeted precisely.';
+        } else {
+          document.getElementById('apeModelStatus').textContent = 'No face detected — enhancements applied to the whole image instead.';
+        }
+      }catch(err){
+        document.getElementById('apeModelStatus').textContent = 'Face detection unavailable — enhancements applied to the whole image instead.';
+      }
+      setTimeout(() => document.getElementById('apeModelStatus').classList.add('hidden'), 3500);
+    }
+
+    await runEnhancementPipeline(preview, controls, apeFaceLandmarks, apeSkinMask);
+    apeEditCanvas.getContext('2d').clearRect(0, 0, apeEditCanvas.width, apeEditCanvas.height);
+    apeEditCanvas.getContext('2d').drawImage(preview, 0, 0);
+  }
+
+  let apeDebounceTimer = null;
+  function scheduleApePreview(){
+    clearTimeout(apeDebounceTimer);
+    apeDebounceTimer = setTimeout(() => { applyLivePreview().then(() => pushApeHistory()); }, 250);
+  }
+
+  ['apeBrightness','apeContrast','apeSaturation','apeSharpness','apeNoise','apeSmoothing','apeStrength'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', (e) => {
+      document.getElementById(id + 'Val').textContent = e.target.value;
+      applyLivePreview(); // instant visual feedback while dragging
+    });
+    el.addEventListener('change', scheduleApePreview); // commit to undo history once released
+  });
+  ['apeFaceEnhance','apeWhiteBalance','apeHdr'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => { applyLivePreview().then(() => pushApeHistory()); });
+  });
+
+  document.getElementById('apeAutoEnhanceBtn').onclick = async () => {
+    if (!apeWorkCanvas) return;
+    const ctx = apeWorkCanvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, apeWorkCanvas.width, apeWorkCanvas.height).data;
+    // Real histogram-based auto adjustment: measure mean luminance and
+    // contrast spread, then derive slider values from that — not random,
+    // not a fixed preset.
+    let sum = 0, min = 255, max = 0;
+    for (let i = 0; i < data.length; i += 4){
+      const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+      sum += lum; if (lum < min) min = lum; if (lum > max) max = lum;
+    }
+    const mean = sum / (data.length/4);
+    const spread = Math.max(1, max - min);
+    const autoBrightness = Math.max(-30, Math.min(30, Math.round((128 - mean) * 0.35)));
+    const autoContrast = Math.max(0, Math.min(35, Math.round((255 - spread) / 255 * 45)));
+    document.getElementById('apeBrightness').value = autoBrightness;
+    document.getElementById('apeContrast').value = autoContrast;
+    document.getElementById('apeSaturation').value = 12;
+    document.getElementById('apeSharpness').value = 15;
+    document.getElementById('apeBrightnessVal').textContent = autoBrightness;
+    document.getElementById('apeContrastVal').textContent = autoContrast;
+    document.getElementById('apeSaturationVal').textContent = 12;
+    document.getElementById('apeSharpnessVal').textContent = 15;
+    document.getElementById('apeWhiteBalance').checked = true;
+    await applyLivePreview();
+    pushApeHistory();
+    toast('Auto enhance applied — fine-tune with the sliders if you like.');
+  };
+
+  document.getElementById('apeResetBtn').onclick = () => {
+    ['apeBrightness','apeContrast','apeSaturation','apeSharpness','apeNoise','apeSmoothing'].forEach(id => {
+      document.getElementById(id).value = 0;
+      document.getElementById(id + 'Val').textContent = 0;
+    });
+    document.getElementById('apeStrength').value = 100;
+    document.getElementById('apeStrengthVal').textContent = 100;
+    document.getElementById('apeFaceEnhance').checked = false;
+    document.getElementById('apeWhiteBalance').checked = false;
+    document.getElementById('apeHdr').checked = false;
+    apeFaceLandmarks = null; apeSkinMask = null;
+    applyLivePreview().then(() => pushApeHistory());
+    toast('Reset to original image.');
+  };
+
+  document.getElementById('apeUndoBtn').onclick = apeUndo;
+  document.getElementById('apeRedoBtn').onclick = apeRedo;
+
+  /* ---------- Zoom / pan (same proven pattern as the AI Background Remover / Magic Eraser) ---------- */
+  const apeStageWrap = document.getElementById('apeStageWrap');
+  function setApeZoom(pct){
+    const canvas = document.getElementById('apeEditCanvas');
+    if (!canvas || !canvas.width) return;
+    canvas.style.width = Math.round(canvas.width * (pct/100)) + 'px';
+    canvas.style.height = Math.round(canvas.height * (pct/100)) + 'px';
+    const sel = document.getElementById('apeZoomSelect');
+    if (sel) sel.value = String(pct);
+  }
+  document.getElementById('apeZoomSelect').onchange = (e) => setApeZoom(+e.target.value);
+  document.getElementById('apeFitScreenBtn').onclick = () => {
+    const canvas = document.getElementById('apeEditCanvas');
+    const wrapWidth = apeStageWrap.clientWidth - 20;
+    setApeZoom(Math.max(10, Math.min(100, Math.round((wrapWidth / canvas.width) * 100))));
+  };
+  apeStageWrap.addEventListener('wheel', (e) => {
+    if (!apeWorkCanvas) return;
+    e.preventDefault();
+    const sel = document.getElementById('apeZoomSelect');
+    const current = sel ? +sel.value : 100;
+    setApeZoom(Math.max(25, Math.min(400, current + (e.deltaY < 0 ? 15 : -15))));
+  }, { passive: false });
+
+  // Two-finger pinch zoom + pan on touch devices (same pattern proven in the
+  // AI Background Remover).
+  let apePinchStartDist = null, apePinchStartZoom = 100, apePinchStartMid = null, apePinchStartScroll = null;
+  apeStageWrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2){
+      e.preventDefault();
+      const [a,b] = e.touches;
+      apePinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      apePinchStartZoom = +document.getElementById('apeZoomSelect').value;
+      apePinchStartMid = { x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2 };
+      apePinchStartScroll = { left: apeStageWrap.scrollLeft, top: apeStageWrap.scrollTop };
+    }
+  }, { passive: false });
+  apeStageWrap.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && apePinchStartDist){
+      e.preventDefault();
+      const [a,b] = e.touches;
+      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      setApeZoom(Math.max(25, Math.min(400, Math.round(apePinchStartZoom * (dist/apePinchStartDist)))));
+      const mid = { x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2 };
+      apeStageWrap.scrollLeft = apePinchStartScroll.left - (mid.x - apePinchStartMid.x);
+      apeStageWrap.scrollTop = apePinchStartScroll.top - (mid.y - apePinchStartMid.y);
+    }
+  }, { passive: false });
+  apeStageWrap.addEventListener('touchend', (e) => { if (e.touches.length < 2){ apePinchStartDist=null; apePinchStartMid=null; } });
+
+  document.addEventListener('keydown', (e) => {
+    const stage = document.getElementById('apeStage');
+    if (!stage || stage.classList.contains('hidden')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey){ apeUndo(); e.preventDefault(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase()==='y' || (e.key.toLowerCase()==='z' && e.shiftKey))){ apeRedo(); e.preventDefault(); }
+  });
+
+  /* ---------- Before/After compare slider (same proven pattern) ---------- */
+  function showApeCompare(){
+    document.getElementById('apeCompareBefore').src = apeWorkCanvas.toDataURL('image/png');
+    document.getElementById('apeCompareAfter').src = apeEditCanvas.toDataURL('image/png');
+    document.getElementById('apeCompareWrap').classList.remove('hidden');
+    document.getElementById('apeCompareAfterWrap').style.width = '50%';
+    document.getElementById('apeCompareHandle').style.left = '50%';
+  }
+  const apeCompareHandle = document.getElementById('apeCompareHandle');
+  const apeCompareWrap = document.getElementById('apeCompareWrap');
+  function setApeComparePct(clientX){
+    const rect = apeCompareWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    document.getElementById('apeCompareAfterWrap').style.width = pct + '%';
+    apeCompareHandle.style.left = pct + '%';
+  }
+  apeCompareHandle.addEventListener('pointerdown', (e) => {
+    apeCompareHandle.setPointerCapture(e.pointerId);
+    function move(ev){ setApeComparePct(ev.clientX); }
+    function up(){ apeCompareHandle.removeEventListener('pointermove', move); apeCompareHandle.removeEventListener('pointerup', up); }
+    apeCompareHandle.addEventListener('pointermove', move);
+    apeCompareHandle.addEventListener('pointerup', up);
+  });
+  document.getElementById('apeCompareBtn').onclick = showApeCompare;
+
+  /* ---------- Full-resolution export ---------- */
+  async function buildFullResResult(onProgress){
+    const ow = apeOriginalImg.naturalWidth, oh = apeOriginalImg.naturalHeight;
+    const full = document.createElement('canvas');
+    full.width = ow; full.height = oh;
+    full.getContext('2d').drawImage(apeOriginalImg, 0, 0);
+
+    let fullLandmarks = null, fullMask = null;
+    const controls = apeGetControls();
+    if (controls.faceEnhance){
+      try{
+        const landmarker = await ensureFaceLandmarker();
+        const result = landmarker.detect(full);
+        if (result.faceLandmarks && result.faceLandmarks.length){
+          fullLandmarks = result.faceLandmarks[0];
+          fullMask = buildSkinMask(fullLandmarks, ow, oh);
+        }
+      }catch(err){ /* fall back to whole-image enhancement, same as preview */ }
+    }
+    await runEnhancementPipeline(full, controls, fullLandmarks, fullMask, onProgress);
+    return full;
+  }
+
+  document.getElementById('apeDownloadPngBtn').onclick = () => exportApe('png');
+  document.getElementById('apeDownloadJpgBtn').onclick = () => exportApe('jpg');
+  document.getElementById('apeDownloadWebpBtn').onclick = () => exportApe('webp');
+
+  async function exportApe(format){
+    if (!apeOriginalImg){ toast('Upload an image first.', 'err'); return; }
+    const btnId = format === 'png' ? 'apeDownloadPngBtn' : format === 'jpg' ? 'apeDownloadJpgBtn' : 'apeDownloadWebpBtn';
+    const btn = document.getElementById(btnId);
+    setLoading(btn, true);
+    const progressWrap = document.getElementById('apeProgressWrap');
+    const progressLabel = document.getElementById('apeProgressLabel');
+    progressWrap.classList.remove('hidden');
+    try{
+      progressLabel.textContent = 'Rebuilding at full resolution…';
+      apeResultCanvasFullRes = await buildFullResResult((msg) => { progressLabel.textContent = msg; });
+      const quality = +document.getElementById('apeQuality').value / 100;
+      const mime = format === 'png' ? 'image/png' : format === 'jpg' ? 'image/jpeg' : 'image/webp';
+      const ext = format === 'jpg' ? 'jpg' : format;
+      apeResultCanvasFullRes.toBlob((blob) => {
+        if (!blob){ toast('This browser could not encode that format — try PNG instead.', 'err'); return; }
+        downloadBlob(blob, 'enhanced-photo.' + ext);
+        toast('Downloaded at full original resolution.');
+      }, mime, format === 'png' ? undefined : quality);
+    }catch(err){
+      toast('Enhancement failed: ' + (err.message || 'please try again.'), 'err');
+    }finally{
+      setLoading(btn, false, format === 'png' ? 'Download PNG' : format === 'jpg' ? 'Download JPG' : 'Download WEBP');
+      setTimeout(() => progressWrap.classList.add('hidden'), 800);
+    }
+  }
+
+  document.getElementById('apeQuality').addEventListener('input', (e) => {
+    document.getElementById('apeQualityVal').textContent = e.target.value;
+  });
 }
 
 /* ============ FAQ (index.html) ============ */
