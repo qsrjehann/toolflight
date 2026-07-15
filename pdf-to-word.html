@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF to Word Converter — Free Online | ToolFlight</title>
+<meta name="description" content="Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.">
+<link rel="icon" href="assets/favicon.ico?v=20260715-1248" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260715-1248">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260715-1248">
+<link rel="canonical" href="https://toolflight.com/pdf-to-word.html">
+
+<meta property="og:title" content="PDF to Word Converter — Free Online | ToolFlight">
+<meta property="og:description" content="Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/pdf-to-word.html">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PDF to Word Converter — Free Online | ToolFlight">
+<meta name="twitter:description" content="Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20260715-1248">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg?v=20260715-1248" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="pdf-tools.html" style="color:var(--ink-soft);text-decoration:none;">PDF Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">PDF to Word Converter</span>
+</nav>
+  <h1>PDF to Word Converter</h1>
+  <p class="subtitle">Convert a PDF into an editable Word document — real selectable text, not an image pretending to be one.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="pdf-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to PDF Tools</a>
+  </div>
+
+  <div class="workspace">
+      <div class="view-title"><h2>PDF ↔ Word Converter</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real, selectable-text conversion — not a screenshot embedded in a PDF, and not a fake preview. Runs entirely in your browser; nothing is uploaded. Formatting is preserved on a best-effort basis — see the FAQ below for exactly what is and isn't supported.</p>
+
+      <div class="editor-toolbar" role="tablist" aria-label="Conversion direction">
+        <button class="editor-tool-btn active" id="pwTabPdfToWord" type="button" role="tab" aria-selected="true">PDF → Word</button>
+        <button class="editor-tool-btn " id="pwTabWordToPdf" type="button" role="tab" aria-selected="false">Word → PDF</button>
+      </div>
+
+      <div class="drop-zone" id="pwDrop" style="margin-top:14px;">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title" id="pwDropTitle">Drop a PDF here or tap to browse</div>
+        <div class="drop-sub" id="pwDropSub">PDF — up to 40MB</div>
+        <input type="file" id="pwInput" accept="application/pdf">
+      </div>
+
+      <div id="pwFileInfo" class="hidden" style="margin-top:10px;font-size:12.5px;color:var(--ink-soft);">
+        <strong id="pwFileName" style="color:var(--ink);"></strong> · <span id="pwFileSize"></span><span id="pwPageCount"></span>
+      </div>
+
+      <div class="progress-wrap hidden" id="pwProgressWrap">
+        <div class="progress-track"><div class="progress-fill" id="pwProgressFill"></div></div>
+        <div class="progress-label" id="pwProgressLabel">Processing…</div>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary" id="pwConvertBtn" type="button" style="flex:1;" disabled>Convert to Word</button>
+        <button class="btn btn-danger hidden" id="pwCancelBtn" type="button">Cancel</button>
+      </div>
+
+      <p class="editor-hint hidden" id="pwErrorBox" style="color:var(--err);"></p>
+
+      <div class="row hidden" id="pwResultRow">
+        <button class="btn btn-success" id="pwDownloadBtn" type="button" style="flex:1;">Download result</button>
+        <button class="btn btn-ghost" id="pwConvertAnotherBtn" type="button">Convert another file</button>
+      </div>
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the PDF to Word Converter</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">PDF to Word Converter reconstructs your PDF's text, headings, and basic formatting into a real, editable .docx file — not a rasterized image dropped into a Word wrapper. Because a PDF has no built-in concept of "this is a heading" or "this is bold," the structure is rebuilt using font-size and font-style analysis, which works well for typical documents but isn't guaranteed on every layout — see the FAQ for exactly what this does and doesn't handle.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Real, editable text output — not an embedded screenshot</li><li>Heading levels reconstructed from relative font size</li><li>Bold and italic detected from font metadata</li><li>Hyperlinks preserved from the PDF's link annotations</li><li>Page breaks preserved 1:1 with the original PDF's pages</li><li>Shows filename, size, and page count before converting</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Upload a PDF (drag and drop or browse), review the page count, then tap Convert to Word. When it finishes, download the .docx — or tap Convert another file to start over.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Nothing is uploaded — conversion happens entirely in your browser</li><li>No signup, no page limit imposed by a server</li><li>Genuinely editable output, so you can actually fix and reuse the content</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Will tables and images be preserved?</strong><br>Honestly, no — not in this direction. Reliably detecting table grid structure and extracting images from raw PDF content is a genuinely hard problem, and a wrong guess would scramble your document worse than leaving it out. Text, headings, bold/italic, hyperlinks, and page breaks are reconstructed; tables and embedded images currently are not.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Will this work on scanned PDFs?</strong><br>No — this reads the actual text layer of a PDF. A scanned PDF that's really just a photo of a page has no text layer to extract, so there's nothing to convert. You'd need an OCR tool first.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Why might headings or bold text be misdetected?</strong><br>Headings are inferred from font size relative to the rest of the document, and bold/italic from the font's internal name — both are the standard heuristics for this kind of extraction, but not every PDF-generating tool names its fonts predictably, so results can vary.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is my file uploaded anywhere?</strong><br>No — both reading the PDF and building the Word document happen entirely inside your browser.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+      <a href="pdf-merge.html" class="blog-card"><span class="blog-tag">PDF Tool</span><h3>Merge PDF</h3><p>Combine multiple PDFs into one, in any order you choose.</p></a>
+      <a href="word-to-pdf.html" class="blog-card"><span class="blog-tag">PDF Tool</span><h3>Word to PDF Converter</h3><p>Convert DOCX into a real, selectable-text PDF — not a screenshot.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "PDF Tools", "item": "https://toolflight.com/pdf-tools.html"}, {"@type": "ListItem", "position": 3, "name": "PDF to Word Converter", "item": "https://toolflight.com/pdf-to-word.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "PDF to Word Converter", "description": "Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.", "url": "https://toolflight.com/pdf-to-word.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "PDF to Word Converter", "applicationCategory": "BusinessApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Will tables and images be preserved?", "acceptedAnswer": {"@type": "Answer", "text": "Honestly, no \u2014 not in this direction. Reliably detecting table grid structure and extracting images from raw PDF content is a genuinely hard problem, and a wrong guess would scramble your document worse than leaving it out. Text, headings, bold/italic, hyperlinks, and page breaks are reconstructed; tables and embedded images currently are not."}}, {"@type": "Question", "name": "Will this work on scanned PDFs?", "acceptedAnswer": {"@type": "Answer", "text": "No \u2014 this reads the actual text layer of a PDF. A scanned PDF that's really just a photo of a page has no text layer to extract, so there's nothing to convert. You'd need an OCR tool first."}}, {"@type": "Question", "name": "Why might headings or bold text be misdetected?", "acceptedAnswer": {"@type": "Answer", "text": "Headings are inferred from font size relative to the rest of the document, and bold/italic from the font's internal name \u2014 both are the standard heuristics for this kind of extraction, but not every PDF-generating tool names its fonts predictably, so results can vary."}}, {"@type": "Question", "name": "Is my file uploaded anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No \u2014 both reading the PDF and building the Word document happen entirely inside your browser."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260715-1248" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js?v=20260715-1248"></script>
+</body>
+</html>
