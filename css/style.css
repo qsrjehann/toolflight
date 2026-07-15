@@ -712,3 +712,70 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .gkw-row-best{background:color-mix(in srgb, var(--ok) 8%, transparent);}
 .gkw-check input{width:16px;height:16px;accent-color:var(--accent1);cursor:pointer;}
 .gkw-kw{font-size:13.5px;font-weight:600;flex:1;min-width:140px;}
+
+/* ============ RESUME BUILDER + ATS CHECKER ============ */
+.resume-layout{display:grid;grid-template-columns:1fr;gap:20px;margin-top:16px;}
+@media (min-width:980px){ .resume-layout{grid-template-columns:1fr 1fr;align-items:start;} }
+.resume-form-col{min-width:0;}
+.resume-preview-col{min-width:0;position:sticky;top:16px;}
+@media (max-width:979px){ .resume-preview-col{position:static;} }
+
+.resume-form-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:8px;}
+@media (min-width:560px){ .resume-form-grid{grid-template-columns:1fr 1fr;} }
+.resume-form-grid.resume-form-grid-full{grid-template-columns:1fr;}
+.resume-field-group{display:flex;flex-direction:column;gap:5px;}
+.resume-field-group label{font-size:12px;font-weight:700;color:var(--ink-soft);}
+
+.resume-section-block{margin-top:20px;padding-top:16px;border-top:1px solid var(--card-border);}
+.resume-section-heading-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.resume-section-heading-row h3{font-size:15px;font-weight:800;margin:0;}
+
+.resume-item-card{
+  background:var(--card);border:1.5px solid var(--card-border);border-radius:14px;padding:14px;margin-top:10px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.resume-item-card-head{display:flex;align-items:center;gap:8px;}
+.resume-item-drag-handle{cursor:grab;color:var(--ink-soft);font-size:16px;flex-shrink:0;touch-action:none;}
+.resume-item-card-head .resume-item-title{flex:1;font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+
+.resume-preview{
+  background:#ffffff;color:#141414;border-radius:16px;border:1.5px solid var(--card-border);
+  padding:34px 30px;font-size:12.5px;line-height:1.55;overflow-wrap:break-word;box-shadow:var(--shadow);
+  max-height:80vh;overflow-y:auto;
+}
+.resume-preview h1.resume-pv-name{font-size:22px;margin:0 0 3px;letter-spacing:.2px;}
+.resume-preview .resume-pv-contact{font-size:11.5px;color:#444;margin-bottom:14px;}
+.resume-preview .resume-pv-contact span{margin-right:10px;}
+.resume-preview h2.resume-pv-heading{font-size:13px;text-transform:uppercase;letter-spacing:.6px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1.5px solid #ddd;}
+.resume-preview .resume-pv-entry{margin-bottom:9px;}
+.resume-preview .resume-pv-entry-top{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:12.5px;}
+.resume-preview .resume-pv-entry-sub{font-size:11.5px;color:#555;font-style:italic;margin-bottom:2px;}
+.resume-preview ul.resume-pv-bullets{margin:3px 0 0;padding-left:16px;}
+.resume-preview .resume-pv-skills-list{display:flex;flex-wrap:wrap;gap:6px;}
+.resume-preview .resume-pv-skill-chip{background:#f1f1f4;border-radius:999px;padding:2px 10px;font-size:11px;}
+
+/* Template variants -- same markup, different visual identity */
+.resume-tpl-modern h1.resume-pv-name{color:#5142D6;}
+.resume-tpl-modern h2.resume-pv-heading{color:#5142D6;border-bottom-color:#c9c3f7;}
+.resume-tpl-modern .resume-pv-skill-chip{background:#EEF0FF;color:#5142D6;}
+
+.resume-tpl-minimal{padding:30px 26px;}
+.resume-tpl-minimal h1.resume-pv-name{font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:18px;}
+.resume-tpl-minimal h2.resume-pv-heading{border-bottom:none;font-weight:700;color:#888;font-size:11px;}
+
+.resume-tpl-professional h1.resume-pv-name{font-size:20px;text-align:center;}
+.resume-tpl-professional .resume-pv-contact{text-align:center;}
+.resume-tpl-professional h2.resume-pv-heading{background:#141414;color:#fff;padding:4px 10px;border-bottom:none;border-radius:4px;}
+
+@media print{
+  body *{visibility:hidden;}
+  .resume-preview, .resume-preview *{visibility:visible;}
+  .resume-preview{position:absolute;top:0;left:0;width:100%;max-height:none;overflow:visible;box-shadow:none;border:none;border-radius:0;}
+}
+
+.ats-score-wrap{display:flex;align-items:center;gap:16px;margin-top:14px;}
+.ats-score-num{font-size:44px;font-weight:800;line-height:1;}
+.ats-score-label{font-size:12.5px;color:var(--ink-soft);}
+.ats-result-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.ats-result-list li{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;}
+.ats-result-list li .ats-icon{flex-shrink:0;width:18px;height:18px;margin-top:1px;}
