@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
 <meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
-<link rel="icon" href="assets/favicon.ico?v=20260716-1537" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-1537">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-1537">
+<link rel="icon" href="assets/favicon.ico?v=20260716-1912" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-1912">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-1912">
 <link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
 
 <meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260716-1537">
+<link rel="stylesheet" href="css/style.css?v=20260716-1912">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260716-1537" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260716-1912" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -146,7 +146,24 @@
               <option value="np-passport">Nepal Passport</option>
               <option value="tr-passport">Turkey Passport</option>
               <option value="schengen-visa">Schengen Visa</option>
+              <option value="custom">Custom Size…</option>
       </select>
+
+      <div class="hidden" id="ppCustomSizePanel" style="margin-bottom:12px;padding:12px 14px;border:1.5px solid var(--card-border);border-radius:12px;background:var(--card);">
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppCustomWidthVal">Width</label><input type="number" id="ppCustomWidthVal" value="35" min="0.1" step="0.1"></div>
+          <div class="resume-field-group"><label for="ppCustomHeightVal">Height</label><input type="number" id="ppCustomHeightVal" value="45" min="0.1" step="0.1"></div>
+          <div class="resume-field-group"><label for="ppCustomUnit">Unit</label><select id="ppCustomUnit"><option value="mm" selected>Millimeters</option><option value="cm">Centimeters</option><option value="in">Inches</option><option value="px">Pixels</option></select></div>
+          <div class="resume-field-group"><label for="ppCustomDpi">DPI</label><input type="number" id="ppCustomDpi" value="300" min="72" max="1200" step="1"></div>
+        </div>
+        <p id="ppCustomValidation" style="font-size:12.5px;font-weight:600;margin:10px 0 0;"></p>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.8;">
+          <div>Width: <strong id="ppDimW">—</strong> &middot; Height: <strong id="ppDimH">—</strong> &middot; DPI: <strong id="ppDimDpi">—</strong></div>
+          <div>Pixels: <strong id="ppDimPx">—</strong> &middot; Aspect ratio: <strong id="ppDimRatio">—</strong></div>
+          <div>Physical size: <strong id="ppDimPhysical">—</strong></div>
+        </div>
+        <p class="editor-hint">Custom sizes use standard ICAO-convention head/eye guides since no official rule exists for an arbitrary size — not a substitute for your destination's actual requirements.</p>
+      </div>
 
       <p class="hidden" id="ppUsWarning" role="alert" style="font-size:12px;line-height:1.5;color:var(--err-solid);margin:0 0 12px;">
         ⚠ US passport/visa photos: avoid AI background replacement and enhancement sliders — see the full notice in the FAQ below.
@@ -366,7 +383,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-1537" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-1912" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -403,6 +420,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260716-1537"></script>
+<script defer src="js/app.js?v=20260716-1912"></script>
 </body>
 </html>
