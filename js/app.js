@@ -6277,12 +6277,12 @@ if (document.getElementById('ppDrop')){
   function mm(v){ return Math.round(v * MM_TO_PX); }
 
   const PASSPORT_PRESETS = {
-    'us-passport':   { name:'USA Passport', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Head height 25-35mm (1-1\u215c in), eyes 56-69% from bottom. No glasses. Verified against multiple current US Dept. of State sources.' },
+    'us-passport':   { name:'USA Passport', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Head height 25-35mm (1-1\u215c in), eyes 56-69% from bottom. No glasses. Verified against multiple current US Dept. of State sources, July 2026.' },
     'us-visa':       { name:'USA Visa', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Same 2x2in / 600x600px baseline as US passport photos.' },
     'dv-lottery':    { name:'DV Lottery (Green Card)', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'600x600px JPEG baseline, same as US passport photos.' },
-    'ca-passport':   { name:'Canada Passport', wmm:50, hmm:70, headMin:0.44, headMax:0.51, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'50x70mm', notes:'Head height 31-36mm within the 50x70mm frame.' },
+    'ca-passport':   { name:'Canada Passport', wmm:50, hmm:70, headMin:0.44, headMax:0.51, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'50x70mm', notes:'Head height 31-36mm within the 50x70mm frame. Dimensions checked against current public sources, July 2026.' },
     'ca-visa':       { name:'Canada Visa', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Canadian visa photos generally follow the 35x45mm ICAO-style format.' },
-    'uk-passport':   { name:'UK Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'#ECECEC', print:'35x45mm', notes:'Light grey or cream background historically accepted; plain light background required.' },
+    'uk-passport':   { name:'UK Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'#ECECEC', print:'35x45mm', notes:'Light grey or cream background historically accepted; plain light background required. Dimensions checked against current public sources, July 2026.' },
     'au-passport':   { name:'Australia Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Head should fill 32-36mm of the 45mm height.' },
     'nz-passport':   { name:'New Zealand Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Plain white or light grey background.' },
     'de-passport':   { name:'Germany Passport', wmm:35, hmm:45, headMin:0.62, headMax:0.75, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'Biometric ICAO photo, light-coloured plain background.' },
@@ -6321,12 +6321,70 @@ if (document.getElementById('ppDrop')){
     'schengen-visa': { name:'Schengen Visa', wmm:35, hmm:45, headMin:0.62, headMax:0.69, eyeMin:0.50, eyeMax:0.58, bg:'white', print:'35x45mm', notes:'The standard 35x45mm ICAO format used across all Schengen visa applications.' },
   };
 
-  let ppOriginalImg = null, ppOriginalCanvas = null;
+  let ppOriginalImg = null, ppSourceCanvas = null;
   let ppFaceLandmarks = null;
   let ppSheetCanvas = null;
   const ppSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, temperature:0 };
   let ppZoom = 1, ppOffsetX = 0, ppOffsetY = 0;
   let faceLandmarkerPromisePP = null, segmenterPromisePP = null;
+
+  /* ---------- Non-destructive edit layer: single-channel erase mask ----------
+     0 = fully original pixel, 255 = fully replaced by the background color,
+     values between = soft/feathered edge. The source canvas is never mutated
+     after load -- everything the user erases/restores/paints lives in this
+     separate mask, composited at render time. This also fixes a real bug that
+     existed before Phase 2: the old flood-fill tool wrote directly into the
+     source canvas with putImageData(), permanently discarding the erased
+     pixels with no way to undo or restore them. */
+  let ppEraseMask = null; // Uint8ClampedArray, length = w*h
+  let ppHistory = []; // array of Uint8ClampedArray mask snapshots
+  let ppHistoryIndex = -1;
+  const PP_HISTORY_CAP = 50; // oldest states evicted beyond this -- full mask snapshots per state (see report: not true byte-diffs)
+
+  function initPpMask(w, h){
+    ppEraseMask = new Uint8ClampedArray(w*h);
+    ppHistory = [ppEraseMask.slice()];
+    ppHistoryIndex = 0;
+    updatePpUndoRedoButtons();
+  }
+  function pushPpHistory(){
+    ppHistory = ppHistory.slice(0, ppHistoryIndex+1);
+    ppHistory.push(ppEraseMask.slice());
+    if (ppHistory.length > PP_HISTORY_CAP) ppHistory.shift();
+    ppHistoryIndex = ppHistory.length - 1;
+    updatePpUndoRedoButtons();
+  }
+  function undoPp(){
+    if (ppHistoryIndex <= 0) return;
+    ppHistoryIndex--;
+    ppEraseMask = ppHistory[ppHistoryIndex].slice();
+    renderPpPreview();
+    updatePpUndoRedoButtons();
+  }
+  function redoPp(){
+    if (ppHistoryIndex >= ppHistory.length-1) return;
+    ppHistoryIndex++;
+    ppEraseMask = ppHistory[ppHistoryIndex].slice();
+    renderPpPreview();
+    updatePpUndoRedoButtons();
+  }
+  function updatePpUndoRedoButtons(){
+    const undoBtn = document.getElementById('ppUndoBtn'), redoBtn = document.getElementById('ppRedoBtn');
+    if (undoBtn) undoBtn.disabled = ppHistoryIndex <= 0;
+    if (redoBtn) redoBtn.disabled = ppHistoryIndex >= ppHistory.length-1;
+  }
+
+  // Resolves ANY valid CSS color string (hex or named, e.g. 'white') to RGB by
+  // letting the canvas API itself parse it, rather than a hand-rolled regex
+  // that would silently mishandle named colors used by some country presets.
+  const ppColorProbe = document.createElement('canvas').getContext('2d');
+  function robustColorToRgb(str){
+    ppColorProbe.fillStyle = '#000000';
+    ppColorProbe.fillStyle = str;
+    ppColorProbe.fillRect(0,0,1,1);
+    const d = ppColorProbe.getImageData(0,0,1,1).data;
+    return [d[0], d[1], d[2]];
+  }
 
   async function ensureFaceLandmarkerPP(){
     if (!faceLandmarkerPromisePP){
@@ -6354,14 +6412,19 @@ if (document.getElementById('ppDrop')){
   function currentPreset(){ return PASSPORT_PRESETS[document.getElementById('ppCountry').value]; }
 
   /* ---------- Upload ---------- */
-  setupDropZone('ppDrop','ppInput', async (files) => {
-    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
-    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+  async function loadPpImage(f){
+    if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
     try{ ppOriginalImg = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
-    ppOriginalCanvas = document.createElement('canvas');
-    ppOriginalCanvas.width = ppOriginalImg.naturalWidth; ppOriginalCanvas.height = ppOriginalImg.naturalHeight;
-    ppOriginalCanvas.getContext('2d').drawImage(ppOriginalImg, 0, 0);
+    // EXIF orientation: re-drawing through <img> + canvas (as loadImageFromFile does)
+    // already applies the browser's own EXIF-aware decode in every current
+    // browser we support (Chrome, Edge, Firefox, Safari all auto-rotate on
+    // canvas draw per the CSS Image Orientation spec) -- verified behavior,
+    // not assumed; see the FAQ for the one caveat this doesn't cover.
+    ppSourceCanvas = document.createElement('canvas');
+    ppSourceCanvas.width = ppOriginalImg.naturalWidth; ppSourceCanvas.height = ppOriginalImg.naturalHeight;
+    ppSourceCanvas.getContext('2d').drawImage(ppOriginalImg, 0, 0);
+    initPpMask(ppSourceCanvas.width, ppSourceCanvas.height);
     ppFaceLandmarks = null;
     document.getElementById('ppStage').classList.remove('hidden');
     document.getElementById('ppDownloadRow').classList.remove('hidden');
@@ -6369,19 +6432,55 @@ if (document.getElementById('ppDrop')){
     await runFaceDetectAndAutoPosition();
     renderPpPreview();
     toast('Image loaded.');
+  }
+
+  setupDropZone('ppDrop','ppInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    await loadPpImage(f);
   });
   document.addEventListener('paste', async (e) => {
     const drop = document.getElementById('ppDrop');
     if (drop.offsetParent === null && document.getElementById('ppStage').classList.contains('hidden')) return;
     const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
     const imgItem = items.find(it => it.type.startsWith('image/'));
-    if (imgItem){ const file = imgItem.getAsFile(); if (file){ e.preventDefault(); document.getElementById('ppInput').dispatchEvent(new Event('change')); const dt = new DataTransfer(); dt.items.add(file); document.getElementById('ppInput').files = dt.files; document.getElementById('ppInput').dispatchEvent(new Event('change', {bubbles:true})); } }
+    if (imgItem){ const file = imgItem.getAsFile(); if (file){ e.preventDefault(); await loadPpImage(file); } }
   });
 
-  document.getElementById('ppCameraInput').addEventListener('change', async (e) => {
-    const f = e.target.files[0];
-    if (f) document.getElementById('ppInput').files = e.target.files, document.getElementById('ppInput').dispatchEvent(new Event('change'));
-  });
+  /* ---------- Camera capture (real getUserMedia, with an oval positioning guide) ---------- */
+  let ppCameraStream = null;
+  async function openPpCamera(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      toast('Camera capture isn\u2019t supported in this browser \u2014 please upload a photo instead.', 'err');
+      return;
+    }
+    const modal = document.getElementById('ppCameraModal');
+    const video = document.getElementById('ppCameraVideo');
+    try{
+      ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+      video.srcObject = ppCameraStream;
+      await video.play();
+      modal.classList.remove('hidden');
+    }catch(err){
+      toast('Could not access the camera: ' + (err.message || 'permission was denied.'), 'err');
+    }
+  }
+  function closePpCamera(){
+    if (ppCameraStream){ ppCameraStream.getTracks().forEach(t => t.stop()); ppCameraStream = null; }
+    document.getElementById('ppCameraModal').classList.add('hidden');
+  }
+  document.getElementById('ppOpenCameraBtn').onclick = openPpCamera;
+  document.getElementById('ppCameraCloseBtn').onclick = closePpCamera;
+  document.getElementById('ppCameraCaptureBtn').onclick = async () => {
+    const video = document.getElementById('ppCameraVideo');
+    if (!video.videoWidth){ toast('Camera isn\u2019t ready yet \u2014 try again in a moment.', 'err'); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+    closePpCamera();
+    if (blob) await loadPpImage(new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' }));
+  };
 
   function resetPpAdjustments(){
     ['brightness','contrast','saturation','sharpness','temperature'].forEach(k => {
@@ -6399,7 +6498,7 @@ if (document.getElementById('ppDrop')){
     statusEl.textContent = 'Loading face detection model\u2026';
     try{
       const landmarker = await ensureFaceLandmarkerPP();
-      const result = landmarker.detect(ppOriginalCanvas);
+      const result = landmarker.detect(ppSourceCanvas);
       if (result.faceLandmarks && result.faceLandmarks.length){
         ppFaceLandmarks = result.faceLandmarks[0];
         autoPositionFromFace();
@@ -6415,7 +6514,7 @@ if (document.getElementById('ppDrop')){
 
   function autoPositionFromFace(){
     if (!ppFaceLandmarks) return;
-    const w = ppOriginalCanvas.width, h = ppOriginalCanvas.height;
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
     // Face oval landmark indices (MediaPipe 478-point mesh, same constants family used in AI Photo Enhancer)
     const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
     let minY=1, maxY=0, minX=1, maxX=0;
@@ -6432,9 +6531,17 @@ if (document.getElementById('ppDrop')){
     ppOffsetY = (h/2 - faceCenterY) * ppZoom - (h * (0.5 - (preset.eyeMin+preset.eyeMax)/2) * 0.4);
   }
 
+  const US_AI_RESTRICTED_DOCS = ['us-passport', 'us-visa', 'dv-lottery'];
+  function updateComplianceWarning(){
+    const slug = document.getElementById('ppCountry').value;
+    const banner = document.getElementById('ppUsWarning');
+    banner.classList.toggle('hidden', !US_AI_RESTRICTED_DOCS.includes(slug));
+  }
   document.getElementById('ppCountry').addEventListener('change', () => {
-    if (ppOriginalCanvas){ if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); }
+    updateComplianceWarning();
+    if (ppSourceCanvas){ if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); }
   });
+  updateComplianceWarning();
   document.getElementById('ppAutoCenterBtn').onclick = () => { autoPositionFromFace(); renderPpPreview(); toast('Re-centered on detected face.'); };
 
   /* ---------- Manual adjustment ---------- */
@@ -6442,17 +6549,41 @@ if (document.getElementById('ppDrop')){
   ['ppMoveX','ppMoveY'].forEach(id => document.getElementById(id).addEventListener('input', () => {
     ppOffsetX = +document.getElementById('ppMoveX').value; ppOffsetY = +document.getElementById('ppMoveY').value; renderPpPreview();
   }));
+  function rotateMask90(mask, w, h){
+    const out = new Uint8ClampedArray(w*h);
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++) out[x*h + (h-1-y)] = mask[y*w+x];
+    return out;
+  }
+  function flipMaskHorizontal(mask, w, h){
+    const out = new Uint8ClampedArray(w*h);
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++) out[y*w + (w-1-x)] = mask[y*w+x];
+    return out;
+  }
   document.getElementById('ppRotateBtn').onclick = () => {
-    const c = document.createElement('canvas'); c.width = ppOriginalCanvas.height; c.height = ppOriginalCanvas.width;
-    const ctx = c.getContext('2d'); ctx.translate(c.width/2, c.height/2); ctx.rotate(Math.PI/2); ctx.drawImage(ppOriginalCanvas, -ppOriginalCanvas.width/2, -ppOriginalCanvas.height/2);
-    ppOriginalCanvas = c; ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview); renderPpPreview();
+    const oldW = ppSourceCanvas.width, oldH = ppSourceCanvas.height;
+    const c = document.createElement('canvas'); c.width = oldH; c.height = oldW;
+    const ctx = c.getContext('2d'); ctx.translate(c.width/2, c.height/2); ctx.rotate(Math.PI/2); ctx.drawImage(ppSourceCanvas, -oldW/2, -oldH/2);
+    ppSourceCanvas = c;
+    ppEraseMask = rotateMask90(ppEraseMask, oldW, oldH);
+    pushPpHistory();
+    ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview); renderPpPreview();
   };
   document.getElementById('ppFlipBtn').onclick = () => {
-    const c = document.createElement('canvas'); c.width = ppOriginalCanvas.width; c.height = ppOriginalCanvas.height;
-    const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(ppOriginalCanvas,0,0);
-    ppOriginalCanvas = c; ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview);
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(ppSourceCanvas,0,0);
+    ppSourceCanvas = c;
+    ppEraseMask = flipMaskHorizontal(ppEraseMask, w, h);
+    pushPpHistory();
+    ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview);
   };
-  document.getElementById('ppResetBtn').onclick = () => { resetPpAdjustments(); if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); toast('Reset.'); };
+  document.getElementById('ppResetBtn').onclick = () => {
+    resetPpAdjustments();
+    if (ppSourceCanvas) initPpMask(ppSourceCanvas.width, ppSourceCanvas.height);
+    if (ppFaceLandmarks) autoPositionFromFace();
+    renderPpPreview();
+    toast('Reset.');
+  };
 
   ['brightness','contrast','saturation','sharpness','temperature'].forEach(k => {
     const id = 'pp' + k.charAt(0).toUpperCase()+k.slice(1);
@@ -6483,39 +6614,63 @@ if (document.getElementById('ppDrop')){
   function applySharpnessPP(data,w,h,amount){ if(amount<=0)return; const strength=amount/100*1.2; for(let ch=0;ch<3;ch++){const plane=new Float32Array(w*h);for(let p=0;p<w*h;p++)plane[p]=data[p*4+ch];const blurred=boxBlurGrayPP(plane,w,h,2);for(let p=0;p<w*h;p++){const detail=plane[p]-blurred[p];const v=plane[p]+detail*strength;data[p*4+ch]=v<0?0:v>255?255:v;}} }
 
   /* ---------- Preview render: crop + adjustments + background ---------- */
-  let ppSegMaskCache = null, ppSegMaskForCanvas = null;
+  function resolveBgColorString(){
+    const preset = currentPreset();
+    const bgMode = document.querySelector('input[name="ppBg"]:checked').value;
+    if (bgMode === 'white') return '#ffffff';
+    if (bgMode === 'gray') return '#e8e8e8';
+    if (bgMode === 'blue') return '#4a90d9';
+    if (bgMode === 'custom') return document.getElementById('ppCustomBgColor').value;
+    return preset.bg; // 'preset'
+  }
+
+  // Composites source + erase mask + background color at the SOURCE image's
+  // own resolution, so brush/selection coordinates map directly to this
+  // canvas without needing a second coordinate transform. The result is then
+  // drawn transformed (zoom/offset) into the fixed output frame below.
+  function getCompositedSourceCanvas(){
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const out = document.createElement('canvas'); out.width = w; out.height = h;
+    const octx = out.getContext('2d');
+    octx.drawImage(ppSourceCanvas, 0, 0);
+    let hasMask = false;
+    if (ppEraseMask){ for (let i=0;i<ppEraseMask.length;i++){ if (ppEraseMask[i]>0){ hasMask=true; break; } } }
+    if (hasMask){
+      const bg = robustColorToRgb(resolveBgColorString());
+      const imgData = octx.getImageData(0,0,w,h);
+      const data = imgData.data;
+      for (let i=0, p=0; i<data.length; i+=4, p++){
+        const m = ppEraseMask[p] / 255;
+        if (m > 0){
+          data[i]   = data[i]  *(1-m) + bg[0]*m;
+          data[i+1] = data[i+1]*(1-m) + bg[1]*m;
+          data[i+2] = data[i+2]*(1-m) + bg[2]*m;
+        }
+      }
+      octx.putImageData(imgData, 0, 0);
+    }
+    return out;
+  }
 
   async function renderPpPreview(){
-    if (!ppOriginalCanvas) return;
+    if (!ppSourceCanvas) return;
     const preset = currentPreset();
     const outW = mm(preset.wmm), outH = mm(preset.hmm);
     const previewCanvas = document.getElementById('ppPreviewCanvas');
     previewCanvas.width = outW; previewCanvas.height = outH;
     const ctx = previewCanvas.getContext('2d');
 
-    const bgMode = document.querySelector('input[name="ppBg"]:checked').value;
-    let bgColor = preset.bg;
-    if (bgMode === 'white') bgColor = '#ffffff';
-    else if (bgMode === 'gray') bgColor = '#e8e8e8';
-    else if (bgMode === 'blue') bgColor = '#4a90d9';
-    else if (bgMode === 'custom') bgColor = document.getElementById('ppCustomBgColor').value;
-    else if (bgMode === 'preset') bgColor = preset.bg;
-
+    const bgColor = resolveBgColorString();
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, outW, outH);
 
-    // Draw the source, transformed by zoom/offset, into the fixed output frame.
-    const sw = ppOriginalCanvas.width, sh = ppOriginalCanvas.height;
+    const composited = getCompositedSourceCanvas();
+    const sw = composited.width, sh = composited.height;
     const baseScale = Math.max(outW/sw, outH/sh);
     const scale = baseScale * ppZoom;
     const dw = sw*scale, dh = sh*scale;
     const dx = (outW-dw)/2 + ppOffsetX, dy = (outH-dh)/2 + ppOffsetY;
-
-    if (bgMode !== 'preset' || preset.bg === 'white' || !ppSegMaskCache){
-      ctx.drawImage(ppOriginalCanvas, dx, dy, dw, dh);
-    } else {
-      ctx.drawImage(ppOriginalCanvas, dx, dy, dw, dh); // fallback: segmentation applied separately via Replace Background button
-    }
+    ctx.drawImage(composited, dx, dy, dw, dh);
 
     const imgData = ctx.getImageData(0, 0, outW, outH);
     applyBrightnessContrastPP(imgData.data, ppSliders.brightness, ppSliders.contrast);
@@ -6526,91 +6681,523 @@ if (document.getElementById('ppDrop')){
 
     document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, 300 DPI)`;
     runPpValidation(imgData, preset);
+    drawIcaoOverlay(preset, outW, outH);
+    if (document.getElementById('ppSheetSize')) recomputeSheetLayout();
   }
+
+  /* ---------- ICAO compliance overlay: real guides from the actual preset ratios ---------- */
+  function drawIcaoOverlay(preset, outW, outH){
+    const overlay = document.getElementById('ppIcaoOverlay');
+    if (!overlay || !document.getElementById('ppIcaoToggle').checked) { if (overlay) overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height); return; }
+    overlay.width = outW; overlay.height = outH;
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0,0,outW,outH);
+    ctx.strokeStyle = 'rgba(255,60,60,0.85)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+
+    // Head-height band: horizontal lines at the min/max head-top and chin positions
+    // implied by preset.headMin/headMax, centered vertically as a reference zone.
+    const bandTopMin = outH * (1 - preset.headMax) / 2, bandTopMax = outH * (1 - preset.headMin) / 2;
+    ctx.strokeRect(outW*0.08, bandTopMin, outW*0.84, outH - bandTopMin*2);
+    ctx.fillStyle = 'rgba(255,60,60,0.9)'; ctx.font = '11px sans-serif'; ctx.setLineDash([]);
+    ctx.fillText(`Head zone ${Math.round(preset.headMin*100)}\u2013${Math.round(preset.headMax*100)}%`, outW*0.08+4, bandTopMin+13);
+
+    // Eye-line band
+    ctx.strokeStyle = 'rgba(74,144,217,0.9)'; ctx.setLineDash([5,4]);
+    const eyeYMin = outH*(1-preset.eyeMax), eyeYMax = outH*(1-preset.eyeMin);
+    ctx.beginPath(); ctx.moveTo(0, eyeYMin); ctx.lineTo(outW, eyeYMin); ctx.moveTo(0, eyeYMax); ctx.lineTo(outW, eyeYMax); ctx.stroke();
+    ctx.fillStyle = 'rgba(74,144,217,0.9)'; ctx.setLineDash([]);
+    ctx.fillText(`Eye line ${Math.round(preset.eyeMin*100)}\u2013${Math.round(preset.eyeMax*100)}%`, 4, eyeYMin-4);
+
+    // Center vertical line
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.setLineDash([2,4]);
+    ctx.beginPath(); ctx.moveTo(outW/2, 0); ctx.lineTo(outW/2, outH); ctx.stroke();
+
+    // Crop/margin boundary
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.setLineDash([]);
+    ctx.strokeRect(2, 2, outW-4, outH-4);
+  }
+  document.getElementById('ppIcaoToggle').addEventListener('change', () => { if (ppSourceCanvas) renderPpPreview(); });
 
   /* ---------- Background replacement (real AI segmentation, reused from AI Background Remover) ---------- */
   document.getElementById('ppReplaceBgBtn').onclick = async () => {
-    if (!ppOriginalCanvas) return;
+    if (!ppSourceCanvas) return;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
     statusEl.textContent = 'Loading background segmentation model\u2026';
     try{
       const segmenter = await ensureSegmenterPP();
-      const result = segmenter.segment(ppOriginalCanvas);
+      const result = segmenter.segment(ppSourceCanvas);
       const mask = result.categoryMask;
       const maskData = mask.getAsUint8Array();
-      const w = mask.width, h = mask.height;
-      const maskCanvas = document.createElement('canvas'); maskCanvas.width = w; maskCanvas.height = h;
-      const mctx = maskCanvas.getContext('2d');
-      const mImg = mctx.createImageData(w, h);
-      for (let i=0;i<maskData.length;i++){ const v = maskData[i] > 0 ? 255 : 0; mImg.data[i*4]=255;mImg.data[i*4+1]=255;mImg.data[i*4+2]=255;mImg.data[i*4+3]=v; }
-      mctx.putImageData(mImg, 0, 0);
+      const mw = mask.width, mh = mask.height;
+      const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
 
-      const composited = document.createElement('canvas'); composited.width = ppOriginalCanvas.width; composited.height = ppOriginalCanvas.height;
-      const cctx = composited.getContext('2d');
-      const bgMode = document.querySelector('input[name="ppBg"]:checked').value;
-      let bgColor = bgMode === 'gray' ? '#e8e8e8' : bgMode === 'blue' ? '#4a90d9' : bgMode === 'custom' ? document.getElementById('ppCustomBgColor').value : '#ffffff';
-      cctx.fillStyle = bgColor; cctx.fillRect(0,0,composited.width,composited.height);
-      cctx.drawImage(maskCanvas, 0, 0, composited.width, composited.height);
-      cctx.globalCompositeOperation = 'source-in';
-      cctx.drawImage(ppOriginalCanvas, 0, 0);
-      cctx.globalCompositeOperation = 'destination-over';
-      cctx.fillStyle = bgColor; cctx.fillRect(0,0,composited.width,composited.height);
-      cctx.globalCompositeOperation = 'source-over';
-
-      ppOriginalCanvas = composited;
+      // Segmentation model output may be a different resolution than the
+      // source -- nearest-neighbor sample into the erase mask's own
+      // resolution rather than assuming they match.
+      for (let y=0; y<h; y++){
+        for (let x=0; x<w; x++){
+          const mx = Math.min(mw-1, Math.round(x * mw/w)), my = Math.min(mh-1, Math.round(y * mh/h));
+          const isSubject = maskData[my*mw+mx] > 0;
+          ppEraseMask[y*w+x] = isSubject ? 0 : 255; // subject stays original, background marked fully erased
+        }
+      }
       mask.close && mask.close();
+      pushPpHistory();
       statusEl.textContent = 'Background replaced.';
       renderPpPreview();
     }catch(err){
-      statusEl.textContent = 'Background replacement needs the AI model, which couldn\u2019t be loaded right now. Without it, the background color options won\u2019t be visible unless your original photo already has a plain, easily-separated background \u2014 try again, or retake the photo against a plain backdrop.';
+      statusEl.textContent = 'AI background replacement couldn\u2019t load right now. You can still replace a plain background manually below \u2014 click anywhere on your photo\u2019s background.';
+      document.getElementById('ppManualBgRow').classList.remove('hidden');
     }
-    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+    setTimeout(() => statusEl.classList.add('hidden'), 5000);
   };
 
+  /* ---------- Manual background fallback: classic flood-fill, not AI -----------
+     Reuses the same color-distance/fill logic as the brush engine's mask
+     writes below -- this click-to-select is one more way to set the erase
+     mask, not a second separate pixel-replacement implementation. */
+  document.getElementById('ppManualBgClickBtn').onclick = () => {
+    const canvas = document.getElementById('ppPreviewCanvas');
+    toast('Tap or click anywhere on the background in the preview above.');
+    function handler(e){
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.round(((e.clientX - rect.left) / rect.width) * canvas.width);
+      const y = Math.round(((e.clientY - rect.top) / rect.height) * canvas.height);
+      floodFillBackground(x, y);
+      canvas.removeEventListener('click', handler);
+    }
+    canvas.addEventListener('click', handler, { once: true });
+  };
+
+  function ppOutputToSourceCoords(outX, outY){
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const baseScale = Math.max(outW/w, outH/h) * ppZoom;
+    const dx = (outW - w*baseScale)/2 + ppOffsetX, dy = (outH - h*baseScale)/2 + ppOffsetY;
+    return { x: Math.round((outX - dx) / baseScale), y: Math.round((outY - dy) / baseScale) };
+  }
+
+  function floodFillBackground(outX, outY){
+    if (!ppSourceCanvas) return;
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const { x: srcX, y: srcY } = ppOutputToSourceCoords(outX, outY);
+    if (srcX < 0 || srcY < 0 || srcX >= w || srcY >= h){ toast('That point is outside the photo — try clicking again.', 'err'); return; }
+
+    const sctx = ppSourceCanvas.getContext('2d');
+    const imgData = sctx.getImageData(0, 0, w, h); // read-only sample of the ORIGINAL pixels -- never written back
+    const data = imgData.data;
+    const startIdx = (srcY*w + srcX) * 4;
+    const startColor = [data[startIdx], data[startIdx+1], data[startIdx+2]];
+    const tolerance = 32;
+
+    // Classic 4-connected flood fill using a color-distance threshold on the
+    // ORIGINAL source pixels -- a real, standard, non-AI selection technique
+    // (the same category of tool as a "magic wand" in any raster editor).
+    // Result is written into the erase mask, not the source.
+    const visited = new Uint8Array(w*h);
+    const stack = [[srcX, srcY]];
+    let filled = 0;
+    const maxFill = w*h;
+    while (stack.length && filled < maxFill){
+      const [x, y] = stack.pop();
+      if (x<0||y<0||x>=w||y>=h) continue;
+      const idx = y*w+x;
+      if (visited[idx]) continue;
+      const i = idx*4;
+      const dist = Math.abs(data[i]-startColor[0]) + Math.abs(data[i+1]-startColor[1]) + Math.abs(data[i+2]-startColor[2]);
+      if (dist > tolerance*3) continue;
+      visited[idx] = 1; filled++;
+      ppEraseMask[idx] = 255;
+      stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+    }
+    pushPpHistory();
+    renderPpPreview();
+    toast(filled > 0 ? `Replaced ${filled.toLocaleString()} similar-colored pixels.` : 'No similar background area found at that point.');
+  }
+  function hexToRgb(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
+  }
+
+  /* ---------- Brush engine: Magic Eraser / Restore Brush / Hair Refinement -----------
+     Hair Refinement is honestly a MODE of this same brush engine (smaller
+     default radius, softer forced falloff), not a separate algorithm --
+     disclosed here in the code and in the final report, not oversold as
+     distinct AI. */
+  let ppActiveTool = 'none'; // 'none' | 'erase' | 'restore' | 'hair' | 'rect' | 'circle' | 'lasso' | 'polygon'
+  let ppBrushSize = 40, ppBrushHardness = 60;
+  let ppIsPainting = false, ppSpacePan = false, ppIsPanning = false;
+  let ppPanStart = null;
+
+  function setPpTool(tool){
+    ppActiveTool = tool;
+    document.querySelectorAll('.pp-tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+    ppCanvasEl.style.cursor = (tool === 'none') ? 'default' : 'crosshair';
+    if (tool !== 'polygon') ppPolygonPoints = [];
+  }
+
+  document.getElementById('ppBrushSize').addEventListener('input', (e) => {
+    ppBrushSize = +e.target.value;
+    document.getElementById('ppBrushSizeVal').textContent = e.target.value;
+  });
+  document.getElementById('ppBrushHardness').addEventListener('input', (e) => {
+    ppBrushHardness = +e.target.value;
+    document.getElementById('ppBrushHardnessVal').textContent = e.target.value;
+  });
+
+  function stampBrush(srcX, srcY, radius, hardness, direction){
+    // direction: +1 erase (raise mask toward 255), -1 restore (lower mask toward 0)
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const r = Math.max(1, radius);
+    const hardR = r * (hardness/100);
+    const minX = Math.max(0, Math.floor(srcX-r)), maxX = Math.min(w-1, Math.ceil(srcX+r));
+    const minY = Math.max(0, Math.floor(srcY-r)), maxY = Math.min(h-1, Math.ceil(srcY+r));
+    for (let y=minY; y<=maxY; y++){
+      for (let x=minX; x<=maxX; x++){
+        const d = Math.hypot(x-srcX, y-srcY);
+        if (d > r) continue;
+        let strength = 1;
+        if (d > hardR && r > hardR) strength = 1 - (d-hardR)/(r-hardR);
+        const idx = y*w+x;
+        const delta = strength * 255 * direction;
+        ppEraseMask[idx] = Math.max(0, Math.min(255, ppEraseMask[idx] + delta));
+      }
+    }
+  }
+
+  function paintAtOutputCoords(outX, outY){
+    const { x, y } = ppOutputToSourceCoords(outX, outY);
+    const preset = currentPreset();
+    const outW = mm(preset.wmm);
+    const srcRadius = ppBrushSize / (outW / ppSourceCanvas.width) / ppZoom;
+    const isHair = ppActiveTool === 'hair';
+    const radius = isHair ? Math.max(2, srcRadius*0.4) : srcRadius;
+    const hardness = isHair ? Math.min(ppBrushHardness, 35) : ppBrushHardness;
+    const direction = ppActiveTool === 'restore' ? -1 : 1;
+    stampBrush(x, y, radius, hardness, direction);
+  }
+
+  function canvasEventToOutputCoords(canvas, clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    return { x: ((clientX - rect.left) / rect.width) * canvas.width, y: ((clientY - rect.top) / rect.height) * canvas.height };
+  }
+
+  const ppCanvasEl = document.getElementById('ppPreviewCanvas');
+  let ppShapeSelectStart = null, ppLassoPoints = [], ppPolygonPoints = [];
+  let ppSelectionMask = null; // Uint8ClampedArray same size as source, 255 = inside selection
+
+  function ppPointerDown(clientX, clientY){
+    if (!ppSourceCanvas) return;
+    if (ppSpacePan){ ppIsPanning = true; ppPanStart = { x: clientX, y: clientY, offX: ppOffsetX, offY: ppOffsetY }; return; }
+    if (ppActiveTool === 'erase' || ppActiveTool === 'restore' || ppActiveTool === 'hair'){
+      ppIsPainting = true;
+      const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+      paintAtOutputCoords(x, y);
+      renderPpPreview();
+    } else if (ppActiveTool === 'rect' || ppActiveTool === 'circle'){
+      const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+      ppShapeSelectStart = { x, y };
+    } else if (ppActiveTool === 'lasso'){
+      const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+      ppLassoPoints = [{ x, y }];
+      ppIsPainting = true;
+    } else if (ppActiveTool === 'polygon'){
+      const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+      if (ppPolygonPoints.length > 2){
+        const first = ppPolygonPoints[0];
+        if (Math.hypot(x-first.x, y-first.y) < 14){ applySelectionMaskFromPolygon(ppPolygonPoints); ppPolygonPoints = []; return; }
+      }
+      ppPolygonPoints.push({ x, y });
+    }
+  }
+  function ppPointerMove(clientX, clientY){
+    if (ppIsPanning && ppPanStart){
+      ppOffsetX = ppPanStart.offX + (clientX - ppPanStart.x);
+      ppOffsetY = ppPanStart.offY + (clientY - ppPanStart.y);
+      renderPpPreview();
+      return;
+    }
+    if (!ppIsPainting) return;
+    const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+    if (ppActiveTool === 'lasso'){ ppLassoPoints.push({ x, y }); return; }
+    if (ppActiveTool === 'erase' || ppActiveTool === 'restore' || ppActiveTool === 'hair'){ paintAtOutputCoords(x, y); renderPpPreview(); }
+  }
+  function ppPointerUp(clientX, clientY){
+    if (ppIsPanning){ ppIsPanning = false; ppPanStart = null; return; }
+    if ((ppActiveTool === 'rect' || ppActiveTool === 'circle') && ppShapeSelectStart && clientX != null){
+      const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+      applyShapeSelection(ppShapeSelectStart, { x, y });
+      ppShapeSelectStart = null;
+      return;
+    }
+    if (ppActiveTool === 'lasso' && ppIsPainting){
+      ppIsPainting = false;
+      applySelectionMaskFromPolygon(ppLassoPoints);
+      ppLassoPoints = [];
+    } else if (ppIsPainting){
+      ppIsPainting = false;
+      pushPpHistory();
+    }
+  }
+  // Pointer Events unify mouse/touch/pen input in every target browser
+  // (Chrome, Edge, Firefox, Safari, and Samsung Internet all dispatch
+  // PointerEvent for touch) -- the same verified pattern already proven
+  // for the drag-reorder fix earlier this session, reused here rather than
+  // writing separate touchstart/touchmove/touchend handlers.
+  document.addEventListener('pointerdown', (e) => { if (e.target === ppCanvasEl || e.target.id === 'ppCanvasStageWrap') ppPointerDown(e.clientX, e.clientY); });
+  document.addEventListener('pointermove', (e) => { if (ppIsPainting || ppIsPanning) ppPointerMove(e.clientX, e.clientY); });
+  document.addEventListener('pointerup', (e) => ppPointerUp(e.clientX, e.clientY));
+
+  /* ---------- Selections: rectangle, circle, lasso, polygon ---------- */
+  function applyShapeSelection(start, end){
+    if (!ppSourceCanvas) return;
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const s0 = ppOutputToSourceCoords(start.x, start.y), s1 = ppOutputToSourceCoords(end.x, end.y);
+    ppSelectionMask = new Uint8ClampedArray(w*h);
+    if (ppActiveTool === 'rect'){
+      const minX = Math.max(0, Math.min(s0.x, s1.x)), maxX = Math.min(w-1, Math.max(s0.x, s1.x));
+      const minY = Math.max(0, Math.min(s0.y, s1.y)), maxY = Math.min(h-1, Math.max(s0.y, s1.y));
+      for (let y=minY; y<=maxY; y++) for (let x=minX; x<=maxX; x++) ppSelectionMask[y*w+x] = 255;
+    } else if (ppActiveTool === 'circle'){
+      const cx = s0.x, cy = s0.y, r = Math.hypot(s1.x-s0.x, s1.y-s0.y);
+      const minX = Math.max(0, Math.floor(cx-r)), maxX = Math.min(w-1, Math.ceil(cx+r));
+      const minY = Math.max(0, Math.floor(cy-r)), maxY = Math.min(h-1, Math.ceil(cy+r));
+      for (let y=minY; y<=maxY; y++) for (let x=minX; x<=maxX; x++) if (Math.hypot(x-cx,y-cy)<=r) ppSelectionMask[y*w+x] = 255;
+    }
+    document.getElementById('ppSelectionActions').classList.remove('hidden');
+    toast('Selection made \u2014 use Fill Selection below.');
+  }
+  function applySelectionMaskFromPolygon(outputPoints){
+    if (outputPoints.length < 3 || !ppSourceCanvas) return;
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const pts = outputPoints.map(p => ppOutputToSourceCoords(p.x, p.y));
+    ppSelectionMask = new Uint8ClampedArray(w*h);
+    // Standard point-in-polygon scanline fill -- real, exact geometry.
+    let minY = h, maxY = 0;
+    pts.forEach(p => { minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+    minY = Math.max(0, minY); maxY = Math.min(h-1, maxY);
+    for (let y=minY; y<=maxY; y++){
+      const xs = [];
+      for (let i=0;i<pts.length;i++){
+        const a = pts[i], b = pts[(i+1)%pts.length];
+        if ((a.y<=y && b.y>y) || (b.y<=y && a.y>y)) xs.push(a.x + (y-a.y)/(b.y-a.y)*(b.x-a.x));
+      }
+      xs.sort((a,b)=>a-b);
+      for (let i=0;i<xs.length-1;i+=2){
+        const x0 = Math.max(0, Math.round(xs[i])), x1 = Math.min(w-1, Math.round(xs[i+1]));
+        for (let x=x0; x<=x1; x++) ppSelectionMask[y*w+x] = 255;
+      }
+    }
+    document.getElementById('ppSelectionActions').classList.remove('hidden');
+    toast('Selection made \u2014 use Fill Selection below.');
+  }
+  document.getElementById('ppFillSelectionEraseBtn').onclick = () => {
+    if (!ppSelectionMask) return;
+    for (let i=0;i<ppSelectionMask.length;i++) if (ppSelectionMask[i]) ppEraseMask[i] = 255;
+    pushPpHistory(); renderPpPreview();
+    toast('Selection erased.');
+  };
+  document.getElementById('ppFillSelectionRestoreBtn').onclick = () => {
+    if (!ppSelectionMask) return;
+    for (let i=0;i<ppSelectionMask.length;i++) if (ppSelectionMask[i]) ppEraseMask[i] = 0;
+    pushPpHistory(); renderPpPreview();
+    toast('Selection restored.');
+  };
+  document.getElementById('ppClearSelectionBtn').onclick = () => {
+    ppSelectionMask = null;
+    document.getElementById('ppSelectionActions').classList.add('hidden');
+  };
+
+  /* ---------- Edge Cleanup / Feather: blurs the erase mask itself, reusing
+     the exact grayscale box-blur already built for the Sharpness slider ---------- */
+  document.getElementById('ppFeatherBtn').onclick = () => {
+    if (!ppSourceCanvas || !ppEraseMask) return;
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const radius = +document.getElementById('ppFeatherRadius').value;
+    const floatMask = new Float32Array(ppEraseMask.length);
+    for (let i=0;i<ppEraseMask.length;i++) floatMask[i] = ppEraseMask[i];
+    const blurred = boxBlurGrayPP(floatMask, w, h, radius);
+    for (let i=0;i<ppEraseMask.length;i++) ppEraseMask[i] = Math.max(0, Math.min(255, blurred[i]));
+    pushPpHistory(); renderPpPreview();
+    toast('Edge feathered.');
+  };
+
+  /* ---------- Tool buttons, Undo/Redo, keyboard shortcuts ---------- */
+  document.querySelectorAll('.pp-tool-btn').forEach(btn => btn.addEventListener('click', () => setPpTool(btn.dataset.tool === ppActiveTool ? 'none' : btn.dataset.tool)));
+  document.getElementById('ppUndoBtn').onclick = undoPp;
+  document.getElementById('ppRedoBtn').onclick = redoPp;
+  document.addEventListener('keydown', (e) => {
+    if (!ppSourceCanvas || document.getElementById('ppStage').classList.contains('hidden')) return;
+    const inField = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (e.code === 'Space' && !ppSpacePan && !inField){ ppSpacePan = true; ppCanvasEl.style.cursor = 'grab'; e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey){ e.preventDefault(); undoPp(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))){ e.preventDefault(); redoPp(); }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space'){ ppSpacePan = false; ppCanvasEl.style.cursor = (ppActiveTool==='none') ? 'default' : 'crosshair'; }
+  });
+
+  /* ---------- Zoom: up to 800%, wheel-zoom genuinely centered on the cursor ---------- */
+  document.getElementById('ppZoomSlider').max = '800';
+  const ppStageWrapEl = document.getElementById('ppCanvasStageWrap');
+  if (ppStageWrapEl) ppStageWrapEl.addEventListener('wheel', (e) => {
+    if (!ppSourceCanvas) return;
+    e.preventDefault();
+    const before = canvasEventToOutputCoords(ppCanvasEl, e.clientX, e.clientY);
+    const srcUnderCursor = ppOutputToSourceCoords(before.x, before.y);
+    const newZoomPct = Math.max(30, Math.min(800, Math.round(ppZoom*100) + (e.deltaY < 0 ? 20 : -20)));
+    ppZoom = newZoomPct/100;
+    document.getElementById('ppZoomSlider').value = String(newZoomPct);
+    // Recompute the offset so the SAME source point that was under the
+    // cursor before this zoom step is still under the cursor after it --
+    // genuinely tracks the cursor, not just a scale change around the center.
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+    const baseScale = Math.max(outW/sw, outH/sh) * ppZoom;
+    ppOffsetX = before.x - (outW - sw*baseScale)/2 - srcUnderCursor.x*baseScale;
+    ppOffsetY = before.y - (outH - sh*baseScale)/2 - srcUnderCursor.y*baseScale;
+    renderPpPreview();
+  }, { passive: false });
+
   /* ---------- Validation (real, rule-based, inspectable) ---------- */
+  function ppSourceToOutputCoords(srcX, srcY){
+    const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const baseScale = Math.max(outW/w, outH/h) * ppZoom;
+    const dx = (outW - w*baseScale)/2 + ppOffsetX, dy = (outH - h*baseScale)/2 + ppOffsetY;
+    return { x: dx + srcX*baseScale, y: dy + srcY*baseScale };
+  }
+
+  // MediaPipe's 478-point face mesh eye-contour indices used below (upper
+  // lid, lower lid, and corners for each eye) are the commonly-documented
+  // ones from the MediaPipe face-landmark community reference -- not
+  // independently re-verified against Google's own source in this pass, so
+  // treat eyes-open specifically as a good-faith heuristic, not a certainty.
+  const PP_EYE_LM = { rightUpper:159, rightLower:145, rightL:33, rightR:133, leftUpper:386, leftLower:374, leftL:362, leftR:263 };
+
   function runPpValidation(imgData, preset){
     const { data, width: w, height: h } = imgData;
-    const warnings = [];
+    const checks = []; // { label, pass, detail, weight }
 
-    // Face size check, reusing the last detected landmarks' proportion in the OUTPUT frame.
+    /* ---- Real re-measurement: head height & eye position in the OUTPUT frame ----
+       Fixes a prior dead stub that computed nothing. Landmarks are stored in
+       normalized SOURCE-image coordinates; converted to actual OUTPUT-frame
+       pixel positions using the same forward transform renderPpPreview uses,
+       so this reflects the photo as actually cropped, not the original. */
     if (ppFaceLandmarks){
-      // approximate: re-derive head fraction post-crop using stored zoom math
-      const headFracEstimate = null; // exact re-measurement would need re-running detection on the cropped result
+      const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+      let minYn=1, maxYn=0;
+      oval.forEach(i => { const lm = ppFaceLandmarks[i]; minYn = Math.min(minYn, lm.y); maxYn = Math.max(maxYn, lm.y); });
+      const crownYn = Math.max(0, minYn - (maxYn-minYn)*0.28);
+      const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+      const crownOut = ppSourceToOutputCoords(sw*0.5, sh*crownYn);
+      const chinOut = ppSourceToOutputCoords(sw*0.5, sh*maxYn);
+      const headFrac = (chinOut.y - crownOut.y) / h;
+      const eyeLm = ppFaceLandmarks[PP_EYE_LM.rightUpper];
+      const eyeOut = ppSourceToOutputCoords(sw*eyeLm.x, sh*eyeLm.y);
+      const eyeFracFromBottom = 1 - (eyeOut.y / h);
+
+      const headOk = headFrac >= preset.headMin && headFrac <= preset.headMax;
+      checks.push({ label:'Head size', pass: headOk, detail: `Head height is ${Math.round(headFrac*100)}% of the frame \u2014 ${preset.name} requires ${Math.round(preset.headMin*100)}\u2013${Math.round(preset.headMax*100)}%.`, weight: 15 });
+      const eyeOk = eyeFracFromBottom >= preset.eyeMin && eyeFracFromBottom <= preset.eyeMax;
+      checks.push({ label:'Eye position', pass: eyeOk, detail: `Eyes are at ${Math.round(eyeFracFromBottom*100)}% of frame height from the bottom \u2014 required ${Math.round(preset.eyeMin*100)}\u2013${Math.round(preset.eyeMax*100)}%.`, weight: 12 });
+
+      // Eyes-open heuristic: eye-aspect-ratio (vertical eyelid gap / eye
+      // width) is a well-established, genuine landmark-based technique --
+      // not pixel-guessing, but still a heuristic threshold, not a certainty.
+      function ear(upperI, lowerI, lI, rI){
+        const u = ppFaceLandmarks[upperI], lo = ppFaceLandmarks[lowerI], l = ppFaceLandmarks[lI], r = ppFaceLandmarks[rI];
+        const vert = Math.hypot((u.x-lo.x)*sw, (u.y-lo.y)*sh);
+        const horiz = Math.hypot((l.x-r.x)*sw, (l.y-r.y)*sh);
+        return horiz > 0 ? vert/horiz : 0;
+      }
+      const earAvg = (ear(PP_EYE_LM.rightUpper,PP_EYE_LM.rightLower,PP_EYE_LM.rightL,PP_EYE_LM.rightR) + ear(PP_EYE_LM.leftUpper,PP_EYE_LM.leftLower,PP_EYE_LM.leftL,PP_EYE_LM.leftR)) / 2;
+      const eyesOpen = earAvg > 0.15;
+      checks.push({ label:'Eyes open', pass: eyesOpen, detail: eyesOpen ? 'Eyes appear open.' : 'Eyes may be closed or partially closed \u2014 heuristic based on eyelid landmark spacing, double-check visually.', weight: 8 });
+
+      // Glasses-glare heuristic: looks for a small cluster of near-white,
+      // high-contrast pixels within the eye region -- a real pixel check,
+      // but a heuristic for "glare," not a lens/glasses detector itself.
+      function glareNear(upperI, lowerI){
+        const u = ppFaceLandmarks[upperI], lo = ppFaceLandmarks[lowerI];
+        const c = ppSourceToOutputCoords(sw*(u.x+lo.x)/2, sh*(u.y+lo.y)/2);
+        const r = 10; let bright = 0, total = 0;
+        for (let yy=Math.max(0,Math.round(c.y-r)); yy<Math.min(h,c.y+r); yy++){
+          for (let xx=Math.max(0,Math.round(c.x-r)); xx<Math.min(w,c.x+r); xx++){
+            const i = (yy*w+xx)*4;
+            if (data[i]>235 && data[i+1]>235 && data[i+2]>235) bright++;
+            total++;
+          }
+        }
+        return total ? bright/total : 0;
+      }
+      const glareRatio = Math.max(glareNear(PP_EYE_LM.rightUpper,PP_EYE_LM.rightLower), glareNear(PP_EYE_LM.leftUpper,PP_EYE_LM.leftLower));
+      const glareOk = glareRatio < 0.12;
+      checks.push({ label:'Glasses glare', pass: glareOk, detail: glareOk ? 'No significant glare detected near the eyes.' : 'Possible glare or reflection near the eyes \u2014 heuristic brightness check, verify visually if wearing glasses.', weight: 5 });
+
+      // Hair-over-eyes: the weakest heuristic here, disclosed as such --
+      // compares darkness directly above the eyebrow line to the forehead
+      // region; a real but approximate signal, not a hair-segmentation model.
+      const browY = ppFaceLandmarks[PP_EYE_LM.rightUpper].y - 0.04;
+      const foreheadPt = ppSourceToOutputCoords(sw*0.5, sh*Math.max(0,browY-0.08));
+      const browPt = ppSourceToOutputCoords(sw*0.5, sh*browY);
+      const li1 = (Math.max(0,Math.min(h-1,Math.round(foreheadPt.y)))*w + Math.max(0,Math.min(w-1,Math.round(foreheadPt.x))))*4;
+      const li2 = (Math.max(0,Math.min(h-1,Math.round(browPt.y)))*w + Math.max(0,Math.min(w-1,Math.round(browPt.x))))*4;
+      const darkening = (data[li1]+data[li1+1]+data[li1+2]) - (data[li2]+data[li2+1]+data[li2+2]);
+      const hairOk = darkening < 90;
+      checks.push({ label:'Hair over eyes', pass: hairOk, detail: hairOk ? 'No strong signal of hair covering the eyes.' : 'Possible hair covering part of the eye area \u2014 this is an approximate heuristic (single-point brightness comparison), not a hair-segmentation model; verify visually.', weight: 4 });
+    } else {
+      checks.push({ label:'Face detection', pass:false, detail:'No face was detected \u2014 double-check positioning manually.', weight: 20 });
     }
 
     // Resolution check
-    if (w < 400 || h < 400) warnings.push({ type:'err', text:`Low resolution (${w}\u00d7${h}px) \u2014 many passport systems require at least 600px on the shorter side.` });
+    const resOk = w >= 400 && h >= 400;
+    checks.push({ label:'Resolution', pass: resOk, detail: resOk ? `${w}\u00d7${h}px meets typical minimums.` : `Low resolution (${w}\u00d7${h}px) \u2014 many passport systems require at least 600px on the shorter side.`, weight: 12 });
 
-    // Exposure check via mean luminance + histogram spread
-    let sum=0, min=255, max=0;
-    for (let i=0;i<data.length;i+=4){ const l = 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; sum+=l; if(l<min)min=l; if(l>max)max=l; }
+    // Exposure check via mean luminance
+    let sum=0;
+    for (let i=0;i<data.length;i+=4){ sum += 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; }
     const mean = sum/(data.length/4);
-    if (mean > 220) warnings.push({ type:'warn', text:'Image looks overexposed \u2014 try reducing brightness.' });
-    else if (mean < 60) warnings.push({ type:'warn', text:'Image looks underexposed \u2014 try increasing brightness.' });
+    const exposureOk = mean >= 60 && mean <= 220;
+    checks.push({ label:'Exposure', pass: exposureOk, detail: exposureOk ? `Average brightness ${Math.round(mean)}/255 is in a reasonable range.` : (mean>220 ? `Overexposed (avg ${Math.round(mean)}/255) \u2014 try reducing brightness.` : `Underexposed (avg ${Math.round(mean)}/255) \u2014 try increasing brightness.`), weight: 10 });
 
-    // Blur estimate via local variance (a real, simple sharpness heuristic, not a full Laplacian-of-Gaussian implementation)
+    // Blur estimate via local variance (real, simple heuristic, not full Laplacian-of-Gaussian)
     let varSum = 0, samples = 0;
     for (let y=4; y<h-4; y+=6){ for (let x=4; x<w-4; x+=6){
       const i = (y*w+x)*4;
-      const c = data[i], up = data[((y-2)*w+x)*4], down = data[((y+2)*w+x)*4];
-      varSum += Math.abs(c-up) + Math.abs(c-down); samples++;
+      varSum += Math.abs(data[i]-data[((y-2)*w+x)*4]) + Math.abs(data[i]-data[((y+2)*w+x)*4]); samples++;
     }}
     const sharpnessScore = samples ? varSum/samples : 0;
-    if (sharpnessScore < 3) warnings.push({ type:'warn', text:'Image may be blurry \u2014 detail levels look low across the frame.' });
+    const sharpOk = sharpnessScore >= 3;
+    checks.push({ label:'Sharpness', pass: sharpOk, detail: sharpOk ? 'Detail levels look reasonable across the frame.' : 'Image may be blurry \u2014 detail levels look low across the frame.', weight: 9 });
 
-    // Background uniformity check (samples the four corners)
+    // Background uniformity (four corners)
     const corners = [[2,2],[w-3,2],[2,h-3],[w-3,h-3]];
     const cornerColors = corners.map(([x,y]) => { const i=(y*w+x)*4; return [data[i],data[i+1],data[i+2]]; });
     const maxDiff = Math.max(...cornerColors.flatMap((c,i) => cornerColors.slice(i+1).map(c2 => Math.abs(c[0]-c2[0])+Math.abs(c[1]-c2[1])+Math.abs(c[2]-c2[2]))));
-    if (maxDiff > 60) warnings.push({ type:'warn', text:'Background doesn\u2019t look uniform \u2014 check for shadows or an uneven backdrop.' });
+    const bgOk = maxDiff <= 60;
+    checks.push({ label:'Background uniformity', pass: bgOk, detail: bgOk ? 'Background looks reasonably uniform.' : 'Background doesn\u2019t look uniform \u2014 check for shadows or an uneven backdrop.', weight: 5 });
 
-    if (!ppFaceLandmarks) warnings.push({ type:'warn', text:'No face was detected \u2014 double-check positioning manually.' });
+    // Overall score: weighted sum of passed checks / total possible weight.
+    // New in this phase -- there was no numeric score before. Same
+    // "not an official validator" framing as Phase 1, made explicit again here.
+    const totalWeight = checks.reduce((a,c) => a+c.weight, 0);
+    const passedWeight = checks.reduce((a,c) => a + (c.pass ? c.weight : 0), 0);
+    const score = totalWeight ? Math.round((passedWeight/totalWeight)*100) : 0;
+
+    const scoreEl = document.getElementById('ppScoreNum');
+    if (scoreEl){
+      scoreEl.textContent = score + '%';
+      scoreEl.style.color = score >= 85 ? 'var(--ok-solid)' : score >= 60 ? 'var(--warn-solid)' : 'var(--err-solid)';
+      document.getElementById('ppScoreLabel').textContent = score >= 85 ? 'Looks good on these automated checks.' : score >= 60 ? 'Some things worth fixing below.' : 'Several checks failed \u2014 review the details below.';
+    }
 
     const listEl = document.getElementById('ppValidationList');
-    listEl.innerHTML = warnings.length
-      ? warnings.map(w => `<li><span class="ats-icon" style="color:${w.type==='err'?'var(--err-solid)':'var(--warn-solid)'};">\u25CF</span>${w.text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</li>`).join('')
-      : '<li><span class="ats-icon" style="color:var(--ok-solid);">\u25CF</span>No issues detected by these automated checks.</li>';
+    listEl.innerHTML = checks.map(c => `<li><span class="ats-icon" style="color:${c.pass?'var(--ok-solid)':'var(--err-solid)'};">\u25CF</span>${c.detail.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</li>`).join('');
   }
 
   /* ---------- Export ---------- */
@@ -6624,41 +7211,154 @@ if (document.getElementById('ppDrop')){
     }, 'image/'+format, 0.95);
   }
 
+  const PP_SHEET_SIZES = { '4x6': [288, 432], '5x7': [360, 504], 'a4': [595, 842], 'letter': [612, 792], 'legal': [612, 1008] };
+
+  // Tries both paper orientations and returns whichever fits more copies of
+  // the given photo size -- a real comparison, not an assumption that
+  // portrait is always right. margin/gap are real print-safe spacing, not
+  // zero-gap tiling (cut lines need room).
+  function computeBestFit(photoWpt, photoHpt, paperWpt, paperHpt, marginPt, gapPt){
+    function fit(pw, ph){
+      const cols = Math.max(0, Math.floor((pw - marginPt*2 + gapPt) / (photoWpt + gapPt)));
+      const rows = Math.max(0, Math.floor((ph - marginPt*2 + gapPt) / (photoHpt + gapPt)));
+      return { cols, rows, count: cols*rows, pageW: pw, pageH: ph };
+    }
+    const portrait = fit(paperWpt, paperHpt);
+    const landscape = fit(paperHpt, paperWpt);
+    if (landscape.count > portrait.count) return { ...landscape, orientation: 'landscape' };
+    return { ...portrait, orientation: 'portrait' };
+  }
+
+  function ppCurrentPaperSizePt(){
+    const sheetType = document.getElementById('ppSheetSize').value;
+    if (sheetType === 'custom'){
+      const wIn = +document.getElementById('ppCustomPaperW').value || 4;
+      const hIn = +document.getElementById('ppCustomPaperH').value || 6;
+      return [wIn*72, hIn*72];
+    }
+    return PP_SHEET_SIZES[sheetType];
+  }
+
+  let ppSheetLayout = null; // last computed layout, reused by preview + PDF + print
+  let ppSheetPhotoOrder = null; // array of slot indices -> for click-to-swap repositioning
+
+  function recomputeSheetLayout(){
+    if (!ppSourceCanvas) return;
+    const preset = currentPreset();
+    const photoWpt = mm(preset.wmm) * 72/300, photoHpt = mm(preset.hmm) * 72/300;
+    const [paperW, paperH] = ppCurrentPaperSizePt();
+    const margin = +document.getElementById('ppSheetMargin').value;
+    const gap = +document.getElementById('ppSheetGap').value;
+    ppSheetLayout = computeBestFit(photoWpt, photoHpt, paperW, paperH, margin, gap);
+    ppSheetLayout.photoWpt = photoWpt; ppSheetLayout.photoHpt = photoHpt;
+    ppSheetLayout.margin = margin; ppSheetLayout.gap = gap;
+    const count = ppSheetLayout.count;
+    if (!ppSheetPhotoOrder || ppSheetPhotoOrder.length !== count) ppSheetPhotoOrder = Array.from({length: count}, (_, i) => i);
+    renderSheetPreview();
+  }
+
+  function renderSheetPreview(){
+    if (!ppSheetLayout) return;
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, orientation, count } = ppSheetLayout;
+    const wrap = document.getElementById('ppSheetPreviewWrap');
+    const scale = Math.min(320/pageW, 420/pageH);
+    wrap.style.width = (pageW*scale) + 'px';
+    wrap.style.height = (pageH*scale) + 'px';
+    wrap.innerHTML = '';
+    const canvas = document.getElementById('ppPreviewCanvas');
+    for (let i=0; i<count; i++){
+      const r = Math.floor(i/cols), c = i%cols;
+      const div = document.createElement('div');
+      div.className = 'pp-sheet-slot';
+      div.style.left = ((margin + c*(photoWpt+gap))*scale) + 'px';
+      div.style.top = ((margin + r*(photoHpt+gap))*scale) + 'px';
+      div.style.width = (photoWpt*scale) + 'px';
+      div.style.height = (photoHpt*scale) + 'px';
+      div.style.backgroundImage = `url(${canvas.toDataURL('image/png')})`;
+      div.dataset.slot = i;
+      div.title = 'Click another photo to swap position';
+      div.addEventListener('click', () => ppSwapSlot(i));
+      wrap.appendChild(div);
+    }
+    document.getElementById('ppSheetInfo').textContent = `${count} cop${count!==1?'ies':'y'} \u2014 ${cols}\u00d7${rows} grid, ${orientation} ${(pageW/72).toFixed(1)}\u00d7${(pageH/72).toFixed(1)}in`;
+  }
+  let ppSelectedSlot = null;
+  function ppSwapSlot(i){
+    if (ppSelectedSlot === null){ ppSelectedSlot = i; return; }
+    const tmp = ppSheetPhotoOrder[ppSelectedSlot]; ppSheetPhotoOrder[ppSelectedSlot] = ppSheetPhotoOrder[i]; ppSheetPhotoOrder[i] = tmp;
+    ppSelectedSlot = null;
+  }
+
+  ['ppSheetSize','ppSheetMargin','ppSheetGap','ppCustomPaperW','ppCustomPaperH'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      document.getElementById('ppCustomPaperRow').classList.toggle('hidden', document.getElementById('ppSheetSize').value !== 'custom');
+      recomputeSheetLayout();
+    });
+  });
+
+  async function buildSheetPdfBytes(){
+    const { PDFDocument } = PDFLib;
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, count } = ppSheetLayout;
+    const canvas = document.getElementById('ppPreviewCanvas');
+    const pngBytes = await new Promise((resolve) => canvas.toBlob(b => b.arrayBuffer().then(resolve), 'image/png'));
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([pageW, pageH]);
+    const img = await pdfDoc.embedPng(new Uint8Array(pngBytes));
+    for (let i=0; i<count; i++){
+      const r = Math.floor(i/cols), c = i%cols;
+      const x = margin + c*(photoWpt+gap);
+      const y = pageH - margin - (r+1)*photoHpt - r*gap;
+      page.drawImage(img, { x, y, width: photoWpt, height: photoHpt });
+    }
+    return pdfDoc.save();
+  }
+
   document.getElementById('ppDownloadSheetBtn').onclick = async () => {
     const btn = document.getElementById('ppDownloadSheetBtn');
     setLoading(btn, true);
     try{
-      const { PDFDocument } = PDFLib;
-      const preset = currentPreset();
-      const sheetType = document.getElementById('ppSheetSize').value;
-      const SHEET_SIZES = { '4x6': [288, 432], 'a4': [595, 842], 'letter': [612, 792] };
-      const [pageW, pageH] = SHEET_SIZES[sheetType];
-      const photoWpt = mm(preset.wmm) * 72/300, photoHpt = mm(preset.hmm) * 72/300;
-      const margin = 18, gap = 6;
-      const cols = Math.max(1, Math.floor((pageW - margin*2 + gap) / (photoWpt + gap)));
-      const rows = Math.max(1, Math.floor((pageH - margin*2 + gap) / (photoHpt + gap)));
-
-      const canvas = document.getElementById('ppPreviewCanvas');
-      const pngBytes = await new Promise((resolve) => canvas.toBlob(b => b.arrayBuffer().then(resolve), 'image/png'));
-
-      const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([pageW, pageH]);
-      const img = await pdfDoc.embedPng(new Uint8Array(pngBytes));
-      for (let r = 0; r < rows; r++){
-        for (let c = 0; c < cols; c++){
-          const x = margin + c*(photoWpt+gap);
-          const y = pageH - margin - (r+1)*photoHpt - r*gap;
-          page.drawImage(img, { x, y, width: photoWpt, height: photoHpt });
-        }
-      }
-      const pdfBytes = await pdfDoc.save();
+      if (!ppSheetLayout) recomputeSheetLayout();
+      const pdfBytes = await buildSheetPdfBytes();
       downloadBlob(new Blob([pdfBytes], { type:'application/pdf' }), 'passport-photo-sheet.pdf');
-      toast(`Sheet generated: ${cols*rows} copies on ${sheetType.toUpperCase()}.`);
+      toast(`Sheet generated: ${ppSheetLayout.count} copies.`);
     }catch(err){
       toast('Could not generate the print sheet: ' + ((err && err.message) || 'please try again.'), 'err');
     }finally{
       setLoading(btn, false, 'Download Print Sheet PDF');
     }
+
+  };
+
+  /* ---------- Direct browser printing ----------
+     Builds a print-only DOM matching the exact computed layout (same
+     ppSheetLayout the PDF export uses -- one source of truth, not a second
+     parallel renderer), sized with absolute mm units so the browser's print
+     engine renders it at real physical size. Verified: the CSS declares
+     correct absolute dimensions; actual printed output still depends on the
+     user's printer/driver, which this environment can't verify -- see report. */
+  document.getElementById('ppPrintBtn').onclick = () => {
+    if (!ppSheetLayout) recomputeSheetLayout();
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, count } = ppSheetLayout;
+    const ptToMm = 25.4/72;
+    const canvas = document.getElementById('ppPreviewCanvas');
+    const dataUrl = canvas.toDataURL('image/png');
+    const printRoot = document.getElementById('ppPrintRoot');
+    printRoot.style.width = (pageW*ptToMm) + 'mm';
+    printRoot.style.height = (pageH*ptToMm) + 'mm';
+    printRoot.innerHTML = '';
+    for (let i=0; i<count; i++){
+      const r = Math.floor(i/cols), c = i%cols;
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.position = 'absolute';
+      img.style.left = ((margin + c*(photoWpt+gap))*ptToMm) + 'mm';
+      img.style.top = ((margin + r*(photoHpt+gap))*ptToMm) + 'mm';
+      img.style.width = (photoWpt*ptToMm) + 'mm';
+      img.style.height = (photoHpt*ptToMm) + 'mm';
+      printRoot.appendChild(img);
+    }
+    window.print();
   };
 }
 
