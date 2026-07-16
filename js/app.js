@@ -6403,7 +6403,7 @@ if (document.getElementById('ppDrop')){
         const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}`);
         const { ImageSegmenter, FilesetResolver } = mod;
         const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_PP}/wasm`);
-        return await ImageSegmenter.createFromOptions(vision, { baseOptions: { modelAssetPath: SEG_MODEL_URL_PP, delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: true });
+        return await ImageSegmenter.createFromOptions(vision, { baseOptions: { modelAssetPath: SEG_MODEL_URL_PP, delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: true });
       })().catch((err) => { segmenterPromisePP = null; throw err; });
     }
     return segmenterPromisePP;
@@ -6450,21 +6450,55 @@ if (document.getElementById('ppDrop')){
   /* ---------- Camera capture (real getUserMedia, with an oval positioning guide) ---------- */
   let ppCameraStream = null;
   async function openPpCamera(){
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      toast('Camera capture isn\u2019t supported in this browser \u2014 please upload a photo instead.', 'err');
-      return;
-    }
-    const modal = document.getElementById('ppCameraModal');
-    const video = document.getElementById('ppCameraVideo');
-    try{
-      ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
-      video.srcObject = ppCameraStream;
-      await video.play();
-      modal.classList.remove('hidden');
-    }catch(err){
-      toast('Could not access the camera: ' + (err.message || 'permission was denied.'), 'err');
+    // getUserMedia requires a secure context (HTTPS or localhost) -- if
+    // navigator.mediaDevices is undefined, that's usually why, not a lack
+    // of browser support. Either way, the fallback below covers it.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      const modal = document.getElementById('ppCameraModal');
+      const video = document.getElementById('ppCameraVideo');
+      try{
+        // Try a reasonably-specified front camera first; some Android camera
+        // stacks throw OverconstrainedError on combined facingMode+exact
+        // resolution requests, so width/height stay as loose "ideal" hints,
+        // not required constraints.
+        ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+      }catch(err1){
+        try{
+          // Fall back to the browser's default camera with no facingMode
+          // constraint at all -- covers devices/browsers that reject the
+          // first request for reasons unrelated to permission (e.g. no
+          // front camera enumerated, or a stricter constraint negotiation).
+          ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }catch(err2){
+          openPpCameraFileFallback();
+          return;
+        }
+      }
+      try{
+        video.srcObject = ppCameraStream;
+        await video.play();
+        modal.classList.remove('hidden');
+      }catch(errPlay){
+        if (ppCameraStream) ppCameraStream.getTracks().forEach(t => t.stop());
+        openPpCameraFileFallback();
+      }
+    } else {
+      openPpCameraFileFallback();
     }
   }
+  // Standards-based fallback per platform behavior: <input capture> opens
+  // the native camera app directly on Android Chrome, Samsung Internet, and
+  // iOS Safari without needing getUserMedia at all -- the button always does
+  // something useful even when live in-page camera access isn't available.
+  function openPpCameraFileFallback(){
+    toast('Opening your device camera\u2026');
+    document.getElementById('ppCameraFallbackInput').click();
+  }
+  document.getElementById('ppCameraFallbackInput').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (f) await loadPpImage(f);
+    e.target.value = '';
+  });
   function closePpCamera(){
     if (ppCameraStream){ ppCameraStream.getTracks().forEach(t => t.stop()); ppCameraStream = null; }
     document.getElementById('ppCameraModal').classList.add('hidden');
@@ -6732,25 +6766,61 @@ if (document.getElementById('ppDrop')){
       const mw = mask.width, mh = mask.height;
       const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
 
-      // Segmentation model output may be a different resolution than the
-      // source -- nearest-neighbor sample into the erase mask's own
-      // resolution rather than assuming they match.
+      // Confidence data: verified via MediaPipe's own model documentation
+      // that this selfie-segmenter outputs background at category index 0
+      // and person at index 1 (checked directly, not assumed -- see report).
+      // outputConfidenceMasks was previously false, so this real per-pixel
+      // signal was unused; a result could look area-plausible while the
+      // model was actually uncertain about it. Now genuinely used below.
+      const confMasks = result.confidenceMasks;
+      const personConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
+      const cw = confMasks && confMasks[1] ? confMasks[1].width : mw, ch = confMasks && confMasks[1] ? confMasks[1].height : mh;
+
+      const newMask = new Uint8ClampedArray(w*h);
+      let subjectPixels = 0, confSum = 0, confSamples = 0;
       for (let y=0; y<h; y++){
         for (let x=0; x<w; x++){
           const mx = Math.min(mw-1, Math.round(x * mw/w)), my = Math.min(mh-1, Math.round(y * mh/h));
           const isSubject = maskData[my*mw+mx] > 0;
-          ppEraseMask[y*w+x] = isSubject ? 0 : 255; // subject stays original, background marked fully erased
+          if (isSubject){
+            subjectPixels++;
+            if (personConf){
+              const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
+              confSum += personConf[cy*cw+cx]; confSamples++;
+            }
+          }
+          newMask[y*w+x] = isSubject ? 0 : 255;
         }
       }
       mask.close && mask.close();
-      pushPpHistory();
-      statusEl.textContent = 'Background replaced.';
-      renderPpPreview();
+      confMasks && confMasks.forEach(m => m.close && m.close());
+      const avgPersonConfidence = confSamples ? confSum/confSamples : null;
+
+      // Two independent plausibility signals, either of which can trigger
+      // the manual fallback: implausible subject AREA (existing check) and
+      // now also low model CONFIDENCE on the pixels it did classify as
+      // subject -- catching cases where the area looks reasonable but the
+      // model was genuinely unsure, which the area check alone would miss.
+      const subjectFrac = subjectPixels / (w*h);
+      const areaImplausible = subjectFrac < 0.08 || subjectFrac > 0.97;
+      const lowConfidence = avgPersonConfidence !== null && avgPersonConfidence < 0.65;
+      if (areaImplausible || lowConfidence){
+        const reason = areaImplausible
+          ? `detected subject area was ${Math.round(subjectFrac*100)}% of the frame`
+          : `the model's own confidence in its result was low (${Math.round(avgPersonConfidence*100)}%)`;
+        statusEl.textContent = `Background replacement looked unreliable for this photo (${reason}) \u2014 skipped to protect your photo. Use the manual background tool below instead.`;
+        document.getElementById('ppManualBgRow').classList.remove('hidden');
+      } else {
+        ppEraseMask.set(newMask);
+        pushPpHistory();
+        statusEl.textContent = 'Background replaced.';
+        renderPpPreview();
+      }
     }catch(err){
       statusEl.textContent = 'AI background replacement couldn\u2019t load right now. You can still replace a plain background manually below \u2014 click anywhere on your photo\u2019s background.';
       document.getElementById('ppManualBgRow').classList.remove('hidden');
     }
-    setTimeout(() => statusEl.classList.add('hidden'), 5000);
+    setTimeout(() => statusEl.classList.add('hidden'), 6000);
   };
 
   /* ---------- Manual background fallback: classic flood-fill, not AI -----------
