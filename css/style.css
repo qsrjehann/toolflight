@@ -779,3 +779,19 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .ats-result-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;}
 .ats-result-list li{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;}
 .ats-result-list li .ats-icon{flex-shrink:0;width:18px;height:18px;margin-top:1px;}
+
+/* ============ PASSPORT PHOTO MAKER: PHASE 3 (print sheet + ICAO overlay) ============ */
+.pp-tool-btn.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+.pp-sheet-preview-wrap{position:relative;margin:10px auto 0;border:1.5px solid var(--card-border);background:#fff;box-shadow:var(--shadow);}
+.pp-sheet-slot{position:absolute;background-size:cover;background-position:center;border:1px dashed rgba(0,0,0,0.35);cursor:pointer;}
+.pp-sheet-slot:hover{outline:2px solid var(--accent1-solid);}
+
+/* Print root is invisible on screen; only shown -- and only it -- during print */
+.pp-print-root{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  .pp-print-root, .pp-print-root *{visibility:visible;}
+  .pp-print-root{display:block;position:absolute;top:0;left:0;}
+  .pp-print-root img{position:absolute;}
+  @page{margin:0;}
+}
