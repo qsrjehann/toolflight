@@ -6268,6 +6268,7 @@ if (document.getElementById('aewForm')){
    is NOT a guarantee of current compliance -- rules change, and this is
    disclosed prominently in the tool's own UI and FAQ, not just here. */
 if (document.getElementById('ppDrop')){
+  const ppCanvasEl = document.getElementById('ppPreviewCanvas');
   const MP_VERSION_PP = '0.10.2';
   const FACE_MODEL_URL_PP = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
   const SEG_MODEL_URL_PP = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
@@ -6586,6 +6587,111 @@ if (document.getElementById('ppDrop')){
   ['ppMoveX','ppMoveY'].forEach(id => document.getElementById(id).addEventListener('input', () => {
     ppOffsetX = +document.getElementById('ppMoveX').value; ppOffsetY = +document.getElementById('ppMoveY').value; renderPpPreview();
   }));
+  function syncPpZoomPanControls(){
+    document.getElementById('ppZoomSlider').value = String(Math.round(ppZoom*100));
+    document.getElementById('ppMoveX').value = String(Math.round(ppOffsetX));
+    document.getElementById('ppMoveY').value = String(Math.round(ppOffsetY));
+  }
+
+  /* ---------- Mobile gestures: pinch-zoom, two-finger pan, one-finger drag,
+     double-tap zoom/reset, simple release inertia -----------
+     Adapts the conceptual pattern already used for AI Background Remover's
+     pinch-zoom (distance/midpoint tracking) to Passport's own zoom/offset
+     transform model -- that tool pans via container scroll, this one via
+     ppOffsetX/Y, so the underlying mechanism differs even though the
+     touch-tracking approach is the same, reused idea rather than copied code. */
+  let ppPinchStartDist = null, ppPinchStartZoom = 1, ppPinchStartMid = null, ppPinchStartOffset = null;
+  let ppDragTouchStart = null, ppDragTouchStartOffset = null;
+  let ppLastTapTime = 0, ppLastTapPos = null;
+  let ppInertiaVX = 0, ppInertiaVY = 0, ppInertiaRAF = null, ppLastMoveTime = 0, ppLastMovePos = null;
+
+  function stopPpInertia(){ if (ppInertiaRAF){ cancelAnimationFrame(ppInertiaRAF); ppInertiaRAF = null; } }
+  function runPpInertia(){
+    stopPpInertia();
+    function step(){
+      ppInertiaVX *= 0.92; ppInertiaVY *= 0.92;
+      if (Math.abs(ppInertiaVX) < 0.15 && Math.abs(ppInertiaVY) < 0.15){ ppInertiaRAF = null; return; }
+      ppOffsetX += ppInertiaVX; ppOffsetY += ppInertiaVY;
+      renderPpPreview(); syncPpZoomPanControls();
+      ppInertiaRAF = requestAnimationFrame(step);
+    }
+    ppInertiaRAF = requestAnimationFrame(step);
+  }
+
+  ppCanvasEl.addEventListener('touchstart', (e) => {
+    if (!ppSourceCanvas) return;
+    stopPpInertia();
+    if (e.touches.length === 2){
+      e.preventDefault();
+      const [a, b] = e.touches;
+      ppPinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      ppPinchStartZoom = ppZoom;
+      ppPinchStartMid = { x: (a.clientX+b.clientX)/2, y: (a.clientY+b.clientY)/2 };
+      ppPinchStartOffset = { x: ppOffsetX, y: ppOffsetY };
+      ppDragTouchStart = null;
+    } else if (e.touches.length === 1){
+      const t = e.touches[0];
+      const now = Date.now();
+      // Double-tap: zoom in toward the tap point, or reset if already zoomed in.
+      if (ppLastTapPos && now - ppLastTapTime < 320 && Math.hypot(t.clientX-ppLastTapPos.x, t.clientY-ppLastTapPos.y) < 30){
+        if (ppZoom > 1.05){
+          ppZoom = 1; ppOffsetX = 0; ppOffsetY = 0;
+        } else {
+          const before = canvasEventToOutputCoords(ppCanvasEl, t.clientX, t.clientY);
+          const src = ppOutputToSourceCoords(before.x, before.y);
+          ppZoom = 2;
+          const preset = currentPreset();
+          const outW = mm(preset.wmm), outH = mm(preset.hmm);
+          const baseScale = Math.max(outW/ppSourceCanvas.width, outH/ppSourceCanvas.height) * ppZoom;
+          ppOffsetX = before.x - (outW - ppSourceCanvas.width*baseScale)/2 - src.x*baseScale;
+          ppOffsetY = before.y - (outH - ppSourceCanvas.height*baseScale)/2 - src.y*baseScale;
+        }
+        renderPpPreview(); syncPpZoomPanControls();
+        ppLastTapPos = null;
+        return;
+      }
+      ppLastTapTime = now; ppLastTapPos = { x: t.clientX, y: t.clientY };
+      ppDragTouchStart = { x: t.clientX, y: t.clientY };
+      ppDragTouchStartOffset = { x: ppOffsetX, y: ppOffsetY };
+      ppLastMoveTime = now; ppLastMovePos = { x: t.clientX, y: t.clientY };
+    }
+  }, { passive: false });
+
+  ppCanvasEl.addEventListener('touchmove', (e) => {
+    if (!ppSourceCanvas) return;
+    if (e.touches.length === 2 && ppPinchStartDist){
+      e.preventDefault();
+      const [a, b] = e.touches;
+      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      ppZoom = Math.max(0.3, Math.min(8, ppPinchStartZoom * (dist/ppPinchStartDist)));
+      const mid = { x: (a.clientX+b.clientX)/2, y: (a.clientY+b.clientY)/2 };
+      ppOffsetX = ppPinchStartOffset.x + (mid.x - ppPinchStartMid.x);
+      ppOffsetY = ppPinchStartOffset.y + (mid.y - ppPinchStartMid.y);
+      renderPpPreview(); syncPpZoomPanControls();
+    } else if (e.touches.length === 1 && ppDragTouchStart && ppActiveTool === 'none'){
+      // One-finger drag pans only when no brush/selection tool is active,
+      // so it doesn't fight with drawing -- brush strokes already use
+      // single-finger touch for painting via the existing pointer handlers.
+      e.preventDefault();
+      const t = e.touches[0];
+      ppOffsetX = ppDragTouchStartOffset.x + (t.clientX - ppDragTouchStart.x);
+      ppOffsetY = ppDragTouchStartOffset.y + (t.clientY - ppDragTouchStart.y);
+      const now = Date.now();
+      const dt = now - ppLastMoveTime;
+      if (dt > 0){ ppInertiaVX = (t.clientX - ppLastMovePos.x) / dt * 16; ppInertiaVY = (t.clientY - ppLastMovePos.y) / dt * 16; }
+      ppLastMoveTime = now; ppLastMovePos = { x: t.clientX, y: t.clientY };
+      renderPpPreview(); syncPpZoomPanControls();
+    }
+  }, { passive: false });
+
+  ppCanvasEl.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2){ ppPinchStartDist = null; ppPinchStartMid = null; }
+    if (e.touches.length === 0){
+      if (ppDragTouchStart && ppActiveTool === 'none' && (Math.abs(ppInertiaVX) > 0.3 || Math.abs(ppInertiaVY) > 0.3)) runPpInertia();
+      ppDragTouchStart = null;
+    }
+  });
+
   function rotateMask90(mask, w, h){
     const out = new Uint8ClampedArray(w*h);
     for (let y=0;y<h;y++) for (let x=0;x<w;x++) out[x*h + (h-1-y)] = mask[y*w+x];
@@ -6718,7 +6824,7 @@ if (document.getElementById('ppDrop')){
 
     document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, 300 DPI)`;
     runPpValidation(imgData, preset);
-    drawIcaoOverlay(preset, outW, outH);
+    if (ppCropActive) drawPpCropOverlay(outW, outH); else drawIcaoOverlay(preset, outW, outH);
     fitPpCanvasDisplay();
     if (document.getElementById('ppSheetSize')) recomputeSheetLayout();
   }
@@ -6790,6 +6896,161 @@ if (document.getElementById('ppDrop')){
     ctx.strokeRect(2, 2, outW-4, outH-4);
   }
   document.getElementById('ppIcaoToggle').addEventListener('change', () => { if (ppSourceCanvas) renderPpPreview(); });
+
+  /* ---------- Manual Crop Tool -----------
+     Draws its rectangle on the same ppIcaoOverlay canvas already used for
+     ICAO guides (reused, not a second overlay element) -- the two are
+     mutually exclusive states, so there's no conflict. Applying a crop does
+     NOT introduce a separate crop-rendering path: it computes a new
+     ppZoom/ppOffsetX/Y for the exact same transform renderPpPreview already
+     uses everywhere else, so the result goes through the one render
+     pipeline like every other adjustment. */
+  let ppCropActive = false, ppCropRect = null, ppCropDragMode = null, ppCropDragStart = null, ppCropRectStart = null;
+  const PP_CROP_HANDLE_SIZE = 22;
+
+  function ppDefaultCropRect(outW, outH){
+    const preset = currentPreset();
+    if (document.getElementById('ppCropLockRatio').checked){
+      const ratio = preset.wmm / preset.hmm;
+      let cw = outW*0.8, ch = cw/ratio;
+      if (ch > outH*0.8){ ch = outH*0.8; cw = ch*ratio; }
+      return { x:(outW-cw)/2, y:(outH-ch)/2, w:cw, h:ch };
+    }
+    return { x: outW*0.1, y: outH*0.1, w: outW*0.8, h: outH*0.8 };
+  }
+
+  function drawPpCropOverlay(outW, outH){
+    const overlay = document.getElementById('ppIcaoOverlay');
+    overlay.width = outW; overlay.height = outH;
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0,0,outW,outH);
+    if (!ppCropRect) return;
+    const { x, y, w, h } = ppCropRect;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,outW,outH);
+    ctx.clearRect(x, y, w, h);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.strokeRect(x, y, w, h);
+    // Rule-of-thirds guide lines, a standard, genuinely useful cropping aid.
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+    for (let i=1;i<3;i++){
+      ctx.beginPath(); ctx.moveTo(x + w*i/3, y); ctx.lineTo(x + w*i/3, y+h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y + h*i/3); ctx.lineTo(x+w, y + h*i/3); ctx.stroke();
+    }
+    // Corner handles
+    ctx.fillStyle = '#ffffff';
+    [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(([hx,hy]) => {
+      ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
+    });
+  }
+
+  function ppCropHandleAt(px, py){
+    if (!ppCropRect) return null;
+    const { x, y, w, h } = ppCropRect;
+    const corners = { nw:[x,y], ne:[x+w,y], sw:[x,y+h], se:[x+w,y+h] };
+    for (const [name, [hx,hy]] of Object.entries(corners)){
+      if (Math.hypot(px-hx, py-hy) < PP_CROP_HANDLE_SIZE) return name;
+    }
+    if (px > x && px < x+w && py > y && py < y+h) return 'move';
+    return null;
+  }
+
+  document.getElementById('ppCropToggleBtn').onclick = () => {
+    if (!ppSourceCanvas) return;
+    ppCropActive = !ppCropActive;
+    document.getElementById('ppCropToggleBtn').classList.toggle('active', ppCropActive);
+    document.getElementById('ppCropActions').classList.toggle('hidden', !ppCropActive);
+    if (ppCropActive){
+      const preset = currentPreset();
+      ppCropRect = ppDefaultCropRect(mm(preset.wmm), mm(preset.hmm));
+      drawPpCropOverlay(mm(preset.wmm), mm(preset.hmm));
+      // Ensure real clearance from the top of the viewport before the user
+      // tries to drag a handle -- the site's own navbar is sticky at the
+      // very top (measured 67px, z-index 50), and scrollIntoViewIfNeeded()
+      // alone doesn't reliably scroll further if it judges the canvas
+      // already "in view" even when its top edge sits right under the
+      // navbar. Explicit scroll math, verified directly, not assumed.
+      const rect = ppCanvasEl.getBoundingClientRect();
+      const NAVBAR_CLEARANCE = 90;
+      if (rect.top < NAVBAR_CLEARANCE){
+        window.scrollBy({ top: rect.top - NAVBAR_CLEARANCE, behavior: 'instant' });
+      }
+    } else {
+      ppCropRect = null;
+      renderPpPreview();
+    }
+  };
+  document.getElementById('ppCropLockRatio').addEventListener('change', () => {
+    if (!ppCropActive) return;
+    const preset = currentPreset();
+    ppCropRect = ppDefaultCropRect(mm(preset.wmm), mm(preset.hmm));
+    drawPpCropOverlay(mm(preset.wmm), mm(preset.hmm));
+  });
+
+  function ppCropPointerDown(clientX, clientY){
+    if (!ppCropActive) return false;
+    const { x } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+    const pt = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+    const handle = ppCropHandleAt(pt.x, pt.y);
+    if (!handle) return false;
+    ppCropDragMode = handle;
+    ppCropDragStart = pt;
+    ppCropRectStart = { ...ppCropRect };
+    return true;
+  }
+  function ppCropPointerMove(clientX, clientY){
+    if (!ppCropDragMode) return;
+    const pt = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
+    const dx = pt.x - ppCropDragStart.x, dy = pt.y - ppCropDragStart.y;
+    const r = { ...ppCropRectStart };
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const lockRatio = document.getElementById('ppCropLockRatio').checked;
+    const ratio = preset.wmm / preset.hmm;
+    if (ppCropDragMode === 'move'){
+      r.x = Math.max(0, Math.min(outW-r.w, ppCropRectStart.x + dx));
+      r.y = Math.max(0, Math.min(outH-r.h, ppCropRectStart.y + dy));
+    } else {
+      // Corner resize -- when ratio is locked, derive height from the
+      // dominant drag axis so the rectangle always keeps the passport ratio.
+      let nx=r.x, ny=r.y, nw=r.w, nh=r.h;
+      if (ppCropDragMode.includes('w')){ nx = ppCropRectStart.x+dx; nw = ppCropRectStart.w-dx; }
+      if (ppCropDragMode.includes('e')){ nw = ppCropRectStart.w+dx; }
+      if (ppCropDragMode.includes('n')){ ny = ppCropRectStart.y+dy; nh = ppCropRectStart.h-dy; }
+      if (ppCropDragMode.includes('s')){ nh = ppCropRectStart.h+dy; }
+      if (lockRatio){ nh = nw/ratio; if (ppCropDragMode.includes('n')) ny = ppCropRectStart.y + ppCropRectStart.h - nh; }
+      if (nw > 30 && nh > 30 && nx >= 0 && ny >= 0 && nx+nw <= outW && ny+nh <= outH){ r.x=nx; r.y=ny; r.w=nw; r.h=nh; }
+    }
+    ppCropRect = r;
+    drawPpCropOverlay(outW, outH);
+  }
+  function ppCropPointerUp(){ ppCropDragMode = null; ppCropDragStart = null; }
+
+  document.getElementById('ppCropApplyBtn').onclick = () => {
+    if (!ppCropRect) return;
+    const src0 = ppOutputToSourceCoords(ppCropRect.x, ppCropRect.y);
+    const src1 = ppOutputToSourceCoords(ppCropRect.x+ppCropRect.w, ppCropRect.y+ppCropRect.h);
+    const cropSrcW = src1.x - src0.x, cropSrcH = src1.y - src0.y;
+    if (cropSrcW <= 0 || cropSrcH <= 0) return;
+    const preset = currentPreset();
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+    const baseScale = Math.max(outW/sw, outH/sh);
+    const newScale = Math.max(outW/cropSrcW, outH/cropSrcH);
+    ppZoom = Math.max(0.3, Math.min(8, newScale / baseScale));
+    const cx = (src0.x+src1.x)/2, cy = (src0.y+src1.y)/2;
+    ppOffsetX = outW/2 - (outW - sw*newScale)/2 - cx*newScale;
+    ppOffsetY = outH/2 - (outH - sh*newScale)/2 - cy*newScale;
+    document.getElementById('ppCropToggleBtn').click(); // exit crop mode
+    renderPpPreview(); syncPpZoomPanControls();
+    toast('Crop applied.');
+  };
+  document.getElementById('ppCropResetBtn').onclick = () => {
+    const preset = currentPreset();
+    ppCropRect = ppDefaultCropRect(mm(preset.wmm), mm(preset.hmm));
+    drawPpCropOverlay(mm(preset.wmm), mm(preset.hmm));
+  };
+  document.getElementById('ppCropCancelBtn').onclick = () => { document.getElementById('ppCropToggleBtn').click(); };
 
   /* ---------- Background replacement (real AI segmentation, reused from AI Background Remover) ---------- */
   document.getElementById('ppReplaceBgBtn').onclick = async () => {
@@ -7000,12 +7261,12 @@ if (document.getElementById('ppDrop')){
     return { x: ((clientX - rect.left) / rect.width) * canvas.width, y: ((clientY - rect.top) / rect.height) * canvas.height };
   }
 
-  const ppCanvasEl = document.getElementById('ppPreviewCanvas');
   let ppShapeSelectStart = null, ppLassoPoints = [], ppPolygonPoints = [];
   let ppSelectionMask = null; // Uint8ClampedArray same size as source, 255 = inside selection
 
   function ppPointerDown(clientX, clientY){
     if (!ppSourceCanvas) return;
+    if (ppCropActive && ppCropPointerDown(clientX, clientY)) return;
     if (ppSpacePan){ ppIsPanning = true; ppPanStart = { x: clientX, y: clientY, offX: ppOffsetX, offY: ppOffsetY }; return; }
     if (ppActiveTool === 'erase' || ppActiveTool === 'restore' || ppActiveTool === 'hair'){
       ppIsPainting = true;
@@ -7029,6 +7290,7 @@ if (document.getElementById('ppDrop')){
     }
   }
   function ppPointerMove(clientX, clientY){
+    if (ppCropActive && ppCropDragMode){ ppCropPointerMove(clientX, clientY); return; }
     if (ppIsPanning && ppPanStart){
       ppOffsetX = ppPanStart.offX + (clientX - ppPanStart.x);
       ppOffsetY = ppPanStart.offY + (clientY - ppPanStart.y);
@@ -7041,6 +7303,7 @@ if (document.getElementById('ppDrop')){
     if (ppActiveTool === 'erase' || ppActiveTool === 'restore' || ppActiveTool === 'hair'){ paintAtOutputCoords(x, y); renderPpPreview(); }
   }
   function ppPointerUp(clientX, clientY){
+    if (ppCropActive && ppCropDragMode){ ppCropPointerUp(); return; }
     if (ppIsPanning){ ppIsPanning = false; ppPanStart = null; return; }
     if ((ppActiveTool === 'rect' || ppActiveTool === 'circle') && ppShapeSelectStart && clientX != null){
       const { x, y } = canvasEventToOutputCoords(ppCanvasEl, clientX, clientY);
@@ -7063,7 +7326,7 @@ if (document.getElementById('ppDrop')){
   // for the drag-reorder fix earlier this session, reused here rather than
   // writing separate touchstart/touchmove/touchend handlers.
   document.addEventListener('pointerdown', (e) => { if (e.target === ppCanvasEl || e.target.id === 'ppCanvasStageWrap') ppPointerDown(e.clientX, e.clientY); });
-  document.addEventListener('pointermove', (e) => { if (ppIsPainting || ppIsPanning) ppPointerMove(e.clientX, e.clientY); });
+  document.addEventListener('pointermove', (e) => { if (ppIsPainting || ppIsPanning || ppCropDragMode) ppPointerMove(e.clientX, e.clientY); });
   document.addEventListener('pointerup', (e) => ppPointerUp(e.clientX, e.clientY));
 
   /* ---------- Selections: rectangle, circle, lasso, polygon ---------- */
