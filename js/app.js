@@ -7352,40 +7352,67 @@ if (document.getElementById('ppDrop')){
       const personConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
       const cw = confMasks && confMasks[1] ? confMasks[1].width : mw, ch = confMasks && confMasks[1] ? confMasks[1].height : mh;
 
-      // ---- Polarity calibration (root cause fix) ----
-      // Earlier code assumed confidenceMasks[1] means "confidence this pixel
-      // IS the person," based on MediaPipe's documented category order
-      // (background=0, person=1). A real screenshot from actual use showed
-      // the opposite happening in practice: the subject got painted with
-      // the replacement color and the background was left alone -- meaning
-      // that assumption was wrong for what actually runs, regardless of
-      // what the general documentation describes (a model-variant or SDK
-      // version difference, most likely). Rather than swap to a second
-      // guess, this calibrates against the CATEGORY mask's simpler binary
-      // semantic (index 0/1, the same API used in the fallback branch
-      // below) by sampling both together and checking which one actually
-      // has higher confidence on the category mask's own "subject" pixels
-      // -- self-correcting regardless of the exact underlying cause.
-      let polarityIsInverted = false;
-      if (personConf){
-        let subjSum=0, subjN=0, bgSum=0, bgN=0;
-        for (let sy=0; sy<h; sy+=Math.max(1,Math.floor(h/40))){
-          for (let sx=0; sx<w; sx+=Math.max(1,Math.floor(w/40))){
-            const smx = Math.min(mw-1, Math.round(sx*mw/w)), smy = Math.min(mh-1, Math.round(sy*mh/h));
-            const scx = Math.min(cw-1, Math.round(sx*cw/w)), scy = Math.min(ch-1, Math.round(sy*ch/h));
-            const c = personConf[scy*cw+scx];
-            if (maskData[smy*mw+smx] > 0){ subjSum += c; subjN++; } else { bgSum += c; bgN++; }
-          }
+      // ---- Unified ground-truth calibration (real fix, based on actual
+      // device evidence, not documentation) ----
+      // Real debug screenshots from an actual Android device showed two
+      // things definitively: (1) confidenceMasks[1] was NOT available at
+      // runtime there (the debug visualization rendered as a flat fallback
+      // color, not real data), so the previous confidence-based calibration
+      // never ran at all; and (2) the category mask's actual polarity was
+      // the opposite of MediaPipe's documented convention -- the visible
+      // person was category 0, not category 1.
+      //
+      // This replaces BOTH the old confidence-only calibration and the old
+      // hardcoded ">0 means person" assumption with ONE determination, made
+      // once, using real detected face landmarks (from the separate, already
+      // -run Face Landmarker pipeline) as ground truth -- not MediaPipe's
+      // segmentation documentation, and not a guess. That single
+      // determination is then used consistently by both the category-mask
+      // path and the confidence-mask path below, so the two can never
+      // disagree with each other the way the old code allowed.
+      let personCategoryValue = null; // the category mask value (0 or 1) that real evidence shows IS the person
+      let calibrationSource = 'none (no face landmarks available -- see below)';
+      if (ppFaceLandmarks){
+        const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+        const sampleIdx = [1,4,10,152,234,454]; // nose tip, chin, forehead, chin bottom, left/right face edges -- real detected points
+        const votes = {};
+        sampleIdx.forEach(i => {
+          const lm = ppFaceLandmarks[i]; if (!lm) return;
+          const out = ppSourceToOutputCoords(sw*lm.x, sh*lm.y);
+          const ox = Math.min(w-1, Math.max(0, Math.round(out.x))), oy = Math.min(h-1, Math.max(0, Math.round(out.y)));
+          const mx = Math.min(mw-1, Math.round(ox*mw/w)), my = Math.min(mh-1, Math.round(oy*mh/h));
+          votes[maskData[my*mw+mx]] = (votes[maskData[my*mw+mx]]||0) + 1;
+        });
+        const sorted = Object.entries(votes).sort((a,b) => b[1]-a[1]);
+        if (sorted.length){
+          personCategoryValue = +sorted[0][0];
+          calibrationSource = `real face landmarks (${sorted[0][1]}/${sampleIdx.length} sampled points agree on category ${sorted[0][0]})`;
         }
-        if (subjN && bgN && (subjSum/subjN) < (bgSum/bgN)) polarityIsInverted = true;
       }
+      if (personCategoryValue === null){
+        // No face landmarks this run -- there is no reliable ground truth
+        // available, so this falls back to MediaPipe's documented
+        // convention as a last resort. This is disclosed, not silently
+        // assumed: without a face to check against, polarity genuinely
+        // cannot be verified this run.
+        personCategoryValue = 1;
+        calibrationSource = 'MediaPipe documented convention (UNVERIFIED this run -- no face landmarks to check against)';
+      }
+      const isPersonCat = (catVal) => catVal === personCategoryValue;
+      // personConf is always confidenceMasks[1] specifically (a fixed array
+      // index). If ground truth shows category 1 is NOT the person, the
+      // raw confidence values there are actually "confidence this is
+      // background," so this normalizes to "confidence this IS the person"
+      // consistently regardless of which raw category index happened to
+      // hold that data.
+      const personConfidenceAt = (rawConf) => personCategoryValue === 1 ? rawConf : (1 - rawConf);
 
       const newMask = new Uint8ClampedArray(w*h);
       let subjectPixels = 0, confSum = 0, confSamples = 0;
       for (let y=0; y<h; y++){
         for (let x=0; x<w; x++){
           const mx = Math.min(mw-1, Math.round(x * mw/w)), my = Math.min(mh-1, Math.round(y * mh/h));
-          const isSubject = maskData[my*mw+mx] > 0;
+          const isSubject = isPersonCat(maskData[my*mw+mx]);
           if (isSubject) subjectPixels++;
           if (personConf){
             // Use the model's own continuous per-pixel confidence as a soft
@@ -7397,8 +7424,7 @@ if (document.getElementById('ppDrop')){
             // per-pixel data already computed above, not a post-hoc blur
             // guessing where edges probably are.
             const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
-            let conf = personConf[cy*cw+cx];
-            if (polarityIsInverted) conf = 1 - conf;
+            const conf = personConfidenceAt(personConf[cy*cw+cx]);
             confSum += conf; confSamples++;
             newMask[y*w+x] = Math.round(255 * (1 - conf));
           } else {
@@ -7411,7 +7437,8 @@ if (document.getElementById('ppDrop')){
       const avgPersonConfidence = confSamples ? confSum/confSamples : null;
 
       if (document.getElementById('ppDebugSegmentation') && document.getElementById('ppDebugSegmentation').checked){
-        runSegmentationDebug({ w, h, mw, mh, maskData, personConf, cw, ch, polarityIsInverted, newMask, subjectPixels });
+        console.log('%cCalibration used this run:', 'font-weight:bold;color:#5142D6;', 'personCategoryValue =', personCategoryValue, '| source:', calibrationSource);
+        runSegmentationDebug({ w, h, mw, mh, maskData, personConf, cw, ch, polarityIsInverted: personCategoryValue !== 1, newMask, subjectPixels });
       }
 
       // Two independent plausibility signals, either of which can trigger
