@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
 <meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
-<link rel="icon" href="assets/favicon.ico?v=20260715-2113" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260715-2113">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260715-2113">
+<link rel="icon" href="assets/favicon.ico?v=20260716-0927" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-0927">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-0927">
 <link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
 
 <meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260715-2113">
+<link rel="stylesheet" href="css/style.css?v=20260716-0927">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260715-2113" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260716-0927" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -100,7 +100,10 @@
 
   <div class="workspace">
       <div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></div>
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser. <strong>Requirements change and vary by country and application type — always verify current requirements on your country's official passport or embassy website before submitting.</strong></p>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:10px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser.</p>
+      <p style="font-size:12.5px;line-height:1.6;background:color-mix(in srgb, var(--warn) 10%, transparent);border:1.5px solid color-mix(in srgb, var(--warn) 30%, transparent);border-radius:12px;padding:12px 14px;margin-bottom:14px;color:var(--ink);">
+        <strong>Specifications are not a legal guarantee.</strong> USA, UK, and Canada dimensions were individually checked against multiple current public sources in July 2026. The remaining presets follow well-established, widely-used conventions (mostly the standard 35×45mm ICAO/Schengen format) that were not individually re-verified against each country's current official source this pass. Requirements change — always confirm with your country's official passport or embassy website before submitting.
+      </p>
 
       <span class="field-label">Country / Document</span>
       <select id="ppCountry" style="margin-bottom:12px;">
@@ -148,6 +151,10 @@
               <option value="schengen-visa">Schengen Visa</option>
       </select>
 
+      <p class="hidden" id="ppUsWarning" role="alert" style="font-size:12.5px;line-height:1.6;background:color-mix(in srgb, var(--err) 10%, transparent);border:1.5px solid color-mix(in srgb, var(--err) 30%, transparent);border-radius:12px;padding:12px 14px;margin-bottom:12px;color:var(--ink);">
+        <strong>Important for US passport/visa photos:</strong> as of January 2026, the U.S. Department of State explicitly rejects passport photos that show any sign of digital alteration — including background replacement and lighting/skin adjustments, even subtle ones. This tool's background replacement and enhancement sliders below are provided for other documents and general use, but we'd recommend <strong>not using them</strong> for a US passport or visa photo. Use a plain, evenly-lit background captured directly, and rely on cropping and sizing only. This tool cannot detect AI-alteration the way the official validator does — always verify against travel.state.gov before submitting.
+      </p>
+
       <div class="drop-zone" id="ppDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
         <div class="drop-title">Drop a photo here, tap to browse, or paste from clipboard</div>
@@ -155,15 +162,67 @@
         <input type="file" id="ppInput" accept="image/jpeg, image/png, image/webp">
       </div>
       <div class="row" style="margin-top:8px;">
-        <label class="btn btn-ghost" style="cursor:pointer;">Use Camera<input type="file" id="ppCameraInput" accept="image/*" capture="user" style="display:none;"></label>
+        <button class="btn btn-ghost" id="ppOpenCameraBtn" type="button">Use Camera</button>
+      </div>
+
+      <div class="legal-modal hidden" id="ppCameraModal" role="dialog" aria-modal="true" aria-label="Camera capture">
+        <div class="legal-box" style="max-width:480px;padding:20px;">
+          <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">✕</button>
+          <h3 style="margin-top:0;">Position your face in the oval</h3>
+          <div style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;">
+            <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+            <svg viewBox="0 0 300 400" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" aria-hidden="true">
+              <ellipse cx="150" cy="190" rx="95" ry="130" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8" opacity="0.85"/>
+            </svg>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary" id="ppCameraCaptureBtn" type="button" style="flex:1;">Capture Photo</button>
+          </div>
+        </div>
       </div>
       <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
 
       <div id="ppStage" class="hidden">
-        <div class="editor-stage-wrap" style="margin-top:14px;cursor:default;">
+        <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="margin-top:14px;cursor:default;position:relative;">
           <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
+          <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="ppIcaoToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Show ICAO compliance guides</label>
         <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+
+        <span class="field-label" style="margin-top:14px;">Manual Editing (optional)</span>
+        <p class="editor-hint">Erase, restore, and refine edges by hand — useful when AI background replacement isn't quite clean, or unavailable. Hold Space and drag to pan; scroll to zoom toward your cursor.</p>
+        <div class="editor-toolbar" role="toolbar" aria-label="Manual editing tools" style="flex-wrap:wrap;">
+          <button class="editor-tool-btn pp-tool-btn" data-tool="erase" type="button" aria-label="Magic Eraser brush">Magic Eraser</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="restore" type="button" aria-label="Restore brush">Restore</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="hair" type="button" aria-label="Hair refinement brush, a finer mode of the same brush">Hair Refine</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="rect" type="button" aria-label="Rectangle selection">Rectangle</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="circle" type="button" aria-label="Circle selection">Circle</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="lasso" type="button" aria-label="Freehand lasso selection">Lasso</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="polygon" type="button" aria-label="Polygon selection, click to place points and click near the start to close">Polygon</button>
+        </div>
+        <p class="editor-hint">Brush and selection tools are drawn by mouse, finger, or stylus — there isn't a practical fully keyboard-driven equivalent for freehand drawing, though every button above is keyboard-reachable and operable.</p>
+
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppBrushSize">Brush Size: <span id="ppBrushSizeVal">40</span>px</label><input type="range" id="ppBrushSize" min="4" max="200" value="40"></div>
+          <div class="resume-field-group"><label for="ppBrushHardness">Edge Hardness: <span id="ppBrushHardnessVal">60</span></label><input type="range" id="ppBrushHardness" min="0" max="100" value="60"></div>
+        </div>
+
+        <div class="row hidden" id="ppSelectionActions">
+          <button class="btn btn-secondary" id="ppFillSelectionEraseBtn" type="button">Erase Selection</button>
+          <button class="btn btn-secondary" id="ppFillSelectionRestoreBtn" type="button">Restore Selection</button>
+          <button class="btn btn-ghost" id="ppClearSelectionBtn" type="button">Clear Selection</button>
+        </div>
+
+        <div class="row">
+          <input type="range" id="ppFeatherRadius" min="1" max="20" value="4" aria-label="Feather radius" style="flex:1;">
+          <button class="btn btn-secondary" id="ppFeatherBtn" type="button">Feather Edges</button>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-ghost" id="ppUndoBtn" type="button" aria-label="Undo" disabled>Undo (Ctrl+Z)</button>
+          <button class="btn btn-ghost" id="ppRedoBtn" type="button" aria-label="Redo" disabled>Redo (Ctrl+Y)</button>
+        </div>
 
         <span class="field-label" style="margin-top:14px;">Position &amp; Size</span>
         <div class="resume-form-grid">
@@ -190,6 +249,9 @@
           <button class="btn btn-secondary" id="ppReplaceBgBtn" type="button">Replace Background (AI)</button>
         </div>
         <p class="editor-hint">Choosing a background color sets the target for AI background replacement below — tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
+        <div class="row hidden" id="ppManualBgRow">
+          <button class="btn btn-ghost" id="ppManualBgClickBtn" type="button">Manual: Click Background to Replace</button>
+        </div>
 
         <span class="field-label" style="margin-top:14px;">Adjustments</span>
         <div class="resume-form-grid">
@@ -200,9 +262,13 @@
           <div class="resume-field-group"><label for="ppTemperature">Temperature: <span id="ppTemperatureVal">0</span></label><input type="range" id="ppTemperature" min="-100" max="100" value="0"></div>
         </div>
 
-        <span class="field-label" style="margin-top:14px;">Automated Checks</span>
-        <ul class="ats-result-list" id="ppValidationList" style="margin-top:6px;"></ul>
-        <p class="editor-hint">These are automated, best-effort checks — not a guarantee of official acceptance. Always verify against your country's current official requirements.</p>
+        <span class="field-label" style="margin-top:14px;">Automated Suitability Score</span>
+        <div class="ats-score-wrap">
+          <div class="ats-score-num" id="ppScoreNum">—</div>
+          <div><div style="font-weight:700;font-size:13px;">Automated checks (not an official validator)</div><div class="ats-score-label" id="ppScoreLabel"></div></div>
+        </div>
+        <ul class="ats-result-list" id="ppValidationList" style="margin-top:10px;"></ul>
+        <p class="editor-hint">These are automated, best-effort checks — several are heuristic approximations, not certainties (see the FAQ for which is which). Not a guarantee of official acceptance. Always verify against your country's current official requirements.</p>
 
         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--card-border);">
           <span class="field-label">Export</span>
@@ -213,14 +279,36 @@
           <div class="qr-controls" style="margin-top:10px;">
             <div class="ctrl">
               <label for="ppSheetSize">Print Sheet Size</label>
-              <select id="ppSheetSize"><option value="4x6">4x6 inch</option><option value="a4">A4</option><option value="letter">Letter</option></select>
+              <select id="ppSheetSize"><option value="4x6">4x6 inch</option><option value="5x7">5x7 inch</option><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option><option value="custom">Custom</option></select>
             </div>
-            <div class="ctrl" style="display:flex;align-items:flex-end;">
-              <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+            <div class="ctrl">
+              <label for="ppSheetMargin">Margin (pt)</label>
+              <input type="range" id="ppSheetMargin" min="6" max="40" value="18">
             </div>
+            <div class="ctrl">
+              <label for="ppSheetGap">Spacing (pt)</label>
+              <input type="range" id="ppSheetGap" min="0" max="20" value="6">
+            </div>
+          </div>
+          <div class="resume-form-grid hidden" id="ppCustomPaperRow">
+            <div class="resume-field-group"><label for="ppCustomPaperW">Custom Width (in)</label><input type="number" id="ppCustomPaperW" value="4" min="1" max="20" step="0.1"></div>
+            <div class="resume-field-group"><label for="ppCustomPaperH">Custom Height (in)</label><input type="number" id="ppCustomPaperH" value="6" min="1" max="20" step="0.1"></div>
+          </div>
+
+          <div id="ppSheetInfo" style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;"></div>
+          <div id="ppSheetPreviewWrap" class="pp-sheet-preview-wrap"></div>
+          <p class="editor-hint">Tap a photo in the sheet preview, then tap another to swap their positions.</p>
+
+          <div class="row">
+            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
           </div>
         </div>
       </div>
+
+      <div id="ppPrintRoot" class="pp-print-root"></div>
   </div>
 
   <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
@@ -260,7 +348,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260715-2113" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-0927" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -297,6 +385,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260715-2113"></script>
+<script defer src="js/app.js?v=20260716-0927"></script>
 </body>
 </html>
