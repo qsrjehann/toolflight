@@ -298,7 +298,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 input[type=range]{
   width:100%;accent-color:var(--accent1);cursor:pointer;
   -webkit-appearance:none;-moz-appearance:none;appearance:none;
-  background:transparent;height:20px;outline:none;
+  background:transparent;height:20px;outline:none;touch-action:pan-y;
 }
 input[type=range]::-webkit-slider-runnable-track{
   height:6px;border-radius:999px;background:var(--card-border);
@@ -794,4 +794,37 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   .pp-print-root{display:block;position:absolute;top:0;left:0;}
   .pp-print-root img{position:absolute;}
   @page{margin:0;}
+}
+
+/* ============ PASSPORT PHOTO MAKER: MOBILE UX (accordion sections + sticky preview) ============
+   Root cause of the reported "sliders hijack scroll" issue: many range
+   inputs were all present in the DOM simultaneously, so a touch that landed
+   on a slider thumb while a user meant to scroll got captured as a drag
+   instead. Wrapping slider-bearing groups in native <details> means a
+   collapsed section has no slider element in the layout at all to
+   accidentally touch -- not just visually hidden, structurally absent from
+   the scroll path until deliberately opened. */
+.pp-accordion{border:1.5px solid var(--card-border);border-radius:14px;margin-top:12px;padding:0 14px;background:var(--card);}
+.pp-accordion[open]{padding-bottom:14px;}
+/* Explicit, defensive rule: without this, author rules elsewhere on the page
+   (e.g. .resume-form-grid{display:grid}) can override the browser's native
+   "hide children when <details> is closed" behavior, since author-origin
+   CSS normally beats the UA stylesheet default -- confirmed as a real,
+   reproducible bug via testing, not a hypothetical edge case. */
+.pp-accordion:not([open]) > *:not(summary){display:none !important;}
+.pp-accordion-summary{
+  list-style:none;cursor:pointer;padding:13px 0;font-weight:700;font-size:13.5px;
+  display:flex;align-items:center;justify-content:space-between;
+  -webkit-tap-highlight-color:transparent;min-height:24px;
+}
+.pp-accordion-summary::-webkit-details-marker{display:none;}
+.pp-accordion-summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:rotate(-45deg);transition:transform .15s;margin-right:4px;}
+.pp-accordion[open] > .pp-accordion-summary::after{transform:rotate(45deg);}
+.pp-accordion-summary:focus-visible{outline:2px solid var(--accent1-solid);outline-offset:3px;border-radius:6px;}
+
+#ppCanvasStageWrap{position:relative!important;}
+#ppPreviewCanvas{scroll-margin-top:80px;}
+#ppIcaoOverlay{position:absolute!important;top:0!important;left:0!important;pointer-events:none!important;z-index:2;scroll-margin-top:80px;}
+@media (max-width:719px){
+  #ppCanvasStageWrap{position:sticky!important;top:75px;z-index:5;max-height:36vh;}
 }
