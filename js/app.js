@@ -6938,6 +6938,18 @@ if (document.getElementById('ppDrop')){
     const overlay = document.getElementById('ppIcaoOverlay');
     const wrap = document.getElementById('ppCanvasStageWrap');
     if (!canvas.width || !wrap) return;
+    // Defensive re-assertion, not just relying on the static inline style set
+    // once in HTML: explicitly re-confirms the overlay's positioning on
+    // every render. Could not reproduce a case where this was actually lost
+    // in this sandbox's testing, but this makes the positioning
+    // self-correcting on every frame regardless of cause, rather than a
+    // one-time setup that silently depends on nothing ever touching it.
+    if (overlay){
+      overlay.style.position = 'absolute';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.pointerEvents = 'none';
+    }
     const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
     const fitScale = Math.min(1, availW / canvas.width, availH / canvas.height);
     const dispW = Math.round(canvas.width * fitScale), dispH = Math.round(canvas.height * fitScale);
