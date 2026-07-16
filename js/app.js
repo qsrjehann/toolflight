@@ -7155,6 +7155,180 @@ if (document.getElementById('ppDrop')){
   document.getElementById('ppCropCancelBtn').onclick = () => { document.getElementById('ppCropToggleBtn').click(); };
 
   /* ---------- Background replacement (real AI segmentation, reused from AI Background Remover) ---------- */
+  /* ============ SEGMENTATION DEBUG MODE (developer tool, added per explicit
+     request after a prior fix attempt did not resolve a real device bug) =====
+     Makes zero changes to the segmentation or compositing algorithm itself.
+     This only OBSERVES and REPORTS the exact same data the real algorithm
+     already computed, so what gets logged/displayed is guaranteed to match
+     what actually ran -- not a re-simulation that could itself have bugs. */
+  function ppDebugSampleLocations(w, h){
+    // Real face landmarks (from the separate, independently-run Face
+    // Landmarker pipeline) are used where available, since they're a real
+    // ground-truth signal independent of the segmentation model being
+    // debugged -- not a guess about where the face probably is.
+    const locations = {};
+    if (ppFaceLandmarks && ppSourceCanvas){
+      const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+      const noseTip = ppFaceLandmarks[1] || ppFaceLandmarks[4];
+      const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+      let minYn=1, maxYn=0, minXn=1, maxXn=0;
+      oval.forEach(i => { const lm = ppFaceLandmarks[i]; minYn=Math.min(minYn,lm.y); maxYn=Math.max(maxYn,lm.y); minXn=Math.min(minXn,lm.x); maxXn=Math.max(maxXn,lm.x); });
+      // Map normalized SOURCE-image landmark coords to OUTPUT-frame pixel coords via the same forward transform used elsewhere.
+      function toOut(nx, ny){ return ppSourceToOutputCoords(sw*nx, sh*ny); }
+      const faceCenter = toOut(noseTip.x, noseTip.y);
+      const hairEdge = toOut((minXn+maxXn)/2, Math.max(0, minYn - (maxYn-minYn)*0.35));
+      const shoulder = toOut(maxXn + (maxXn-minXn)*0.3, maxYn + (maxYn-minYn)*0.9);
+      locations['center of detected face'] = { x: Math.round(faceCenter.x), y: Math.round(faceCenter.y) };
+      locations['hair edge (above forehead)'] = { x: Math.round(hairEdge.x), y: Math.round(hairEdge.y) };
+      locations['shoulder (estimated from face bounds)'] = { x: Math.min(w-1, Math.max(0, Math.round(shoulder.x))), y: Math.min(h-1, Math.max(0, Math.round(shoulder.y))) };
+    } else {
+      locations['center of detected face (NO LANDMARKS -- using image center as fallback, not a real face position)'] = { x: Math.round(w/2), y: Math.round(h*0.4) };
+      locations['hair edge (NO LANDMARKS -- proportional estimate, not a real position)'] = { x: Math.round(w/2), y: Math.round(h*0.12) };
+      locations['shoulder (NO LANDMARKS -- proportional estimate, not a real position)'] = { x: Math.round(w*0.25), y: Math.round(h*0.88) };
+    }
+    locations['clear background (top-left region)'] = { x: Math.round(w*0.05), y: Math.round(h*0.05) };
+    locations['image corner (0,0)'] = { x: 0, y: 0 };
+    return locations;
+  }
+
+  function runSegmentationDebug({ w, h, mw, mh, maskData, personConf, cw, ch, polarityIsInverted, newMask, subjectPixels }){
+    console.log('%c=== SEGMENTATION DEBUG MODE ===', 'font-weight:bold;font-size:14px;color:#5142D6;');
+    console.log('Source/output dimensions:', w, 'x', h, '| Category mask dimensions:', mw, 'x', mh, '| Confidence mask dimensions:', cw, 'x', ch);
+    console.log('personConf available:', !!personConf, '| polarityIsInverted flag (from existing calibration code):', polarityIsInverted);
+
+    // ---- Aggregate statistics, computed directly from the real arrays ----
+    let catPersonCount = 0, catBgCount = 0;
+    let confSumAtCatPerson = 0, confNAtCatPerson = 0, confSumAtCatBg = 0, confNAtCatBg = 0;
+    let confMin = Infinity, confMax = -Infinity;
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+        const cat = maskData[my*mw+mx];
+        if (cat > 0) catPersonCount++; else catBgCount++;
+        if (personConf){
+          const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
+          const rawConf = personConf[cy*cw+cx];
+          confMin = Math.min(confMin, rawConf); confMax = Math.max(confMax, rawConf);
+          if (cat > 0){ confSumAtCatPerson += rawConf; confNAtCatPerson++; } else { confSumAtCatBg += rawConf; confNAtCatBg++; }
+        }
+      }
+    }
+    const totalPx = w*h;
+    console.log('%cAggregate statistics (raw, unmodified data):', 'font-weight:bold;');
+    console.log('  Category mask: category>0 (candidate "person" by doc convention) =', catPersonCount, `(${(catPersonCount/totalPx*100).toFixed(1)}%)`, '| category=0 =', catBgCount, `(${(catBgCount/totalPx*100).toFixed(1)}%)`);
+    if (personConf){
+      console.log('  Raw confidenceMasks[1] average AT category>0 pixels:', confNAtCatPerson ? (confSumAtCatPerson/confNAtCatPerson).toFixed(4) : 'n/a');
+      console.log('  Raw confidenceMasks[1] average AT category=0 pixels:', confNAtCatBg ? (confSumAtCatBg/confNAtCatBg).toFixed(4) : 'n/a');
+      console.log('  Raw confidence min:', confMin.toFixed(4), '| max:', confMax.toFixed(4));
+      console.log('%c  --> If "average AT category>0" is LOWER than "average AT category=0", the confidence mask and category mask DISAGREE on which pixels are the person -- this by itself is real evidence of an inversion somewhere, independent of any documentation.', 'color:#e05252;');
+    } else {
+      console.log('  personConf is null -- confidenceMasks[1] was unavailable this run, so the algorithm fell back to the binary category-mask-only path.');
+    }
+
+    // ---- Determine which category is ACTUALLY the person using face landmarks as independent ground truth (not documentation) ----
+    if (ppFaceLandmarks && ppSourceCanvas){
+      const sw = ppSourceCanvas.width, sh = ppSourceCanvas.height;
+      const sampleIdx = [1,4,10,152,234,454]; // nose tip, chin, forehead, chin bottom, left/right face edges -- real detected face points
+      let catAtFaceCounts = {};
+      sampleIdx.forEach(i => {
+        const lm = ppFaceLandmarks[i]; if (!lm) return;
+        const out = ppSourceToOutputCoords(sw*lm.x, sh*lm.y);
+        const ox = Math.min(w-1, Math.max(0, Math.round(out.x))), oy = Math.min(h-1, Math.max(0, Math.round(out.y)));
+        const mx = Math.min(mw-1, Math.round(ox*mw/w)), my = Math.min(mh-1, Math.round(oy*mh/h));
+        const cat = maskData[my*mw+mx];
+        catAtFaceCounts[cat] = (catAtFaceCounts[cat]||0) + 1;
+      });
+      console.log('%cGround-truth check using real detected face landmarks (independent of segmentation model):', 'font-weight:bold;');
+      console.log('  Category values found AT known real face-landmark pixel locations:', JSON.stringify(catAtFaceCounts));
+      const majorityCatAtFace = Object.entries(catAtFaceCounts).sort((a,b)=>b[1]-a[1])[0];
+      if (majorityCatAtFace){
+        console.log(`%c  --> At the ACTUAL detected face location, category mask value is predominantly ${majorityCatAtFace[0]} (${majorityCatAtFace[1]}/${sampleIdx.length} sampled points). This means category ${majorityCatAtFace[0]} is the one that REALLY corresponds to "person" in this run, per real execution data -- not assumed from documentation.`, 'color:#3ba55c;font-weight:bold;');
+      }
+    } else {
+      console.log('%cNo face landmarks available this run -- cannot independently verify which category is "person" against real ground truth. Category/confidence interpretation below is not independently confirmed.', 'color:#e0a030;');
+    }
+
+    // ---- Per-location detailed logging ----
+    const locations = ppDebugSampleLocations(w, h);
+    console.log('%cPer-pixel detail at named locations:', 'font-weight:bold;');
+    Object.entries(locations).forEach(([label, {x, y}]) => {
+      const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+      const cat = maskData[my*mw+mx];
+      let confVal = 'n/a';
+      if (personConf){
+        const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
+        confVal = personConf[cy*cw+cx].toFixed(4);
+      }
+      const eraseVal = newMask[y*w+x];
+      const compositeDecision = eraseVal > 200 ? 'REPLACED with background color' : eraseVal < 55 ? 'KEPT as original' : 'PARTIALLY blended (soft edge)';
+      let finalRgba = 'n/a (composite not yet rendered to canvas at debug time)';
+      const previewCtx = document.getElementById('ppPreviewCanvas').getContext('2d');
+      try{ const d = previewCtx.getImageData(Math.min(w-1,x), Math.min(h-1,y), 1, 1).data; finalRgba = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`; }catch(e){}
+      console.log(`  Pixel (${x},${y}) [${label}]`);
+      console.log(`    Category: ${cat}  |  Confidence: ${confVal}  |  EraseMask: ${eraseVal}  |  Composite decision: ${compositeDecision}  |  Final RGBA (current canvas, pre-replacement): ${finalRgba}`);
+    });
+
+    // ---- Visual debug canvases ----
+    const panel = document.getElementById('ppDebugPanel');
+    if (panel){
+      panel.classList.remove('hidden');
+      panel.innerHTML = '';
+      function addDebugCanvas(title, drawFn){
+        const wrap = document.createElement('div');
+        wrap.className = 'pp-debug-tile';
+        const label = document.createElement('div');
+        label.className = 'pp-debug-tile-label';
+        label.textContent = title;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        drawFn(c.getContext('2d'));
+        wrap.appendChild(label); wrap.appendChild(c);
+        panel.appendChild(wrap);
+      }
+      addDebugCanvas('1. Original image', (ctx) => { ctx.drawImage(ppSourceCanvas, 0, 0, w, h); });
+      addDebugCanvas('2. Raw category mask (white = category>0)', (ctx) => {
+        const img = ctx.createImageData(w, h);
+        for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+          const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+          const v = maskData[my*mw+mx] > 0 ? 255 : 0;
+          const p=(y*w+x)*4; img.data[p]=v; img.data[p+1]=v; img.data[p+2]=v; img.data[p+3]=255;
+        }
+        ctx.putImageData(img,0,0);
+      });
+      addDebugCanvas('3. Raw confidenceMasks[1] (white = high confidence)', (ctx) => {
+        const img = ctx.createImageData(w, h);
+        for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+          const p=(y*w+x)*4;
+          if (personConf){
+            const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
+            const v = Math.round(personConf[cy*cw+cx]*255);
+            img.data[p]=v; img.data[p+1]=v; img.data[p+2]=v; img.data[p+3]=255;
+          } else { img.data[p]=128; img.data[p+1]=0; img.data[p+2]=0; img.data[p+3]=255; }
+        }
+        ctx.putImageData(img,0,0);
+      });
+      addDebugCanvas('4. Final ppEraseMask (white = will be replaced)', (ctx) => {
+        const img = ctx.createImageData(w, h);
+        for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+          const p=(y*w+x)*4; const v = newMask[y*w+x];
+          img.data[p]=v; img.data[p+1]=v; img.data[p+2]=v; img.data[p+3]=255;
+        }
+        ctx.putImageData(img,0,0);
+      });
+      addDebugCanvas('5. Composited result (after this AI run is applied)', (ctx) => {
+        ctx.drawImage(ppSourceCanvas, 0, 0, w, h);
+        const bg = robustColorToRgb(resolveBgColorString());
+        const imgData = ctx.getImageData(0,0,w,h);
+        for (let i=0,p=0; i<imgData.data.length; i+=4,p++){
+          const m = newMask[p]/255;
+          if (m>0){ imgData.data[i]=imgData.data[i]*(1-m)+bg[0]*m; imgData.data[i+1]=imgData.data[i+1]*(1-m)+bg[1]*m; imgData.data[i+2]=imgData.data[i+2]*(1-m)+bg[2]*m; }
+        }
+        ctx.putImageData(imgData,0,0);
+      });
+    }
+    console.log('%c=== END SEGMENTATION DEBUG ===', 'font-weight:bold;font-size:14px;color:#5142D6;');
+  }
+
   document.getElementById('ppReplaceBgBtn').onclick = async () => {
     if (!ppSourceCanvas) return;
     const statusEl = document.getElementById('ppModelStatus');
@@ -7235,6 +7409,10 @@ if (document.getElementById('ppDrop')){
       mask.close && mask.close();
       confMasks && confMasks.forEach(m => m.close && m.close());
       const avgPersonConfidence = confSamples ? confSum/confSamples : null;
+
+      if (document.getElementById('ppDebugSegmentation') && document.getElementById('ppDebugSegmentation').checked){
+        runSegmentationDebug({ w, h, mw, mh, maskData, personConf, cw, ch, polarityIsInverted, newMask, subjectPixels });
+      }
 
       // Two independent plausibility signals, either of which can trigger
       // the manual fallback: implausible subject AREA (existing check) and
