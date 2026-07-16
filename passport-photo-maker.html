@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
 <meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
-<link rel="icon" href="assets/favicon.ico?v=20260716-1407" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-1407">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-1407">
+<link rel="icon" href="assets/favicon.ico?v=20260716-1537" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-1537">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-1537">
 <link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
 
 <meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260716-1407">
+<link rel="stylesheet" href="css/style.css?v=20260716-1537">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260716-1407" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260716-1537" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -238,6 +238,15 @@
           <button class="btn btn-ghost" id="ppFlipBtn" type="button">Flip</button>
           <button class="btn btn-danger" id="ppResetBtn" type="button">Reset</button>
         </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppCropToggleBtn" type="button" aria-pressed="false">Crop</button>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="ppCropLockRatio" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Lock to passport ratio</label>
+        </div>
+        <div class="row hidden" id="ppCropActions">
+          <button class="btn btn-primary" id="ppCropApplyBtn" type="button">Apply Crop</button>
+          <button class="btn btn-ghost" id="ppCropResetBtn" type="button">Reset Crop</button>
+          <button class="btn btn-ghost" id="ppCropCancelBtn" type="button">Cancel</button>
+        </div>
         </details>
 
         <details class="pp-accordion" id="ppAccordionBackground" open>
@@ -357,7 +366,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-1407" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-1537" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -394,6 +403,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260716-1407"></script>
+<script defer src="js/app.js?v=20260716-1537"></script>
 </body>
 </html>
