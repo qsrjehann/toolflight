@@ -6449,41 +6449,44 @@ if (document.getElementById('ppDrop')){
 
   /* ---------- Camera capture (real getUserMedia, with an oval positioning guide) ---------- */
   let ppCameraStream = null;
+  let ppCameraOpening = false;
   async function openPpCamera(){
-    // getUserMedia requires a secure context (HTTPS or localhost) -- if
-    // navigator.mediaDevices is undefined, that's usually why, not a lack
-    // of browser support. Either way, the fallback below covers it.
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      const modal = document.getElementById('ppCameraModal');
-      const video = document.getElementById('ppCameraVideo');
-      try{
-        // Try a reasonably-specified front camera first; some Android camera
-        // stacks throw OverconstrainedError on combined facingMode+exact
-        // resolution requests, so width/height stay as loose "ideal" hints,
-        // not required constraints.
-        ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
-      }catch(err1){
+    if (ppCameraOpening) return; // guards against a rapid double-tap firing getUserMedia twice while the first request is still pending -- a real, documented cause of NotReadableError on Android even with permission already granted
+    ppCameraOpening = true;
+    try{
+      // If a stream from a previous open attempt is still alive for any
+      // reason, stop it fully before requesting a new one -- an Android
+      // camera device that's still "in use" from an unreleased prior stream
+      // can cause the next getUserMedia() call to fail even though
+      // permission was already granted.
+      if (ppCameraStream){ ppCameraStream.getTracks().forEach(t => t.stop()); ppCameraStream = null; }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        const modal = document.getElementById('ppCameraModal');
+        const video = document.getElementById('ppCameraVideo');
         try{
-          // Fall back to the browser's default camera with no facingMode
-          // constraint at all -- covers devices/browsers that reject the
-          // first request for reasons unrelated to permission (e.g. no
-          // front camera enumerated, or a stricter constraint negotiation).
-          ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        }catch(err2){
-          openPpCameraFileFallback();
-          return;
+          ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+        }catch(err1){
+          try{
+            ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }catch(err2){
+            openPpCameraFileFallback();
+            return;
+          }
         }
-      }
-      try{
-        video.srcObject = ppCameraStream;
-        await video.play();
-        modal.classList.remove('hidden');
-      }catch(errPlay){
-        if (ppCameraStream) ppCameraStream.getTracks().forEach(t => t.stop());
+        try{
+          video.srcObject = ppCameraStream;
+          await video.play();
+          modal.classList.remove('hidden');
+        }catch(errPlay){
+          if (ppCameraStream) ppCameraStream.getTracks().forEach(t => t.stop());
+          openPpCameraFileFallback();
+        }
+      } else {
         openPpCameraFileFallback();
       }
-    } else {
-      openPpCameraFileFallback();
+    } finally {
+      ppCameraOpening = false;
     }
   }
   // Standards-based fallback per platform behavior: <input capture> opens
@@ -6716,8 +6719,44 @@ if (document.getElementById('ppDrop')){
     document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, 300 DPI)`;
     runPpValidation(imgData, preset);
     drawIcaoOverlay(preset, outW, outH);
+    fitPpCanvasDisplay();
     if (document.getElementById('ppSheetSize')) recomputeSheetLayout();
   }
+
+  /* ---------- WYSIWYG display fit ----------
+     Root cause of "editor shows different framing than print preview": the
+     canvas already rendered the exact final crop (same pixel data every
+     export reads from -- there was only ever one render pipeline for the
+     PIXELS), but at native resolution it can exceed the wrapper's visible
+     height (602px for a US photo vs. a 520px-tall wrapper), silently
+     requiring a scroll to see the whole thing. The separate print/sheet
+     preview thumbnail always scales to fit, so it always showed the whole
+     photo -- creating the appearance of different framing when the
+     underlying crop was actually identical the whole time. Fix: scale the
+     canvas's CSS *display* size (never canvas.width/height, which export
+     reads directly and which this never touches) to fit the visible wrapper
+     by default, so the editor always shows the complete, final framing.
+     The ICAO overlay canvas is kept pixel-aligned with the same CSS size. */
+  function fitPpCanvasDisplay(){
+    const canvas = document.getElementById('ppPreviewCanvas');
+    const overlay = document.getElementById('ppIcaoOverlay');
+    const wrap = document.getElementById('ppCanvasStageWrap');
+    if (!canvas.width || !wrap) return;
+    const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
+    const fitScale = Math.min(1, availW / canvas.width, availH / canvas.height);
+    const dispW = Math.round(canvas.width * fitScale), dispH = Math.round(canvas.height * fitScale);
+    canvas.style.width = dispW + 'px'; canvas.style.height = dispH + 'px';
+    if (overlay){ overlay.style.width = dispW + 'px'; overlay.style.height = dispH + 'px'; }
+  }
+  document.getElementById('ppFitScreenBtn').onclick = () => {
+    ppZoom = 1; ppOffsetX = 0; ppOffsetY = 0;
+    document.getElementById('ppZoomSlider').value = '100';
+    document.getElementById('ppMoveX').value = '0';
+    document.getElementById('ppMoveY').value = '0';
+    renderPpPreview();
+    toast('Fit to screen.');
+  };
+  window.addEventListener('resize', () => { if (ppSourceCanvas) fitPpCanvasDisplay(); });
 
   /* ---------- ICAO compliance overlay: real guides from the actual preset ratios ---------- */
   function drawIcaoOverlay(preset, outW, outH){
@@ -6782,14 +6821,23 @@ if (document.getElementById('ppDrop')){
         for (let x=0; x<w; x++){
           const mx = Math.min(mw-1, Math.round(x * mw/w)), my = Math.min(mh-1, Math.round(y * mh/h));
           const isSubject = maskData[my*mw+mx] > 0;
-          if (isSubject){
-            subjectPixels++;
-            if (personConf){
-              const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
-              confSum += personConf[cy*cw+cx]; confSamples++;
-            }
+          if (isSubject) subjectPixels++;
+          if (personConf){
+            // Use the model's own continuous per-pixel confidence as a soft
+            // alpha directly, instead of the hard binary category threshold.
+            // This is what actually preserves natural hair/edge detail --
+            // fine flyaway strands genuinely do get intermediate confidence
+            // values, and collapsing that to a hard 0-or-255 cutout is what
+            // produces the harsh "cutout sticker" look. This is real
+            // per-pixel data already computed above, not a post-hoc blur
+            // guessing where edges probably are.
+            const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
+            const conf = personConf[cy*cw+cx];
+            confSum += conf; confSamples++;
+            newMask[y*w+x] = Math.round(255 * (1 - conf));
+          } else {
+            newMask[y*w+x] = isSubject ? 0 : 255;
           }
-          newMask[y*w+x] = isSubject ? 0 : 255;
         }
       }
       mask.close && mask.close();
@@ -6805,11 +6853,9 @@ if (document.getElementById('ppDrop')){
       const areaImplausible = subjectFrac < 0.08 || subjectFrac > 0.97;
       const lowConfidence = avgPersonConfidence !== null && avgPersonConfidence < 0.65;
       if (areaImplausible || lowConfidence){
-        const reason = areaImplausible
-          ? `detected subject area was ${Math.round(subjectFrac*100)}% of the frame`
-          : `the model's own confidence in its result was low (${Math.round(avgPersonConfidence*100)}%)`;
-        statusEl.textContent = `Background replacement looked unreliable for this photo (${reason}) \u2014 skipped to protect your photo. Use the manual background tool below instead.`;
+        statusEl.textContent = 'AI could not confidently separate the subject. Please use Manual Editing.';
         document.getElementById('ppManualBgRow').classList.remove('hidden');
+        document.getElementById('ppAccordionManual').open = true;
       } else {
         ppEraseMask.set(newMask);
         pushPpHistory();
