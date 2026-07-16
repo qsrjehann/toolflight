@@ -6274,8 +6274,8 @@ if (document.getElementById('ppDrop')){
   const SEG_MODEL_URL_PP = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 
   // Dimensions in mm, converted to px at 300 DPI (300/25.4 = 11.811 px/mm).
-  const MM_TO_PX = 300 / 25.4;
-  function mm(v){ return Math.round(v * MM_TO_PX); }
+  let ppActiveDpi = 300; // 300 for country presets; overridden by the custom DPI field when Custom Size mode is active
+  function mm(v){ return Math.round(v * ppActiveDpi / 25.4); }
 
   const PASSPORT_PRESETS = {
     'us-passport':   { name:'USA Passport', wmm:51, hmm:51, headMin:0.50, headMax:0.69, eyeMin:0.56, eyeMax:0.69, bg:'white', print:'2x2 in', notes:'Head height 25-35mm (1-1\u215c in), eyes 56-69% from bottom. No glasses. Verified against multiple current US Dept. of State sources, July 2026.' },
@@ -6410,7 +6410,90 @@ if (document.getElementById('ppDrop')){
     return segmenterPromisePP;
   }
 
-  function currentPreset(){ return PASSPORT_PRESETS[document.getElementById('ppCountry').value]; }
+  // Custom Size state -- mm is the canonical unit (a physical size doesn't
+  // change with DPI; DPI only changes how many pixels represent it, exactly
+  // like real-world printing). All other units are derived from this.
+  const ppCustomSize = { wmm: 35, hmm: 45, dpi: 300 };
+  const PP_UNIT_TO_MM = { mm: 1, cm: 10, in: 25.4 };
+
+  // px is the one unit that depends on DPI (a physical size rendered at a
+  // given resolution), so it's handled separately from the pure mm/cm/in
+  // conversions above, which are DPI-independent.
+  function ppMmToUnit(valMm, unit, dpi){
+    if (unit === 'px') return Math.round(valMm * dpi / 25.4);
+    return +(valMm / PP_UNIT_TO_MM[unit]).toFixed(2);
+  }
+  function ppUnitToMm(val, unit, dpi){
+    if (unit === 'px') return (val / dpi) * 25.4;
+    return val * PP_UNIT_TO_MM[unit];
+  }
+
+  function refreshPpCustomFields(skipId){
+    const unit = document.getElementById('ppCustomUnit').value;
+    if (skipId !== 'ppCustomWidthVal') document.getElementById('ppCustomWidthVal').value = ppMmToUnit(ppCustomSize.wmm, unit, ppCustomSize.dpi);
+    if (skipId !== 'ppCustomHeightVal') document.getElementById('ppCustomHeightVal').value = ppMmToUnit(ppCustomSize.hmm, unit, ppCustomSize.dpi);
+    if (skipId !== 'ppCustomDpi') document.getElementById('ppCustomDpi').value = ppCustomSize.dpi;
+    updatePpDimensionPanel();
+  }
+
+  function updatePpDimensionPanel(){
+    if (!document.getElementById('ppDimW')) return;
+    const w = ppCustomSize.wmm, h = ppCustomSize.hmm, dpi = ppCustomSize.dpi;
+    const pxW = ppMmToUnit(w, 'px', dpi), pxH = ppMmToUnit(h, 'px', dpi);
+    const inW = ppMmToUnit(w, 'in', dpi), inH = ppMmToUnit(h, 'in', dpi);
+    const ratio = (w/h).toFixed(3);
+    document.getElementById('ppDimW').textContent = w.toFixed(1) + 'mm';
+    document.getElementById('ppDimH').textContent = h.toFixed(1) + 'mm';
+    document.getElementById('ppDimDpi').textContent = dpi;
+    document.getElementById('ppDimPx').textContent = `${pxW}\u00d7${pxH}px`;
+    document.getElementById('ppDimRatio').textContent = ratio + ':1';
+    document.getElementById('ppDimPhysical').textContent = `${w.toFixed(1)}\u00d7${h.toFixed(1)}mm (${inW}\u00d7${inH}in)`;
+
+    // Live validation -- real range checks, not decorative.
+    const statusEl = document.getElementById('ppCustomValidation');
+    const issues = [];
+    if (w < 15 || h < 15) issues.push('Too small \u2014 most passport photos are at least 25mm on a side.');
+    if (w > 150 || h > 150) issues.push('Too large for a typical passport/visa photo.');
+    if (dpi < 150) issues.push('Low DPI \u2014 many passport systems require at least 300 DPI for print quality.');
+    if (ratio > 0 && (w/h > 3 || h/w > 3)) issues.push('Aspect ratio looks unusual for a passport/visa photo.');
+    const matchesKnown = Object.values(PASSPORT_PRESETS).some(p => Math.abs(p.wmm-w) < 0.5 && Math.abs(p.hmm-h) < 0.5);
+    if (!issues.length){
+      statusEl.textContent = matchesKnown ? '\u2713 Matches a known passport/visa size' : '\u2713 Valid custom size';
+      statusEl.style.color = 'var(--ok-solid)';
+    } else {
+      statusEl.textContent = '\u26a0 ' + issues.join(' ');
+      statusEl.style.color = 'var(--warn-solid)';
+    }
+  }
+
+  ['ppCustomWidthVal','ppCustomHeightVal','ppCustomDpi'].forEach(id => {
+    document.getElementById(id).addEventListener('input', (e) => {
+      const unit = document.getElementById('ppCustomUnit').value;
+      const val = +e.target.value;
+      if (!isFinite(val) || val <= 0) return; // reject impossible/non-numeric values rather than propagate NaN through the pipeline
+      if (id === 'ppCustomWidthVal') ppCustomSize.wmm = ppUnitToMm(val, unit, ppCustomSize.dpi);
+      else if (id === 'ppCustomHeightVal') ppCustomSize.hmm = ppUnitToMm(val, unit, ppCustomSize.dpi);
+      else if (id === 'ppCustomDpi') ppCustomSize.dpi = Math.max(72, Math.min(1200, val));
+      refreshPpCustomFields(id);
+      if (ppSourceCanvas && document.getElementById('ppCountry').value === 'custom') renderPpPreview();
+    });
+  });
+  document.getElementById('ppCustomUnit').addEventListener('change', () => refreshPpCustomFields(null));
+
+  function currentPreset(){
+    const slug = document.getElementById('ppCountry').value;
+    if (slug === 'custom'){
+      ppActiveDpi = Math.max(72, Math.min(1200, ppCustomSize.dpi || 300));
+      return {
+        name: 'Custom Size', wmm: ppCustomSize.wmm, hmm: ppCustomSize.hmm,
+        headMin: 0.62, headMax: 0.69, eyeMin: 0.50, eyeMax: 0.58, // standard ICAO-convention defaults -- no country-specific rule exists for an arbitrary custom size, disclosed in the UI, not presented as an official requirement
+        bg: 'white', print: `${ppCustomSize.wmm}\u00d7${ppCustomSize.hmm}mm`,
+        notes: 'Custom size \u2014 head/eye guides use standard ICAO-convention defaults since no official rule applies to an arbitrary size.',
+      };
+    }
+    ppActiveDpi = 300;
+    return PASSPORT_PRESETS[slug];
+  }
 
   /* ---------- Upload ---------- */
   async function loadPpImage(f){
@@ -6575,11 +6658,18 @@ if (document.getElementById('ppDrop')){
     const banner = document.getElementById('ppUsWarning');
     banner.classList.toggle('hidden', !US_AI_RESTRICTED_DOCS.includes(slug));
   }
+  function updateCustomSizePanelVisibility(){
+    const isCustom = document.getElementById('ppCountry').value === 'custom';
+    document.getElementById('ppCustomSizePanel').classList.toggle('hidden', !isCustom);
+    if (isCustom) refreshPpCustomFields(null);
+  }
   document.getElementById('ppCountry').addEventListener('change', () => {
     updateComplianceWarning();
+    updateCustomSizePanelVisibility();
     if (ppSourceCanvas){ if (ppFaceLandmarks) autoPositionFromFace(); renderPpPreview(); }
   });
   updateComplianceWarning();
+  updateCustomSizePanelVisibility();
   document.getElementById('ppAutoCenterBtn').onclick = () => { autoPositionFromFace(); renderPpPreview(); toast('Re-centered on detected face.'); };
 
   /* ---------- Manual adjustment ---------- */
@@ -6822,7 +6912,7 @@ if (document.getElementById('ppDrop')){
     applySharpnessPP(imgData.data, outW, outH, ppSliders.sharpness);
     ctx.putImageData(imgData, 0, 0);
 
-    document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, 300 DPI)`;
+    document.getElementById('ppOutputDims').textContent = `${outW}\u00d7${outH}px (${preset.print}, ${ppActiveDpi} DPI)`;
     runPpValidation(imgData, preset);
     if (ppCropActive) drawPpCropOverlay(outW, outH); else drawIcaoOverlay(preset, outW, outH);
     fitPpCanvasDisplay();
