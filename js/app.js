@@ -7166,6 +7166,34 @@ if (document.getElementById('ppDrop')){
       const personConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
       const cw = confMasks && confMasks[1] ? confMasks[1].width : mw, ch = confMasks && confMasks[1] ? confMasks[1].height : mh;
 
+      // ---- Polarity calibration (root cause fix) ----
+      // Earlier code assumed confidenceMasks[1] means "confidence this pixel
+      // IS the person," based on MediaPipe's documented category order
+      // (background=0, person=1). A real screenshot from actual use showed
+      // the opposite happening in practice: the subject got painted with
+      // the replacement color and the background was left alone -- meaning
+      // that assumption was wrong for what actually runs, regardless of
+      // what the general documentation describes (a model-variant or SDK
+      // version difference, most likely). Rather than swap to a second
+      // guess, this calibrates against the CATEGORY mask's simpler binary
+      // semantic (index 0/1, the same API used in the fallback branch
+      // below) by sampling both together and checking which one actually
+      // has higher confidence on the category mask's own "subject" pixels
+      // -- self-correcting regardless of the exact underlying cause.
+      let polarityIsInverted = false;
+      if (personConf){
+        let subjSum=0, subjN=0, bgSum=0, bgN=0;
+        for (let sy=0; sy<h; sy+=Math.max(1,Math.floor(h/40))){
+          for (let sx=0; sx<w; sx+=Math.max(1,Math.floor(w/40))){
+            const smx = Math.min(mw-1, Math.round(sx*mw/w)), smy = Math.min(mh-1, Math.round(sy*mh/h));
+            const scx = Math.min(cw-1, Math.round(sx*cw/w)), scy = Math.min(ch-1, Math.round(sy*ch/h));
+            const c = personConf[scy*cw+scx];
+            if (maskData[smy*mw+smx] > 0){ subjSum += c; subjN++; } else { bgSum += c; bgN++; }
+          }
+        }
+        if (subjN && bgN && (subjSum/subjN) < (bgSum/bgN)) polarityIsInverted = true;
+      }
+
       const newMask = new Uint8ClampedArray(w*h);
       let subjectPixels = 0, confSum = 0, confSamples = 0;
       for (let y=0; y<h; y++){
@@ -7183,7 +7211,8 @@ if (document.getElementById('ppDrop')){
             // per-pixel data already computed above, not a post-hoc blur
             // guessing where edges probably are.
             const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
-            const conf = personConf[cy*cw+cx];
+            let conf = personConf[cy*cw+cx];
+            if (polarityIsInverted) conf = 1 - conf;
             confSum += conf; confSamples++;
             newMask[y*w+x] = Math.round(255 * (1 - conf));
           } else {
