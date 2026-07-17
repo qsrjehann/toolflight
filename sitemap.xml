@@ -96,6 +96,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/ai-photo-retouch.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/ai-image-upscaler.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -207,6 +212,11 @@
   </url>
   <url>
     <loc>https://toolflight.com/blog/how-to-compress-images-without-losing-quality.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/blog/passport-photo-rules-ai-editing.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

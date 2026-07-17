@@ -25,12 +25,14 @@ NAV_ITEMS = [
     ("calculators.html", "Calculators"),
     ("finance-tools.html", "Finance Tools"),
     ("seo-tools.html", "SEO Tools"),
+    ("ai-tools.html", "AI Tools"),
     ("blog.html", "Blog"),
 ]
 
 def head(title, description, og_path):
     return f"""<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>{title}</title>
 <meta name="description" content="{description}">
 <link rel="icon" href="assets/favicon.ico?v={BUILD_VERSION}" sizes="32x32">
@@ -47,6 +49,21 @@ def head(title, description, og_path):
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{title}">
 <meta name="twitter:description" content="{description}">
+
+<script>
+/* Runs synchronously, before CSS or body paint -- the only way to avoid a
+   flash of the wrong theme, since an external script (even with defer)
+   always executes after the DOM is parsed. Prefers a saved user choice over
+   the OS-level prefers-color-scheme, so a manual theme selection survives
+   navigating between ToolFlight's pages instead of resetting on every load. */
+(function(){{
+  try{{
+    var saved = localStorage.getItem('toolflight_theme');
+    var isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) document.documentElement.classList.add('dark');
+  }}catch(e){{}}
+}})();
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -104,6 +121,7 @@ def footer():
         <a href="calculators.html">Calculators</a>
         <a href="finance-tools.html">Finance Tools</a>
         <a href="seo-tools.html">SEO Tools</a>
+        <a href="ai-tools.html">AI Tools</a>
       </div>
       <div>
         <h4>Company</h4>
@@ -151,6 +169,7 @@ def page_shell(active_file, title, description, body, og_path_override=None):
 ICON_PDF_MERGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="13" rx="2"/><path d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1"/></svg>'
 ICON_PDF_SPLIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>'
 ICON_PDF_COMPRESS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/></svg>'
+ICON_PDF_WORD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 13l1.5 5L11 14l1.5 4L14 13"/></svg>'
 ICON_COMPRESS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h4v6M20 10h-4V4M14 4l6 6M4 20l6-6"/></svg>'
 ICON_QR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/></svg>'
 ICON_RESIZE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>'
@@ -172,6 +191,11 @@ ICON_AI_REMOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 ICON_AI_CHANGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>'
 ICON_MAGIC_ERASER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3l12 12-6 6L3 9z"/><path d="M9 3L3 9"/><path d="M14 8L8 14"/></svg>'
 ICON_PHOTO_ENHANCER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>'
+ICON_UPSCALER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M9 9l6 6M15 9v6h-6"/></svg>'
+ICON_OCR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>'
+ICON_RESUME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13h6M9 17h4"/></svg>'
+ICON_AI_EMAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/><path d="M15.5 3.5l.7 1.5 1.5.7-1.5.7-.7 1.5-.7-1.5L13.5 5.7l1.5-.7z"/></svg>'
+ICON_PASSPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17h8"/></svg>'
 
 def tool_card(icon_svg, title, desc, tool_key, placeholder=False):
     active_cls = " active" if not placeholder and tool_key == "__FIRST__" else ""
@@ -233,11 +257,12 @@ index_body = f"""<div class="hero">
 
 <div class="container" id="tools">
   <div class="category-hub-grid">
-    {category_hub_card("pdf-tools.html", ICON_PDF_MERGE, "PDF Tools", "Merge, split, compress, and convert between PDF and images.")}
-    {category_hub_card("image-tools.html", ICON_COMPRESS, "Image Tools", "AI photo enhancer, object remover, background remover, compress, crop, watermark.")}
+    {category_hub_card("pdf-tools.html", ICON_PDF_MERGE, "PDF Tools", "Merge, split, compress, convert PDF/Word, and build a resume.")}
+    {category_hub_card("image-tools.html", ICON_COMPRESS, "Image Tools", "Passport photos, AI OCR, upscaler, photo enhancer, and more.")}
     {category_hub_card("calculators.html", ICON_AGE, "Calculators", "Age, BMI, EMI, GST, scientific, unit, and currency calculators.")}
     {category_hub_card("finance-tools.html", ICON_CURRENCY, "Finance Tools", "Currency conversion and loan calculations, in progress.")}
     {category_hub_card("seo-tools.html", ICON_QR, "SEO Tools", "AI keyword generator, QR codes, robots.txt, and meta tags for site owners.")}
+    {category_hub_card("ai-tools.html", ICON_AI_EMAIL, "AI Tools", "AI-assisted writing tools, starting with the AI Email Writer.")}
     {category_hub_card("blog.html", ICON_META, "Blog", "Guides and tips on PDFs, images, and getting more from ToolFlight.", cta="Read articles")}
   </div>
 </div>
@@ -272,9 +297,9 @@ index_body = f"""<div class="hero">
 
 # ============ PDF TOOLS ============
 pdf_body = f"""<div class="hero-sub">
-  <span class="hero-badge"><span class="dot"></span> 5 free PDF tools</span>
+  <span class="hero-badge"><span class="dot"></span> 8 free PDF tools</span>
   <h1>PDF Tools</h1>
-  <p class="subtitle">Merge, split, convert, and compress PDFs — free, private, no signup. Each one has its own page.</p>
+  <p class="subtitle">Merge, split, convert, compress, convert PDFs to and from Word, and build or check a resume — free, private, no signup. Each one has its own page.</p>
 </div>
 
 <div class="container">
@@ -284,6 +309,9 @@ pdf_body = f"""<div class="hero-sub">
     {category_hub_card("image-to-pdf.html", ICON_CROP, "Image to PDF", "Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.", cta="Open tool")}
     {category_hub_card("pdf-to-image.html", ICON_COMPRESS, "PDF to Image", "Convert every page of a PDF into JPG, PNG, or WEBP images.", cta="Open tool")}
     {category_hub_card("pdf-compress.html", ICON_PDF_COMPRESS_ICON, "PDF Compress", "Shrink PDF file size by recompressing embedded images.", cta="Open tool")}
+    {category_hub_card("pdf-to-word.html", ICON_PDF_WORD, "PDF to Word Converter", "Convert PDF into an editable DOCX — real selectable text.", cta="Open tool")}
+    {category_hub_card("word-to-pdf.html", ICON_PDF_WORD, "Word to PDF Converter", "Convert DOCX into a real, selectable-text PDF.", cta="Open tool")}
+    {category_hub_card("resume-builder.html", ICON_RESUME, "Resume Builder & ATS Checker", "Build a resume and check it against common ATS patterns.", cta="Open tool")}
   </div>
 </div>
 """
@@ -470,6 +498,173 @@ PDFC_FORM = """<div class="view-title"><h2>PDF Compress</h2></div>
         </div>
       </div>"""
 
+def pw_form(default_mode):
+    p2w_active = 'active' if default_mode == 'p2w' else ''
+    w2p_active = 'active' if default_mode == 'w2p' else ''
+    accept = 'application/pdf' if default_mode == 'p2w' else '.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword'
+    drop_title = 'Drop a PDF here or tap to browse' if default_mode == 'p2w' else 'Drop a Word document here or tap to browse'
+    drop_sub = 'PDF — up to 40MB' if default_mode == 'p2w' else 'DOCX or DOC — up to 40MB'
+    convert_label = 'Convert to Word' if default_mode == 'p2w' else 'Convert to PDF'
+    return f"""<div class="view-title"><h2>PDF \u2194 Word Converter</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real, selectable-text conversion \u2014 not a screenshot embedded in a PDF, and not a fake preview. Runs entirely in your browser; nothing is uploaded. Formatting is preserved on a best-effort basis \u2014 see the FAQ below for exactly what is and isn't supported.</p>
+
+      <div class="editor-toolbar" role="tablist" aria-label="Conversion direction">
+        <button class="editor-tool-btn {p2w_active}" id="pwTabPdfToWord" type="button" role="tab" aria-selected="{'true' if default_mode=='p2w' else 'false'}">PDF \u2192 Word</button>
+        <button class="editor-tool-btn {w2p_active}" id="pwTabWordToPdf" type="button" role="tab" aria-selected="{'true' if default_mode=='w2p' else 'false'}">Word \u2192 PDF</button>
+      </div>
+
+      <div class="drop-zone" id="pwDrop" style="margin-top:14px;">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title" id="pwDropTitle">{drop_title}</div>
+        <div class="drop-sub" id="pwDropSub">{drop_sub}</div>
+        <input type="file" id="pwInput" accept="{accept}">
+      </div>
+
+      <div id="pwFileInfo" class="hidden" style="margin-top:10px;font-size:12.5px;color:var(--ink-soft);">
+        <strong id="pwFileName" style="color:var(--ink);"></strong> \u00b7 <span id="pwFileSize"></span><span id="pwPageCount"></span>
+      </div>
+
+      <div class="progress-wrap hidden" id="pwProgressWrap">
+        <div class="progress-track"><div class="progress-fill" id="pwProgressFill"></div></div>
+        <div class="progress-label" id="pwProgressLabel">Processing\u2026</div>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary" id="pwConvertBtn" type="button" style="flex:1;" disabled>{convert_label}</button>
+        <button class="btn btn-danger hidden" id="pwCancelBtn" type="button">Cancel</button>
+      </div>
+
+      <p class="editor-hint hidden" id="pwErrorBox" style="color:var(--err);"></p>
+
+      <div class="row hidden" id="pwResultRow">
+        <button class="btn btn-success" id="pwDownloadBtn" type="button" style="flex:1;">Download result</button>
+        <button class="btn btn-ghost" id="pwConvertAnotherBtn" type="button">Convert another file</button>
+      </div>"""
+
+def _resume_repeat_section(key, title, add_label):
+    return f"""<div class="resume-section-block">
+        <div class="resume-section-heading-row"><h3>{title}</h3><button class="btn btn-secondary" id="rbAdd_{key}" type="button" style="padding:8px 14px;font-size:12.5px;">{add_label}</button></div>
+        <div id="rbList_{key}"></div>
+      </div>"""
+
+RESUME_FORM = """<div class="view-title"><h2>Resume Builder &amp; ATS Checker</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Build a resume and check it against common ATS (Applicant Tracking System) patterns \u2014 everything runs locally in your browser, nothing is uploaded. The ATS check is rule-based analysis, not AI \u2014 see its FAQ below for exactly what that means.</p>
+
+      <div class="editor-toolbar" role="tablist" aria-label="Resume tool">
+        <button class="editor-tool-btn active" id="resumeTabBuilder" type="button" role="tab" aria-selected="true">Resume Builder</button>
+        <button class="editor-tool-btn" id="resumeTabAts" type="button" role="tab" aria-selected="false">ATS Resume Checker</button>
+      </div>
+
+      <div id="resumeBuilderPanel">
+        <div class="resume-layout">
+          <div class="resume-form-col">
+            <span class="field-label">Template</span>
+            <div class="row" style="margin-top:6px;">
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="rbTemplate" value="classic" checked style="margin-right:6px;accent-color:var(--accent1);">Classic</label>
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="rbTemplate" value="modern" style="margin-right:6px;accent-color:var(--accent1);">Modern</label>
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="rbTemplate" value="minimal" style="margin-right:6px;accent-color:var(--accent1);">Minimal</label>
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="rbTemplate" value="professional" style="margin-right:6px;accent-color:var(--accent1);">Professional</label>
+            </div>
+
+            <div class="resume-section-block" style="border-top:none;margin-top:16px;padding-top:0;">
+              <h3 style="font-size:15px;font-weight:800;margin:0 0 6px;">Personal Information</h3>
+              <div class="resume-form-grid">
+                <div class="resume-field-group"><label for="rbName">Full Name</label><input type="text" id="rbName" autocomplete="name"></div>
+                <div class="resume-field-group"><label for="rbPhone">Phone</label><input type="text" id="rbPhone" autocomplete="tel"></div>
+                <div class="resume-field-group"><label for="rbEmail">Email</label><input type="email" id="rbEmail" autocomplete="email"></div>
+                <div class="resume-field-group"><label for="rbLocation">Location</label><input type="text" id="rbLocation" autocomplete="address-level2"></div>
+                <div class="resume-field-group"><label for="rbLinkedin">LinkedIn</label><input type="text" id="rbLinkedin"></div>
+                <div class="resume-field-group"><label for="rbPortfolio">Portfolio / Website</label><input type="text" id="rbPortfolio"></div>
+              </div>
+            </div>
+
+            <div class="resume-section-block">
+              <h3 style="font-size:15px;font-weight:800;margin:0 0 6px;">Summary</h3>
+              <textarea id="rbSummary" rows="3" aria-label="Professional summary" style="width:100%;font-family:inherit;font-size:13.5px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;"></textarea>
+            </div>
+
+            """ + _resume_repeat_section("experience", "Experience", "+ Add Job") + """
+            """ + _resume_repeat_section("education", "Education", "+ Add School") + """
+            """ + _resume_repeat_section("projects", "Projects", "+ Add Project") + """
+
+            <div class="resume-section-block">
+              <h3 style="font-size:15px;font-weight:800;margin:0 0 6px;">Skills</h3>
+              <input type="text" id="rbSkills" placeholder="Comma-separated, e.g. JavaScript, Project Management, Figma" aria-label="Skills, comma separated">
+            </div>
+
+            """ + _resume_repeat_section("languages", "Languages", "+ Add Language") + """
+            """ + _resume_repeat_section("certifications", "Certifications", "+ Add Certification") + """
+
+            <div class="resume-section-block">
+              <h3 style="font-size:15px;font-weight:800;margin:0 0 6px;">Achievements</h3>
+              <textarea id="rbAchievements" rows="3" placeholder="One per line" aria-label="Achievements, one per line" style="width:100%;font-family:inherit;font-size:13.5px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;"></textarea>
+            </div>
+
+            """ + _resume_repeat_section("references", "References (optional)", "+ Add Reference") + """
+
+            <div class="row" style="margin-top:20px;">
+              <button class="btn btn-success" id="rbDownloadPdfBtn" type="button" style="flex:1;">Download PDF</button>
+              <button class="btn btn-secondary" id="rbPrintBtn" type="button">Print</button>
+            </div>
+          </div>
+
+          <div class="resume-preview-col">
+            <span class="field-label">Live Preview</span>
+            <div class="resume-preview resume-tpl-classic" id="resumePreview" style="margin-top:8px;" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="atsCheckerPanel" class="hidden">
+        <span class="field-label">Upload your resume (PDF or DOCX)</span>
+        <div class="drop-zone" id="atsDrop" style="margin-top:8px;">
+          <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+          <div class="drop-title">Drop your resume here or tap to browse</div>
+          <div class="drop-sub">PDF or DOCX \u2014 up to 20MB</div>
+          <input type="file" id="atsInput" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        </div>
+        <div id="atsFileInfo" class="hidden" style="margin-top:10px;font-size:12.5px;color:var(--ink-soft);">
+          <strong id="atsFileName" style="color:var(--ink);"></strong> \u00b7 <span id="atsFileSize"></span>
+        </div>
+
+        <div class="progress-wrap hidden" id="atsProgressWrap">
+          <div class="progress-track"><div class="progress-fill" style="width:60%;"></div></div>
+          <div class="progress-label">Analyzing\u2026</div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="atsAnalyzeBtn" type="button" style="flex:1;" disabled>Analyze Resume</button>
+        </div>
+
+        <div id="atsResultWrap" class="hidden" style="margin-top:16px;">
+          <div class="ats-score-wrap">
+            <div class="ats-score-num" id="atsScoreNum">0</div>
+            <div><div style="font-weight:700;font-size:13px;">ATS Score (out of 100)</div><div class="ats-score-label" id="atsScoreLabel"></div></div>
+          </div>
+
+          <div class="resume-section-block">
+            <h3 style="font-size:14px;font-weight:800;margin:0 0 4px;">Strengths</h3>
+            <ul class="ats-result-list" id="atsStrengthsList"></ul>
+          </div>
+          <div class="resume-section-block">
+            <h3 style="font-size:14px;font-weight:800;margin:0 0 4px;">Weaknesses</h3>
+            <ul class="ats-result-list" id="atsWeaknessesList"></ul>
+          </div>
+          <div class="resume-section-block">
+            <h3 style="font-size:14px;font-weight:800;margin:0 0 4px;">Missing Sections</h3>
+            <ul class="ats-result-list" id="atsMissingSectionsList"></ul>
+          </div>
+          <div class="resume-section-block">
+            <h3 style="font-size:14px;font-weight:800;margin:0 0 4px;">Optimization Tips</h3>
+            <ul class="ats-result-list" id="atsSuggestionsList"></ul>
+          </div>
+
+          <div class="row">
+            <button class="btn btn-ghost" id="atsAnotherBtn" type="button">Check another resume</button>
+          </div>
+        </div>
+      </div>"""
+
 PDF_TOOLS = [
     {"slug":"pdf-merge","name":"Merge PDF","desc":"Combine multiple PDFs into one, in any order you choose.",
      "subtitle":"Combine multiple PDF files into one, in any order you choose — free, private, instant.",
@@ -482,7 +677,7 @@ PDF_TOOLS = [
      "faq":[("Is there a limit to how many PDFs I can merge?","Browser-based merging is limited by your device's memory rather than a fixed count — a handful of files works instantly, while dozens of very large files may be slower."),
             ("Will merging affect the quality of my PDFs?","No — merging combines pages as-is; it doesn't re-render or re-compress content, so text and images stay exactly as sharp as the originals."),
             ("Can I merge password-protected PDFs?","Most browser-based mergers, including this one, can't read encrypted PDFs directly — remove the password first using a PDF editor, then merge.")],
-     "related":["pdf-split","pdf-compress"]},
+     "related":["pdf-split","pdf-to-word"]},
 
     {"slug":"pdf-split","name":"Split PDF","desc":"Pull specific pages out, or split every page into its own file.",
      "subtitle":"Pull specific pages out, or split every page into its own file — free, private, instant.",
@@ -495,7 +690,7 @@ PDF_TOOLS = [
      "faq":[("Do I need to install anything?","No — this runs using JavaScript already built into your browser; there's nothing to download or install."),
             ("Is it safe to split sensitive documents online?","Yes, specifically because this tool processes files locally in your browser rather than uploading them to a server — worth checking for that distinction in any tool you use for sensitive documents."),
             ("Can I extract just one page?","Yes — tap only that page in the grid before splitting; the result is a .zip containing just that single-page PDF.")],
-     "related":["pdf-merge","pdf-compress"]},
+     "related":["pdf-merge","word-to-pdf"]},
 
     {"slug":"image-to-pdf","name":"Image to PDF","desc":"Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.",
      "subtitle":"Combine JPG, PNG, WEBP, BMP, or GIF images into a single PDF, with page size, orientation, and margin control.",
@@ -521,7 +716,35 @@ PDF_TOOLS = [
      "faq":[("Will this make my text blurry?","No — only embedded images are recompressed. Text, fonts, and vector graphics are left completely untouched, so they stay sharp and selectable."),
             ("What if my PDF doesn't get any smaller?","Some PDFs are already efficiently compressed, or contain mostly text with few images. In that case, the tool tells you directly and keeps your original file rather than replacing it with something larger."),
             ("Which images does this compress?","Images embedded using JPEG compression, which covers the large majority of photos and scans in real-world PDFs. Images using other internal formats are left unchanged to avoid any risk of visual corruption.")],
-     "related":["pdf-merge","pdf-split"]},
+     "related":["pdf-merge","pdf-to-word"]},
+
+    {"slug":"pdf-to-word","name":"PDF to Word Converter","desc":"Convert PDF into an editable DOCX \u2014 real selectable text, not a screenshot.",
+     "subtitle":"Convert a PDF into an editable Word document \u2014 real selectable text, not an image pretending to be one.",
+     "meta":"Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.",
+     "category":"BusinessApplication","form":pw_form("p2w"),
+     "intro":"PDF to Word Converter reconstructs your PDF's text, headings, and basic formatting into a real, editable .docx file \u2014 not a rasterized image dropped into a Word wrapper. Because a PDF has no built-in concept of \"this is a heading\" or \"this is bold,\" the structure is rebuilt using font-size and font-style analysis, which works well for typical documents but isn't guaranteed on every layout \u2014 see the FAQ for exactly what this does and doesn't handle.",
+     "features":["Real, editable text output \u2014 not an embedded screenshot","Heading levels reconstructed from relative font size","Bold and italic detected from font metadata","Hyperlinks preserved from the PDF's link annotations","Page breaks preserved 1:1 with the original PDF's pages","Shows filename, size, and page count before converting"],
+     "benefits":["Nothing is uploaded \u2014 conversion happens entirely in your browser","No signup, no page limit imposed by a server","Genuinely editable output, so you can actually fix and reuse the content"],
+     "how_to":"Upload a PDF (drag and drop or browse), review the page count, then tap Convert to Word. When it finishes, download the .docx \u2014 or tap Convert another file to start over.",
+     "faq":[("Will tables and images be preserved?","Honestly, no \u2014 not in this direction. Reliably detecting table grid structure and extracting images from raw PDF content is a genuinely hard problem, and a wrong guess would scramble your document worse than leaving it out. Text, headings, bold/italic, hyperlinks, and page breaks are reconstructed; tables and embedded images currently are not."),
+            ("Will this work on scanned PDFs?","No \u2014 this reads the actual text layer of a PDF. A scanned PDF that's really just a photo of a page has no text layer to extract, so there's nothing to convert. You'd need an OCR tool first."),
+            ("Why might headings or bold text be misdetected?","Headings are inferred from font size relative to the rest of the document, and bold/italic from the font's internal name \u2014 both are the standard heuristics for this kind of extraction, but not every PDF-generating tool names its fonts predictably, so results can vary."),
+            ("Is my file uploaded anywhere?","No \u2014 both reading the PDF and building the Word document happen entirely inside your browser.")],
+     "related":["resume-builder","word-to-pdf"]},
+
+    {"slug":"word-to-pdf","name":"Word to PDF Converter","desc":"Convert DOCX into a real, selectable-text PDF \u2014 not a screenshot.",
+     "subtitle":"Convert a Word document into a real PDF with selectable text \u2014 not a screenshot embedded in a PDF wrapper.",
+     "meta":"Free Word to PDF converter. Convert DOCX into a genuine text-based PDF with headings, bold/italic, lists, tables, and images preserved, entirely in your browser.",
+     "category":"BusinessApplication","form":pw_form("w2p"),
+     "intro":"Word to PDF Converter reads your .docx and rebuilds it as a real PDF with actual selectable, searchable text \u2014 the common shortcut most browser-based converters take is to screenshot the page and embed that image in a PDF, which looks right but can't be selected, searched, or read by a screen reader. This tool avoids that shortcut entirely.",
+     "features":["Real selectable, searchable PDF text \u2014 not a rasterized image","Headings, bold, italic, and paragraph structure preserved","Bullet and numbered lists preserved","Basic tables and embedded images rendered","Automatic pagination as content flows across pages"],
+     "benefits":["Nothing is uploaded \u2014 conversion happens entirely in your browser","Accessible output: real text means screen readers and copy/paste both work","No signup, no watermark"],
+     "how_to":"Upload a .docx file (drag and drop or browse), tap Convert to PDF, then download the result once it finishes.",
+     "faq":[("Why not just screenshot the page like most browser converters?","Because the result wouldn't be a real document \u2014 you couldn't select the text, search it, or have it read aloud by a screen reader. This tool places actual text on the PDF page instead, at the cost of not perfectly matching Word's exact pixel-for-pixel visual layout."),
+            ("Will this look identical to the original in Word?","Close, but not pixel-perfect. Complex layouts \u2014 multi-column text, precise table borders, unusual fonts, headers/footers \u2014 are simplified. Standard documents with headings, paragraphs, lists, basic tables, and images convert well."),
+            ("Does it support legacy .doc files?","No \u2014 only the modern .docx format. If you have an older .doc file, save it as .docx in Word first."),
+            ("Is my file uploaded anywhere?","No \u2014 both reading the Word document and building the PDF happen entirely inside your browser.")],
+     "related":["pdf-to-word","pdf-merge"]},
 
     {"slug":"pdf-to-image","name":"PDF to Image","desc":"Convert every page of a PDF into JPG, PNG, or WEBP images.",
      "subtitle":"Convert every page of a PDF into JPG, PNG, or WEBP images, with adjustable DPI and quality.",
@@ -534,6 +757,20 @@ PDF_TOOLS = [
      "faq":[("What DPI should I use?","150 DPI is a good default for general use; use 300 DPI if you plan to print the images, or 72 DPI for smaller files meant only for screen viewing."),
             ("Why would I choose WEBP over JPG or PNG?","WEBP typically produces smaller files than JPG at similar quality; if your browser can't encode WEBP, this tool automatically falls back to PNG for that page rather than failing.")],
      "related":["image-to-pdf","pdf-compress"]},
+
+    {"slug":"resume-builder","name":"Resume Builder & ATS Checker","desc":"Build a professional resume and check it against common ATS patterns.",
+     "subtitle":"Build a professional resume with live preview, plus check any resume against common ATS (Applicant Tracking System) patterns \u2014 both entirely in your browser.",
+     "meta":"Free resume builder and ATS resume checker. Build a resume with 4 templates and a live preview, or upload a PDF/DOCX resume for a rule-based ATS score, entirely in your browser.",
+     "category":"BusinessApplication","form":RESUME_FORM,
+     "intro":"Two tools in one page: a Resume Builder with a live preview and four templates that exports to a real, selectable-text PDF, and an ATS Resume Checker that analyzes an uploaded resume using transparent, rule-based checks \u2014 not AI dressed up to sound smarter than it is. Everything runs locally in your browser; nothing is uploaded to a server.",
+     "features":["Four resume templates: Classic, Modern, Minimal, Professional","Live preview that updates as you type","Add, remove, and reorder entries within each section","Real, selectable-text PDF export \u2014 not a screenshot","Print directly from the browser","ATS checker with a transparent, explainable 0\u2013100 score"],
+     "benefits":["Nothing is uploaded \u2014 both the builder and the checker run entirely in your browser","No signup, no watermark, no per-use limit","The ATS score comes with specific, stated reasons \u2014 not a mysterious black-box number"],
+     "how_to":"On the Resume Builder tab, fill in your details, pick a template, and use Download PDF or Print when you're ready. On the ATS Resume Checker tab, upload a PDF or DOCX resume and tap Analyze Resume to see your score, strengths, weaknesses, missing sections, and specific suggestions.",
+     "faq":[("Is the ATS checker really AI?","No, and we'd rather say that plainly than oversell it. It's rule-based analysis: it checks for things like a detectable email and phone number, common section headings, resume length, bullet point usage, action verbs, and quantified results (numbers and percentages). Every point in the score maps to a specific, statable reason, not a hidden model."),
+            ("How accurate is a real ATS score compared to this tool?","This tool checks for well-known, broadly-agreed-upon resume best practices that most real ATS systems and recruiters respond well to \u2014 but every company's actual ATS software is different and this tool can't see the specific job posting or system you're applying through. Treat the score as a genuinely useful sanity check, not a guarantee."),
+            ("Is my resume data saved anywhere?","No \u2014 everything in the builder lives only in your browser tab's memory while you're using it, and the ATS checker's file processing happens entirely locally too. Closing or refreshing the page clears your data, so keep your PDF downloads."),
+            ("Why isn't my resume's exact formatting preserved in the ATS checker?","The checker extracts and analyzes the underlying text, the same way many real ATS systems do \u2014 visual formatting like columns or graphics isn't part of what's being scored, since ATS software generally can't reliably parse those either.")],
+     "related":["pdf-to-word","word-to-pdf"]},
 ]
 PDF_TOOL_BY_SLUG = {t["slug"]: t for t in PDF_TOOLS}
 
@@ -623,21 +860,25 @@ def build_pdf_tool_page(tool):
 
 # ============ IMAGE TOOLS ============
 image_body = f"""<div class="hero-sub">
-  <span class="hero-badge"><span class="dot"></span> 8 free image tools</span>
+  <span class="hero-badge"><span class="dot"></span> 12 free image tools</span>
   <h1>Image Tools</h1>
-  <p class="subtitle">Compress, crop, watermark, rotate, remove backgrounds, remove objects, enhance photos, and change backgrounds — free, private, no signup. Each one has its own page.</p>
+  <p class="subtitle">Make passport photos, compress, extract text, retouch portraits, crop, rotate, remove backgrounds, remove objects, enhance, upscale, change backgrounds, and watermark — free, private, no signup. Each one has its own page.</p>
 </div>
 
 <div class="container">
   <div class="category-hub-grid">
+    {category_hub_card("passport-photo-maker.html", ICON_PASSPORT, "Passport & Visa Photo Maker", "Auto-cropped passport and visa photos for 42 countries with AI face detection.", cta="Open tool")}
     {category_hub_card("image-compress.html", ICON_COMPRESS, "Compress Image", "Shrink JPG/PNG/WEBP file size with a live before & after preview.", cta="Open tool")}
+    {category_hub_card("ai-ocr.html", ICON_OCR, "AI OCR (Image & PDF to Text)", "Extract editable, searchable text from images and scanned PDFs.", cta="Open tool")}
+    {category_hub_card("ai-photo-retouch.html", ICON_PHOTO_ENHANCER, "AI Photo Retouch & Beauty", "Skin smoothing, background blur, and a full Lightroom-style adjustment panel.", cta="Open tool")}
     {category_hub_card("image-crop.html", ICON_CROP, "Image Crop Tool", "Free crop or locked ratios (1:1, 16:9, 9:16), plus rotate.", cta="Open tool")}
-    {category_hub_card("image-watermark.html", ICON_WATERMARK, "Image Watermark Tool", "Add draggable text or logo watermarks with adjustable opacity.", cta="Open tool")}
     {category_hub_card("rotate-flip.html", ICON_ROTATE, "Rotate & Flip Tool", "Rotate 90°/180°/270° and flip horizontal or vertical.", cta="Open tool")}
     {category_hub_card("background-remover.html", ICON_AI_REMOVE, "AI Background Remover", "Automatic AI-powered background removal, plus a full manual refine editor.", cta="Open tool")}
     {category_hub_card("background-changer.html", ICON_AI_CHANGE, "Background Changer", "Solid colors, gradients, or a custom background image.", cta="Open tool")}
-    {category_hub_card("magic-eraser.html", ICON_MAGIC_ERASER, "Magic Eraser (AI Object Remover)", "Brush over unwanted objects and remove them with real AI inpainting.", cta="Open tool")}
     {category_hub_card("ai-photo-enhancer.html", ICON_PHOTO_ENHANCER, "AI Photo Enhancer", "Natural photo enhancement with AI-targeted face smoothing.", cta="Open tool")}
+    {category_hub_card("ai-image-upscaler.html", ICON_UPSCALER, "AI Image Upscaler", "Upscale images 2x or 4x with real AI, using a browser-optimized model.", cta="Open tool")}
+    {category_hub_card("magic-eraser.html", ICON_MAGIC_ERASER, "Magic Eraser (AI Object Remover)", "Brush over unwanted objects and remove them with real AI inpainting.", cta="Open tool")}
+    {category_hub_card("image-watermark.html", ICON_WATERMARK, "Image Watermark Tool", "Add draggable text or logo watermarks with adjustable opacity.", cta="Open tool")}
   </div>
 </div>
 """
@@ -1133,7 +1374,496 @@ APE_FORM = """<div class="view-title"><h2>AI Photo Enhancer</h2></div>
         </div>
       </div>"""
 
+UPS_FORM = """<div class="view-title"><h2>AI Image Upscaler</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real AI super-resolution (ESRGAN via UpscalerJS / TensorFlow.js), not a simple resize \u2014 runs entirely in your browser. The AI model downloads only when you tap AI Upscale (one-time, cached after). Images larger than 1600px on their longest side aren't accepted, to avoid crashing your browser tab.</p>
+
+      <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
+      <div class="drop-zone" id="upsDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, or WEBP \u2014 up to 30MB, 1600px max side</div>
+        <input type="file" id="upsInput" accept="image/jpeg, image/png, image/webp">
+      </div>
+
+      <div id="upsStage" class="hidden">
+        <div class="qr-controls" style="margin-top:14px;">
+          <div class="ctrl">
+            <label>Scale</label>
+            <div class="unit-toggle">
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="upsScale" value="2" checked style="margin-right:6px;accent-color:var(--accent1);">2x</label>
+              <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="upsScale" value="4" style="margin-right:6px;accent-color:var(--accent1);">4x</label>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label for="upsZoomSelect">Zoom</label>
+            <select id="upsZoomSelect" aria-label="Zoom level">
+              <option value="25">25%</option><option value="50">50%</option>
+              <option value="100" selected>100%</option><option value="200">200%</option>
+            </select>
+          </div>
+          <div class="ctrl" style="display:flex;align-items:flex-end;">
+            <button class="btn btn-ghost" id="upsFitScreenBtn" type="button" style="width:100%;">Fit to screen</button>
+          </div>
+          <div class="ctrl" style="display:flex;align-items:flex-end;">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="upsHighQuality" style="width:15px;height:15px;accent-color:var(--accent1);"> Higher quality (slower)</label>
+          </div>
+        </div>
+        <p class="editor-hint">"Higher quality" uses a larger AI model \u2014 noticeably better detail, but meaningfully slower, especially on phones. Default is the model UpscalerJS's own maintainers recommend for browser use.</p>
+
+        <div id="upsDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+
+        <div class="editor-stage-wrap" id="upsStageWrap" style="margin-top:10px;cursor:default;">
+          <canvas id="upsPreviewCanvas" role="img" aria-label="Image preview"></canvas>
+        </div>
+
+        <div class="progress-wrap hidden" id="upsProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="upsProgressFill"></div></div>
+          <div class="progress-label" id="upsProgressLabel">Processing\u2026</div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="upsUpscaleBtn" type="button" style="flex:1;" disabled>AI Upscale</button>
+          <button class="btn btn-danger hidden" id="upsCancelBtn" type="button">Cancel</button>
+          <button class="btn btn-ghost" id="upsResetBtn" type="button">Reset</button>
+        </div>
+
+        <div id="upsCompareWrap" class="hidden" style="position:relative;margin-top:14px;border:1.5px solid var(--card-border);border-radius:16px;overflow:hidden;">
+          <img id="upsCompareBefore" alt="Original image" style="display:block;width:100%;">
+          <div id="upsCompareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
+            <img id="upsCompareAfter" alt="Upscaled image" style="display:block;height:100%;width:auto;max-width:none;">
+          </div>
+          <div id="upsCompareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:calc(50% - 18px);left:50%;width:36px;height:36px;margin-left:-18px;border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+        </div>
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--card-border);">
+          <span class="field-label">Export</span>
+          <div class="qr-controls" style="margin-top:8px;">
+            <div class="ctrl" style="grid-column:span 2;">
+              <label for="upsQuality">JPG/WEBP Quality: <span id="upsQualityVal">92</span>%</label>
+              <input type="range" id="upsQuality" min="10" max="100" value="92">
+            </div>
+          </div>
+          <div class="row hidden" id="upsDownloadRow">
+            <button class="btn btn-success" id="upsDownloadPngBtn" type="button">Download PNG</button>
+            <button class="btn btn-success" id="upsDownloadJpgBtn" type="button">Download JPG</button>
+            <button class="btn btn-success" id="upsDownloadWebpBtn" type="button">Download WEBP</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="upsConvertAnotherBtn" type="button">Upscale another image</button>
+          </div>
+        </div>
+      </div>"""
+
+OCR_FORM = """<div class="view-title"><h2>AI OCR \u2014 Image &amp; PDF to Text</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real OCR (Tesseract.js), running entirely in your browser \u2014 nothing is uploaded. For PDFs, each page is rendered as an image first, then read with the same OCR engine (Tesseract.js itself doesn't read PDF files directly \u2014 see the FAQ).</p>
+
+      <span class="field-label">Language(s)</span>
+      <div class="row" style="margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="eng" checked style="width:15px;height:15px;accent-color:var(--accent1);"> English</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="urd" style="width:15px;height:15px;accent-color:var(--accent1);"> Urdu</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="ocr-lang-check" value="ara" style="width:15px;height:15px;accent-color:var(--accent1);"> Arabic</label>
+      </div>
+      <p class="editor-hint">Select every language actually present in your file \u2014 selecting languages that aren't there can reduce accuracy.</p>
+
+      <span class="field-label" style="margin-top:14px;">Choose a file</span>
+      <div class="drop-zone" id="ocrDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop an image or PDF here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, WEBP, or PDF \u2014 up to 30MB</div>
+        <input type="file" id="ocrInput" accept="image/jpeg, image/png, image/webp, application/pdf">
+      </div>
+
+      <div id="ocrStage" class="hidden">
+        <div style="margin-top:12px;font-size:12.5px;color:var(--ink-soft);">
+          <strong id="ocrFileName" style="color:var(--ink);"></strong> \u00b7 <span id="ocrFileSize"></span>
+        </div>
+        <div class="canvas-stage" style="margin-top:10px;max-height:280px;overflow:auto;display:flex;align-items:center;justify-content:center;">
+          <img id="ocrPreviewImg" alt="File preview" class="hidden" style="max-width:100%;max-height:260px;">
+          <span id="ocrPreviewPdfNote" class="hidden" style="font-size:13px;color:var(--ink-soft);"></span>
+        </div>
+
+        <div class="progress-wrap hidden" id="ocrProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="ocrProgressFill"></div></div>
+          <div class="progress-label" id="ocrProgressLabel">Processing\u2026</div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="ocrExtractBtn" type="button" style="flex:1;" disabled>Extract Text</button>
+          <button class="btn btn-danger hidden" id="ocrCancelBtn" type="button">Cancel</button>
+        </div>
+
+        <div id="ocrResultWrap" class="hidden" style="margin-top:14px;">
+          <div class="row" style="margin-top:0;">
+            <input type="text" id="ocrSearchInput" placeholder="Search extracted text\u2026" style="flex:1;" aria-label="Search extracted text">
+            <span id="ocrSearchCount" style="font-size:12px;color:var(--ink-soft);align-self:center;white-space:nowrap;"></span>
+          </div>
+          <textarea id="ocrResultText" readonly rows="12" style="width:100%;margin-top:10px;font-family:inherit;font-size:13.5px;padding:13px 14px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;" aria-label="Extracted text"></textarea>
+          <div id="ocrCharCount" style="font-size:12px;color:var(--ink-soft);margin-top:4px;"></div>
+
+          <div class="row">
+            <button class="btn btn-secondary" id="ocrCopyBtn" type="button">Copy Text</button>
+            <button class="btn btn-success" id="ocrDownloadTxtBtn" type="button">Download TXT</button>
+            <button class="btn btn-success" id="ocrDownloadDocxBtn" type="button">Download DOCX</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ocrConvertAnotherBtn" type="button">Extract from another file</button>
+          </div>
+        </div>
+      </div>"""
+
+PP_COUNTRIES = [
+    ("us-passport","USA Passport"), ("us-visa","USA Visa"), ("dv-lottery","DV Lottery (Green Card)"),
+    ("ca-passport","Canada Passport"), ("ca-visa","Canada Visa"), ("uk-passport","UK Passport"),
+    ("au-passport","Australia Passport"), ("nz-passport","New Zealand Passport"), ("de-passport","Germany Passport"),
+    ("fr-passport","France Passport"), ("it-passport","Italy Passport"), ("es-passport","Spain Passport"),
+    ("nl-passport","Netherlands Passport"), ("be-passport","Belgium Passport"), ("ch-passport","Switzerland Passport"),
+    ("at-passport","Austria Passport"), ("no-passport","Norway Passport"), ("se-passport","Sweden Passport"),
+    ("dk-passport","Denmark Passport"), ("fi-passport","Finland Passport"), ("ie-passport","Ireland Passport"),
+    ("pt-passport","Portugal Passport"), ("pl-passport","Poland Passport"), ("cz-passport","Czech Republic Passport"),
+    ("jp-passport","Japan Passport"), ("kr-passport","South Korea Passport"), ("cn-passport","China Passport"),
+    ("sg-passport","Singapore Passport"), ("my-passport","Malaysia Passport"), ("ae-passport","UAE Passport"),
+    ("sa-passport","Saudi Arabia Passport"), ("qa-passport","Qatar Passport"), ("kw-passport","Kuwait Passport"),
+    ("om-passport","Oman Passport"), ("bh-passport","Bahrain Passport"), ("pk-passport","Pakistan Passport"),
+    ("in-passport","India Passport"), ("bd-passport","Bangladesh Passport"), ("lk-passport","Sri Lanka Passport"),
+    ("np-passport","Nepal Passport"), ("tr-passport","Turkey Passport"), ("schengen-visa","Schengen Visa"),
+    ("custom","Custom Size\u2026"),
+]
+PP_COUNTRY_OPTIONS = "\n".join(f'              <option value="{slug}"{" selected" if slug=="us-passport" else ""}>{label}</option>' for slug, label in PP_COUNTRIES)
+
+PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser. Specifications are not a legal guarantee \u2014 see the FAQ below for full details and always verify with your country's official source.</p>
+
+      <span class="field-label">Country / Document</span>
+      <select id="ppCountry" style="margin-bottom:8px;">
+""" + PP_COUNTRY_OPTIONS + """
+      </select>
+
+      <div class="hidden" id="ppCustomSizePanel" style="margin-bottom:12px;padding:12px 14px;border:1.5px solid var(--card-border);border-radius:12px;background:var(--card);">
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppCustomWidthVal">Width</label><input type="number" id="ppCustomWidthVal" value="35" min="0.1" step="0.1"></div>
+          <div class="resume-field-group"><label for="ppCustomHeightVal">Height</label><input type="number" id="ppCustomHeightVal" value="45" min="0.1" step="0.1"></div>
+          <div class="resume-field-group"><label for="ppCustomUnit">Unit</label><select id="ppCustomUnit"><option value="mm" selected>Millimeters</option><option value="cm">Centimeters</option><option value="in">Inches</option><option value="px">Pixels</option></select></div>
+          <div class="resume-field-group"><label for="ppCustomDpi">DPI</label><input type="number" id="ppCustomDpi" value="300" min="72" max="1200" step="1"></div>
+        </div>
+        <p id="ppCustomValidation" style="font-size:12.5px;font-weight:600;margin:10px 0 0;"></p>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.8;">
+          <div>Width: <strong id="ppDimW">\u2014</strong> &middot; Height: <strong id="ppDimH">\u2014</strong> &middot; DPI: <strong id="ppDimDpi">\u2014</strong></div>
+          <div>Pixels: <strong id="ppDimPx">\u2014</strong> &middot; Aspect ratio: <strong id="ppDimRatio">\u2014</strong></div>
+          <div>Physical size: <strong id="ppDimPhysical">\u2014</strong></div>
+        </div>
+        <p class="editor-hint">Custom sizes use standard ICAO-convention head/eye guides since no official rule exists for an arbitrary size \u2014 not a substitute for your destination's actual requirements.</p>
+      </div>
+
+      <p class="hidden" id="ppUsWarning" role="alert" style="font-size:12px;line-height:1.5;color:var(--err-solid);margin:0 0 12px;">
+        \u26a0 US passport/visa photos: avoid AI background replacement and enhancement sliders \u2014 see the full notice in the FAQ below.
+      </p>
+
+      <div class="drop-zone" id="ppDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a photo here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, or WEBP \u2014 up to 30MB</div>
+        <input type="file" id="ppInput" accept="image/jpeg, image/png, image/webp">
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="btn btn-ghost" id="ppOpenCameraBtn" type="button">Use Camera</button>
+        <input type="file" id="ppCameraFallbackInput" accept="image/*" capture="user" style="display:none;" aria-hidden="true">
+      </div>
+
+      <div class="hidden pp-camera-debug" id="ppCameraDebugPanel">
+        <div style="font-weight:800;font-size:12.5px;margin-bottom:6px;">Camera Debug Panel</div>
+        <div id="ppCameraDebugLog" style="font-size:11px;line-height:1.7;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
+      </div>
+
+      <div class="legal-modal hidden" id="ppCameraModal" role="dialog" aria-modal="true" aria-label="Camera capture">
+        <div class="legal-box" style="max-width:480px;padding:20px;">
+          <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">\u2715</button>
+          <h3 style="margin-top:0;">Position your face in the oval</h3>
+          <div id="ppCameraStageDebugBorder" style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;border:3px solid transparent;">
+            <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;border:3px solid transparent;"></video>
+            <svg viewBox="0 0 300 400" id="ppCameraOverlaySvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;border:3px solid transparent;" aria-hidden="true">
+              <ellipse cx="150" cy="190" rx="95" ry="130" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8" opacity="0.85"/>
+            </svg>
+          </div>
+          <p class="editor-hint" style="margin-top:6px;">Debug mode: red border = stage wrapper, green border = &lt;video&gt; element, blue border = face-guide overlay. If you see only some of these colors, that tells us which layer is actually rendering.</p>
+          <div class="row">
+            <button class="btn btn-primary" id="ppCameraCaptureBtn" type="button" style="flex:1;">Capture Photo</button>
+          </div>
+        </div>
+      </div>
+      <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
+
+      <div id="ppStage" class="hidden">
+        <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="margin-top:14px;cursor:default;">
+          <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
+          <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="ppIcaoToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Show ICAO compliance guides</label>
+        <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+
+        <details class="pp-accordion" id="ppAccordionManual">
+        <summary class="pp-accordion-summary">Manual Editing (optional)</summary>
+        <p class="editor-hint">Erase, restore, and refine edges by hand \u2014 useful when AI background replacement isn't quite clean, or unavailable. Hold Space and drag to pan; scroll to zoom toward your cursor.</p>
+        <div class="editor-toolbar" role="toolbar" aria-label="Manual editing tools" style="flex-wrap:wrap;">
+          <button class="editor-tool-btn pp-tool-btn" data-tool="erase" type="button" aria-label="Magic Eraser brush">Magic Eraser</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="restore" type="button" aria-label="Restore brush">Restore</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="hair" type="button" aria-label="Hair refinement brush, a finer mode of the same brush">Hair Refine</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="rect" type="button" aria-label="Rectangle selection">Rectangle</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="circle" type="button" aria-label="Circle selection">Circle</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="lasso" type="button" aria-label="Freehand lasso selection">Lasso</button>
+          <button class="editor-tool-btn pp-tool-btn" data-tool="polygon" type="button" aria-label="Polygon selection, click to place points and click near the start to close">Polygon</button>
+        </div>
+        <p class="editor-hint">Brush and selection tools are drawn by mouse, finger, or stylus \u2014 there isn't a practical fully keyboard-driven equivalent for freehand drawing, though every button above is keyboard-reachable and operable.</p>
+
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppBrushSize">Brush Size: <span id="ppBrushSizeVal">40</span>px</label><input type="range" id="ppBrushSize" min="4" max="200" value="40"></div>
+          <div class="resume-field-group"><label for="ppBrushHardness">Edge Hardness: <span id="ppBrushHardnessVal">60</span></label><input type="range" id="ppBrushHardness" min="0" max="100" value="60"></div>
+        </div>
+
+        <div class="row hidden" id="ppSelectionActions">
+          <button class="btn btn-secondary" id="ppFillSelectionEraseBtn" type="button">Erase Selection</button>
+          <button class="btn btn-secondary" id="ppFillSelectionRestoreBtn" type="button">Restore Selection</button>
+          <button class="btn btn-ghost" id="ppClearSelectionBtn" type="button">Clear Selection</button>
+        </div>
+
+        <div class="row">
+          <input type="range" id="ppFeatherRadius" min="1" max="20" value="4" aria-label="Feather radius" style="flex:1;">
+          <button class="btn btn-secondary" id="ppFeatherBtn" type="button">Feather Edges</button>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-ghost" id="ppUndoBtn" type="button" aria-label="Undo" disabled>Undo (Ctrl+Z)</button>
+          <button class="btn btn-ghost" id="ppRedoBtn" type="button" aria-label="Redo" disabled>Redo (Ctrl+Y)</button>
+        </div>
+        </details>
+
+        <details class="pp-accordion" id="ppAccordionPosition" open>
+        <summary class="pp-accordion-summary">Position &amp; Size</summary>
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppZoomSlider">Zoom</label><input type="range" id="ppZoomSlider" min="30" max="300" value="100"></div>
+          <div class="resume-field-group"><label for="ppMoveX">Move Horizontal</label><input type="range" id="ppMoveX" min="-200" max="200" value="0"></div>
+          <div class="resume-field-group"><label for="ppMoveY">Move Vertical</label><input type="range" id="ppMoveY" min="-200" max="200" value="0"></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppAutoCenterBtn" type="button">Auto Center Face</button>
+          <button class="btn btn-secondary" id="ppFitScreenBtn" type="button">Fit to Screen</button>
+          <button class="btn btn-ghost" id="ppRotateBtn" type="button">Rotate 90\u00b0</button>
+          <button class="btn btn-ghost" id="ppFlipBtn" type="button">Flip</button>
+          <button class="btn btn-danger" id="ppResetBtn" type="button">Reset</button>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppCropToggleBtn" type="button" aria-pressed="false">Crop</button>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="ppCropLockRatio" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Lock to passport ratio</label>
+        </div>
+        <div class="row hidden" id="ppCropActions">
+          <button class="btn btn-primary" id="ppCropApplyBtn" type="button">Apply Crop</button>
+          <button class="btn btn-ghost" id="ppCropResetBtn" type="button">Reset Crop</button>
+          <button class="btn btn-ghost" id="ppCropCancelBtn" type="button">Cancel</button>
+        </div>
+        </details>
+
+        <details class="pp-accordion" id="ppAccordionBackground" open>
+        <summary class="pp-accordion-summary">Background</summary>
+        <div class="row" style="margin-top:6px;">
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="preset" checked style="margin-right:6px;accent-color:var(--accent1);">Country Default</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="white" style="margin-right:6px;accent-color:var(--accent1);">Pure White</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="gray" style="margin-right:6px;accent-color:var(--accent1);">Light Gray</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="blue" style="margin-right:6px;accent-color:var(--accent1);">Blue</label>
+          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="custom" style="margin-right:6px;accent-color:var(--accent1);">Custom<input type="color" id="ppCustomBgColor" value="#ffffff" style="margin-left:6px;vertical-align:middle;"></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-secondary" id="ppReplaceBgBtn" type="button">Replace Background (AI)</button>
+        </div>
+        <p class="editor-hint">Choosing a background color sets the target for AI background replacement below \u2014 tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
+        <div class="row hidden" id="ppManualBgRow">
+          <button class="btn btn-ghost" id="ppManualBgClickBtn" type="button">Manual: Click Background to Replace</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:10px;cursor:pointer;color:var(--ink-soft);"><input type="checkbox" id="ppDebugSegmentation" style="width:15px;height:15px;accent-color:var(--accent1);"> Debug Segmentation Mode (developer)</label>
+        <p class="editor-hint">When enabled, tapping Replace Background (AI) additionally logs detailed pixel-level data to the browser console and shows every intermediate stage below \u2014 for diagnosing background-replacement issues, not for normal use.</p>
+        <div class="hidden pp-debug-panel" id="ppDebugPanel"></div>
+        </details>
+
+        <details class="pp-accordion" id="ppAccordionAdjustments">
+        <summary class="pp-accordion-summary">Adjustments</summary>
+        <div class="resume-form-grid">
+          <div class="resume-field-group"><label for="ppBrightness">Brightness: <span id="ppBrightnessVal">0</span></label><input type="range" id="ppBrightness" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppContrast">Contrast: <span id="ppContrastVal">0</span></label><input type="range" id="ppContrast" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppSaturation">Saturation: <span id="ppSaturationVal">0</span></label><input type="range" id="ppSaturation" min="-100" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppSharpness">Sharpness: <span id="ppSharpnessVal">0</span></label><input type="range" id="ppSharpness" min="0" max="100" value="0"></div>
+          <div class="resume-field-group"><label for="ppTemperature">Temperature: <span id="ppTemperatureVal">0</span></label><input type="range" id="ppTemperature" min="-100" max="100" value="0"></div>
+        </div>
+        </details>
+
+        <span class="field-label" style="margin-top:14px;">Automated Suitability Score</span>
+        <div class="ats-score-wrap">
+          <div class="ats-score-num" id="ppScoreNum">\u2014</div>
+          <div><div style="font-weight:700;font-size:13px;">Automated checks (not an official validator)</div><div class="ats-score-label" id="ppScoreLabel"></div></div>
+        </div>
+        <ul class="ats-result-list" id="ppValidationList" style="margin-top:10px;"></ul>
+
+        <details class="pp-accordion" id="ppAccordionExport">
+        <summary class="pp-accordion-summary">Export &amp; Print</summary>
+          <div class="row hidden" id="ppDownloadRow">
+            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
+            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
+          </div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl">
+              <label for="ppSheetSize">Print Sheet Size</label>
+              <select id="ppSheetSize"><option value="4x6">4x6 inch</option><option value="5x7">5x7 inch</option><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option><option value="custom">Custom</option></select>
+            </div>
+            <div class="ctrl">
+              <label for="ppSheetMargin">Margin (pt)</label>
+              <input type="range" id="ppSheetMargin" min="6" max="40" value="18">
+            </div>
+            <div class="ctrl">
+              <label for="ppSheetGap">Spacing (pt)</label>
+              <input type="range" id="ppSheetGap" min="0" max="20" value="6">
+            </div>
+          </div>
+          <div class="resume-form-grid hidden" id="ppCustomPaperRow">
+            <div class="resume-field-group"><label for="ppCustomPaperW">Custom Width (in)</label><input type="number" id="ppCustomPaperW" value="4" min="1" max="20" step="0.1"></div>
+            <div class="resume-field-group"><label for="ppCustomPaperH">Custom Height (in)</label><input type="number" id="ppCustomPaperH" value="6" min="1" max="20" step="0.1"></div>
+          </div>
+
+          <div id="ppSheetInfo" style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;"></div>
+          <div id="ppSheetPreviewWrap" class="pp-sheet-preview-wrap"></div>
+          <p class="editor-hint">Tap a photo in the sheet preview, then tap another to swap their positions.</p>
+
+          <div class="row">
+            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
+          </div>
+        </details>
+      </div>
+
+      <div id="ppPrintRoot" class="pp-print-root"></div>"""
+
+RT_FORM = """<div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional portrait retouch editor \\u2014 skin smoothing, background blur, and a full set of Lightroom-style tone and color adjustments, running entirely in your browser at full resolution. Nothing you upload ever leaves your device.</p>
+
+      <div class="drop-zone" id="rtDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a portrait photo here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">JPG, PNG, or WEBP \\u2014 up to 30MB</div>
+        <input type="file" id="rtInput" accept="image/jpeg, image/png, image/webp">
+      </div>
+
+      <div class="model-status-line hidden" id="rtModelStatus" role="status"><span class="dot"></span><span></span></div>
+
+      <div id="rtStage" class="hidden">
+        <div class="row" style="margin-top:8px;">
+          <button class="btn btn-secondary" id="rtFitScreenBtn" type="button">Fit to Screen</button>
+          <button class="btn btn-ghost" id="rtCompareBtn" type="button" aria-pressed="false">Hold to Compare Original</button>
+          <button class="btn btn-danger" id="rtResetBtn" type="button">Reset All</button>
+        </div>
+        <div class="editor-stage-wrap" id="rtCanvasStageWrap" style="margin-top:14px;cursor:default;">
+          <canvas id="rtPreviewCanvas" role="img" aria-label="Photo retouch preview"></canvas>
+        </div>
+        <div class="row" style="margin-top:8px;align-items:center;">
+          <label style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="rtZoomVal">100</span>%</label>
+          <input type="range" id="rtZoomSlider" min="30" max="400" value="100" style="flex:1;">
+        </div>
+
+        <details class="pp-accordion" id="rtAccordionFace" open>
+          <summary class="pp-accordion-summary">Skin &amp; Face</summary>
+          <p class="editor-hint">Face-aware smoothing that protects eyes, brows, nose, mouth, and ears from being blurred \\u2014 detected automatically once a face is found.</p>
+          <div id="rtFaceStatus" style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;"></div>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtSkinSmooth">Skin Smoothing: <span id="rtSkinSmoothVal">0</span></label><input type="range" id="rtSkinSmooth" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtFaceBrighten">Face Brightening: <span id="rtFaceBrightenVal">0</span></label><input type="range" id="rtFaceBrighten" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtSkinTone">Skin Tone Warmth: <span id="rtSkinToneVal">0</span></label><input type="range" id="rtSkinTone" min="-50" max="50" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionLight">
+          <summary class="pp-accordion-summary">Light</summary>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtExposure">Exposure: <span id="rtExposureVal">0</span></label><input type="range" id="rtExposure" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtBrightness">Brightness: <span id="rtBrightnessVal">0</span></label><input type="range" id="rtBrightness" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtContrast">Contrast: <span id="rtContrastVal">0</span></label><input type="range" id="rtContrast" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtHighlights">Highlights: <span id="rtHighlightsVal">0</span></label><input type="range" id="rtHighlights" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtShadows">Shadows: <span id="rtShadowsVal">0</span></label><input type="range" id="rtShadows" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtWhites">Whites: <span id="rtWhitesVal">0</span></label><input type="range" id="rtWhites" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtBlacks">Blacks: <span id="rtBlacksVal">0</span></label><input type="range" id="rtBlacks" min="-100" max="100" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionColor">
+          <summary class="pp-accordion-summary">Color</summary>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtSaturation">Saturation: <span id="rtSaturationVal">0</span></label><input type="range" id="rtSaturation" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtVibrance">Vibrance: <span id="rtVibranceVal">0</span></label><input type="range" id="rtVibrance" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtTemperature">Temperature: <span id="rtTemperatureVal">0</span></label><input type="range" id="rtTemperature" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtTint">Tint: <span id="rtTintVal">0</span></label><input type="range" id="rtTint" min="-100" max="100" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionDetail">
+          <summary class="pp-accordion-summary">Detail</summary>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtClarity">Clarity: <span id="rtClarityVal">0</span></label><input type="range" id="rtClarity" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtTexture">Texture: <span id="rtTextureVal">0</span></label><input type="range" id="rtTexture" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtDehaze">Dehaze: <span id="rtDehazeVal">0</span></label><input type="range" id="rtDehaze" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtSharpness">Sharpness: <span id="rtSharpnessVal">0</span></label><input type="range" id="rtSharpness" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtNoiseReduction">Noise Reduction: <span id="rtNoiseReductionVal">0</span></label><input type="range" id="rtNoiseReduction" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtHdr">HDR Effect: <span id="rtHdrVal">0</span></label><input type="range" id="rtHdr" min="0" max="100" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionBackground">
+          <summary class="pp-accordion-summary">Background</summary>
+          <p class="editor-hint">Uses AI subject detection to blur only the background, keeping your subject sharp \\u2014 a portrait bokeh effect. First use downloads a small AI model (a few MB, cached after).</p>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtBgBlur">Background Blur: <span id="rtBgBlurVal">0</span></label><input type="range" id="rtBgBlur" min="0" max="100" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionFilters">
+          <summary class="pp-accordion-summary">Filters &amp; Presets</summary>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-preset="none" type="button">None</button>
+            <button class="btn btn-ghost" data-preset="natural" type="button">Natural</button>
+            <button class="btn btn-ghost" data-preset="portrait" type="button">Professional Portrait</button>
+            <button class="btn btn-ghost" data-preset="vintage" type="button">Vintage</button>
+            <button class="btn btn-ghost" data-preset="cinematic" type="button">Cinematic</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionExport">
+          <summary class="pp-accordion-summary">Export</summary>
+          <div class="row">
+            <select id="rtExportFormat"><option value="png">PNG (lossless)</option><option value="jpeg" selected>JPG (max quality)</option><option value="webp">WEBP (max quality)</option></select>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn btn-primary" id="rtDownloadBtn" type="button" style="flex:1;">Download \\u2014 Original Resolution</button>
+          </div>
+          <div id="rtOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;"></div>
+        </details>
+      </div>"""
+
 IMAGE_TOOLS = [
+    {"slug":"passport-photo-maker","name":"Passport & Visa Photo Maker","desc":"Auto-cropped passport and visa photos for 42 countries with real AI face detection.",
+     "subtitle":"Professional passport and visa photos for 42 countries, with AI face detection and automatic sizing \u2014 entirely in your browser.",
+     "meta":"Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.",
+     "category":"MultimediaApplication","form":PP_FORM,
+     "intro":"Passport & Visa Photo Maker uses real AI face detection (the same MediaPipe technology behind ToolFlight's AI Background Remover and AI Photo Enhancer) to automatically position and size your photo to a selected country's typical passport or visa specification, with manual fine-tuning, background replacement, and automated compliance checks \u2014 all running locally in your browser. Photo requirements genuinely do change and vary by application type, so always verify current requirements on your country's official passport or embassy website before submitting \u2014 see our <a href=\"blog/passport-photo-rules-ai-editing.html\">full guide to passport photo rules and AI editing limitations</a> for more.",
+     "features":["42 built-in country and document presets","Real AI face detection for automatic positioning","AI-powered background replacement, plus solid color options","Brightness, contrast, saturation, sharpness, and temperature adjustment","Automated checks for resolution, exposure, blur, and background uniformity","Printable photo sheets (4x6in, A4, Letter) with automatic duplication"],
+     "benefits":["Nothing is uploaded \u2014 face detection and all processing run locally in your browser","No signup, no per-photo fee, no watermark","One tool for dozens of countries instead of hunting for country-specific templates"],
+     "how_to":"Choose your country or document type, upload a photo (or use your camera), and the AI will automatically detect your face and position the crop. Fine-tune with the zoom and move controls, choose a background, adjust lighting if needed, then review the automated checks before downloading your photo or a printable sheet.",
+     "faq":[("How do I make a passport photo online for free?","Choose your country from the dropdown, upload a clear, front-facing photo with a plain background, let the AI auto-position your face, review the automated checks, and download the result \u2014 no signup or payment required."),
+            ("What are the US passport photo requirements?","2 x 2 inches (51 x 51mm), plain white or off-white background, with your head measuring 1 to 1\u215c inches (25-35mm) from chin to crown \u2014 roughly 50-69% of the frame height. This tool's US preset is built to that specification, cross-checked against multiple current sources, but always confirm against travel.state.gov before submitting."),
+            ("What size is a UK passport photo?","35 x 45mm, a size shared by many other countries' passport and Schengen visa photos. This tool's UK preset uses that size by default."),
+            ("What is the Schengen visa photo size?","35 x 45mm, the same widely-used ICAO-style format as most European passport photos."),
+            ("Can I print passport photos at home?","Yes \u2014 use the Print Sheet PDF export, which tiles multiple copies onto a 4x6in, A4, or Letter page sized for standard photo paper. Home printing quality varies, so check your specific application's rules about home-printed photos."),
+            ("Is this guaranteed to be accepted?","No tool can guarantee that, including this one \u2014 passport and visa photo rules are set and enforced by each country's government and can change at any time. This tool is a genuinely useful starting point built on commonly-documented specifications, not an official verification service. Always check your country's current official requirements before submitting."),
+            ("Are these specifications a legal guarantee?","No. USA, UK, and Canada dimensions were individually checked against multiple current public sources in July 2026. The remaining presets follow well-established, widely-used conventions (mostly the standard 35\u00d745mm ICAO/Schengen format) that were not individually re-verified against each country's current official source this pass. Requirements change \u2014 always confirm with your country's official passport or embassy website before submitting."),
+            ("Why shouldn't I use AI background replacement or enhancement for a US passport photo?","As of January 2026, the U.S. Department of State explicitly rejects passport photos that show any sign of digital alteration \u2014 including background replacement and lighting/skin adjustments, even subtle ones. This tool's background replacement and enhancement sliders are provided for other documents and general use, but we'd recommend not using them for a US passport or visa photo. Use a plain, evenly-lit background captured directly, and rely on cropping and sizing only. This tool cannot detect AI-alteration the way the official validator does \u2014 always verify against travel.state.gov before submitting."),
+            ("Where can I read more about passport photo rules and AI editing limitations?","See our full guide, \"Passport Photo Rules Explained: Requirements, Backgrounds, and Why AI Editing Can Get You Rejected,\" which covers country-specific differences, background rules, and how to verify your photo before submitting.")],
+     "related":["background-remover","image-crop"]},
+
+
     {"slug":"image-compress","name":"Compress Image","desc":"Shrink JPG/PNG/WEBP file size with a live before & after preview.",
      "subtitle":"Shrink JPG, PNG, and WEBP file size with a live before &amp; after preview — free, private, instant.",
      "meta":"Free online image compressor. Shrink JPG, PNG, and WEBP file size with a live before/after preview, right in your browser.",
@@ -1146,6 +1876,34 @@ IMAGE_TOOLS = [
             ("Does this upload my photos anywhere?","No — compression happens entirely in your browser using JavaScript. Your image is never transmitted to a server.")],
      "related":["image-crop","rotate-flip"]},
 
+    {"slug":"ai-ocr","name":"AI OCR \u2014 Image & PDF to Text","desc":"Extract editable, searchable text from images and scanned PDFs with real OCR.",
+     "subtitle":"Extract editable, searchable text from images and scanned PDFs \u2014 real OCR, running entirely in your browser.",
+     "meta":"Free AI OCR tool. Extract text from JPG, PNG, WEBP images and scanned PDFs in English, Urdu, or Arabic, entirely in your browser \u2014 no upload, no signup.",
+     "category":"BusinessApplication","form":OCR_FORM,
+     "intro":"AI OCR reads the actual text in your images and scanned PDFs using Tesseract.js, a real open-source OCR engine \u2014 not a fake preview or a placeholder. Supports English, Urdu, and Arabic, individually or combined. For PDFs specifically, each page is rendered as an image first and then read with the same OCR engine, since Tesseract.js's own documentation states it doesn't read PDF files directly \u2014 this tool is upfront about that rather than pretending otherwise.",
+     "features":["Real OCR text extraction, not a placeholder or preview","English, Urdu, and Arabic \u2014 select any combination","Works on images and multi-page scanned PDFs","Search within the extracted text","Copy to clipboard, or download as TXT or DOCX","Cancel a running extraction at any time"],
+     "benefits":["Nothing is uploaded \u2014 the OCR engine and all processing run locally in your browser","No signup, no page limit imposed by a server","Genuinely editable output you can search, copy, and reuse"],
+     "how_to":"Choose the language(s) present in your file, upload an image or PDF (drag and drop, browse, or paste from clipboard), then tap Extract Text. For PDFs, each page is processed in turn with its own progress. Copy the result, search within it, or download as TXT or DOCX.",
+     "faq":[("Does this actually read PDF files directly?","Not literally \u2014 and we'd rather tell you that plainly than pretend otherwise. The OCR engine this tool uses (Tesseract.js) explicitly does not support PDF files in its own documentation. So for PDFs, each page is rendered as an image first, then read with the same real OCR engine used for images. The result is genuine extracted text either way."),
+            ("How accurate is the text extraction?","Accuracy depends heavily on image quality \u2014 clean, high-resolution scans of printed text typically extract very well. Handwriting, low-resolution photos, unusual fonts, or unselected languages will reduce accuracy. This is a real limitation of OCR technology generally, not specific to this tool."),
+            ("Why choose the language before extracting?","The OCR engine loads a language-specific model to recognize characters, so it needs to know which script(s) to expect. Selecting a language that isn't actually in your file \u2014 or missing one that is \u2014 will reduce accuracy."),
+            ("Is my file uploaded anywhere?","No \u2014 both the OCR engine and all processing run entirely inside your browser. Your file is never sent to a server.")],
+     "related":["magic-eraser","passport-photo-maker"]},
+
+    {"slug":"ai-photo-retouch","name":"AI Photo Retouch & Beauty Editor","desc":"Professional portrait retouching \\u2014 skin smoothing, background blur, and a full Lightroom-style adjustment panel, entirely in your browser.",
+     "subtitle":"Skin smoothing, background blur, and a complete set of tone, color, and detail adjustments \\u2014 face-aware, natural-looking, and processed entirely on your device.",
+     "meta":"Free AI photo retouch and beauty editor: skin smoothing, face brightening, background blur, exposure, contrast, saturation, clarity, and more \\u2014 all in your browser, full resolution, nothing uploaded.",
+     "category":"PhotoEditingApplication","form":RT_FORM,
+     "intro":"AI Photo Retouch is a professional-grade portrait editor \\u2014 skin smoothing that automatically protects your eyes, brows, nose, mouth, and ears from being blurred, background blur for a natural bokeh effect, and a complete Lightroom-style panel covering light, color, and detail. Everything runs locally in your browser at full resolution; your photo is never uploaded anywhere.",
+     "features":["Face-aware skin smoothing that detects and protects eyes, nose, mouth, and ears","AI background blur (portrait bokeh) using on-device subject detection","Full tone panel: exposure, brightness, contrast, highlights, shadows, whites, blacks","Full color panel: saturation, vibrance, temperature, tint","Detail panel: clarity, texture, dehaze, sharpness, noise reduction, HDR effect","One-tap filter presets: Natural, Professional Portrait, Vintage, Cinematic","Hold-to-compare against your original photo at any time","Pinch-to-zoom, drag-to-pan, double-tap zoom, and Fit to Screen on mobile","Export at full original resolution as PNG, JPG, or WEBP"],
+     "benefits":["Your photo never leaves your device \\u2014 all processing happens in your browser","Face-aware smoothing keeps skin natural instead of plastic-looking","No account, no watermark, no upload limits beyond file size"],
+     "how_to":"Upload a portrait photo, then use the accordion sections \\u2014 Skin & Face, Light, Color, Detail, Background, and Filters \\u2014 to adjust your photo. Only one section stays open at a time so sliders don't get bumped by accident while scrolling on mobile. Hold Compare to see your original, then download in your preferred format.",
+     "faq":[("Will skin smoothing make my photo look fake or plastic?","Skin smoothing here is face-aware and limited by design \\u2014 it detects your eyes, eyebrows, nose, mouth, and ears and excludes them from the smoothing effect, and the strength is capped to stay natural rather than airbrushed. For the most natural result, keep the amount modest and check with Hold to Compare."),
+            ("Does background blur work on any photo?","Background blur uses on-device AI subject detection, which works best on portraits with one clear subject reasonably separated from the background \\u2014 similar to the technology behind our AI Background Remover. Complex or busy scenes may blur less precisely."),
+            ("Is this the same as your AI Photo Enhancer?","No \\u2014 AI Photo Enhancer is a simpler, faster one-click enhancement tool. This is a full manual retouching studio with a complete adjustment panel, face-aware skin smoothing, and background blur, for people who want direct control over every aspect of the edit."),
+            ("Is my photo uploaded anywhere?","No. Every adjustment, and the AI models used for face and subject detection, run entirely in your browser. Your photo is never sent to a server.")],
+     "related":["background-remover","ai-photo-enhancer"]},
+
     {"slug":"image-crop","name":"Image Crop Tool","desc":"Free crop or locked ratios (1:1, 16:9, 9:16), plus rotate.",
      "subtitle":"Free crop or locked ratios — 1:1, 16:9, 9:16 — plus rotate, all at full resolution.",
      "meta":"Free online image crop tool. Crop freely or lock to 1:1, 16:9, or 9:16 ratios, rotate, and download at full original resolution.",
@@ -1157,18 +1915,6 @@ IMAGE_TOOLS = [
      "faq":[("Does cropping reduce image quality?","No — the download is reconstructed from your original file at full resolution, regardless of how the on-screen preview looks."),
             ("Can I crop on my phone?","Yes — dragging the crop box and handles works with touch as well as a mouse.")],
      "related":["image-compress","rotate-flip"]},
-
-    {"slug":"image-watermark","name":"Image Watermark Tool","desc":"Add draggable text or logo watermarks with adjustable opacity.",
-     "subtitle":"Add a draggable text or logo watermark, with adjustable size, color, and opacity.",
-     "meta":"Free online image watermark tool. Add a text or logo watermark with adjustable size, color, opacity, and position, at full resolution.",
-     "category":"MultimediaApplication","form":WATERMARK_FORM,
-     "intro":"Protect your photos or brand your content with a text or logo watermark you can position exactly where you want — dragged directly onto the image or snapped to a preset corner.",
-     "features":["Text watermark with adjustable font size and color","Logo watermark from any uploaded image","Opacity control and 5 position presets","Drag the watermark directly on the canvas for precise placement"],
-     "benefits":["Full-resolution output, matching your original image size","No recurring cost per image, unlike many watermarking services","Runs entirely offline in your browser"],
-     "how_to":"Upload an image, choose text or logo watermark, adjust size/color/opacity, then either tap a position preset or drag the watermark directly on the image to place it exactly where you want.",
-     "faq":[("Can I use my own logo?","Yes — switch to \"Logo watermark\" and upload any PNG, JPG, or WEBP image; a transparent PNG logo works best."),
-            ("Is the watermark placed at full resolution?","Yes — the downloaded file is rebuilt from your original image at its full original size.")],
-     "related":["image-crop","image-compress"]},
 
     {"slug":"rotate-flip","name":"Rotate & Flip Tool","desc":"Rotate 90°/180°/270° and flip horizontal or vertical.",
      "subtitle":"Rotate 90°, 180°, or 270°, and flip horizontal or vertical, with a live preview.",
@@ -1218,7 +1964,21 @@ IMAGE_TOOLS = [
             ("Will this change how I look?","No \u2014 this tool never warps face shape, never changes identity, and never adds makeup. It only adjusts lighting, color, and smooths skin texture using your own real pixels \u2014 nothing is generated or replaced."),
             ("Why does skin smoothing sometimes look uneven without Face Enhancement on?","Without Face Enhancement, smoothing applies evenly across the whole image, including backgrounds and clothing. Turning it on limits smoothing to detected skin specifically, which usually looks more natural on portraits."),
             ("Is my photo uploaded anywhere?","No \u2014 both the AI face detection and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
-     "related":["magic-eraser","image-compress"]},
+     "related":["magic-eraser","ai-image-upscaler"]},
+
+    {"slug":"ai-image-upscaler","name":"AI Image Upscaler","desc":"Upscale images 2x or 4x with real AI \u2014 a browser-optimized model, not the largest available.",
+     "subtitle":"Upscale images 2x or 4x with real AI super-resolution \u2014 a browser-optimized model chosen deliberately over the largest available option.",
+     "meta":"Free AI image upscaler. Upscale JPG, PNG, or WEBP images 2x or 4x with real AI super-resolution (ESRGAN via UpscalerJS), entirely in your browser.",
+     "category":"MultimediaApplication","form":UPS_FORM,
+     "intro":"AI Image Upscaler increases resolution using a real AI super-resolution model (an ESRGAN-family network, run via UpscalerJS and TensorFlow.js) \u2014 not a simple resize or sharpen filter. By default it uses the lighter model tier that UpscalerJS's own maintainers specifically document as built for browser use, rather than automatically reaching for the largest, slowest option. A \u201cHigher quality (slower)\u201d toggle is available if you'd rather trade speed for a larger model.",
+     "features":["Real AI super-resolution, not a basic resize or sharpen filter","2x and 4x scale options","Optional higher-quality model tier for slower, more detailed results","Before/after comparison slider","Paste directly from clipboard, drag and drop, or browse","Automatic safety limit to prevent browser memory crashes on very large images"],
+     "benefits":["Nothing is uploaded \u2014 the AI model and all processing run locally in your browser","Fast default model choice means a quick first-use download instead of a long wait","No signup, no watermark"],
+     "how_to":"Upload an image (drag and drop, browse, or paste from clipboard), choose 2x or 4x, then tap AI Upscale. The AI model downloads once on first use and is cached afterward. Compare before/after with the slider, then download your result.",
+     "faq":[("Why not always use the highest-quality AI model?","The larger model tier is genuinely better on detailed images, but its own library documentation describes it as best suited to a machine with a GPU, with significant latency in a plain browser tab. Defaulting to it would mean a slow, frustrating experience for most people, so the lighter, browser-optimized tier is the default \u2014 the higher-quality option is there if you want to wait for it."),
+            ("Why isn't 8x offered?","UpscalerJS's own model documentation states that its 8x model doesn't work reliably in a browser environment. Rather than offer something the library's own maintainers describe as unreliable, this tool caps out at 4x."),
+            ("Will this fix a blurry or low-quality photo perfectly?","It will meaningfully improve sharpness, texture, and edge clarity on most photos, but it can't invent detail that was never captured \u2014 severely blurry or heavily compressed source images will still show their original limitations, just less harshly."),
+            ("Is my photo uploaded anywhere?","No \u2014 both the AI model and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
+     "related":["magic-eraser","ai-ocr"]},
 
     {"slug":"magic-eraser","name":"Magic Eraser (AI Object Remover)","desc":"Brush over unwanted objects and remove them with real AI inpainting.",
      "subtitle":"Brush over unwanted people, objects, or blemishes and remove them with real AI inpainting \u2014 not a blur or clone trick.",
@@ -1233,6 +1993,18 @@ IMAGE_TOOLS = [
             ("Does this work on very large or very detailed objects?","It works best on small to medium objects with a reasonably plain or repeating surrounding background \u2014 like most inpainting tools, very large or highly detailed removals are more likely to show visible artifacts."),
             ("Is my photo uploaded anywhere?","No \u2014 both the AI model and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
      "related":["background-remover","ai-photo-enhancer"]},
+    {"slug":"image-watermark","name":"Image Watermark Tool","desc":"Add draggable text or logo watermarks with adjustable opacity.",
+     "subtitle":"Add a draggable text or logo watermark, with adjustable size, color, and opacity.",
+     "meta":"Free online image watermark tool. Add a text or logo watermark with adjustable size, color, opacity, and position, at full resolution.",
+     "category":"MultimediaApplication","form":WATERMARK_FORM,
+     "intro":"Protect your photos or brand your content with a text or logo watermark you can position exactly where you want — dragged directly onto the image or snapped to a preset corner.",
+     "features":["Text watermark with adjustable font size and color","Logo watermark from any uploaded image","Opacity control and 5 position presets","Drag the watermark directly on the canvas for precise placement"],
+     "benefits":["Full-resolution output, matching your original image size","No recurring cost per image, unlike many watermarking services","Runs entirely offline in your browser"],
+     "how_to":"Upload an image, choose text or logo watermark, adjust size/color/opacity, then either tap a position preset or drag the watermark directly on the image to place it exactly where you want.",
+     "faq":[("Can I use my own logo?","Yes — switch to \"Logo watermark\" and upload any PNG, JPG, or WEBP image; a transparent PNG logo works best."),
+            ("Is the watermark placed at full resolution?","Yes — the downloaded file is rebuilt from your original image at its full original size.")],
+     "related":["image-crop","image-compress"]},
+
 ]
 IMG_TOOL_BY_SLUG = {t["slug"]: t for t in IMAGE_TOOLS}
 
@@ -1745,6 +2517,19 @@ seo_body = f"""<div class="hero-sub">
 </div>
 """
 
+ai_body = f"""<div class="hero-sub">
+  <span class="hero-badge"><span class="dot"></span> 1 free AI tool</span>
+  <h1>AI Tools</h1>
+  <p class="subtitle">AI-assisted writing tools for ToolFlight — free, private, honest about what does and doesn't currently run. Each one has its own page.</p>
+</div>
+
+<div class="container">
+  <div class="category-hub-grid">
+    {category_hub_card("ai-email-writer.html", ICON_AI_EMAIL, "AI Email Writer", "A real email-writing interface and provider architecture.", cta="Open tool")}
+  </div>
+</div>
+"""
+
 # ============ STANDALONE SEO TOOL PAGES ============
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
@@ -1992,6 +2777,78 @@ GKW_FORM = """<div class="view-title"><h2>AI Keyword Generator</h2></div>
         <div id="gkwResultsBody" style="margin-top:14px;max-height:600px;overflow-y:auto;"></div>
       </div>"""
 
+AEW_FORM = """<div class="view-title"><h2>AI Email Writer</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A real, working email-writing interface with a genuine provider abstraction \u2014 not a fake AI demo. This static, backend-free site can't safely hold a real API key, so no provider is currently connected. See the FAQ below for exactly what that means and why.</p>
+
+      <form id="aewForm">
+        <div class="qr-controls">
+          <div class="ctrl">
+            <label for="aewEmailType">Email Type</label>
+            <select id="aewEmailType">
+              <option>Professional</option><option>Business</option><option>Formal</option><option>Friendly</option>
+              <option>Customer Support</option><option>Complaint</option><option>Apology</option><option>Thank You</option>
+              <option>Follow Up</option><option>Job Application</option><option>Meeting Request</option><option>Sales</option>
+              <option>Marketing</option><option>Invitation</option><option>Resignation</option><option>Custom</option>
+            </select>
+          </div>
+          <div class="ctrl">
+            <label for="aewTone">Tone</label>
+            <select id="aewTone">
+              <option>Professional</option><option>Friendly</option><option>Formal</option><option>Persuasive</option>
+              <option>Confident</option><option>Polite</option><option>Casual</option>
+            </select>
+          </div>
+          <div class="ctrl">
+            <label for="aewLength">Length</label>
+            <select id="aewLength"><option>Short</option><option selected>Medium</option><option>Long</option></select>
+          </div>
+          <div class="ctrl">
+            <label for="aewLanguage">Language</label>
+            <select id="aewLanguage"><option>English</option></select>
+          </div>
+        </div>
+
+        <div class="resume-form-grid" style="margin-top:14px;">
+          <div class="resume-field-group"><label for="aewRecipient">Recipient</label><input type="text" id="aewRecipient" placeholder="e.g. Hiring Manager, John Smith"></div>
+          <div class="resume-field-group"><label for="aewSubject">Subject</label><input type="text" id="aewSubject" placeholder="e.g. Following up on our meeting"></div>
+        </div>
+        <div class="resume-field-group" style="margin-top:10px;">
+          <label for="aewPurpose">Purpose</label>
+          <input type="text" id="aewPurpose" placeholder="What is this email for?">
+        </div>
+        <div class="resume-field-group" style="margin-top:10px;">
+          <label for="aewKeyPoints">Key Points</label>
+          <textarea id="aewKeyPoints" rows="4" placeholder="One point per line" style="width:100%;font-family:inherit;font-size:13.5px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;"></textarea>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="aewGenerateBtn" type="button" style="flex:1;">Generate Email</button>
+          <button class="btn btn-danger hidden" id="aewCancelBtn" type="button">Cancel</button>
+        </div>
+        <p class="editor-hint">Tip: press Ctrl+Enter (Cmd+Enter on Mac) to generate.</p>
+      </form>
+
+      <div class="progress-wrap hidden" id="aewLoadingWrap">
+        <div class="progress-track"><div class="progress-fill" style="width:60%;"></div></div>
+        <div class="progress-label">Generating\u2026</div>
+      </div>
+
+      <p class="editor-hint hidden" id="aewErrorBox" style="color:var(--err);" role="alert"></p>
+
+      <div id="aewResultWrap" class="hidden" style="margin-top:16px;">
+        <span class="field-label">Generated Email</span>
+        <div id="aewResult" style="margin-top:8px;white-space:pre-wrap;font-size:13.5px;line-height:1.6;padding:16px;border-radius:12px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);min-height:120px;" tabindex="0" role="textbox" aria-readonly="true" aria-label="Generated email text"></div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;">
+          <span id="aewWordCount">0 words</span><span id="aewCharCount">0 characters</span><span id="aewReadingTime">~1 min read</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-secondary" id="aewCopyBtn" type="button" disabled>Copy</button>
+        <button class="btn btn-success" id="aewDownloadBtn" type="button" disabled>Download TXT</button>
+        <button class="btn btn-ghost" id="aewClearBtn" type="button">Clear</button>
+      </div>"""
+
 SEO_TOOLS = [
     {"slug":"qr-code-generator","name":"QR Generator","desc":"Custom colors, size, and PNG or SVG export.",
      "subtitle":"Generate a custom QR code with adjustable colors, size, and PNG or SVG export.",
@@ -2044,6 +2901,23 @@ SEO_TOOLS = [
 ]
 SEO_TOOL_BY_SLUG = {t["slug"]: t for t in SEO_TOOLS}
 
+AI_TOOLS = [
+    {"slug":"ai-email-writer","name":"AI Email Writer","desc":"A real email-writing interface and provider architecture \u2014 no API key configured on this static site.",
+     "subtitle":"A complete email-writing interface with a genuine AI provider architecture \u2014 honestly disclosed: no provider is currently connected.",
+     "meta":"AI Email Writer for ToolFlight: choose email type, tone, and length, and generate a draft. A real provider abstraction supporting OpenAI, Claude, Gemini, Groq, and OpenRouter \u2014 currently unconfigured on this static, backend-free site.",
+     "category":"BusinessApplication","form":AEW_FORM,
+     "intro":"AI Email Writer provides a complete interface for drafting emails \u2014 email type, recipient, subject, purpose, key points, tone, and length \u2014 built on a real provider abstraction that any of OpenAI, Claude, Gemini, Groq, or OpenRouter could plug into without any change to this page. We'd rather tell you plainly than hide it: this static, backend-free site has no secure way to store a real API key client-side, so no provider is currently connected, and the tool says so honestly rather than faking a result.",
+     "features":["Full set of email type, tone, and length options","Real prompt construction from your inputs, visible in the code, not hidden","Character count, word count, and estimated reading time","Copy to clipboard and download as TXT","Keyboard shortcut: Ctrl+Enter (Cmd+Enter on Mac) to generate","Cancel button and network-timeout handling built in"],
+     "benefits":["Nothing about your draft is stored anywhere \u2014 the interface runs entirely in your browser","A genuinely reusable provider architecture, not a one-off hack","Honest behavior: it tells you clearly when it can't do something, instead of faking a result"],
+     "how_to":"Fill in the email type, recipient, subject, purpose, and key points, choose a tone and length, then tap Generate Email (or press Ctrl+Enter). Since no AI provider is currently connected on this static site, you'll see a clear message explaining why, rather than a fabricated email.",
+     "faq":[("Why doesn't this actually generate an email?","Because we won't fake it. Real AI email generation needs a large language model, which can't run meaningfully in a browser the way our image-based AI tools do \u2014 it requires a real API call to a provider like OpenAI or Claude, which in turn requires a secret API key. A key can never be safely embedded in client-side JavaScript on a static site like this one — anyone could view the page source and take it. So instead of faking a response, this tool is upfront that no provider is currently connected."),
+            ("What would it take to make this fully functional?","A small secure backend (even a single serverless function) to hold the API key and forward requests to a real provider — the entire interface, prompt construction, and provider abstraction here are already built and ready for that; only the key management piece is missing, deliberately."),
+            ("Which providers does the architecture support?","The code includes real, correctly-structured request builders for OpenAI, Claude (Anthropic), Gemini, Groq, and OpenRouter. Any one of them can be activated by supplying a key through a secure backend, without changing this page's interface."),
+            ("Is my draft data sent anywhere right now?","No \u2014 with no provider connected, nothing leaves your browser. If a provider is connected in the future, only the fields you fill in would be sent to generate the draft, and that will be disclosed clearly at that time.")],
+     "related":[]},
+]
+AI_TOOL_BY_SLUG = {t["slug"]: t for t in AI_TOOLS}
+
 def build_seo_tool_page(tool):
     import json as _json
     breadcrumb = f'''<nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
@@ -2095,6 +2969,90 @@ def build_seo_tool_page(tool):
 <div class="container">
   <div class="row" style="margin:0 0 18px;">
     <a href="seo-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to SEO Tools</a>
+  </div>
+
+  <div class="workspace">
+      {tool["form"]}
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the {tool["name"]}</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["intro"]}</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{features_html}</ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["how_to"]}</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{benefits_html}</ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+{faq_html}    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+{related_html}    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{_json.dumps(breadcrumb_schema)}</script>
+<script type="application/ld+json">{_json.dumps(webpage_schema)}</script>
+<script type="application/ld+json">{_json.dumps(software_schema)}</script>
+<script type="application/ld+json">{_json.dumps(faqpage_schema)}</script>
+"""
+    return body
+
+def build_ai_tool_page(tool):
+    import json as _json
+    breadcrumb = f'''<nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="ai-tools.html" style="color:var(--ink-soft);text-decoration:none;">AI Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">{tool["name"]}</span>
+</nav>'''
+
+    features_html = "".join(f'<li>{f}</li>' for f in tool["features"])
+    benefits_html = "".join(f'<li>{b}</li>' for b in tool["benefits"])
+    faq_html = ""
+    faq_items = []
+    for q, a in tool["faq"]:
+        faq_html += f'    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>{q}</strong><br>{a}</p>\n'
+        faq_items.append({"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}})
+
+    related_html = ""
+    for rslug in tool["related"]:
+        rt = AI_TOOL_BY_SLUG[rslug]
+        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">AI Tool</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
+
+    breadcrumb_schema = {
+        "@context": "https://schema.org", "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"},
+            {"@type": "ListItem", "position": 2, "name": "AI Tools", "item": "https://toolflight.com/ai-tools.html"},
+            {"@type": "ListItem", "position": 3, "name": tool["name"], "item": f'https://toolflight.com/{tool["slug"]}.html'},
+        ]
+    }
+    webpage_schema = {
+        "@context": "https://schema.org", "@type": "WebPage",
+        "name": tool["name"], "description": tool["meta"], "url": f'https://toolflight.com/{tool["slug"]}.html'
+    }
+    software_schema = {
+        "@context": "https://schema.org", "@type": "SoftwareApplication",
+        "name": tool["name"], "applicationCategory": tool["category"], "operatingSystem": "Any",
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
+    }
+    faqpage_schema = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": faq_items}
+
+    body = f"""<div class="hero-sub">
+  {breadcrumb}
+  <h1>{tool["name"]}</h1>
+  <p class="subtitle">{tool["subtitle"]}</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="ai-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to AI Tools</a>
   </div>
 
   <div class="workspace">
@@ -2275,11 +3233,12 @@ def build_contact_body():
 
 PAGE_DEFS = [
     ("index.html", "ToolFlight — Free Online PDF, Image & Everyday Tools", "Merge PDFs, compress images, and more free tools — no signup, files never leave your device.", index_body),
-    ("pdf-tools.html", "Free Online PDF Tools — Merge, Split, Compress & Convert | ToolFlight", "5 free online PDF tools: merge, split, compress, image to PDF, and PDF to image. Each with its own dedicated page. No upload, no signup.", pdf_body),
-    ("image-tools.html", "Free Online Image Tools — AI Photo Enhancer, Object Remover, Background Remover & More | ToolFlight", "8 free online image tools: compress, crop, watermark, rotate/flip, AI background remover, background changer, AI object remover, and AI photo enhancer. Each with its own dedicated page.", image_body),
+    ("pdf-tools.html", "Free Online PDF Tools — Merge, Split, Compress, Resume Builder & More | ToolFlight", "8 free online PDF tools: merge, split, compress, image to PDF, PDF to image, PDF to Word, Word to PDF, and a resume builder with ATS checker. Each with its own dedicated page. No upload, no signup.", pdf_body),
+    ("image-tools.html", "Free Online Image Tools — Passport Photo Maker, AI OCR, Upscaler & More | ToolFlight", "11 free online image tools: compress, crop, watermark, rotate/flip, AI background remover, background changer, AI object remover, AI photo enhancer, AI image upscaler, AI OCR, and a passport photo maker. Each with its own dedicated page.", image_body),
     ("calculators.html", "Free Online Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight", "9 free online calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter. Each with its own dedicated page.", calc_body),
     ("finance-tools.html", "Finance Tools — Currency & Loan Calculators | ToolFlight", "Free finance tools including currency converter and loan calculator.", finance_body),
     ("seo-tools.html", "Free Online SEO Tools — Keyword Generator, QR Code, Robots.txt & Meta Tags | ToolFlight", "4 free online SEO tools: AI keyword generator, QR code generator, robots.txt generator, and meta tag generator. Each with its own dedicated page.", seo_body),
+    ("ai-tools.html", "Free AI Tools — AI Email Writer & More | ToolFlight", "Free AI-assisted tools for ToolFlight, starting with the AI Email Writer. Honest about what's currently connected and what isn't.", ai_body),
 ]
 
 for filename, title, desc, body in PAGE_DEFS:
@@ -2324,6 +3283,16 @@ for tool in SEO_TOOLS:
         f.write(html)
     print("wrote", filename, len(html), "chars")
 
+# ============ STANDALONE AI TOOL PAGES (1 file) ============
+for tool in AI_TOOLS:
+    filename = tool["slug"] + ".html"
+    title = f'{tool["name"]} — Free Online | ToolFlight'
+    body = build_ai_tool_page(tool)
+    html = ensure_button_types(page_shell(filename, title, tool["meta"], body))
+    with open(os.path.join(OUT, filename), "w") as f:
+        f.write(html)
+    print("wrote", filename, len(html), "chars")
+
 # ============ STANDALONE IMAGE TOOL PAGES (6 files) ============
 for tool in IMAGE_TOOLS:
     filename = tool["slug"] + ".html"
@@ -2336,6 +3305,58 @@ for tool in IMAGE_TOOLS:
 
 # ============ BLOG ============
 ARTICLES = [
+    {
+        "slug": "passport-photo-rules-ai-editing",
+        "title": "Passport Photo Rules Explained: Requirements, Backgrounds, and Why AI Editing Can Get You Rejected",
+        "meta": "A complete guide to passport photo requirements, background rules, and AI editing limitations — plus why some countries reject digitally altered photos, and how to verify your photo before submitting.",
+        "tag": "Passport Photos",
+        "reading_time": 8,
+        "lede": "Passport photo rejections are more common than most people expect, and a growing share of them now come down to one specific issue: digital editing. Here's what actually matters, country by country.",
+        "toc": [
+            ("why-rejections-happen", "Why passport photos get rejected"),
+            ("size-and-framing", "Passport photo size and framing rules"),
+            ("background-rules", "Background rules, and why they vary"),
+            ("ai-editing-limits", "What AI editing can and can't safely do"),
+            ("why-countries-reject-edited-photos", "Why some countries reject edited photos"),
+            ("country-differences", "Country-specific differences worth knowing"),
+            ("verification-tips", "How to verify your photo before submitting"),
+            ("try-it", "Try it yourself"),
+        ],
+        "sections": [
+            ("why-rejections-happen", "Why passport photos get rejected", """
+<p>Passport photo rejection is one of the most common reasons a passport or visa application gets delayed. The causes are usually mundane: the head is slightly too small or too large for the frame, the background has a shadow or isn't uniform, the photo is a little blurry, or — increasingly — the photo shows signs of digital editing that the issuing authority doesn't allow. A free <strong>passport photo maker</strong> or <strong>passport photo checker</strong> can catch most of these issues before you ever submit, but it helps to understand what's actually being checked and why.</p>
+"""),
+            ("size-and-framing", "Passport photo size and framing rules", """
+<p>Most <strong>passport photo requirements</strong> and <strong>visa photo requirements</strong> boil down to three numbers: overall photo size, head height as a percentage of the frame, and where the eyes should sit vertically. The specifics vary meaningfully by country. <strong>US passport photo rules</strong> call for a 2 x 2 inch (51 x 51mm) square photo with the head measuring 1 to 1&frac58; inches from chin to crown. Most of Europe, along with a long list of other countries, instead uses a 35 x 45mm rectangular format — a size sometimes called the ICAO or Schengen standard. A handful of countries (China, Malaysia, Turkey, several Gulf states) use their own distinct dimensions entirely, which is exactly the kind of detail that's easy to get wrong without a country-specific <strong>passport photo size</strong> reference.</p>
+"""),
+            ("background-rules", "Background rules, and why they vary", """
+<p>Background requirements exist so that automated systems and human reviewers can isolate your face cleanly from everything else in the frame. Plain white is the most common <strong>passport photo background</strong> requirement, but plenty of countries specify light grey or an off-white/cream tone instead, and a few are specific about avoiding pure white because it can blow out under certain lighting. Shadows on the background, wrinkled backdrops, and visible texture are common, avoidable rejection reasons — which is exactly what a <strong>passport photo background remover</strong> is useful for, replacing an uneven backdrop with a flat, compliant color rather than trying to photograph a perfectly even one at home.</p>
+"""),
+            ("ai-editing-limits", "What AI editing can and can't safely do", """
+<p>This is the part that trips up more people than it used to. Modern <strong>passport photo AI editing</strong> tools can genuinely help with the mechanical parts of the process — detecting your face and automatically centering and sizing the crop, flattening an uneven background into a clean solid color, correcting exposure so the photo isn't over- or under-lit. All of that is about matching a real, existing photo of you to a required format.</p>
+<p>Where AI editing becomes a real problem is when it starts changing what you actually look like: smoothing skin, adjusting facial proportions, or applying beautification filters. Several governments — the United States prominently among them — now explicitly screen for signs of digital alteration and reject photos that show it, even when the editing was subtle and well-intentioned. The safest approach with any <strong>passport photo editor</strong> is to use automated tools for cropping, sizing, and background cleanup, and to leave your actual likeness untouched.</p>
+"""),
+            ("why-countries-reject-edited-photos", "Why some countries reject edited photos", """
+<p>Passport photos exist to support identity verification and biometric matching — facial recognition systems used at border control compare your passport photo against your live face, and heavily edited photos measurably reduce match accuracy. This is the underlying reason more governments have moved toward explicit anti-editing policies rather than just relying on manual review to catch it. It's not an arbitrary rule; it's a direct response to biometric systems needing an accurate, unaltered likeness to function correctly.</p>
+"""),
+            ("country-differences", "Country-specific differences worth knowing", """
+<p>Beyond size and background, individual countries layer on their own specific rules: some are strict about glasses (many now disallow them entirely), some have particular rules about hair covering the forehead or ears, and head-height tolerances that look similar on paper (say, 50-69% vs. 62-75% of the frame) can meaningfully change how tightly your face needs to be cropped. A <strong>free passport photo maker</strong> that maintains a real per-country database — rather than one generic template — is genuinely more useful here than trying to eyeball a single set of rules against every country's page.</p>
+"""),
+            ("verification-tips", "How to verify your photo before submitting", """
+<p>No online tool, free or paid, can promise your specific passport office will accept a given photo — rules change, and enforcement varies. A few habits meaningfully reduce your risk: always check your destination country's current official passport or embassy page rather than relying on memory of old rules, avoid any tool that applies beautification or skin-smoothing by default, print a physical test copy at full size before a final in-person submission if that's an option, and when in doubt, treat an online <strong>passport photo compliance</strong> check as a helpful first pass rather than a final answer.</p>
+"""),
+            ("try-it", "Try it yourself", """
+<p>ToolFlight's <a href="../passport-photo-maker.html">Passport & Visa Photo Maker</a> handles the sizing, cropping, and background work for 42 countries with real AI face detection, runs entirely in your browser, and is upfront in its own interface about which edits are safe to use for documents like US passports where AI alteration is explicitly disallowed.</p>
+"""),
+        ],
+        "faq": [
+            ("What is the standard passport photo size?", "It depends on the country. The US uses 2 x 2 inches (51 x 51mm); most of Europe and many other countries use 35 x 45mm; a few countries (China, Malaysia, Turkey, and others) use their own distinct sizes."),
+            ("Can I use an AI passport photo editor safely?", "Yes, for the mechanical parts — cropping, sizing, and background cleanup. Avoid AI tools that smooth skin or adjust facial features, since several countries, including the US, now explicitly reject photos showing signs of that kind of digital alteration."),
+            ("Why do passport photos need a plain background?", "So automated systems and human reviewers can isolate your face cleanly, and because facial recognition matching at border control works more reliably against a clean, unaltered image."),
+            ("How can I check if my passport photo will be accepted?", "Use a passport photo checker that validates head size, positioning, and background against your specific country's requirements, then cross-check against your country's current official passport or embassy page before submitting — no online tool can guarantee acceptance."),
+        ],
+        "related": [],
+    },
     {
         "slug": "how-to-compress-images-without-losing-quality",
         "title": "How to Compress Images Without Losing Quality",
@@ -2655,6 +3676,7 @@ def navbar_for_blog(active_file):
              .replace('href="calculators.html"', 'href="../calculators.html"')
              .replace('href="finance-tools.html"', 'href="../finance-tools.html"')
              .replace('href="seo-tools.html"', 'href="../seo-tools.html"')
+             .replace('href="ai-tools.html"', 'href="../ai-tools.html"')
              .replace('href="blog.html"', 'href="../blog.html"')
              .replace('src="assets/', 'src="../assets/'))
 
@@ -2665,6 +3687,7 @@ def footer_for_blog():
              .replace('href="calculators.html"', 'href="../calculators.html"')
              .replace('href="finance-tools.html"', 'href="../finance-tools.html"')
              .replace('href="seo-tools.html"', 'href="../seo-tools.html"')
+             .replace('href="ai-tools.html"', 'href="../ai-tools.html"')
              .replace('href="index.html#about-section"', 'href="../index.html#about-section"')
              .replace('href="index.html#faq"', 'href="../index.html#faq"')
              .replace('src="assets/', 'src="../assets/'))
