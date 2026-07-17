@@ -6534,8 +6534,45 @@ if (document.getElementById('ppDrop')){
   /* ---------- Camera capture (real getUserMedia, with an oval positioning guide) ---------- */
   let ppCameraStream = null;
   let ppCameraOpening = false;
+  const ppCamLog = [];
+  function ppCamLogLine(label, ok, detail){
+    const icon = ok === true ? '\u2713' : ok === false ? '\u2717' : '\u2022';
+    ppCamLog.push(`${icon} ${label}${detail ? ': ' + detail : ''}`);
+    const el = document.getElementById('ppCameraDebugLog');
+    if (el) el.textContent = ppCamLog.join('\n');
+    const panel = document.getElementById('ppCameraDebugPanel');
+    if (panel) panel.classList.remove('hidden');
+  }
+  function ppCamLogReset(){ ppCamLog.length = 0; const el = document.getElementById('ppCameraDebugLog'); if (el) el.textContent = ''; }
+
+  function ppLogVideoState(video, label){
+    ppCamLogLine(`${label} -- video.readyState`, null, String(video.readyState) + ' (0=NOTHING,1=METADATA,2=CURRENT,3=FUTURE,4=ENOUGH)');
+    ppCamLogLine(`${label} -- video.networkState`, null, String(video.networkState));
+    ppCamLogLine(`${label} -- videoWidth x videoHeight`, null, `${video.videoWidth} x ${video.videoHeight}`);
+    ppCamLogLine(`${label} -- paused / ended`, null, `${video.paused} / ${video.ended}`);
+    ppCamLogLine(`${label} -- autoplay / playsInline / muted`, null, `${video.autoplay} / ${video.playsInline} / ${video.muted}`);
+    ppCamLogLine(`${label} -- currentTime`, null, String(video.currentTime));
+  }
+  function ppLogCssVisibility(el, label){
+    const cs = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    ppCamLogLine(`${label} -- CSS display/visibility/opacity`, null, `${cs.display} / ${cs.visibility} / ${cs.opacity}`);
+    ppCamLogLine(`${label} -- size (rendered)`, null, `${Math.round(rect.width)} x ${Math.round(rect.height)}`);
+    ppCamLogLine(`${label} -- z-index / transform / pointer-events`, null, `${cs.zIndex} / ${cs.transform === 'none' ? 'none' : 'set'} / ${cs.pointerEvents}`);
+    if (rect.width > 0 && rect.height > 0){
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const topEl = document.elementFromPoint(cx, cy);
+      const isElOrChild = topEl === el || (topEl && el.contains(topEl));
+      ppCamLogLine(`${label} -- element actually on top at its own center point`, isElOrChild, isElOrChild ? 'this element (or its own child) is on top, nothing covering it' : `COVERED BY: ${topEl ? (topEl.id || topEl.tagName) : 'nothing found (offscreen?)'}`);
+    } else {
+      ppCamLogLine(`${label} -- element has zero rendered size`, false, 'cannot check what covers it -- width/height are 0');
+    }
+  }
+
   async function openPpCamera(){
-    if (ppCameraOpening) return; // guards against a rapid double-tap firing getUserMedia twice while the first request is still pending -- a real, documented cause of NotReadableError on Android even with permission already granted
+    ppCamLogReset();
+    ppCamLogLine('Step 1: Button click event fired', true);
+    if (ppCameraOpening) { ppCamLogLine('Aborted', false, 'a previous open attempt is still in progress (re-entrancy guard)'); return; }
     ppCameraOpening = true;
     try{
       // If a stream from a previous open attempt is still alive for any
@@ -6543,30 +6580,73 @@ if (document.getElementById('ppDrop')){
       // camera device that's still "in use" from an unreleased prior stream
       // can cause the next getUserMedia() call to fail even though
       // permission was already granted.
-      if (ppCameraStream){ ppCameraStream.getTracks().forEach(t => t.stop()); ppCameraStream = null; }
+      if (ppCameraStream){
+        ppCamLogLine('Note', null, 'a prior stream was still alive -- stopping its tracks before requesting a new one');
+        ppCameraStream.getTracks().forEach(t => t.stop());
+        ppCameraStream = null;
+      }
 
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        ppCamLogLine('Step 2: navigator.mediaDevices.getUserMedia is available', true);
         const modal = document.getElementById('ppCameraModal');
         const video = document.getElementById('ppCameraVideo');
         try{
           ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+          ppCamLogLine('Step 3: getUserMedia() resolved (primary constraints)', true);
         }catch(err1){
+          ppCamLogLine('Step 3: getUserMedia() threw (primary constraints)', false, err1.name + ': ' + err1.message);
           try{
             ppCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            ppCamLogLine('Step 3b: getUserMedia() resolved (relaxed constraints)', true);
           }catch(err2){
+            ppCamLogLine('Step 3b: getUserMedia() threw (relaxed constraints)', false, err2.name + ': ' + err2.message);
+            ppCamLogLine('CONCLUSION', false, 'Pipeline failed at Step 3 (getUserMedia rejected) -- falling back to file input.');
             openPpCameraFileFallback();
             return;
           }
         }
+
+        // Step 4: full MediaStream information
+        const vTracks = ppCameraStream.getVideoTracks();
+        ppCamLogLine('Step 4: stream.id', null, ppCameraStream.id);
+        ppCamLogLine('Step 4: stream.active', null, String(ppCameraStream.active));
+        ppCamLogLine('Step 4: video track count', null, String(vTracks.length));
+        if (vTracks[0]){
+          ppCamLogLine('Step 4: video track readyState', null, vTracks[0].readyState);
+          ppCamLogLine('Step 4: video track enabled/muted', null, `${vTracks[0].enabled} / ${vTracks[0].muted}`);
+        }
+
         try{
           video.srcObject = ppCameraStream;
+          ppCamLogLine('Step 5: video.srcObject = stream executed', true, String(!!video.srcObject));
           await video.play();
+          ppCamLogLine('Step 6: await video.play() resolved', true);
           modal.classList.remove('hidden');
+          modal.classList.add('show');
+          ppCamLogLine('Step 6b: modal.classList after removing hidden and adding show', null, modal.className);
+
+          ppLogVideoState(video, 'Step 7');
+          ppLogCssVisibility(video, 'Step 8 (video element)');
+          ppLogCssVisibility(modal, 'Step 8 (modal container)');
+          ppCamLogLine('Step 10: was stream stopped right after starting?', ppCameraStream.active, ppCameraStream.active ? 'no, stream.active is still true' : 'YES -- stream.active is false immediately after starting, something stopped it');
+
+          const stageEl = document.getElementById('ppCameraStageDebugBorder');
+          const overlaySvg = document.getElementById('ppCameraOverlaySvg');
+          if (stageEl) stageEl.style.borderColor = '#e02b2b';
+          video.style.borderColor = '#2bc95a';
+          if (overlaySvg) overlaySvg.style.borderColor = '#2b6de0';
+
+          const finalOk = getComputedStyle(modal).display !== 'none' && video.videoWidth > 0 && !video.paused;
+          ppCamLogLine('FINAL CONCLUSION', finalOk, finalOk ? 'Pipeline completed successfully -- preview should be visible.' : 'Pipeline reached the end but preview is not actually visible -- check the CSS visibility and covering-element lines above for the exact reason.');
         }catch(errPlay){
+          ppCamLogLine('Step 6: await video.play() threw', false, errPlay.name + ': ' + errPlay.message);
+          ppCamLogLine('CONCLUSION', false, 'Pipeline failed at Step 6 (video.play() rejected).');
           if (ppCameraStream) ppCameraStream.getTracks().forEach(t => t.stop());
           openPpCameraFileFallback();
         }
       } else {
+        ppCamLogLine('Step 2: navigator.mediaDevices.getUserMedia is NOT available', false);
+        ppCamLogLine('CONCLUSION', false, 'Pipeline failed at Step 2 (no getUserMedia support / not a secure context).');
         openPpCameraFileFallback();
       }
     } finally {
@@ -6588,7 +6668,9 @@ if (document.getElementById('ppDrop')){
   });
   function closePpCamera(){
     if (ppCameraStream){ ppCameraStream.getTracks().forEach(t => t.stop()); ppCameraStream = null; }
-    document.getElementById('ppCameraModal').classList.add('hidden');
+    const modal = document.getElementById('ppCameraModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('show');
   }
   document.getElementById('ppOpenCameraBtn').onclick = openPpCamera;
   document.getElementById('ppCameraCloseBtn').onclick = closePpCamera;
