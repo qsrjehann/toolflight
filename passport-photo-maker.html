@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
 <meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
-<link rel="icon" href="assets/favicon.ico?v=20260716-1952" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260716-1952">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260716-1952">
+<link rel="icon" href="assets/favicon.ico?v=20260717-0004" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260717-0004">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260717-0004">
 <link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
 
 <meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260716-1952">
+<link rel="stylesheet" href="css/style.css?v=20260717-0004">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260716-1952" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260717-0004" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -180,16 +180,22 @@
         <input type="file" id="ppCameraFallbackInput" accept="image/*" capture="user" style="display:none;" aria-hidden="true">
       </div>
 
+      <div class="hidden pp-camera-debug" id="ppCameraDebugPanel">
+        <div style="font-weight:800;font-size:12.5px;margin-bottom:6px;">Camera Debug Panel</div>
+        <div id="ppCameraDebugLog" style="font-size:11px;line-height:1.7;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
+      </div>
+
       <div class="legal-modal hidden" id="ppCameraModal" role="dialog" aria-modal="true" aria-label="Camera capture">
         <div class="legal-box" style="max-width:480px;padding:20px;">
           <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">✕</button>
           <h3 style="margin-top:0;">Position your face in the oval</h3>
-          <div style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;">
-            <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;"></video>
-            <svg viewBox="0 0 300 400" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" aria-hidden="true">
+          <div id="ppCameraStageDebugBorder" style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;border:3px solid transparent;">
+            <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;border:3px solid transparent;"></video>
+            <svg viewBox="0 0 300 400" id="ppCameraOverlaySvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;border:3px solid transparent;" aria-hidden="true">
               <ellipse cx="150" cy="190" rx="95" ry="130" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8" opacity="0.85"/>
             </svg>
           </div>
+          <p class="editor-hint" style="margin-top:6px;">Debug mode: red border = stage wrapper, green border = &lt;video&gt; element, blue border = face-guide overlay. If you see only some of these colors, that tells us which layer is actually rendering.</p>
           <div class="row">
             <button class="btn btn-primary" id="ppCameraCaptureBtn" type="button" style="flex:1;">Capture Photo</button>
           </div>
@@ -386,7 +392,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260716-1952" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260717-0004" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -423,6 +429,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260716-1952"></script>
+<script defer src="js/app.js?v=20260717-0004"></script>
 </body>
 </html>
