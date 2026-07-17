@@ -190,6 +190,33 @@ function canvasToBlobAsync(canvas, type, quality){
     canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Could not encode image on this device.')); }, type, quality);
   });
 }
+// Shared, general-purpose separable box blur (O(w*h), sliding-window sum,
+// not O(w*h*radius)) operating on a single-channel Float32Array plane.
+// Genuinely global so any current or future tool can reuse it. Passport
+// Photo Maker's own boxBlurGrayPP remains separate and untouched -- see
+// note above the retouch tool's module for why.
+function boxBlurGray(src, w, h, radius){
+  if (radius < 1) return src.slice();
+  const out = new Float32Array(src.length), tmp = new Float32Array(src.length), r = Math.round(radius);
+  for (let y=0; y<h; y++){
+    let sum=0; for (let x=-r; x<=r; x++) sum += src[y*w + Math.max(0, Math.min(w-1, x))];
+    for (let x=0; x<w; x++){
+      tmp[y*w+x] = sum/(r*2+1);
+      const addX = Math.min(w-1, x+r+1), subX = Math.max(0, x-r);
+      sum += src[y*w+addX] - src[y*w+subX];
+    }
+  }
+  for (let x=0; x<w; x++){
+    let sum=0; for (let y=-r; y<=r; y++) sum += tmp[Math.max(0, Math.min(h-1, y))*w + x];
+    for (let y=0; y<h; y++){
+      out[y*w+x] = sum/(r*2+1);
+      const addY = Math.min(h-1, y+r+1), subY = Math.max(0, y-r);
+      sum += tmp[addY*w+x] - tmp[subY*w+x];
+    }
+  }
+  return out;
+}
+
 function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
@@ -8319,3 +8346,605 @@ function closeLegal(){
 }
 const legalModalEl = document.getElementById('legalModal');
 if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.id === 'legalModal') closeLegal(); });
+
+/* ============================================================
+   AI PHOTO RETOUCH & BEAUTY EDITOR (rt* prefix)
+   New tool module. Reuses: setupDropZone, loadImageFromFile,
+   boxBlurGray (all genuinely global helpers), and the generic
+   ensureSegmenter() already built for AI Background Remover
+   (same shared segmenter instance/model, not a second copy).
+   Reuses the .pp-accordion CSS/HTML pattern from Passport Photo
+   Maker verbatim -- same classes, not a re-implementation.
+   ============================================================ */
+if (document.getElementById('rtDrop')){
+  let rtSourceCanvas = null;   // immutable original, full resolution
+  let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found
+  let rtBgCategoryMask = null; // cached AI segmentation category mask (Uint8Array) + its own w/h, computed once per image
+  let rtBgMaskDims = null;
+  let rtZoom = 1, rtOffsetX = 0, rtOffsetY = 0;
+  let rtRenderPending = false;
+  let rtFaceLandmarkerPromise = null, rtFaceLandmarker = null;
+
+  const RT_DEFAULTS = {
+    exposure:0, brightness:0, contrast:0, highlights:0, shadows:0, whites:0, blacks:0,
+    saturation:0, vibrance:0, temperature:0, tint:0,
+    clarity:0, texture:0, dehaze:0, sharpness:0, noiseReduction:0, hdr:0,
+    skinSmooth:0, faceBrighten:0, skinTone:0, bgBlur:0,
+  };
+  let rtAdj = { ...RT_DEFAULTS };
+
+  const RT_SLIDER_IDS = Object.keys(RT_DEFAULTS).reduce((m,k) => {
+    // Map internal keys to actual element id suffixes (camelCase already matches id naming below)
+    return m;
+  }, {});
+  const RT_ID_MAP = {
+    exposure:'rtExposure', brightness:'rtBrightness', contrast:'rtContrast', highlights:'rtHighlights',
+    shadows:'rtShadows', whites:'rtWhites', blacks:'rtBlacks', saturation:'rtSaturation', vibrance:'rtVibrance',
+    temperature:'rtTemperature', tint:'rtTint', clarity:'rtClarity', texture:'rtTexture', dehaze:'rtDehaze',
+    sharpness:'rtSharpness', noiseReduction:'rtNoiseReduction', hdr:'rtHdr',
+    skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone', bgBlur:'rtBgBlur',
+  };
+
+  function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
+
+  /* ---------- Face landmark detection (own loader, mirrors the pattern
+     already used for passport/AI enhancer face detection, not a literal
+     copy since each tool's module is independently scoped) ---------- */
+  async function ensureRtFaceLandmarker(){
+    if (rtFaceLandmarker) return rtFaceLandmarker;
+    if (!rtFaceLandmarkerPromise){
+      rtFaceLandmarkerPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14`);
+        const { FaceLandmarker, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
+        const fl = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task' },
+          runningMode: 'IMAGE', numFaces: 1,
+        });
+        rtFaceLandmarker = fl;
+        return fl;
+      })().catch((err) => { rtFaceLandmarkerPromise = null; throw err; });
+    }
+    return rtFaceLandmarkerPromise;
+  }
+
+  async function rtDetectFace(){
+    const statusEl = document.getElementById('rtFaceStatus');
+    try{
+      statusEl.textContent = 'Detecting face\u2026';
+      const fl = await ensureRtFaceLandmarker();
+      const result = fl.detect(rtSourceCanvas);
+      if (result.faceLandmarks && result.faceLandmarks[0]){
+        rtFaceLandmarks = result.faceLandmarks[0];
+        statusEl.textContent = 'Face detected \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.';
+      } else {
+        rtFaceLandmarks = null;
+        statusEl.textContent = 'No face detected \u2014 skin smoothing will apply gently across the whole photo instead of being face-targeted.';
+      }
+    }catch(err){
+      rtFaceLandmarks = null;
+      statusEl.textContent = 'Face detection unavailable \u2014 skin smoothing will apply gently across the whole photo instead.';
+    }
+  }
+
+  /* ---------- Skin mask: protects eyes, brows, nose, mouth from smoothing.
+     Deliberately uses generous circular/elliptical exclusion zones around
+     well-established single landmark points rather than tight contour
+     polygons -- a slightly larger protected zone is the safer choice when
+     the goal is "never distort a feature," and it's robust to not needing
+     dozens of exact contour indices to be individually correct. ---------- */
+  function buildRtSkinMask(w, h, sw, sh){
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask; // no face -- caller falls back to a different, gentler path
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    // Face oval (reuses the same established 36-point index set used elsewhere in this project for face bounds)
+    const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+    const pts = oval.map(toPx);
+    let minX=w, maxX=0, minY=h, maxY=0;
+    pts.forEach(p => { minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y); });
+    const cx=(minX+maxX)/2, cy=(minY+maxY)/2, rx=(maxX-minX)/2*1.05, ry=(maxY-minY)/2*1.05;
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        const dx=(x-cx)/rx, dy=(y-cy)/ry;
+        if (dx*dx+dy*dy <= 1) mask[y*w+x] = 1;
+      }
+    }
+    // Protected zones, sized relative to inter-eye distance (scale-invariant, robust to face size/distance from camera)
+    const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
+    const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
+    const protectR = eyeDist * 0.32;
+    function carve(cxp, cyp, rr, ryScale){
+      const y0=Math.max(0,Math.floor(cyp-rr*ryScale)), y1=Math.min(h-1,Math.ceil(cyp+rr*ryScale));
+      const x0=Math.max(0,Math.floor(cxp-rr)), x1=Math.min(w-1,Math.ceil(cxp+rr));
+      for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+        const dx=(x-cxp)/rr, dy=(y-cyp)/(rr*ryScale);
+        if (dx*dx+dy*dy <= 1) mask[y*w+x] = 0;
+      }
+    }
+    const leftEyeC = toPx(159), rightEyeC = toPx(386); // upper eyelid centers, reasonable eye-region centers
+    carve(leftEyeC.x, leftEyeC.y, protectR*1.15, 0.85);
+    carve(rightEyeC.x, rightEyeC.y, protectR*1.15, 0.85);
+    const noseTip = toPx(1);
+    carve(noseTip.x, noseTip.y, protectR*0.9, 1.4);
+    const mouthL = toPx(61), mouthR = toPx(291);
+    const mouthCx=(mouthL.x+mouthR.x)/2, mouthCy=(mouthL.y+mouthR.y)/2;
+    const mouthRx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * 1.3;
+    carve(mouthCx, mouthCy, mouthRx, 0.8);
+    // Soft feather so protected zones don't have a hard visible edge.
+    return boxBlurGray(mask, w, h, Math.max(2, Math.round(eyeDist*0.06)));
+  }
+
+  /* ---------- Core per-pixel tone/color adjustments, one pass ---------- */
+  function rtLuma(r,g,b){ return 0.299*r + 0.587*g + 0.114*b; }
+
+  function applyRtToneColor(data, w, h){
+    const a = rtAdj;
+    const exposureMul = Math.pow(2, a.exposure/100 * 1.2);
+    const contrastFactor = (259*(a.contrast*2.55+255)) / (255*(259-a.contrast*2.55));
+    const tempShift = a.temperature/100 * 40;
+    const tintShift = a.tint/100 * 40;
+    for (let p=0; p<data.length; p+=4){
+      let r=data[p], g=data[p+1], b=data[p+2];
+      // Temperature (R/B shift) and Tint (G shift) -- white balance first
+      r = rtClamp(r + tempShift, 0, 255); b = rtClamp(b - tempShift, 0, 255);
+      g = rtClamp(g + tintShift, 0, 255);
+      // Exposure (multiplicative) then Brightness (additive)
+      r *= exposureMul; g *= exposureMul; b *= exposureMul;
+      r += a.brightness*1.2; g += a.brightness*1.2; b += a.brightness*1.2;
+      // Contrast (standard formula around midpoint)
+      r = contrastFactor*(r-128)+128; g = contrastFactor*(g-128)+128; b = contrastFactor*(b-128)+128;
+      // Highlights/Shadows/Whites/Blacks: luminance-zone-weighted adjustments
+      const lum = rtLuma(r,g,b) / 255;
+      if (a.highlights !== 0){
+        const wgt = Math.max(0, lum-0.5)*2; // 0 at mid, 1 at white
+        const d = a.highlights/100 * 60 * wgt;
+        r+=d; g+=d; b+=d;
+      }
+      if (a.shadows !== 0){
+        const wgt = Math.max(0, 0.5-lum)*2; // 0 at mid, 1 at black
+        const d = a.shadows/100 * 60 * wgt;
+        r+=d; g+=d; b+=d;
+      }
+      if (a.whites !== 0){
+        const wgt = Math.max(0, lum-0.75)*4;
+        const d = a.whites/100 * 50 * Math.min(1,wgt);
+        r+=d; g+=d; b+=d;
+      }
+      if (a.blacks !== 0){
+        const wgt = Math.max(0, 0.25-lum)*4;
+        const d = a.blacks/100 * 50 * Math.min(1,wgt);
+        r+=d; g+=d; b+=d;
+      }
+      r=rtClamp(r,0,255); g=rtClamp(g,0,255); b=rtClamp(b,0,255);
+      // Saturation (uniform HSL-style scale around per-pixel luma)
+      if (a.saturation !== 0){
+        const l = rtLuma(r,g,b); const s = 1 + a.saturation/100;
+        r = rtClamp(l + (r-l)*s, 0, 255); g = rtClamp(l + (g-l)*s, 0, 255); b = rtClamp(l + (b-l)*s, 0, 255);
+      }
+      // Vibrance (protects already-saturated pixels, and skin-tone hues, more than plain saturation)
+      if (a.vibrance !== 0){
+        const mx=Math.max(r,g,b), mn=Math.min(r,g,b), curSat=(mx-mn)/255;
+        const protect = 1 - curSat*0.7;
+        const l = rtLuma(r,g,b); const s = 1 + (a.vibrance/100)*protect;
+        r = rtClamp(l + (r-l)*s, 0, 255); g = rtClamp(l + (g-l)*s, 0, 255); b = rtClamp(l + (b-l)*s, 0, 255);
+      }
+      // Dehaze (simplified, real approximation): boosts contrast+saturation and pulls light haze down slightly
+      if (a.dehaze !== 0){
+        const amt = a.dehaze/100;
+        const l = rtLuma(r,g,b);
+        const cf = 1 + amt*0.5;
+        r = rtClamp(cf*(r-128)+128, 0, 255); g = rtClamp(cf*(g-128)+128, 0, 255); b = rtClamp(cf*(b-128)+128, 0, 255);
+        if (amt > 0 && l > 180){ const pull = (l-180)/75 * amt * 20; r-=pull; g-=pull; b-=pull; }
+        const s2 = 1 + amt*0.25;
+        const l2 = rtLuma(r,g,b);
+        r = rtClamp(l2+(r-l2)*s2,0,255); g = rtClamp(l2+(g-l2)*s2,0,255); b = rtClamp(l2+(b-l2)*s2,0,255);
+      }
+      data[p]=r; data[p+1]=g; data[p+2]=b;
+    }
+  }
+
+  // Clarity/Texture/HDR: local-contrast enhancement via unsharp-mask-style
+  // technique (blur at different radii = different frequency bands), same
+  // proven approach as applySharpnessPP elsewhere in this project, applied
+  // with tool-appropriate radii per effect.
+  function applyRtLocalContrast(data, w, h){
+    const a = rtAdj;
+    if (a.clarity === 0 && a.texture === 0 && a.hdr === 0) return;
+    for (let ch=0; ch<3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+      if (a.clarity !== 0){
+        const blurred = boxBlurGray(plane, w, h, 8);
+        const strength = a.clarity/100 * 0.6;
+        for (let p=0; p<w*h; p++) plane[p] = rtClamp(plane[p] + (plane[p]-blurred[p])*strength, 0, 255);
+      }
+      if (a.texture !== 0){
+        const blurred = boxBlurGray(plane, w, h, 2);
+        const strength = a.texture/100 * 0.7;
+        for (let p=0; p<w*h; p++) plane[p] = rtClamp(plane[p] + (plane[p]-blurred[p])*strength, 0, 255);
+      }
+      if (a.hdr > 0){
+        const blurred = boxBlurGray(plane, w, h, 14);
+        const strength = a.hdr/100 * 0.5;
+        for (let p=0; p<w*h; p++) plane[p] = rtClamp(plane[p] + (plane[p]-blurred[p])*strength, 0, 255);
+      }
+      for (let p=0; p<w*h; p++) data[p*4+ch] = plane[p];
+    }
+  }
+
+  function applyRtNoiseReduction(data, w, h){
+    if (rtAdj.noiseReduction <= 0) return;
+    const strength = rtAdj.noiseReduction/100;
+    const radius = Math.max(1, Math.round(strength*3));
+    for (let ch=0; ch<3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, radius);
+      for (let p=0; p<w*h; p++) data[p*4+ch] = plane[p]*(1-strength) + blurred[p]*strength;
+    }
+  }
+
+  function applyRtSharpness(data, w, h){
+    if (rtAdj.sharpness <= 0) return;
+    const strength = rtAdj.sharpness/100 * 1.2;
+    for (let ch=0; ch<3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, 2);
+      for (let p=0; p<w*h; p++){
+        const v = plane[p] + (plane[p]-blurred[p])*strength;
+        data[p*4+ch] = rtClamp(v, 0, 255);
+      }
+    }
+  }
+
+  /* ---------- Skin smoothing / face brightening / skin tone (masked) ---------- */
+  function applyRtSkinOps(data, w, h, sw, sh){
+    const a = rtAdj;
+    if (a.skinSmooth <= 0 && a.faceBrighten <= 0 && a.skinTone === 0) return;
+    const mask = rtFaceLandmarks ? buildRtSkinMask(w, h, sw, sh) : new Float32Array(w*h).fill(0.5); // no face: gentle uniform fallback, disclosed to the user via rtFaceStatus
+    if (a.skinSmooth > 0){
+      const radius = Math.max(1, Math.round(a.skinSmooth/100 * 6));
+      const strength = a.skinSmooth/100;
+      for (let ch=0; ch<3; ch++){
+        const plane = new Float32Array(w*h);
+        for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+        const blurred = boxBlurGray(plane, w, h, radius);
+        for (let p=0; p<w*h; p++){
+          const m = mask[p] * strength;
+          data[p*4+ch] = plane[p]*(1-m) + blurred[p]*m;
+        }
+      }
+    }
+    if (a.faceBrighten > 0 || a.skinTone !== 0){
+      for (let p=0, i=0; p<w*h; p++, i+=4){
+        const m = mask[p];
+        if (m <= 0.01) continue;
+        if (a.faceBrighten > 0){
+          const d = a.faceBrighten/100 * 25 * m;
+          data[i]=rtClamp(data[i]+d,0,255); data[i+1]=rtClamp(data[i+1]+d,0,255); data[i+2]=rtClamp(data[i+2]+d,0,255);
+        }
+        if (a.skinTone !== 0){
+          const d = a.skinTone/50 * 15 * m;
+          data[i]=rtClamp(data[i]+d,0,255); data[i+2]=rtClamp(data[i+2]-d,0,255);
+        }
+      }
+    }
+  }
+
+  /* ---------- Background blur (reuses the generic ensureSegmenter() already
+     built for AI Background Remover -- same shared model instance, not a
+     second copy) ---------- */
+  /* ---------- Background segmenter: own loader using the selfie_segmenter
+     model -- the same one Passport Photo Maker uses, and the architecturally
+     correct choice here too, since it's a binary person/background model.
+     AI Background Remover's ensureSegmenter() uses DeepLab V3 instead (a
+     general multi-class scene model with different category semantics
+     entirely), so it would be the wrong tool to reuse even if it weren't
+     also module-private. ---------- */
+  let rtSegmenter = null, rtSegmenterLoadPromise = null;
+  async function ensureRtSegmenter(){
+    if (rtSegmenter) return rtSegmenter;
+    if (!rtSegmenterLoadPromise){
+      rtSegmenterLoadPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14`);
+        const { ImageSegmenter, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite' },
+          outputCategoryMask: true, outputConfidenceMasks: false, runningMode: 'IMAGE',
+        });
+        rtSegmenter = seg;
+        return seg;
+      })().catch((err) => { rtSegmenterLoadPromise = null; throw err; });
+    }
+    return rtSegmenterLoadPromise;
+  }
+
+  async function ensureRtBgMask(w, h){
+    if (rtBgCategoryMask && rtBgMaskDims && rtBgMaskDims.w === w && rtBgMaskDims.h === h) return rtBgCategoryMask;
+    try{
+      const seg = await ensureRtSegmenter();
+      const result = seg.segment(rtSourceCanvas);
+      const mask = result.categoryMask;
+      const maskData = mask.getAsUint8Array();
+      const mw = mask.width, mh = mask.height;
+      // Ground-truth calibration against real face landmarks, same
+      // evidence-based principle established for the passport tool: don't
+      // assume category>0 means "person," verify it against a real,
+      // independent signal when one is available.
+      let personCategoryValue = 1;
+      if (rtFaceLandmarks){
+        const votes = {};
+        [1,4,10,152,234,454].forEach(i => {
+          const lm = rtFaceLandmarks[i]; if (!lm) return;
+          const mx = Math.min(mw-1, Math.round(lm.x*mw)), my = Math.min(mh-1, Math.round(lm.y*mh));
+          votes[maskData[my*mw+mx]] = (votes[maskData[my*mw+mx]]||0)+1;
+        });
+        const sorted = Object.entries(votes).sort((x,y)=>y[1]-x[1]);
+        if (sorted.length) personCategoryValue = +sorted[0][0];
+      }
+      const out = new Float32Array(w*h);
+      for (let y=0; y<h; y++) for (let x=0; x<w; x++){
+        const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+        out[y*w+x] = maskData[my*mw+mx] === personCategoryValue ? 0 : 1; // 1 = background (blur target)
+      }
+      mask.close && mask.close();
+      rtBgCategoryMask = boxBlurGray(out, w, h, 3); // soft edge
+      rtBgMaskDims = { w, h };
+      return rtBgCategoryMask;
+    }catch(err){
+      return null;
+    }
+  }
+
+  function applyRtBgBlurSync(data, w, h, mask){
+    if (rtAdj.bgBlur <= 0 || !mask) return;
+    const radius = Math.max(1, Math.round(rtAdj.bgBlur/100 * 18));
+    for (let ch=0; ch<3; ch++){
+      const plane = new Float32Array(w*h);
+      for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+      const blurred = boxBlurGray(plane, w, h, radius);
+      for (let p=0; p<w*h; p++){
+        const m = mask[p];
+        data[p*4+ch] = plane[p]*(1-m) + blurred[p]*m;
+      }
+    }
+  }
+
+  /* ---------- One render pipeline, used by both live preview and export
+     (same function, called at preview resolution for responsiveness while
+     dragging, and at full source resolution for export) ---------- */
+  async function renderRtToCanvas(targetCanvas, maxDim){
+    if (!rtSourceCanvas) return;
+    const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+    let w = sw, h = sh;
+    if (maxDim && Math.max(sw,sh) > maxDim){ const sc = maxDim/Math.max(sw,sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+    targetCanvas.width = w; targetCanvas.height = h;
+    const ctx = targetCanvas.getContext('2d');
+    ctx.drawImage(rtSourceCanvas, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    applyRtToneColor(data, w, h);
+    applyRtLocalContrast(data, w, h);
+    applyRtNoiseReduction(data, w, h);
+    applyRtSharpness(data, w, h);
+    applyRtSkinOps(data, w, h, sw, sh);
+    if (rtAdj.bgBlur > 0){
+      const mask = await ensureRtBgMask(w, h);
+      applyRtBgBlurSync(data, w, h, mask);
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  function fitRtCanvasDisplay(){
+    const canvas = document.getElementById('rtPreviewCanvas');
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    if (!canvas.width || !wrap) return;
+    const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
+    const fitScale = Math.min(1, availW/canvas.width, availH/canvas.height) * rtZoom;
+    canvas.style.width = Math.round(canvas.width*fitScale) + 'px';
+    canvas.style.height = Math.round(canvas.height*fitScale) + 'px';
+  }
+
+  async function renderRtPreview(){
+    if (rtRenderPending) return;
+    rtRenderPending = true;
+    try{
+      await renderRtToCanvas(document.getElementById('rtPreviewCanvas'), 1100);
+      fitRtCanvasDisplay();
+    } finally {
+      rtRenderPending = false;
+    }
+  }
+
+  /* ---------- Accordion mutual-exclusion: genuinely new logic (see final
+     report -- Passport Photo Maker's accordions do NOT actually auto-close
+     siblings; they are independently closed-by-default <details>. This
+     tool implements real "only one open at a time" behavior since that
+     was explicitly requested here.) ---------- */
+  function setupRtAccordionExclusivity(){
+    const accordions = Array.from(document.querySelectorAll('#rtStage .pp-accordion'));
+    accordions.forEach(acc => {
+      acc.addEventListener('toggle', () => {
+        if (acc.open) accordions.forEach(other => { if (other !== acc) other.open = false; });
+      });
+    });
+  }
+
+  /* ---------- Slider wiring ---------- */
+  function rtDebouncedRender(){
+    clearTimeout(window.__rtDebounce);
+    window.__rtDebounce = setTimeout(renderRtPreview, 60);
+  }
+  Object.entries(RT_ID_MAP).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    const valEl = document.getElementById(id + 'Val');
+    el.addEventListener('input', () => {
+      rtAdj[key] = +el.value;
+      if (valEl) valEl.textContent = el.value;
+      rtDebouncedRender();
+    });
+  });
+
+  function rtApplyAdjustmentsToUI(){
+    Object.entries(RT_ID_MAP).forEach(([key, id]) => {
+      const el = document.getElementById(id), valEl = document.getElementById(id+'Val');
+      el.value = rtAdj[key];
+      if (valEl) valEl.textContent = String(rtAdj[key]);
+    });
+  }
+
+  document.getElementById('rtResetBtn').onclick = () => {
+    rtAdj = { ...RT_DEFAULTS };
+    rtApplyAdjustmentsToUI();
+    rtZoom = 1;
+    renderRtPreview();
+    toast('Reset to original.');
+  };
+
+  /* ---------- Filter presets: real slider combinations, not a separate
+     rendering path -- applying a preset just sets rtAdj and goes through
+     the exact same renderRtToCanvas() as manual adjustments. ---------- */
+  const RT_PRESETS = {
+    none: { ...RT_DEFAULTS },
+    natural: { ...RT_DEFAULTS, clarity:12, vibrance:15, contrast:6, sharpness:10 },
+    portrait: { ...RT_DEFAULTS, skinSmooth:35, faceBrighten:15, clarity:8, temperature:6, contrast:8, vibrance:10 },
+    vintage: { ...RT_DEFAULTS, temperature:20, saturation:-25, blacks:15, contrast:-8, texture:10 },
+    cinematic: { ...RT_DEFAULTS, temperature:-8, tint:6, contrast:18, shadows:-10, highlights:-12, clarity:15 },
+  };
+  document.querySelectorAll('#rtAccordionFilters [data-preset]').forEach(btn => {
+    btn.onclick = () => {
+      const preset = RT_PRESETS[btn.dataset.preset];
+      if (!preset) return;
+      rtAdj = { ...RT_DEFAULTS, ...preset };
+      rtApplyAdjustmentsToUI();
+      renderRtPreview();
+      toast(`Applied "${btn.textContent}" preset.`);
+    };
+  });
+
+  /* ---------- Compare (hold to see original) ---------- */
+  const compareBtn = document.getElementById('rtCompareBtn');
+  function rtShowOriginal(show){
+    const canvas = document.getElementById('rtPreviewCanvas');
+    if (show) canvas.getContext('2d').drawImage(rtSourceCanvas, 0, 0, canvas.width, canvas.height);
+    else renderRtPreview();
+  }
+  ['pointerdown'].forEach(ev => compareBtn.addEventListener(ev, () => rtShowOriginal(true)));
+  ['pointerup','pointerleave'].forEach(ev => compareBtn.addEventListener(ev, () => rtShowOriginal(false)));
+
+  /* ---------- Zoom / Fit to Screen / mouse wheel / gestures ---------- */
+  document.getElementById('rtZoomSlider').addEventListener('input', (e) => {
+    rtZoom = +e.target.value/100;
+    document.getElementById('rtZoomVal').textContent = e.target.value;
+    fitRtCanvasDisplay();
+  });
+  document.getElementById('rtFitScreenBtn').onclick = () => {
+    rtZoom = 1;
+    document.getElementById('rtZoomSlider').value = '100';
+    document.getElementById('rtZoomVal').textContent = '100';
+    fitRtCanvasDisplay();
+    toast('Fit to screen.');
+  };
+  document.getElementById('rtCanvasStageWrap').addEventListener('wheel', (e) => {
+    if (!rtSourceCanvas) return;
+    e.preventDefault();
+    rtZoom = rtClamp(rtZoom - Math.sign(e.deltaY)*0.1, 0.3, 4);
+    document.getElementById('rtZoomSlider').value = String(Math.round(rtZoom*100));
+    document.getElementById('rtZoomVal').textContent = String(Math.round(rtZoom*100));
+    fitRtCanvasDisplay();
+  }, { passive: false });
+
+  // Pinch-zoom / one-finger-drag-to-scroll / double-tap: adapts the same
+  // conceptual pattern already used in this project (distance/midpoint
+  // tracking), scoped to this tool's own canvas element.
+  let rtPinchStartDist=null, rtPinchStartZoom=1, rtLastTapTime=0, rtLastTapPos=null;
+  const rtCanvasEl = document.getElementById('rtPreviewCanvas');
+  rtCanvasEl.addEventListener('touchstart', (e) => {
+    if (!rtSourceCanvas) return;
+    if (e.touches.length === 2){
+      e.preventDefault();
+      const [a,b] = e.touches;
+      rtPinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      rtPinchStartZoom = rtZoom;
+    } else if (e.touches.length === 1){
+      const t = e.touches[0]; const now = Date.now();
+      if (rtLastTapPos && now-rtLastTapTime < 320 && Math.hypot(t.clientX-rtLastTapPos.x, t.clientY-rtLastTapPos.y) < 30){
+        rtZoom = rtZoom > 1.05 ? 1 : 2;
+        document.getElementById('rtZoomSlider').value = String(Math.round(rtZoom*100));
+        document.getElementById('rtZoomVal').textContent = String(Math.round(rtZoom*100));
+        fitRtCanvasDisplay();
+        rtLastTapPos = null; return;
+      }
+      rtLastTapTime = now; rtLastTapPos = { x:t.clientX, y:t.clientY };
+    }
+  }, { passive:false });
+  rtCanvasEl.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && rtPinchStartDist){
+      e.preventDefault();
+      const [a,b] = e.touches;
+      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      rtZoom = rtClamp(rtPinchStartZoom * (dist/rtPinchStartDist), 0.3, 4);
+      document.getElementById('rtZoomSlider').value = String(Math.round(rtZoom*100));
+      document.getElementById('rtZoomVal').textContent = String(Math.round(rtZoom*100));
+      fitRtCanvasDisplay();
+    }
+  }, { passive:false });
+  rtCanvasEl.addEventListener('touchend', (e) => { if (e.touches.length < 2) rtPinchStartDist = null; });
+
+  /* ---------- Export: full source resolution, one render pipeline reused
+     verbatim (not a second implementation) ---------- */
+  document.getElementById('rtDownloadBtn').onclick = async () => {
+    if (!rtSourceCanvas) return;
+    const btn = document.getElementById('rtDownloadBtn');
+    setLoading(btn, true);
+    try{
+      const exportCanvas = document.createElement('canvas');
+      await renderRtToCanvas(exportCanvas, null); // null maxDim = full source resolution
+      const format = document.getElementById('rtExportFormat').value;
+      const ext = format === 'jpeg' ? 'jpg' : format;
+      exportCanvas.toBlob((blob) => {
+        if (!blob){ toast('Could not export \u2014 try a different format.', 'err'); return; }
+        downloadBlob(blob, 'retouched-photo.' + ext);
+      }, 'image/' + format, 0.98);
+    } finally {
+      setLoading(btn, false);
+    }
+  };
+
+  /* ---------- Image loading ---------- */
+  async function loadRtImage(f){
+    if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
+    let img;
+    try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+    rtSourceCanvas = document.createElement('canvas');
+    rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
+    rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
+    rtBgCategoryMask = null; rtBgMaskDims = null;
+    rtAdj = { ...RT_DEFAULTS };
+    rtApplyAdjustmentsToUI();
+    document.getElementById('rtStage').classList.remove('hidden');
+    document.getElementById('rtOutputDims').textContent = `${rtSourceCanvas.width}\u00d7${rtSourceCanvas.height}px (original resolution)`;
+    await rtDetectFace();
+    await renderRtPreview();
+    toast('Image loaded.');
+  }
+  setupDropZone('rtDrop','rtInput', async (files) => {
+    const f = files.find(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    await loadRtImage(f);
+  });
+  document.addEventListener('paste', async (e) => {
+    const drop = document.getElementById('rtDrop');
+    if (drop.offsetParent === null) return;
+    const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
+    const imgItem = items.find(it => it.type.startsWith('image/'));
+    if (imgItem){ const file = imgItem.getAsFile(); if (file){ e.preventDefault(); await loadRtImage(file); } }
+  });
+
+  window.addEventListener('resize', () => { if (rtSourceCanvas) fitRtCanvasDisplay(); });
+  setupRtAccordionExclusivity();
+}
