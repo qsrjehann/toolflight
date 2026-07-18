@@ -837,3 +837,28 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 
 /* ============ CAMERA DEBUG PANEL (developer/diagnostic tool) ============ */
 .pp-camera-debug{margin-top:10px;padding:12px;border:1.5px dashed var(--card-border);border-radius:12px;background:var(--card);max-height:340px;overflow:auto;}
+
+/* ============ Design Studio Engine (DSE) — Phase 3 Part 1 ============ */
+.dse-layer-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);cursor:pointer;transition:background 0.12s;}
+.dse-layer-row:hover{background:var(--card-hover,var(--bg2));}
+.dse-layer-selected{border-color:var(--accent1-solid);background:color-mix(in srgb, var(--accent1-solid) 8%, var(--card));}
+.dse-layer-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dse-layer-vis,.dse-layer-lock{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;color:var(--ink-soft);}
+.dse-layer-vis:hover,.dse-layer-lock:hover{background:var(--card-border);}
+.dse-layer-hidden{opacity:0.45;}
+.dse-layer-locked{color:var(--accent1-solid);}
+
+/* ============ Typography Engine — Phase 3 Part 2 ============ */
+.dse-font-option{display:block;width:100%;text-align:left;background:none;border:none;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--ink);opacity:0.7;transition:opacity 0.15s,background 0.12s;}
+.dse-font-option:hover{background:var(--card-border);opacity:1;}
+.dse-font-chip{background:var(--card);border:1px solid var(--card-border);border-radius:6px;padding:3px 9px;font-size:11.5px;cursor:pointer;color:var(--ink);}
+.dse-font-chip:hover{border-color:var(--accent1-solid);}
+#epeTextAlignRow button.active,#epeTextVAlignRow button.active{background:var(--accent1-solid);color:#fff;border-color:var(--accent1-solid);}
+#dseTextEditOverlay.hidden{display:none;}
+
+/* ============ Design System — Phase 3 Part 3 ============ */
+.dse-icon-option{display:flex;align-items:center;justify-content:center;background:none;border:1px solid transparent;border-radius:6px;padding:5px;cursor:pointer;color:var(--ink);}
+.dse-icon-option:hover{background:var(--card-border);border-color:var(--accent1-solid);}
+.dse-brand-swatch-wrap{position:relative;display:inline-block;}
+.dse-brand-swatch{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);cursor:pointer;}
+.dse-brand-swatch-del{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--err-solid);color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer;}
