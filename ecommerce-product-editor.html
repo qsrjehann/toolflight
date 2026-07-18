@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional ecommerce product images directly in your browser. No sign-up required. Create product photos, marketing-ready designs, and marketplace-ready images for Amazon, Shopify, Daraz, Etsy, TikTok Shop, Facebook Shop, and more.">
-<link rel="icon" href="assets/favicon.ico?v=20260718-1802" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260718-1802">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260718-1802">
+<link rel="icon" href="assets/favicon.ico?v=20260717-2047" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260717-2047">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260717-2047">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260718-1802">
+<link rel="stylesheet" href="css/style.css?v=20260717-2047">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260718-1802" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260717-2047" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -132,14 +132,8 @@
           <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
         </div>
         <div class="row" style="margin-top:8px;align-items:center;">
-          <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
+          <label style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
           <input type="range" id="epeZoomSlider" min="10" max="400" value="100" style="flex:1;">
-          <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
-            <option value="">Presets…</option>
-            <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
-            <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
-            <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
-          </select>
         </div>
 
         <details class="pp-accordion" id="epeAccordionTransform" open>
@@ -180,7 +174,9 @@
           <div class="row" style="margin-top:8px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSmartGuides" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Smart guides (snap to center)</label>
           </div>
-          <p class="editor-hint">Safe area guides moved to their own “Safe Area &amp; Margins” section below, with editable margin and object warnings.</p>
+          <div class="row" style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSafeArea" style="width:15px;height:15px;accent-color:var(--accent1);"> Show safe area margin</label>
+          </div>
         </details>
 
         <details class="pp-accordion" id="epeAccordionAdjustments">
@@ -204,6 +200,7 @@
             <div class="ctrl"><label for="epeClarity">Clarity: <span id="epeClarityVal">0</span></label><input type="range" id="epeClarity" min="-100" max="100" value="0"></div>
             <div class="ctrl"><label for="epeTexture">Texture: <span id="epeTextureVal">0</span></label><input type="range" id="epeTexture" min="-100" max="100" value="0"></div>
             <div class="ctrl"><label for="epeDehaze">Dehaze: <span id="epeDehazeVal">0</span></label><input type="range" id="epeDehaze" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeOpacity">Opacity: <span id="epeOpacityVal">100</span></label><input type="range" id="epeOpacity" min="0" max="100" value="100"></div>
             <div class="ctrl"><label for="epeNoiseReduction">Product Retouch (noise reduction): <span id="epeNoiseReductionVal">0</span></label><input type="range" id="epeNoiseReduction" min="0" max="100" value="0"></div>
             <div class="ctrl"><label for="epeSurfaceEnhance">Surface Enhancement: <span id="epeSurfaceEnhanceVal">0</span></label><input type="range" id="epeSurfaceEnhance" min="0" max="100" value="0"></div>
           </div>
@@ -264,7 +261,7 @@
           <summary class="pp-accordion-summary">Shadow Studio</summary>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable shadow</label>
           <div class="row" style="margin-top:8px;">
-            <select id="epeShadowStyle"><option value="soft">Soft Shadow</option><option value="hard">Hard Shadow</option><option value="floating">Floating Shadow</option><option value="floor">Natural Floor Shadow</option><option value="studio">Studio Shadow</option><option value="ground">Ground Shadow</option><option value="reflection">Reflection Shadow</option></select>
+            <select id="epeShadowStyle"><option value="soft">Soft Shadow</option><option value="hard">Hard Shadow</option><option value="floating">Floating Shadow</option><option value="floor">Natural Floor Shadow</option></select>
           </div>
           <div class="qr-controls" style="margin-top:10px;">
             <div class="ctrl"><label for="epeShadowOpacity">Opacity: <span id="epeShadowOpacityVal">45</span></label><input type="range" id="epeShadowOpacity" min="0" max="100" value="45"></div>
@@ -279,7 +276,7 @@
           <summary class="pp-accordion-summary">Reflection Studio</summary>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeReflectionEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable reflection</label>
           <div class="row" style="margin-top:8px;">
-            <select id="epeReflectionStyle"><option value="mirror">Mirror Reflection</option><option value="soft">Soft Reflection</option><option value="gloss">Gloss Reflection</option><option value="floor">Floor Reflection</option><option value="bottom">Bottom Reflection</option><option value="fade">Fade Reflection</option></select>
+            <select id="epeReflectionStyle"><option value="mirror">Mirror Reflection</option><option value="soft">Soft Reflection</option><option value="gloss">Gloss Reflection</option><option value="floor">Floor Reflection</option></select>
           </div>
           <div class="qr-controls" style="margin-top:10px;">
             <div class="ctrl"><label for="epeReflectionOpacity">Opacity: <span id="epeReflectionOpacityVal">35</span></label><input type="range" id="epeReflectionOpacity" min="0" max="100" value="35"></div>
@@ -324,357 +321,11 @@
 
         <details class="pp-accordion" id="epeAccordionLayers">
           <summary class="pp-accordion-summary">Layers</summary>
-          <p class="editor-hint">Click a row to select it, Shift-click to select multiple. Click the eye to hide/show, the lock icon to prevent edits, and double-click the name to rename. Drag rows to reorder.</p>
-          <input type="text" id="epeLayerSearch" placeholder="Search layers…" style="width:100%;margin-top:8px;" aria-label="Search layers">
+          <p class="editor-hint">Each image layer is shown here. Click a layer row to select it. Click the eye to hide/show, and the lock icon to prevent edits. Future phases will allow adding text and shape layers.</p>
           <div id="epeLayersPanel" role="listbox" aria-label="Layers" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;min-height:40px;"></div>
-          <div class="row" style="margin-top:10px;">
-            <button class="btn btn-secondary" id="epeGroupBtn" type="button">Group Selected</button>
-            <button class="btn btn-ghost" id="epeUngroupBtn" type="button" disabled>Ungroup</button>
-          </div>
-        </details>
-
-        <details class="pp-accordion hidden" id="epeAccordionObject">
-          <summary class="pp-accordion-summary">Object</summary>
-          <p class="editor-hint">These controls work identically for any selected layer — image, text, shape, icon, sticker, badge, price tag, or group.</p>
-          <div class="qr-controls">
-            <div class="ctrl"><label for="epeObjectOpacity">Opacity: <span id="epeObjectOpacityVal">100</span></label><input type="range" id="epeObjectOpacity" min="0" max="100" value="100"></div>
-          </div>
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Blend Mode</p>
-          <select id="epeBlendMode"><option value="normal">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="darken">Darken</option><option value="lighten">Lighten</option><option value="soft-light">Soft Light</option><option value="hard-light">Hard Light</option><option value="difference">Difference</option><option value="color">Color</option><option value="luminosity">Luminosity</option></select>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Layer Order</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" id="epeLayerForwardBtn" type="button">Bring Forward</button>
-            <button class="btn btn-ghost" id="epeLayerBackwardBtn" type="button">Send Backward</button>
-            <button class="btn btn-ghost" id="epeLayerTopBtn" type="button">Move to Top</button>
-            <button class="btn btn-ghost" id="epeLayerBottomBtn" type="button">Move to Bottom</button>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Duplicate &amp; Style</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <button class="btn btn-secondary" id="epeDuplicateLayerBtn" type="button">Duplicate</button>
-            <button class="btn btn-ghost" id="epeCopyStyleBtn" type="button">Copy Style</button>
-            <button class="btn btn-ghost" id="epePasteStyleBtn" type="button">Paste Style</button>
-            <button class="btn btn-danger" id="epeDeleteLayerBtn" type="button">Delete</button>
-          </div>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionAddText">
-          <summary class="pp-accordion-summary">Add Text</summary>
-          <div class="row" id="epeAddTextRow" style="flex-wrap:wrap;">
-            <button class="btn btn-secondary" data-text-type="heading" type="button">Heading</button>
-            <button class="btn btn-secondary" data-text-type="subheading" type="button">Sub Heading</button>
-            <button class="btn btn-ghost" data-text-type="paragraph" type="button">Paragraph</button>
-            <button class="btn btn-ghost" data-text-type="caption" type="button">Caption</button>
-            <button class="btn btn-ghost" data-text-type="body" type="button">Body</button>
-            <button class="btn btn-ghost" data-text-type="price" type="button">Price Label</button>
-            <button class="btn btn-ghost" data-text-type="button" type="button">Button Text</button>
-            <button class="btn btn-ghost" data-text-type="badge" type="button">Badge</button>
-            <button class="btn btn-ghost" data-text-type="custom" type="button">Custom Text Box</button>
-          </div>
-          <p class="editor-hint">Double-click any text on the canvas to edit it. Drag to move, use the handles to resize/rotate.</p>
-        </details>
-
-        <details class="pp-accordion hidden" id="epeAccordionTextPanel">
-          <summary class="pp-accordion-summary">Text Style</summary>
-          <textarea id="epeTextContent" rows="2" style="width:100%;font-size:13px;padding:8px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;" aria-label="Text content"></textarea>
-
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Font</p>
-          <div class="row">
-            <input type="text" id="epeFontFamilySearch" placeholder="Search 140+ fonts…" style="flex:1;" aria-label="Search fonts">
-            <select id="epeFontCategoryFilter" aria-label="Font category"><option value="all">All categories</option>
-              <option>Sans Serif</option><option>Serif</option><option>Display</option><option>Script</option><option>Handwriting</option><option>Signature</option><option>Modern</option><option>Minimal</option><option>Luxury</option><option>Elegant</option><option>Gaming</option><option>Kids</option><option>Business</option><option>Technology</option><option>Food</option><option>Beauty</option><option>Fashion</option><option>Arabic Friendly</option><option>Urdu Friendly</option>
-            </select>
-          </div>
-          <div style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;">Current: <strong id="epeFontFamilyCurrent">Inter</strong></div>
-          <div id="epeFontResultsList" style="display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--card-border);border-radius:8px;padding:4px;"></div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:8px;">Recent:</div>
-          <div id="epeFontRecentList" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div>
-
-          <div class="qr-controls" style="margin-top:12px;">
-            <div class="ctrl"><label for="epeFontSize">Size: <span id="epeFontSizeVal">24</span></label><input type="range" id="epeFontSize" min="8" max="200" value="24"></div>
-            <div class="ctrl"><label for="epeFontWeight">Weight</label><select id="epeFontWeight"><option value="300">Light</option><option value="400" selected>Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra Bold</option><option value="900">Black</option></select></div>
-          </div>
-          <div class="row" style="margin-top:8px;">
-            <button class="btn btn-ghost" id="epeBoldBtn" type="button" aria-pressed="false"><strong>B</strong></button>
-            <button class="btn btn-ghost" id="epeItalicBtn" type="button" aria-pressed="false"><em>I</em></button>
-            <button class="btn btn-ghost" id="epeUnderlineBtn" type="button" aria-pressed="false" style="text-decoration:underline;">U</button>
-            <button class="btn btn-ghost" id="epeStrikeBtn" type="button" aria-pressed="false" style="text-decoration:line-through;">S</button>
-            <select id="epeTextCase" aria-label="Letter case"><option value="none">Normal case</option><option value="upper">UPPERCASE</option><option value="lower">lowercase</option></select>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Alignment</p>
-          <div class="row" id="epeTextAlignRow">
-            <button class="btn btn-ghost active" data-align="left" type="button">Left</button>
-            <button class="btn btn-ghost" data-align="center" type="button">Center</button>
-            <button class="btn btn-ghost" data-align="right" type="button">Right</button>
-            <button class="btn btn-ghost" data-align="justify" type="button">Justify</button>
-          </div>
-          <div class="row" id="epeTextVAlignRow" style="margin-top:6px;">
-            <button class="btn btn-ghost" data-valign="top" type="button">Top</button>
-            <button class="btn btn-ghost active" data-valign="middle" type="button">Middle</button>
-            <button class="btn btn-ghost" data-valign="bottom" type="button">Bottom</button>
-          </div>
-
-          <div class="qr-controls" style="margin-top:12px;">
-            <div class="ctrl"><label for="epeLetterSpacing">Letter Spacing: <span id="epeLetterSpacingVal">0</span></label><input type="range" id="epeLetterSpacing" min="-5" max="50" value="0"></div>
-            <div class="ctrl"><label for="epeLineHeight">Line Height: <span id="epeLineHeightVal">1.25</span></label><input type="range" id="epeLineHeight" min="0.8" max="3" step="0.05" value="1.25"></div>
-            <div class="ctrl"><label for="epeParagraphSpacing">Paragraph Spacing: <span id="epeParagraphSpacingVal">0</span></label><input type="range" id="epeParagraphSpacing" min="0" max="60" value="0"></div>
-          </div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:8px;"><input type="checkbox" id="epeAutoResize" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Auto-resize text box to fit content</label>
-
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Color</p>
-          <div class="row">
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeTextFillType" value="solid" checked style="accent-color:var(--accent1);"> Solid</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeTextFillType" value="gradient" style="accent-color:var(--accent1);"> Gradient</label>
-          </div>
-          <div class="row" id="epeTextSolidRow" style="margin-top:8px;">
-            <input type="color" id="epeTextColorInput" value="#111111">
-          </div>
-          <div class="row hidden" id="epeTextGradientRow" style="margin-top:8px;align-items:center;">
-            <input type="color" id="epeTextGradientFrom" value="#5142D6">
-            <input type="color" id="epeTextGradientTo" value="#E05252">
-            <input type="range" id="epeTextGradientAngle" min="0" max="360" value="45" style="flex:1;" aria-label="Gradient angle">
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Effects</p>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeTextShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Shadow</label>
-          <div class="qr-controls" style="margin-top:6px;">
-            <div class="ctrl"><label for="epeTextShadowOffsetX">Offset X</label><input type="range" id="epeTextShadowOffsetX" min="-40" max="40" value="4"></div>
-            <div class="ctrl"><label for="epeTextShadowOffsetY">Offset Y</label><input type="range" id="epeTextShadowOffsetY" min="-40" max="40" value="4"></div>
-            <div class="ctrl"><label for="epeTextShadowBlur">Blur</label><input type="range" id="epeTextShadowBlur" min="0" max="60" value="6"></div>
-            <div class="ctrl"><label for="epeTextShadowOpacity">Opacity</label><input type="range" id="epeTextShadowOpacity" min="0" max="100" value="60"></div>
-          </div>
-          <input type="color" id="epeTextShadowColor" value="#000000" style="margin-top:6px;">
-
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:12px;"><input type="checkbox" id="epeTextStrokeEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Stroke / Outline</label>
-          <div class="qr-controls" style="margin-top:6px;">
-            <div class="ctrl"><label for="epeTextStrokeThickness">Thickness</label><input type="range" id="epeTextStrokeThickness" min="1" max="20" value="2"></div>
-            <div class="ctrl"><label for="epeTextStrokePosition">Position</label><select id="epeTextStrokePosition"><option value="outside">Outside</option><option value="center">Center</option></select></div>
-          </div>
-          <input type="color" id="epeTextStrokeColor" value="#000000" style="margin-top:6px;">
-
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:12px;"><input type="checkbox" id="epeTextGlowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Glow</label>
-          <div class="qr-controls" style="margin-top:6px;">
-            <div class="ctrl"><label for="epeTextGlowBlur">Blur</label><input type="range" id="epeTextGlowBlur" min="0" max="60" value="16"></div>
-          </div>
-          <input type="color" id="epeTextGlowColor" value="#5142D6" style="margin-top:6px;">
-          <p class="editor-hint">Tip: for a neon look, combine Glow with a bright Stroke color.</p>
-
-          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Curved Text</p>
-          <div class="row">
-            <select id="epeTextCurveType"><option value="none">Straight (no curve)</option><option value="circle">Circle</option><option value="arc">Arc</option></select>
-          </div>
-          <div class="qr-controls" style="margin-top:6px;">
-            <div class="ctrl"><label for="epeTextCurveRadius">Radius</label><input type="range" id="epeTextCurveRadius" min="40" max="600" value="200"></div>
-          </div>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionShapesIcons">
-          <summary class="pp-accordion-summary">Shapes &amp; Icons</summary>
-          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Shapes</p>
-          <div class="row" id="epeAddShapeRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-shape-type="rectangle" type="button">Rectangle</button>
-            <button class="btn btn-ghost" data-shape-type="rounded-rect" type="button">Rounded Rect</button>
-            <button class="btn btn-ghost" data-shape-type="circle" type="button">Circle</button>
-            <button class="btn btn-ghost" data-shape-type="ellipse" type="button">Ellipse</button>
-            <button class="btn btn-ghost" data-shape-type="triangle" type="button">Triangle</button>
-            <button class="btn btn-ghost" data-shape-type="diamond" type="button">Diamond</button>
-            <button class="btn btn-ghost" data-shape-type="pentagon" type="button">Pentagon</button>
-            <button class="btn btn-ghost" data-shape-type="hexagon" type="button">Hexagon</button>
-            <button class="btn btn-ghost" data-shape-type="octagon" type="button">Octagon</button>
-            <button class="btn btn-ghost" data-shape-type="star" type="button">Star</button>
-            <button class="btn btn-ghost" data-shape-type="arrow" type="button">Arrow</button>
-            <button class="btn btn-ghost" data-shape-type="heart" type="button">Heart</button>
-            <button class="btn btn-ghost" data-shape-type="speech-bubble" type="button">Speech Bubble</button>
-            <button class="btn btn-ghost" data-shape-type="line" type="button">Line</button>
-            <button class="btn btn-ghost" data-shape-type="dashed-line" type="button">Dashed Line</button>
-          </div>
-          <p class="editor-hint">Ribbon, Banner, and Custom Border are composite graphic presets rather than simple shapes and aren't included in this phase — combine a rectangle with text for a similar effect.</p>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Icons</p>
-          <div class="row">
-            <input type="text" id="epeIconSearch" placeholder="Search icons…" style="flex:1;" aria-label="Search icons">
-            <select id="epeIconCategoryFilter" aria-label="Icon category"><option value="all">All categories</option></select>
-          </div>
-          <div id="epeIconResultsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;max-height:160px;overflow-y:auto;margin-top:8px;border:1px solid var(--card-border);border-radius:8px;padding:6px;"></div>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionStickersBadges">
-          <summary class="pp-accordion-summary">Stickers, Badges &amp; Price Tags</summary>
-          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Stickers</p>
-          <div class="row" id="epeStickerRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-sticker="sale" type="button">Sale</button>
-            <button class="btn btn-ghost" data-sticker="hot" type="button">Hot</button>
-            <button class="btn btn-ghost" data-sticker="new" type="button">New</button>
-            <button class="btn btn-ghost" data-sticker="limited-offer" type="button">Limited Offer</button>
-            <button class="btn btn-ghost" data-sticker="flash-sale" type="button">Flash Sale</button>
-            <button class="btn btn-ghost" data-sticker="best-seller" type="button">Best Seller</button>
-            <button class="btn btn-ghost" data-sticker="trending" type="button">Trending</button>
-            <button class="btn btn-ghost" data-sticker="exclusive" type="button">Exclusive</button>
-            <button class="btn btn-ghost" data-sticker="free-shipping" type="button">Free Shipping</button>
-          </div>
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Badges</p>
-          <div class="row" id="epeBadgeRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-badge="premium" type="button">Premium</button>
-            <button class="btn btn-ghost" data-badge="verified" type="button">Verified</button>
-            <button class="btn btn-ghost" data-badge="top-rated" type="button">Top Rated</button>
-            <button class="btn btn-ghost" data-badge="luxury" type="button">Luxury</button>
-            <button class="btn btn-ghost" data-badge="organic" type="button">Organic</button>
-            <button class="btn btn-ghost" data-badge="warranty" type="button">Warranty</button>
-          </div>
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Price Tag</p>
-          <button class="btn btn-secondary" id="epeAddPriceTagBtn" type="button">Add Price Tag</button>
-          <p class="editor-hint">Every element in a sticker, badge, or price tag stays fully editable — ungroup it to restyle individual pieces.</p>
-        </details>
-
-        <details class="pp-accordion hidden" id="epeAccordionShapePanel">
-          <summary class="pp-accordion-summary">Shape / Icon Style</summary>
-          <div class="row"><input type="color" id="epeShapeColorInput" value="#5142D6"></div>
-          <div class="row" id="epeShapeBorderRow" style="margin-top:8px;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShapeBorderEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Border</label>
-          </div>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionArrangeAlign">
-          <summary class="pp-accordion-summary">Arrange &amp; Align</summary>
-          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Align</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" id="epeAlignLeftBtn" type="button">Left</button>
-            <button class="btn btn-ghost" id="epeAlignCenterHBtn" type="button">Center H</button>
-            <button class="btn btn-ghost" id="epeAlignRightBtn" type="button">Right</button>
-            <button class="btn btn-ghost" id="epeAlignTopBtn" type="button">Top</button>
-            <button class="btn btn-ghost" id="epeAlignMiddleBtn" type="button">Middle</button>
-            <button class="btn btn-ghost" id="epeAlignBottomBtn" type="button">Bottom</button>
-          </div>
-          <div class="row" style="margin-top:8px;">
-            <button class="btn btn-ghost" id="epeDistributeHBtn" type="button">Distribute Horizontally</button>
-            <button class="btn btn-ghost" id="epeDistributeVBtn" type="button">Distribute Vertically</button>
-          </div>
-          <p class="editor-hint">Shift-click multiple layers on the canvas (or in the Layers panel, under Layers) to multi-select before aligning. Group/Ungroup controls are in the Layers panel.</p>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionBrandColors">
-          <summary class="pp-accordion-summary">Brand Colors</summary>
-          <div class="row">
-            <input type="color" id="epeBrandColorPicker" value="#5142D6">
-            <button class="btn btn-ghost" id="epeAddBrandColorBtn" type="button">Save Color</button>
-          </div>
-          <div id="epeBrandColorsList" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
-          <p class="editor-hint">Saved brand colors persist in this browser and are available across sessions. Click a swatch to apply it to the selected text, shape, or icon.</p>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionMarketplace">
-          <summary class="pp-accordion-summary">Marketplace Studio</summary>
-          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Marketplace Preset</p>
-          <select id="epeMarketplacePreset">
-            <option value="">Choose a marketplace…</option>
-            <option value="amazon-main">Amazon Main Image (2000×2000)</option>
-            <option value="amazon-gallery">Amazon Gallery (2000×2000)</option>
-            <option value="daraz">Daraz Product Image (1500×1500)</option>
-            <option value="shopify">Shopify Product (2048×2048)</option>
-            <option value="facebook-marketplace">Facebook Marketplace (1080×1080)</option>
-            <option value="instagram-square">Instagram Square (1080×1080)</option>
-            <option value="instagram-portrait">Instagram Portrait (1080×1350)</option>
-            <option value="instagram-story">Instagram Story (1080×1920)</option>
-            <option value="tiktok-shop">TikTok Shop (1080×1920)</option>
-            <option value="pinterest-pin">Pinterest Pin (1000×1500)</option>
-          </select>
-          <p id="epeMarketplaceNote" style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;"></p>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Canvas Ratio</p>
-          <select id="epeCanvasRatioPreset">
-            <option value="">Choose a ratio…</option>
-            <option value="1:1">1:1 Square</option><option value="4:5">4:5 Portrait</option>
-            <option value="16:9">16:9 Landscape</option><option value="9:16">9:16 Vertical</option>
-            <option value="3:4">3:4 Portrait</option><option value="4:3">4:3 Landscape</option>
-            <option value="a4">A4 (print)</option><option value="custom">Custom (no change)</option>
-          </select>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Canvas Background</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="transparent" checked style="accent-color:var(--accent1);"> Transparent</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="white" style="accent-color:var(--accent1);"> Pure White</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="black" style="accent-color:var(--accent1);"> Pure Black</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="color" style="accent-color:var(--accent1);"> Solid Color</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="gradient" style="accent-color:var(--accent1);"> Gradient</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="studio" style="accent-color:var(--accent1);"> Simple Studio</label>
-          </div>
-          <div class="row hidden" id="epeCanvasBgColorRow" style="margin-top:8px;">
-            <input type="color" id="epeCanvasBgColorInput" value="#ffffff">
-          </div>
-          <div class="row hidden" id="epeCanvasBgGradientRow" style="margin-top:8px;align-items:center;">
-            <input type="color" id="epeCanvasBgGradientFrom" value="#f5f5f5">
-            <input type="color" id="epeCanvasBgGradientTo" value="#e0e0e0">
-            <input type="range" id="epeCanvasBgGradientAngle" min="0" max="360" value="180" style="flex:1;" aria-label="Gradient angle">
-          </div>
-          <p class="editor-hint">This fills the entire exported canvas — independent of any per-layer background removal in the Background panel.</p>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Product Scale Assistant</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" id="epeScaleFillBtn" type="button">Fill Canvas</button>
-            <button class="btn btn-ghost" id="epeScaleFitBtn" type="button">Fit Canvas</button>
-            <button class="btn btn-secondary" id="epeScaleRecommendedBtn" type="button">Marketplace Recommended (85%)</button>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Centering</p>
-          <div class="row" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" id="epeAutoCenterSuggestBtn" type="button">Center on Canvas</button>
-            <button class="btn btn-ghost" id="epeOpticalCenterBtn" type="button">Optical Center</button>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Marketplace Quality Check</p>
-          <div id="epeMarketplaceQualityBody" style="font-size:12.5px;line-height:1.6;">Open this section to check compliance.</div>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionSafeArea">
-          <summary class="pp-accordion-summary">Safe Area &amp; Margins</summary>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSafeArea" style="width:15px;height:15px;accent-color:var(--accent1);"> Show safe area, danger zone &amp; margin guides</label>
-          <div class="qr-controls" style="margin-top:10px;">
-            <div class="ctrl"><label for="epeSafeAreaMargin">Safe Area Margin %: <span id="epeSafeAreaMarginVal">8</span></label><input type="range" id="epeSafeAreaMargin" min="2" max="20" value="8"></div>
-          </div>
-          <p class="editor-hint"><span style="color:#3ba55c;">Green</span> = recommended safe area for important content. <span style="color:#e05252;">Red</span> = danger zone near the true edge. Any object crossing the safe area is outlined in red as a warning.</p>
-        </details>
-
-        <details class="pp-accordion" id="epeAccordionHighlightsCallouts">
-          <summary class="pp-accordion-summary">Highlights, Callouts &amp; Labels</summary>
-          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Highlight Elements</p>
-          <div class="row" id="epeHighlightRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-highlight="circle" type="button">Circle Highlight</button>
-            <button class="btn btn-ghost" data-highlight="arrow" type="button">Arrow Highlight</button>
-            <button class="btn btn-ghost" data-highlight="glow" type="button">Glow Highlight</button>
-            <button class="btn btn-ghost" data-highlight="border" type="button">Border Highlight</button>
-            <button class="btn btn-ghost" data-highlight="spotlight" type="button">Spotlight</button>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Callouts</p>
-          <div class="row" id="epeCalloutRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-callout="arrow-callout" type="button">Arrow Callout</button>
-            <button class="btn btn-ghost" data-callout="rounded-box" type="button">Rounded Box</button>
-            <button class="btn btn-ghost" data-callout="modern-box" type="button">Modern Box</button>
-            <button class="btn btn-ghost" data-callout="minimal-box" type="button">Minimal Box</button>
-            <button class="btn btn-ghost" data-callout="price-callout" type="button">Price Callout</button>
-            <button class="btn btn-ghost" data-callout="feature-callout" type="button">Feature Callout</button>
-          </div>
-
-          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Feature Labels</p>
-          <div class="row" id="epeFeatureLabelRow" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost" data-feature="premium" type="button">Premium</button>
-            <button class="btn btn-ghost" data-feature="waterproof" type="button">Waterproof</button>
-            <button class="btn btn-ghost" data-feature="original" type="button">100% Original</button>
-            <button class="btn btn-ghost" data-feature="new" type="button">New</button>
-            <button class="btn btn-ghost" data-feature="limited" type="button">Limited</button>
-            <button class="btn btn-ghost" data-feature="eco-friendly" type="button">Eco Friendly</button>
-            <button class="btn btn-ghost" data-feature="organic" type="button">Organic</button>
-            <button class="btn btn-ghost" data-feature="imported" type="button">Imported</button>
-            <button class="btn btn-ghost" data-feature="warranty" type="button">Warranty</button>
-          </div>
         </details>
 
         <details class="pp-accordion" id="epeAccordionExport">
-
-
-
 
           <summary class="pp-accordion-summary">Export</summary>
           <div class="row">
@@ -724,7 +375,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260718-1802" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260717-2047" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -761,6 +412,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260718-1802"></script>
+<script defer src="js/app.js?v=20260717-2047"></script>
 </body>
 </html>
