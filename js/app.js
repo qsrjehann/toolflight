@@ -11429,10 +11429,17 @@ if (document.getElementById('epeDrop')){
   }
   function dsePositionEditOverlay(layer){
     const el = dseGetOrCreateEditOverlay();
+    const wrapEl = document.getElementById('epeCanvasStageWrap');
+    const wrapRect = wrapEl.getBoundingClientRect();
     const canvasRect = epeArtboardEl.getBoundingClientRect();
     const dispScale = canvasRect.width / epeArtboardW;
     const w = layer.boxW * layer.scale * dispScale, h = layer.boxH * layer.scale * dispScale;
-    const cx = canvasRect.left + layer.x * dispScale, cy = canvasRect.top + layer.y * dispScale;
+    // canvasRect/wrapRect are both viewport-relative (getBoundingClientRect);
+    // el is position:absolute inside wrapEl, so el.style.left/top must be
+    // relative to wrapEl's own position, not the viewport directly.
+    const canvasOffsetX = canvasRect.left - wrapRect.left + wrapEl.scrollLeft;
+    const canvasOffsetY = canvasRect.top - wrapRect.top + wrapEl.scrollTop;
+    const cx = canvasOffsetX + layer.x * dispScale, cy = canvasOffsetY + layer.y * dispScale;
     el.style.left = (cx - w/2) + 'px'; el.style.top = (cy - h/2) + 'px';
     el.style.width = w + 'px'; el.style.height = h + 'px';
     el.style.fontFamily = `"${layer.fontFamily}", sans-serif`;
@@ -12757,13 +12764,23 @@ if (document.getElementById('epeDrop')){
   // static -- shows placeholder digits, no live timer, matching "only
   // placeholder architecture" from the brief). ----
   const DSE_OFFER_PRESETS = {
-    'flat-discount':{ text:'FLAT $10 OFF', color:'#E05252' },
-    'percentage-discount':{ text:'30% OFF', color:'#E05252' },
-    'bogo':{ text:'BUY 1 GET 1 FREE', color:'#5142D6' },
-    'free-gift':{ text:'FREE GIFT INCLUDED', color:'#3BA55C' },
-    'bundle-offer':{ text:'BUNDLE & SAVE', color:'#FFB800' },
-    'limited-stock':{ text:'ONLY FEW LEFT', color:'#E05252' },
-    'flash-deal':{ text:'FLASH DEAL', color:'#111111' },
+    'flat-discount':{ text:'FLAT $10 OFF', shape:'rounded-rect', color:'#E05252', textColor:'#ffffff' },
+    'percentage-discount':{ text:'30% OFF', shape:'star', color:'#E05252', textColor:'#ffffff' },
+    'bogo':{ text:'BUY 1 GET 1 FREE', shape:'ribbon-rect', color:'#5142D6', textColor:'#ffffff' },
+    'free-gift':{ text:'FREE GIFT INCLUDED', shape:'rounded-rect', color:'#3BA55C', textColor:'#ffffff' },
+    'bundle-offer':{ text:'BUNDLE & SAVE', shape:'rounded-rect', color:'#FFB800', textColor:'#111111' },
+    'limited-stock':{ text:'ONLY FEW LEFT', shape:'circle', color:'#E05252', textColor:'#ffffff' },
+    'flash-deal':{ text:'FLASH DEAL', shape:'star', color:'#111111', textColor:'#FFB800' },
+    '50-off':{ text:'50% OFF', shape:'circle', color:'#E05252', textColor:'#ffffff' },
+    '70-off':{ text:'70% OFF', shape:'star', color:'#E05252', textColor:'#ffffff' },
+    'clearance':{ text:'CLEARANCE', shape:'ribbon-rect', color:'#111111', textColor:'#ffffff' },
+    'hot-deal':{ text:'HOT DEAL', shape:'rounded-rect', color:'#FF6B35', textColor:'#ffffff' },
+    'special-offer':{ text:'SPECIAL OFFER', shape:'rounded-rect', color:'#5142D6', textColor:'#ffffff' },
+    'black-friday':{ text:'BLACK FRIDAY', shape:'rounded-rect', color:'#111111', textColor:'#ffffff' },
+    'cyber-monday':{ text:'CYBER MONDAY', shape:'rounded-rect', color:'#111111', textColor:'#3BA55C' },
+    'summer-sale':{ text:'SUMMER SALE', shape:'circle', color:'#FFB800', textColor:'#111111' },
+    'winter-sale':{ text:'WINTER SALE', shape:'circle', color:'#5142D6', textColor:'#ffffff' },
+    'new-arrival':{ text:'NEW ARRIVAL', shape:'ribbon-rect', color:'#3BA55C', textColor:'#ffffff' },
   };
   document.querySelectorAll('#epeOfferRow [data-offer]').forEach(btn => btn.onclick = () => {
     if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
