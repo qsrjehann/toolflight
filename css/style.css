@@ -862,3 +862,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .dse-brand-swatch-wrap{position:relative;display:inline-block;}
 .dse-brand-swatch{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);cursor:pointer;}
 .dse-brand-swatch-del{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--err-solid);color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer;}
+
+/* ============ Session & Recovery — Phase 10 ============ */
+.dse-snapshot-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);}
+.dse-snapshot-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
