@@ -185,6 +185,7 @@ ICON_SCIENTIFIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 ICON_UNIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M7 3l-3 4M7 3l3 4M17 21V3M17 21l-3-4M17 21l3-4"/></svg>'
 ICON_XCHANGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg>'
 ICON_CROP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg>'
+ICON_LAYERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg>'
 ICON_WATERMARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17l3-3 2 2 4-5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>'
 ICON_ROTATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg>'
 ICON_AI_REMOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l4 4M20 4l-4 4M4 20l4-4M20 20l-4-4"/><circle cx="12" cy="12" r="4"/></svg>'
@@ -258,7 +259,7 @@ index_body = f"""<div class="hero">
 <div class="container" id="tools">
   <div class="category-hub-grid">
     {category_hub_card("pdf-tools.html", ICON_PDF_MERGE, "PDF Tools", "Merge, split, compress, convert PDF/Word, and build a resume.")}
-    {category_hub_card("image-tools.html", ICON_COMPRESS, "Image Tools", "Passport photos, AI OCR, upscaler, photo enhancer, and more.")}
+    {category_hub_card("image-tools.html", ICON_COMPRESS, "Image Tools", "A full product design studio, plus passport photos, AI OCR, upscaler, photo enhancer, and more.")}
     {category_hub_card("calculators.html", ICON_AGE, "Calculators", "Age, BMI, EMI, GST, scientific, unit, and currency calculators.")}
     {category_hub_card("finance-tools.html", ICON_CURRENCY, "Finance Tools", "Currency conversion and loan calculations, in progress.")}
     {category_hub_card("seo-tools.html", ICON_QR, "SEO Tools", "AI keyword generator, QR codes, robots.txt, and meta tags for site owners.")}
@@ -860,13 +861,14 @@ def build_pdf_tool_page(tool):
 
 # ============ IMAGE TOOLS ============
 image_body = f"""<div class="hero-sub">
-  <span class="hero-badge"><span class="dot"></span> 12 free image tools</span>
+  <span class="hero-badge"><span class="dot"></span> 13 free image tools</span>
   <h1>Image Tools</h1>
-  <p class="subtitle">Make passport photos, compress, extract text, retouch portraits, crop, rotate, remove backgrounds, remove objects, enhance, upscale, change backgrounds, and watermark — free, private, no signup. Each one has its own page.</p>
+  <p class="subtitle">Start with the full Ecommerce Product Editor design studio, or use a focused single-purpose tool: passport photos, compress, extract text, retouch portraits, crop, rotate, remove backgrounds, remove objects, enhance, upscale, change backgrounds, and watermark — free, private, no signup. Each one has its own page.</p>
 </div>
 
 <div class="container">
   <div class="category-hub-grid">
+    {category_hub_card("ecommerce-product-editor.html", ICON_LAYERS, "Ecommerce Product Editor", "A full product design studio — layers, typography, shapes, marketplace presets, and professional retouching.", cta="Open tool")}
     {category_hub_card("passport-photo-maker.html", ICON_PASSPORT, "Passport & Visa Photo Maker", "Auto-cropped passport and visa photos for 42 countries with AI face detection.", cta="Open tool")}
     {category_hub_card("image-compress.html", ICON_COMPRESS, "Compress Image", "Shrink JPG/PNG/WEBP file size with a live before & after preview.", cta="Open tool")}
     {category_hub_card("ai-ocr.html", ICON_OCR, "AI OCR (Image & PDF to Text)", "Extract editable, searchable text from images and scanned PDFs.", cta="Open tool")}
@@ -879,6 +881,7 @@ image_body = f"""<div class="hero-sub">
     {category_hub_card("ai-image-upscaler.html", ICON_UPSCALER, "AI Image Upscaler", "Upscale images 2x or 4x with real AI, using a browser-optimized model.", cta="Open tool")}
     {category_hub_card("magic-eraser.html", ICON_MAGIC_ERASER, "Magic Eraser (AI Object Remover)", "Brush over unwanted objects and remove them with real AI inpainting.", cta="Open tool")}
     {category_hub_card("image-watermark.html", ICON_WATERMARK, "Image Watermark Tool", "Add draggable text or logo watermarks with adjustable opacity.", cta="Open tool")}
+    {category_hub_card("ecommerce-product-editor.html", ICON_CROP, "Ecommerce Product Editor", "Position, scale, rotate, and crop product photos on a real artboard.", cta="Open tool")}
   </div>
 </div>
 """
@@ -1843,7 +1846,1049 @@ RT_FORM = """<div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h
         </details>
       </div>"""
 
+EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional product image editor \\u2014 position, scale, rotate, and crop your product photo on a real artboard, entirely in your browser. Free, no sign-up, no watermark.</p>
+
+      <div class="drop-zone" id="epeDrop">
+        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
+        <div class="drop-title">Drop a product photo here, tap to browse, or paste from clipboard</div>
+        <div class="drop-sub">PNG, JPG, WEBP, or AVIF \\u2014 up to 30MB</div>
+        <input type="file" id="epeInput" accept="image/png, image/jpeg, image/webp, image/avif">
+      </div>
+
+      <div class="hidden" id="epeAutoSaveBanner" style="margin-top:12px;padding:12px 14px;border:1.5px solid var(--accent1-solid);border-radius:12px;background:var(--card);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:13px;">A previous editing session was found.</span>
+        <span class="row" style="flex:0;">
+          <button class="btn btn-secondary" id="epeAutoSaveResumeBtn" type="button">Resume</button>
+          <button class="btn btn-ghost" id="epeAutoSaveDiscardBtn" type="button">Discard</button>
+        </span>
+      </div>
+
+      <div id="epeStage" class="hidden">
+        <div class="row" style="margin-top:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="epeFitScreenBtn" type="button">Fit to Screen</button>
+          <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
+          <button class="btn btn-ghost" id="epeUndoBtn" type="button" disabled>Undo</button>
+          <button class="btn btn-ghost" id="epeRedoBtn" type="button" disabled>Redo</button>
+          <button class="btn btn-ghost" id="epeReplaceBtn" type="button">Replace Image</button>
+          <button class="btn btn-danger" id="epeResetBtn" type="button">Reset</button>
+        </div>
+        <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="margin-top:14px;cursor:default;">
+          <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
+          <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+          <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
+        </div>
+        <div class="row" style="margin-top:8px;align-items:center;">
+          <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
+          <input type="range" id="epeZoomSlider" min="10" max="400" value="100" style="flex:1;">
+          <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
+            <option value="">Presets\u2026</option>
+            <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
+            <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
+            <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
+          </select>
+        </div>
+
+        <details class="pp-accordion" id="epeAccordionTransform" open>
+          <summary class="pp-accordion-summary">Transform</summary>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="epeScale">Scale: <span id="epeScaleVal">100</span>%</label><input type="range" id="epeScale" min="10" max="300" value="100"></div>
+            <div class="ctrl"><label for="epeRotation">Rotation: <span id="epeRotationVal">0</span>&deg;</label><input type="range" id="epeRotation" min="0" max="359" value="0"></div>
+          </div>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeRotate90Btn" type="button">Rotate 90&deg;</button>
+            <button class="btn btn-ghost" id="epeFlipHBtn" type="button" aria-pressed="false">Flip Horizontal</button>
+            <button class="btn btn-ghost" id="epeFlipVBtn" type="button" aria-pressed="false">Flip Vertical</button>
+            <button class="btn btn-ghost" id="epeResetTransformBtn" type="button">Reset Transform</button>
+          </div>
+          <p class="editor-hint">Drag the image directly on the canvas to move it, or use touch: drag with one finger, pinch to scale.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionCrop">
+          <summary class="pp-accordion-summary">Crop</summary>
+          <div class="row">
+            <button class="btn btn-secondary" id="epeCropToggleBtn" type="button" aria-pressed="false">Crop</button>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeCropLockRatio" style="width:15px;height:15px;accent-color:var(--accent1);"> Lock ratio</label>
+            <select id="epeCropRatioPreset"><option value="free">Free</option><option value="1:1">1:1 Square</option><option value="4:5">4:5 Portrait</option><option value="16:9">16:9 Landscape</option><option value="9:16">9:16 Vertical</option></select>
+          </div>
+          <div class="row hidden" id="epeCropActions" style="margin-top:8px;">
+            <button class="btn btn-primary" id="epeCropApplyBtn" type="button">Apply Crop</button>
+            <button class="btn btn-ghost" id="epeCropResetBtn" type="button">Reset Crop</button>
+            <button class="btn btn-ghost" id="epeCropCancelBtn" type="button">Cancel</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionGuides">
+          <summary class="pp-accordion-summary">Grid &amp; Guides</summary>
+          <div class="row">
+            <select id="epeGridMode"><option value="none">No grid</option><option value="thirds">Rule of thirds</option><option value="square">Square grid</option></select>
+            <input type="number" id="epeGridSpacing" min="10" max="200" value="50" class="hidden" style="width:90px;" aria-label="Grid spacing in pixels">
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSmartGuides" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Smart guides (snap to center)</label>
+          </div>
+          <p class="editor-hint">Safe area guides moved to their own \u201cSafe Area &amp; Margins\u201d section below, with editable margin and object warnings.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionAdjustments">
+          <summary class="pp-accordion-summary">Adjustments</summary>
+          <div class="row"><button class="btn btn-ghost" id="epeResetAdjustmentsBtn" type="button">Reset Adjustments</button></div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl"><label for="epeExposure">Exposure: <span id="epeExposureVal">0</span></label><input type="range" id="epeExposure" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeBrightness">Brightness: <span id="epeBrightnessVal">0</span></label><input type="range" id="epeBrightness" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeContrast">Contrast: <span id="epeContrastVal">0</span></label><input type="range" id="epeContrast" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeGamma">Gamma: <span id="epeGammaVal">0</span></label><input type="range" id="epeGamma" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeHighlights">Highlights: <span id="epeHighlightsVal">0</span></label><input type="range" id="epeHighlights" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeShadows">Shadows: <span id="epeShadowsVal">0</span></label><input type="range" id="epeShadows" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeWhites">Whites: <span id="epeWhitesVal">0</span></label><input type="range" id="epeWhites" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeBlacks">Blacks: <span id="epeBlacksVal">0</span></label><input type="range" id="epeBlacks" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeSaturation">Saturation: <span id="epeSaturationVal">0</span></label><input type="range" id="epeSaturation" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeVibrance">Vibrance: <span id="epeVibranceVal">0</span></label><input type="range" id="epeVibrance" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeTemperature">Temperature: <span id="epeTemperatureVal">0</span></label><input type="range" id="epeTemperature" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeTint">Tint: <span id="epeTintVal">0</span></label><input type="range" id="epeTint" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeHue">Hue: <span id="epeHueVal">0</span></label><input type="range" id="epeHue" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeSharpness">Sharpness: <span id="epeSharpnessVal">0</span></label><input type="range" id="epeSharpness" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeClarity">Clarity: <span id="epeClarityVal">0</span></label><input type="range" id="epeClarity" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeTexture">Texture: <span id="epeTextureVal">0</span></label><input type="range" id="epeTexture" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeDehaze">Dehaze: <span id="epeDehazeVal">0</span></label><input type="range" id="epeDehaze" min="-100" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeNoiseReduction">Product Retouch (noise reduction): <span id="epeNoiseReductionVal">0</span></label><input type="range" id="epeNoiseReduction" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="epeSurfaceEnhance">Surface Enhancement: <span id="epeSurfaceEnhanceVal">0</span></label><input type="range" id="epeSurfaceEnhance" min="0" max="100" value="0"></div>
+          </div>
+          <p class="editor-hint">Surface Enhancement is a general local-contrast boost useful for shiny or textured products (plastic, metal, glass, fabric) \u2014 it is not material-specific AI; it applies the same enhancement regardless of what the product is made of.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionBackground">
+          <summary class="pp-accordion-summary">Background</summary>
+          <div class="row">
+            <button class="btn btn-secondary" id="epeRemoveBgBtn" type="button">Remove Background (AI)</button>
+          </div>
+          <div id="epeBgStatus" style="font-size:12px;color:var(--ink-soft);margin:8px 0;"></div>
+          <div class="row hidden" id="epeManualBgRow">
+            <span style="font-size:12.5px;color:var(--ink-soft);">Use the manual brush tools below (Retouch section) to erase or restore the background by hand.</span>
+          </div>
+          <p class="editor-hint" style="margin-top:10px;">Background replacement:</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="none" checked style="accent-color:var(--accent1);"> None</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="transparent" style="accent-color:var(--accent1);"> Transparent</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="white" style="accent-color:var(--accent1);"> White</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="black" style="accent-color:var(--accent1);"> Black</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="color" style="accent-color:var(--accent1);"> Color</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeBgMode" value="gradient" style="accent-color:var(--accent1);"> Gradient</label>
+          </div>
+          <div class="row hidden" id="epeBgColorRow" style="margin-top:8px;align-items:center;">
+            <input type="color" id="epeBgColorInput" value="#ffffff" style="width:40px;height:32px;">
+            <input type="text" id="epeColorHex" value="#ffffff" style="width:90px;" readonly>
+            <span id="epeColorRgb" style="font-size:11.5px;color:var(--ink-soft);"></span>
+            <span id="epeColorHsl" style="font-size:11.5px;color:var(--ink-soft);"></span>
+            <button class="btn btn-ghost" id="epeEyedropperBtn" type="button">Eyedropper</button>
+          </div>
+          <div class="row hidden" id="epeBgGradientRow" style="margin-top:8px;align-items:center;">
+            <input type="color" id="epeBgGradientFrom" value="#ffffff">
+            <input type="color" id="epeBgGradientTo" value="#dddddd">
+            <input type="range" id="epeBgGradientAngle" min="0" max="360" value="180" style="flex:1;" aria-label="Gradient angle">
+          </div>
+          <div id="epeRecentColors" style="display:flex;gap:6px;margin-top:8px;"></div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionRetouch">
+          <summary class="pp-accordion-summary">Retouch Brushes</summary>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-tool="erase" type="button">Eraser</button>
+            <button class="btn btn-ghost" data-tool="restore" type="button">Restore</button>
+            <button class="btn btn-ghost" data-tool="blur" type="button">Blur Brush</button>
+            <button class="btn btn-ghost" data-tool="sharpen" type="button">Sharpen Brush</button>
+            <button class="btn btn-ghost" data-tool="spot" type="button">Spot Removal</button>
+            <button class="btn btn-ghost" data-tool="clone" type="button">Clone Stamp</button>
+            <button class="btn btn-ghost" data-tool="heal" type="button">Healing Brush</button>
+            <button class="btn btn-ghost" data-tool="redeye" type="button">Red Eye Removal</button>
+          </div>
+          <div class="row hidden" id="epeCloneOptionsRow" style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeCloneAlignedToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Aligned (keep source offset across strokes)</label>
+          </div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl"><label for="epeBrushSize">Brush Size</label><input type="range" id="epeBrushSize" min="4" max="200" value="40"></div>
+            <div class="ctrl"><label for="epeBrushHardness">Hardness</label><input type="range" id="epeBrushHardness" min="0" max="100" value="60"></div>
+            <div class="ctrl"><label for="epeBrushOpacity">Opacity</label><input type="range" id="epeBrushOpacity" min="1" max="100" value="100"></div>
+            <div class="ctrl"><label for="epeRedEyeStrength">Red Eye Strength</label><input type="range" id="epeRedEyeStrength" min="10" max="100" value="60"></div>
+          </div>
+          <p class="editor-hint">Zoom in (pinch or the Zoom slider above) for more precise brushing. Undo/Redo apply to brush strokes too. For Clone Stamp and Healing Brush: Alt/Option-click to set a source point, then paint. Non-Aligned mode re-samples from the source point at the start of every new stroke.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionShadow">
+          <summary class="pp-accordion-summary">Shadow Studio</summary>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable shadow</label>
+          <div class="row" style="margin-top:8px;">
+            <select id="epeShadowStyle"><option value="soft">Soft Shadow</option><option value="hard">Hard Shadow</option><option value="floating">Floating Shadow</option><option value="floor">Natural Floor Shadow</option><option value="studio">Studio Shadow</option><option value="ground">Ground Shadow</option><option value="reflection">Reflection Shadow</option></select>
+          </div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl"><label for="epeShadowOpacity">Opacity: <span id="epeShadowOpacityVal">45</span></label><input type="range" id="epeShadowOpacity" min="0" max="100" value="45"></div>
+            <div class="ctrl"><label for="epeShadowBlur">Blur: <span id="epeShadowBlurVal">24</span></label><input type="range" id="epeShadowBlur" min="0" max="80" value="24"></div>
+            <div class="ctrl"><label for="epeShadowDistance">Distance: <span id="epeShadowDistanceVal">18</span></label><input type="range" id="epeShadowDistance" min="0" max="150" value="18"></div>
+            <div class="ctrl"><label for="epeShadowAngle">Angle: <span id="epeShadowAngleVal">135</span></label><input type="range" id="epeShadowAngle" min="0" max="359" value="135"></div>
+            <div class="ctrl"><label for="epeShadowScale">Scale: <span id="epeShadowScaleVal">100</span></label><input type="range" id="epeShadowScale" min="20" max="200" value="100"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionReflection">
+          <summary class="pp-accordion-summary">Reflection Studio</summary>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeReflectionEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable reflection</label>
+          <div class="row" style="margin-top:8px;">
+            <select id="epeReflectionStyle"><option value="mirror">Mirror Reflection</option><option value="soft">Soft Reflection</option><option value="gloss">Gloss Reflection</option><option value="floor">Floor Reflection</option><option value="bottom">Bottom Reflection</option><option value="fade">Fade Reflection</option></select>
+          </div>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl"><label for="epeReflectionOpacity">Opacity: <span id="epeReflectionOpacityVal">35</span></label><input type="range" id="epeReflectionOpacity" min="0" max="100" value="35"></div>
+            <div class="ctrl"><label for="epeReflectionFade">Fade: <span id="epeReflectionFadeVal">60</span></label><input type="range" id="epeReflectionFade" min="0" max="100" value="60"></div>
+            <div class="ctrl"><label for="epeReflectionDistance">Distance: <span id="epeReflectionDistanceVal">0</span></label><input type="range" id="epeReflectionDistance" min="0" max="100" value="0"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionAnalysis">
+          <summary class="pp-accordion-summary">Histogram, Inspector &amp; Quality</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Histogram</p>
+          <canvas id="epeHistogramCanvas" style="width:100%;height:100px;background:var(--card);border:1px solid var(--card-border);border-radius:8px;"></canvas>
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Image Inspector</p>
+          <div id="epeInspectorBody" style="font-size:12.5px;line-height:1.8;color:var(--ink-soft);"></div>
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Quality Check</p>
+          <div id="epeQualityBody" style="font-size:12.5px;line-height:1.6;"></div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionUpscaleCompress">
+          <summary class="pp-accordion-summary">Upscale &amp; Compression</summary>
+          <div class="row">
+            <button class="btn btn-secondary" id="epeUpscale2xBtn" type="button">Upscale 2\u00d7</button>
+            <button class="btn btn-secondary" id="epeUpscale4xBtn" type="button">Upscale 4\u00d7</button>
+          </div>
+          <p class="editor-hint">Browser-based resampling with a sharpening pass \u2014 not neural AI super-resolution. Best for modest size increases.</p>
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Estimated export size</p>
+          <div id="epeCompressionPreview" style="font-size:12.5px;color:var(--ink-soft);">Open this section to estimate.</div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionBeforeAfter">
+          <summary class="pp-accordion-summary">Before / After</summary>
+          <div id="epeBeforeAfterWrap" style="position:relative;width:100%;max-width:400px;border-radius:10px;border:1px solid var(--card-border);overflow:hidden;background:#000;">
+            <canvas id="epeBeforeCanvas" style="display:block;width:100%;height:auto;"></canvas>
+            <div id="epeAfterCanvasClip" style="position:absolute;top:0;left:0;width:50%;height:100%;overflow:hidden;">
+              <canvas id="epeAfterCompareCanvas" style="display:block;height:100%;width:auto;position:absolute;top:0;left:0;"></canvas>
+            </div>
+            <div id="epeBeforeAfterHandle" style="position:absolute;top:0;left:50%;width:2px;height:100%;background:#fff;pointer-events:none;box-shadow:0 0 4px rgba(0,0,0,0.5);"></div>
+          </div>
+          <input type="range" id="epeBeforeAfterSlider" min="0" max="100" value="50" style="width:100%;max-width:400px;margin-top:8px;">
+          <p class="editor-hint">Left of the line: original. Right of the line: edited.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionLayers">
+          <summary class="pp-accordion-summary">Layers</summary>
+          <p class="editor-hint">Click a row to select it, Shift-click to select multiple. Click the eye to hide/show, the lock icon to prevent edits, and double-click the name to rename. Drag rows to reorder.</p>
+          <input type="text" id="epeLayerSearch" placeholder="Search layers\u2026" style="width:100%;margin-top:8px;" aria-label="Search layers">
+          <div id="epeLayersPanel" role="listbox" aria-label="Layers" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;min-height:40px;"></div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn btn-secondary" id="epeGroupBtn" type="button">Group Selected</button>
+            <button class="btn btn-ghost" id="epeUngroupBtn" type="button" disabled>Ungroup</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion hidden" id="epeAccordionObject">
+          <summary class="pp-accordion-summary">Object</summary>
+          <p class="editor-hint">These controls work identically for any selected layer \u2014 image, text, shape, icon, sticker, badge, price tag, or group.</p>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="epeObjectOpacity">Opacity: <span id="epeObjectOpacityVal">100</span></label><input type="range" id="epeObjectOpacity" min="0" max="100" value="100"></div>
+          </div>
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Blend Mode</p>
+          <select id="epeBlendMode"><option value="normal">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="darken">Darken</option><option value="lighten">Lighten</option><option value="soft-light">Soft Light</option><option value="hard-light">Hard Light</option><option value="difference">Difference</option><option value="color">Color</option><option value="luminosity">Luminosity</option></select>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Layer Order</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeLayerForwardBtn" type="button">Bring Forward</button>
+            <button class="btn btn-ghost" id="epeLayerBackwardBtn" type="button">Send Backward</button>
+            <button class="btn btn-ghost" id="epeLayerTopBtn" type="button">Move to Top</button>
+            <button class="btn btn-ghost" id="epeLayerBottomBtn" type="button">Move to Bottom</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Duplicate &amp; Style</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="epeDuplicateLayerBtn" type="button">Duplicate</button>
+            <button class="btn btn-ghost" id="epeCopyStyleBtn" type="button">Copy Style</button>
+            <button class="btn btn-ghost" id="epePasteStyleBtn" type="button">Paste Style</button>
+            <button class="btn btn-danger" id="epeDeleteLayerBtn" type="button">Delete</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionAddText">
+          <summary class="pp-accordion-summary">Add Text</summary>
+          <div class="row" id="epeAddTextRow" style="flex-wrap:wrap;">
+            <button class="btn btn-secondary" data-text-type="heading" type="button">Heading</button>
+            <button class="btn btn-secondary" data-text-type="subheading" type="button">Sub Heading</button>
+            <button class="btn btn-ghost" data-text-type="paragraph" type="button">Paragraph</button>
+            <button class="btn btn-ghost" data-text-type="caption" type="button">Caption</button>
+            <button class="btn btn-ghost" data-text-type="body" type="button">Body</button>
+            <button class="btn btn-ghost" data-text-type="price" type="button">Price Label</button>
+            <button class="btn btn-ghost" data-text-type="button" type="button">Button Text</button>
+            <button class="btn btn-ghost" data-text-type="badge" type="button">Badge</button>
+            <button class="btn btn-ghost" data-text-type="custom" type="button">Custom Text Box</button>
+          </div>
+          <p class="editor-hint">Double-click any text on the canvas to edit it. Drag to move, use the handles to resize/rotate.</p>
+        </details>
+
+        <details class="pp-accordion hidden" id="epeAccordionTextPanel">
+          <summary class="pp-accordion-summary">Text Style</summary>
+          <textarea id="epeTextContent" rows="2" style="width:100%;font-size:13px;padding:8px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);resize:vertical;" aria-label="Text content"></textarea>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Font</p>
+          <div class="row">
+            <input type="text" id="epeFontFamilySearch" placeholder="Search 140+ fonts\u2026" style="flex:1;" aria-label="Search fonts">
+            <select id="epeFontCategoryFilter" aria-label="Font category"><option value="all">All categories</option>
+              <option>Sans Serif</option><option>Serif</option><option>Display</option><option>Script</option><option>Handwriting</option><option>Signature</option><option>Modern</option><option>Minimal</option><option>Luxury</option><option>Elegant</option><option>Gaming</option><option>Kids</option><option>Business</option><option>Technology</option><option>Food</option><option>Beauty</option><option>Fashion</option><option>Arabic Friendly</option><option>Urdu Friendly</option>
+            </select>
+          </div>
+          <div style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;">Current: <strong id="epeFontFamilyCurrent">Inter</strong></div>
+          <div id="epeFontResultsList" style="display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--card-border);border-radius:8px;padding:4px;"></div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:8px;">Recent:</div>
+          <div id="epeFontRecentList" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div>
+
+          <div class="qr-controls" style="margin-top:12px;">
+            <div class="ctrl"><label for="epeFontSize">Size: <span id="epeFontSizeVal">24</span></label><input type="range" id="epeFontSize" min="8" max="200" value="24"></div>
+            <div class="ctrl"><label for="epeFontWeight">Weight</label><select id="epeFontWeight"><option value="300">Light</option><option value="400" selected>Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra Bold</option><option value="900">Black</option></select></div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn btn-ghost" id="epeBoldBtn" type="button" aria-pressed="false"><strong>B</strong></button>
+            <button class="btn btn-ghost" id="epeItalicBtn" type="button" aria-pressed="false"><em>I</em></button>
+            <button class="btn btn-ghost" id="epeUnderlineBtn" type="button" aria-pressed="false" style="text-decoration:underline;">U</button>
+            <button class="btn btn-ghost" id="epeStrikeBtn" type="button" aria-pressed="false" style="text-decoration:line-through;">S</button>
+            <select id="epeTextCase" aria-label="Letter case"><option value="none">Normal case</option><option value="upper">UPPERCASE</option><option value="lower">lowercase</option></select>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Alignment</p>
+          <div class="row" id="epeTextAlignRow">
+            <button class="btn btn-ghost active" data-align="left" type="button">Left</button>
+            <button class="btn btn-ghost" data-align="center" type="button">Center</button>
+            <button class="btn btn-ghost" data-align="right" type="button">Right</button>
+            <button class="btn btn-ghost" data-align="justify" type="button">Justify</button>
+          </div>
+          <div class="row" id="epeTextVAlignRow" style="margin-top:6px;">
+            <button class="btn btn-ghost" data-valign="top" type="button">Top</button>
+            <button class="btn btn-ghost active" data-valign="middle" type="button">Middle</button>
+            <button class="btn btn-ghost" data-valign="bottom" type="button">Bottom</button>
+          </div>
+
+          <div class="qr-controls" style="margin-top:12px;">
+            <div class="ctrl"><label for="epeLetterSpacing">Letter Spacing: <span id="epeLetterSpacingVal">0</span></label><input type="range" id="epeLetterSpacing" min="-5" max="50" value="0"></div>
+            <div class="ctrl"><label for="epeLineHeight">Line Height: <span id="epeLineHeightVal">1.25</span></label><input type="range" id="epeLineHeight" min="0.8" max="3" step="0.05" value="1.25"></div>
+            <div class="ctrl"><label for="epeParagraphSpacing">Paragraph Spacing: <span id="epeParagraphSpacingVal">0</span></label><input type="range" id="epeParagraphSpacing" min="0" max="60" value="0"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:8px;"><input type="checkbox" id="epeAutoResize" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Auto-resize text box to fit content</label>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Color</p>
+          <div class="row">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeTextFillType" value="solid" checked style="accent-color:var(--accent1);"> Solid</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeTextFillType" value="gradient" style="accent-color:var(--accent1);"> Gradient</label>
+          </div>
+          <div class="row" id="epeTextSolidRow" style="margin-top:8px;">
+            <input type="color" id="epeTextColorInput" value="#111111">
+          </div>
+          <div class="row hidden" id="epeTextGradientRow" style="margin-top:8px;align-items:center;">
+            <input type="color" id="epeTextGradientFrom" value="#5142D6">
+            <input type="color" id="epeTextGradientTo" value="#E05252">
+            <input type="range" id="epeTextGradientAngle" min="0" max="360" value="45" style="flex:1;" aria-label="Gradient angle">
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Effects</p>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeTextShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Shadow</label>
+          <div class="qr-controls" style="margin-top:6px;">
+            <div class="ctrl"><label for="epeTextShadowOffsetX">Offset X</label><input type="range" id="epeTextShadowOffsetX" min="-40" max="40" value="4"></div>
+            <div class="ctrl"><label for="epeTextShadowOffsetY">Offset Y</label><input type="range" id="epeTextShadowOffsetY" min="-40" max="40" value="4"></div>
+            <div class="ctrl"><label for="epeTextShadowBlur">Blur</label><input type="range" id="epeTextShadowBlur" min="0" max="60" value="6"></div>
+            <div class="ctrl"><label for="epeTextShadowOpacity">Opacity</label><input type="range" id="epeTextShadowOpacity" min="0" max="100" value="60"></div>
+          </div>
+          <input type="color" id="epeTextShadowColor" value="#000000" style="margin-top:6px;">
+
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:12px;"><input type="checkbox" id="epeTextStrokeEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Stroke / Outline</label>
+          <div class="qr-controls" style="margin-top:6px;">
+            <div class="ctrl"><label for="epeTextStrokeThickness">Thickness</label><input type="range" id="epeTextStrokeThickness" min="1" max="20" value="2"></div>
+            <div class="ctrl"><label for="epeTextStrokePosition">Position</label><select id="epeTextStrokePosition"><option value="outside">Outside</option><option value="center">Center</option></select></div>
+          </div>
+          <input type="color" id="epeTextStrokeColor" value="#000000" style="margin-top:6px;">
+
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:12px;"><input type="checkbox" id="epeTextGlowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Glow</label>
+          <div class="qr-controls" style="margin-top:6px;">
+            <div class="ctrl"><label for="epeTextGlowBlur">Blur</label><input type="range" id="epeTextGlowBlur" min="0" max="60" value="16"></div>
+          </div>
+          <input type="color" id="epeTextGlowColor" value="#5142D6" style="margin-top:6px;">
+          <p class="editor-hint">Tip: for a neon look, combine Glow with a bright Stroke color.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Curved Text</p>
+          <div class="row">
+            <select id="epeTextCurveType"><option value="none">Straight (no curve)</option><option value="circle">Circle</option><option value="arc">Arc</option></select>
+          </div>
+          <div class="qr-controls" style="margin-top:6px;">
+            <div class="ctrl"><label for="epeTextCurveRadius">Radius</label><input type="range" id="epeTextCurveRadius" min="40" max="600" value="200"></div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionShapesIcons">
+          <summary class="pp-accordion-summary">Shapes &amp; Icons</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Shapes</p>
+          <div class="row" id="epeAddShapeRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-shape-type="rectangle" type="button">Rectangle</button>
+            <button class="btn btn-ghost" data-shape-type="rounded-rect" type="button">Rounded Rect</button>
+            <button class="btn btn-ghost" data-shape-type="circle" type="button">Circle</button>
+            <button class="btn btn-ghost" data-shape-type="ellipse" type="button">Ellipse</button>
+            <button class="btn btn-ghost" data-shape-type="triangle" type="button">Triangle</button>
+            <button class="btn btn-ghost" data-shape-type="diamond" type="button">Diamond</button>
+            <button class="btn btn-ghost" data-shape-type="pentagon" type="button">Pentagon</button>
+            <button class="btn btn-ghost" data-shape-type="hexagon" type="button">Hexagon</button>
+            <button class="btn btn-ghost" data-shape-type="octagon" type="button">Octagon</button>
+            <button class="btn btn-ghost" data-shape-type="star" type="button">Star</button>
+            <button class="btn btn-ghost" data-shape-type="arrow" type="button">Arrow</button>
+            <button class="btn btn-ghost" data-shape-type="heart" type="button">Heart</button>
+            <button class="btn btn-ghost" data-shape-type="speech-bubble" type="button">Speech Bubble</button>
+            <button class="btn btn-ghost" data-shape-type="line" type="button">Line</button>
+            <button class="btn btn-ghost" data-shape-type="dashed-line" type="button">Dashed Line</button>
+          </div>
+          <p class="editor-hint">Ribbon, Banner, and Custom Border are composite graphic presets rather than simple shapes and aren't included in this phase \u2014 combine a rectangle with text for a similar effect.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Icons</p>
+          <div class="row">
+            <input type="text" id="epeIconSearch" placeholder="Search icons\u2026" style="flex:1;" aria-label="Search icons">
+            <select id="epeIconCategoryFilter" aria-label="Icon category"><option value="all">All categories</option></select>
+          </div>
+          <div id="epeIconResultsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;max-height:160px;overflow-y:auto;margin-top:8px;border:1px solid var(--card-border);border-radius:8px;padding:6px;"></div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionStickersBadges">
+          <summary class="pp-accordion-summary">Stickers, Badges &amp; Price Tags</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Stickers</p>
+          <div class="row" id="epeStickerRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-sticker="sale" type="button">Sale</button>
+            <button class="btn btn-ghost" data-sticker="hot" type="button">Hot</button>
+            <button class="btn btn-ghost" data-sticker="new" type="button">New</button>
+            <button class="btn btn-ghost" data-sticker="limited-offer" type="button">Limited Offer</button>
+            <button class="btn btn-ghost" data-sticker="flash-sale" type="button">Flash Sale</button>
+            <button class="btn btn-ghost" data-sticker="best-seller" type="button">Best Seller</button>
+            <button class="btn btn-ghost" data-sticker="trending" type="button">Trending</button>
+            <button class="btn btn-ghost" data-sticker="exclusive" type="button">Exclusive</button>
+            <button class="btn btn-ghost" data-sticker="free-shipping" type="button">Free Shipping</button>
+          </div>
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Badges</p>
+          <div class="row" id="epeBadgeRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-badge="premium" type="button">Premium</button>
+            <button class="btn btn-ghost" data-badge="verified" type="button">Verified</button>
+            <button class="btn btn-ghost" data-badge="top-rated" type="button">Top Rated</button>
+            <button class="btn btn-ghost" data-badge="luxury" type="button">Luxury</button>
+            <button class="btn btn-ghost" data-badge="organic" type="button">Organic</button>
+            <button class="btn btn-ghost" data-badge="warranty" type="button">Warranty</button>
+          </div>
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Price Tag</p>
+          <button class="btn btn-secondary" id="epeAddPriceTagBtn" type="button">Add Price Tag</button>
+          <p class="editor-hint">Every element in a sticker, badge, or price tag stays fully editable \u2014 ungroup it to restyle individual pieces.</p>
+        </details>
+
+        <details class="pp-accordion hidden" id="epeAccordionShapePanel">
+          <summary class="pp-accordion-summary">Shape / Icon Style</summary>
+          <div class="row"><input type="color" id="epeShapeColorInput" value="#5142D6"></div>
+          <div class="row" id="epeShapeBorderRow" style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShapeBorderEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Border</label>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionArrangeAlign">
+          <summary class="pp-accordion-summary">Arrange &amp; Align</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Align</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeAlignLeftBtn" type="button">Left</button>
+            <button class="btn btn-ghost" id="epeAlignCenterHBtn" type="button">Center H</button>
+            <button class="btn btn-ghost" id="epeAlignRightBtn" type="button">Right</button>
+            <button class="btn btn-ghost" id="epeAlignTopBtn" type="button">Top</button>
+            <button class="btn btn-ghost" id="epeAlignMiddleBtn" type="button">Middle</button>
+            <button class="btn btn-ghost" id="epeAlignBottomBtn" type="button">Bottom</button>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn btn-ghost" id="epeDistributeHBtn" type="button">Distribute Horizontally</button>
+            <button class="btn btn-ghost" id="epeDistributeVBtn" type="button">Distribute Vertically</button>
+          </div>
+          <p class="editor-hint">Shift-click multiple layers on the canvas (or in the Layers panel, under Layers) to multi-select before aligning. Group/Ungroup controls are in the Layers panel.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionBrandColors">
+          <summary class="pp-accordion-summary">Brand Colors</summary>
+          <div class="row">
+            <input type="color" id="epeBrandColorPicker" value="#5142D6">
+            <button class="btn btn-ghost" id="epeAddBrandColorBtn" type="button">Save Color</button>
+          </div>
+          <div id="epeBrandColorsList" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
+          <p class="editor-hint">Saved brand colors persist in this browser and are available across sessions. Click a swatch to apply it to the selected text, shape, or icon.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionMarketplace">
+          <summary class="pp-accordion-summary">Marketplace Studio</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Marketplace Preset</p>
+          <select id="epeMarketplacePreset">
+            <option value="">Choose a size\u2026</option>
+            <optgroup label="Marketplaces">
+            <option value="amazon-main">Amazon Main Image (2000\u00d72000)</option>
+            <option value="amazon-gallery">Amazon Gallery (2000\u00d72000)</option>
+            <option value="daraz">Daraz Product Image (1500\u00d71500)</option>
+            <option value="shopify">Shopify Product (2048\u00d72048)</option>
+            <option value="facebook-marketplace">Facebook Marketplace (1080\u00d71080)</option>
+            <option value="instagram-square">Instagram Square (1080\u00d71080)</option>
+            <option value="instagram-portrait">Instagram Portrait (1080\u00d71350)</option>
+            <option value="instagram-story">Instagram Story (1080\u00d71920)</option>
+            <option value="tiktok-shop">TikTok Shop (1080\u00d71920)</option>
+            <option value="pinterest-pin">Pinterest Pin (1000\u00d71500)</option>
+            </optgroup>
+            <optgroup label="Marketing &amp; Social">
+            <option value="facebook-post">Facebook Post (1080\u00d71080)</option>
+            <option value="facebook-cover">Facebook Cover (820\u00d7360)</option>
+            <option value="facebook-story">Facebook Story (1080\u00d71920)</option>
+            <option value="instagram-reel-cover">Instagram Reel Cover (1080\u00d71920)</option>
+            <option value="tiktok-cover">TikTok Cover (1080\u00d71920)</option>
+            <option value="tiktok-story">TikTok Story (1080\u00d71920)</option>
+            <option value="pinterest-idea-pin">Pinterest Idea Pin (1080\u00d71920)</option>
+            <option value="youtube-thumbnail">YouTube Thumbnail (1280\u00d7720)</option>
+            <option value="youtube-community">YouTube Community Post (1200\u00d71200)</option>
+            <option value="whatsapp-status">WhatsApp Status (1080\u00d71920)</option>
+            <option value="google-display-banner">Google Display Banner (300\u00d7250)</option>
+            <option value="email-banner">Email Banner (600\u00d7200)</option>
+            <option value="website-hero-banner">Website Hero Banner (1920\u00d71080)</option>
+            <option value="popup-banner">Popup Banner (600\u00d7400)</option>
+            <option value="landing-page-banner">Landing Page Banner (1200\u00d7628)</option>
+            </optgroup>
+          </select>
+          <p id="epeMarketplaceNote" style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;"></p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Canvas Ratio</p>
+          <select id="epeCanvasRatioPreset">
+            <option value="">Choose a ratio\u2026</option>
+            <option value="1:1">1:1 Square</option><option value="4:5">4:5 Portrait</option>
+            <option value="16:9">16:9 Landscape</option><option value="9:16">9:16 Vertical</option>
+            <option value="3:4">3:4 Portrait</option><option value="4:3">4:3 Landscape</option>
+            <option value="a4">A4 (print)</option><option value="custom">Custom (no change)</option>
+          </select>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Canvas Background</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="transparent" checked style="accent-color:var(--accent1);"> Transparent</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="white" style="accent-color:var(--accent1);"> Pure White</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="black" style="accent-color:var(--accent1);"> Pure Black</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="color" style="accent-color:var(--accent1);"> Solid Color</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="gradient" style="accent-color:var(--accent1);"> Gradient</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="epeCanvasBgMode" value="studio" style="accent-color:var(--accent1);"> Simple Studio</label>
+          </div>
+          <div class="row hidden" id="epeCanvasBgColorRow" style="margin-top:8px;">
+            <input type="color" id="epeCanvasBgColorInput" value="#ffffff">
+          </div>
+          <div class="row hidden" id="epeCanvasBgGradientRow" style="margin-top:8px;align-items:center;">
+            <input type="color" id="epeCanvasBgGradientFrom" value="#f5f5f5">
+            <input type="color" id="epeCanvasBgGradientTo" value="#e0e0e0">
+            <input type="range" id="epeCanvasBgGradientAngle" min="0" max="360" value="180" style="flex:1;" aria-label="Gradient angle">
+          </div>
+          <p class="editor-hint">This fills the entire exported canvas \u2014 independent of any per-layer background removal in the Background panel.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Product Scale Assistant</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeScaleFillBtn" type="button">Fill Canvas</button>
+            <button class="btn btn-ghost" id="epeScaleFitBtn" type="button">Fit Canvas</button>
+            <button class="btn btn-secondary" id="epeScaleRecommendedBtn" type="button">Marketplace Recommended (85%)</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Centering</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeAutoCenterSuggestBtn" type="button">Center on Canvas</button>
+            <button class="btn btn-ghost" id="epeOpticalCenterBtn" type="button">Optical Center</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Marketplace Quality Check</p>
+          <div id="epeMarketplaceQualityBody" style="font-size:12.5px;line-height:1.6;">Open this section to check compliance.</div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionSafeArea">
+          <summary class="pp-accordion-summary">Safe Area &amp; Margins</summary>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSafeArea" style="width:15px;height:15px;accent-color:var(--accent1);"> Show safe area, danger zone &amp; margin guides</label>
+          <div class="qr-controls" style="margin-top:10px;">
+            <div class="ctrl"><label for="epeSafeAreaMargin">Safe Area Margin %: <span id="epeSafeAreaMarginVal">8</span></label><input type="range" id="epeSafeAreaMargin" min="2" max="20" value="8"></div>
+          </div>
+          <p class="editor-hint"><span style="color:#3ba55c;">Green</span> = recommended safe area for important content. <span style="color:#e05252;">Red</span> = danger zone near the true edge. Any object crossing the safe area is outlined in red as a warning.</p>
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Platform Safe Zone</p>
+          <select id="epePlatformSafeZone">
+            <option value="">Choose a platform\u2026</option>
+            <option value="instagram">Instagram</option>
+            <option value="tiktok">TikTok</option>
+            <option value="facebook">Facebook</option>
+            <option value="pinterest">Pinterest</option>
+            <option value="youtube">YouTube</option>
+          </select>
+          <p id="epePlatformSafeZoneNote" style="font-size:11px;color:var(--ink-soft);margin-top:6px;line-height:1.5;"></p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionHighlightsCallouts">
+          <summary class="pp-accordion-summary">Highlights, Callouts &amp; Labels</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Highlight Elements</p>
+          <div class="row" id="epeHighlightRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-highlight="circle" type="button">Circle Highlight</button>
+            <button class="btn btn-ghost" data-highlight="arrow" type="button">Arrow Highlight</button>
+            <button class="btn btn-ghost" data-highlight="glow" type="button">Glow Highlight</button>
+            <button class="btn btn-ghost" data-highlight="border" type="button">Border Highlight</button>
+            <button class="btn btn-ghost" data-highlight="spotlight" type="button">Spotlight</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Callouts</p>
+          <div class="row" id="epeCalloutRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-callout="arrow-callout" type="button">Arrow Callout</button>
+            <button class="btn btn-ghost" data-callout="rounded-box" type="button">Rounded Box</button>
+            <button class="btn btn-ghost" data-callout="modern-box" type="button">Modern Box</button>
+            <button class="btn btn-ghost" data-callout="minimal-box" type="button">Minimal Box</button>
+            <button class="btn btn-ghost" data-callout="price-callout" type="button">Price Callout</button>
+            <button class="btn btn-ghost" data-callout="feature-callout" type="button">Feature Callout</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Feature Labels</p>
+          <div class="row" id="epeFeatureLabelRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-feature="premium" type="button">Premium</button>
+            <button class="btn btn-ghost" data-feature="waterproof" type="button">Waterproof</button>
+            <button class="btn btn-ghost" data-feature="original" type="button">100% Original</button>
+            <button class="btn btn-ghost" data-feature="new" type="button">New</button>
+            <button class="btn btn-ghost" data-feature="limited" type="button">Limited</button>
+            <button class="btn btn-ghost" data-feature="eco-friendly" type="button">Eco Friendly</button>
+            <button class="btn btn-ghost" data-feature="organic" type="button">Organic</button>
+            <button class="btn btn-ghost" data-feature="imported" type="button">Imported</button>
+            <button class="btn btn-ghost" data-feature="warranty" type="button">Warranty</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionCtaRibbons">
+          <summary class="pp-accordion-summary">CTA Buttons &amp; Ribbons</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Call-to-Action Buttons</p>
+          <div class="row" id="epeCtaRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-cta="buy-now" type="button">Buy Now</button>
+            <button class="btn btn-ghost" data-cta="order-now" type="button">Order Now</button>
+            <button class="btn btn-ghost" data-cta="shop-now" type="button">Shop Now</button>
+            <button class="btn btn-ghost" data-cta="add-to-cart" type="button">Add To Cart</button>
+            <button class="btn btn-ghost" data-cta="learn-more" type="button">Learn More</button>
+            <button class="btn btn-ghost" data-cta="limited-offer" type="button">Limited Offer</button>
+            <button class="btn btn-ghost" data-cta="claim-discount" type="button">Claim Discount</button>
+            <button class="btn btn-ghost" data-cta="order-today" type="button">Order Today</button>
+          </div>
+          <p class="editor-hint">Ungroup a CTA button to edit its shape, color, gradient, shadow, border, typography, or add your own icon individually.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Promotional Ribbons</p>
+          <div class="row" id="epeRibbonRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-ribbon="flash-sale" type="button">Flash Sale</button>
+            <button class="btn btn-ghost" data-ribbon="mega-sale" type="button">Mega Sale</button>
+            <button class="btn btn-ghost" data-ribbon="weekend-sale" type="button">Weekend Sale</button>
+            <button class="btn btn-ghost" data-ribbon="clearance" type="button">Clearance</button>
+            <button class="btn btn-ghost" data-ribbon="limited-time" type="button">Limited Time</button>
+            <button class="btn btn-ghost" data-ribbon="best-seller" type="button">Best Seller</button>
+            <button class="btn btn-ghost" data-ribbon="top-rated" type="button">Top Rated</button>
+            <button class="btn btn-ghost" data-ribbon="recommended" type="button">Recommended</button>
+            <button class="btn btn-ghost" data-ribbon="luxury" type="button">Luxury</button>
+            <button class="btn btn-ghost" data-ribbon="premium" type="button">Premium</button>
+            <button class="btn btn-ghost" data-ribbon="exclusive" type="button">Exclusive</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionOffersTrust">
+          <summary class="pp-accordion-summary">Offers, Trust &amp; Features</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Offer Widgets</p>
+          <div class="row" id="epeOfferRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-offer="flat-discount" type="button">Flat Discount</button>
+            <button class="btn btn-ghost" data-offer="percentage-discount" type="button">Percentage Discount</button>
+            <button class="btn btn-ghost" data-offer="bogo" type="button">Buy One Get One</button>
+            <button class="btn btn-ghost" data-offer="free-gift" type="button">Free Gift</button>
+            <button class="btn btn-ghost" data-offer="bundle-offer" type="button">Bundle Offer</button>
+            <button class="btn btn-ghost" data-offer="limited-stock" type="button">Limited Stock</button>
+            <button class="btn btn-ghost" data-offer="flash-deal" type="button">Flash Deal</button>
+          </div>
+          <button class="btn btn-secondary" id="epeAddCountdownPlaceholderBtn" type="button" style="margin-top:8px;">Add Countdown Placeholder</button>
+          <p class="editor-hint">The countdown is a static, editable placeholder (00:00:00) \u2014 not a live timer. Live countdowns aren\u2019t implemented in this phase.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Trust Elements</p>
+          <div class="row" id="epeTrustRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-trust="secure-checkout" type="button">Secure Checkout</button>
+            <button class="btn btn-ghost" data-trust="money-back" type="button">Money Back Guarantee</button>
+            <button class="btn btn-ghost" data-trust="fast-delivery" type="button">Fast Delivery</button>
+            <button class="btn btn-ghost" data-trust="free-shipping" type="button">Free Shipping</button>
+            <button class="btn btn-ghost" data-trust="cod" type="button">Cash On Delivery</button>
+            <button class="btn btn-ghost" data-trust="verified-seller" type="button">Verified Seller</button>
+            <button class="btn btn-ghost" data-trust="ssl-secure" type="button">SSL Secure</button>
+            <button class="btn btn-ghost" data-trust="original-product" type="button">Original Product</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Feature Highlight Blocks</p>
+          <div class="row" id="epeFeatureBlockRow" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-featureblock="premium-material" type="button">Premium Material</button>
+            <button class="btn btn-ghost" data-featureblock="waterproof" type="button">Waterproof</button>
+            <button class="btn btn-ghost" data-featureblock="rechargeable" type="button">Rechargeable</button>
+            <button class="btn btn-ghost" data-featureblock="eco-friendly" type="button">Eco Friendly</button>
+            <button class="btn btn-ghost" data-featureblock="organic" type="button">Organic</button>
+            <button class="btn btn-ghost" data-featureblock="handmade" type="button">Handmade</button>
+            <button class="btn btn-ghost" data-featureblock="imported" type="button">Imported</button>
+            <button class="btn btn-ghost" data-featureblock="original" type="button">Original</button>
+            <button class="btn btn-ghost" data-featureblock="warranty" type="button">Warranty</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionTablesReviews">
+          <summary class="pp-accordion-summary">Tables &amp; Reviews</summary>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="epeAddComparisonTableBtn" type="button">Add Comparison Table</button>
+            <button class="btn btn-secondary" id="epeAddSpecTableBtn" type="button">Add Specification Table</button>
+            <button class="btn btn-secondary" id="epeAddReviewCardBtn" type="button">Add Review Card</button>
+          </div>
+          <p class="editor-hint">All content is static and fully editable \u2014 there is no backend or live data. Ungroup any table to edit individual cells, rows, or icons.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionLogoCode">
+          <summary class="pp-accordion-summary">Logo, QR &amp; Barcode</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Logo / Watermark / Certification</p>
+          <label class="btn btn-secondary" style="display:inline-block;cursor:pointer;">Upload Logo Image<input type="file" id="epeLogoUploadInput" accept="image/png, image/jpeg, image/webp" class="hidden"></label>
+          <p class="editor-hint">Works for brand logos, watermarks, certification badges, payment icons, or shipping logos \u2014 added as a new layer you can position and resize.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">QR Code &amp; Barcode</p>
+          <div class="row">
+            <button class="btn btn-ghost" id="epeAddQrPlaceholderBtn" type="button">Add QR Placeholder</button>
+            <button class="btn btn-ghost" id="epeAddBarcodePlaceholderBtn" type="button">Add Barcode Placeholder</button>
+          </div>
+          <p class="editor-hint">These are visual placeholders only \u2014 not scannable codes. Real QR/barcode generation is prepared architecturally but not implemented in this phase.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionBrandDefaults">
+          <summary class="pp-accordion-summary">Brand Consistency</summary>
+          <p class="editor-hint">Saved locally in this browser only \u2014 no cloud storage. Reuses your saved Brand Colors and Recent Fonts from earlier panels, plus default shadow/border below.</p>
+          <div class="row" style="flex-wrap:wrap;margin-top:8px;">
+            <button class="btn btn-ghost" id="epeSaveDefaultShadowBtn" type="button">Save Selected as Default Shadow</button>
+            <button class="btn btn-ghost" id="epeApplyDefaultShadowBtn" type="button">Apply Default Shadow</button>
+          </div>
+          <div class="row" style="flex-wrap:wrap;margin-top:8px;">
+            <button class="btn btn-ghost" id="epeSaveDefaultBorderBtn" type="button">Save Selected as Default Border</button>
+            <button class="btn btn-ghost" id="epeApplyDefaultBorderBtn" type="button">Apply Default Border</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionSelection">
+          <summary class="pp-accordion-summary">Selection &amp; Object Remove</summary>
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Selection Tools</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" data-selmode="rect" type="button">Rectangle</button>
+            <button class="btn btn-ghost" data-selmode="ellipse" type="button">Ellipse</button>
+            <button class="btn btn-ghost" data-selmode="lasso" type="button">Freehand Lasso</button>
+            <button class="btn btn-ghost" data-selmode="polygon" type="button">Polygon Lasso</button>
+            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Magic Wand (soon)</button>
+            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Quick Select (soon)</button>
+          </div>
+          <p class="editor-hint">Polygon Lasso: click to add each point, double-click to close the shape. Drag to draw Rectangle/Ellipse/Freehand Lasso.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Repair Mask</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeRepairMaskExpandBtn" type="button">Expand</button>
+            <button class="btn btn-ghost" id="epeRepairMaskContractBtn" type="button">Contract</button>
+            <button class="btn btn-ghost" id="epeRepairMaskFeatherBtn" type="button">Feather</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Reconstruction Quality</p>
+          <select id="epeReconstructQuality">
+            <option value="quick">Quick</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="high">High Quality</option>
+            <option value="maximum">Maximum Quality</option>
+          </select>
+          <p class="editor-hint">Higher quality uses a larger patch size, more search iterations, and more pyramid levels \u2014 better results, slower processing.</p>
+
+          <div class="row hidden" id="epeSelectionActions" style="margin-top:8px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeSelectionInvertBtn" type="button">Invert</button>
+            <button class="btn btn-ghost" id="epeSelectionClearBtn" type="button">Clear</button>
+            <button class="btn btn-ghost" id="epeReconstructPreviewBtn" type="button">Live Preview</button>
+            <button class="btn btn-ghost hidden" id="epeDiscardPreviewBtn" type="button">Discard Preview</button>
+            <button class="btn btn-secondary" id="epeFillSelectionBtn" type="button">Remove Object (Reconstruct)</button>
+            <button class="btn btn-ghost" id="epeMaskFromSelectionBtn" type="button">Use as Mask</button>
+          </div>
+
+          <div class="hidden" id="epeReconstructProgress" style="margin-top:10px;">
+            <div style="height:8px;background:var(--card-border);border-radius:4px;overflow:hidden;">
+              <div id="epeReconstructProgressBar" style="height:100%;width:0%;background:var(--accent1-solid);transition:width 0.15s;"></div>
+            </div>
+            <div class="row" style="margin-top:6px;align-items:center;">
+              <span id="epeReconstructProgressLabel" style="font-size:11.5px;color:var(--ink-soft);flex:1;"></span>
+              <button class="btn btn-ghost" id="epeReconstructCancelBtn" type="button">Cancel</button>
+            </div>
+          </div>
+          <p class="editor-hint">Object removal now uses a real local PatchMatch-style reconstruction engine (randomized nearest-neighbor search with propagation, run entirely in your browser via a background worker) \u2014 not a simple average, and not cloud/AI-based.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Patch Tool</p>
+          <button class="btn btn-secondary" id="epePatchToolToggle" type="button" aria-pressed="false">Enable Patch Tool</button>
+          <p class="editor-hint">Draw a selection above first, then with Patch Tool enabled, click-drag from a clean area \u2014 releasing replaces the selection with the dragged-from texture, color-matched to blend in. (Patch Tool uses the same direct color-correction technique as before; the PatchMatch engine above upgrades Object Remove specifically.)</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionFaceRetouch">
+          <summary class="pp-accordion-summary">Face Retouch</summary>
+          <p class="editor-hint">Each control detects a face automatically (no manual selection needed) and applies only within that region. Requires a visible, reasonably front-facing face in the photo.</p>
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Skin</p>
+          <div class="qr-controls"><div class="ctrl"><label for="epeSkinSmoothAmount">Smoothing Amount</label><input type="range" id="epeSkinSmoothAmount" min="0" max="100" value="50"></div></div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn btn-ghost" id="epeSkinSmoothBtn" type="button">Smooth Skin</button>
+            <button class="btn btn-ghost" id="epeShineReduceBtn" type="button">Reduce Shine</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Teeth</p>
+          <div class="qr-controls"><div class="ctrl"><label for="epeTeethWhitenAmount">Whitening Amount</label><input type="range" id="epeTeethWhitenAmount" min="0" max="100" value="50"></div></div>
+          <button class="btn btn-ghost" id="epeTeethWhitenBtn" type="button">Whiten Teeth</button>
+          <p class="editor-hint">Whitening is capped at a natural limit \u2014 it will never push teeth to an unrealistic blue-white.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Eyes</p>
+          <div class="qr-controls"><div class="ctrl"><label for="epeEyeBrightenAmount">Brighten Amount</label><input type="range" id="epeEyeBrightenAmount" min="0" max="100" value="50"></div></div>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeEyeBrightenBtn" type="button">Brighten</button>
+            <button class="btn btn-ghost" id="epeEyeSharpenBtn" type="button">Sharpen</button>
+            <button class="btn btn-ghost" id="epeEyeCatchLightBtn" type="button">Add Catch Light</button>
+            <button class="btn btn-ghost" id="epeEyeWhitesBtn" type="button">Enhance Whites</button>
+            <button class="btn btn-ghost" id="epeIrisSaturationBtn" type="button">Iris Saturation</button>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Lips</p>
+          <div class="qr-controls"><div class="ctrl"><label for="epeLipsEnhanceAmount">Enhancement Amount</label><input type="range" id="epeLipsEnhanceAmount" min="0" max="100" value="50"></div></div>
+          <button class="btn btn-ghost" id="epeLipsEnhanceBtn" type="button">Enhance Lips</button>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Hair</p>
+          <button class="btn btn-ghost" id="epeHairEnhanceBtn" type="button">Enhance Hair</button>
+          <p class="editor-hint">Hair has no dedicated face-mesh landmark, so this uses an approximate region above the detected face \u2014 disclosed as an estimate, not a precise hair mask.</p>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionMaskSystem">
+          <summary class="pp-accordion-summary">Mask System</summary>
+          <p class="editor-hint">Reuses the same mask already used by the Eraser/Restore brushes \u2014 everything here edits that one mask, so brush edits and gradient/selection masks combine naturally.</p>
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Gradient Mask</p>
+          <div class="row">
+            <select id="epeGradientMaskType"><option value="linear">Linear</option><option value="radial">Radial</option></select>
+            <input type="range" id="epeGradientMaskAngle" min="0" max="360" value="0" aria-label="Gradient angle" style="flex:1;">
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-top:8px;"><input type="checkbox" id="epeGradientMaskInvert" style="width:15px;height:15px;accent-color:var(--accent1);"> Invert</label>
+          <button class="btn btn-secondary" id="epeApplyGradientMaskBtn" type="button" style="margin-top:8px;">Apply Gradient Mask</button>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Mask Controls</p>
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epeMaskInvertBtn" type="button">Invert Mask</button>
+            <button class="btn btn-ghost" id="epeMaskToggleVisBtn" type="button">Hide Mask</button>
+            <button class="btn btn-danger" id="epeMaskDeleteBtn" type="button">Delete Mask</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionAdvancedRecon">
+          <summary class="pp-accordion-summary">Advanced Reconstruction (Expert)</summary>
+          <p class="editor-hint">For advanced users. Normal one-click Remove Object / Healing Brush / Clone Stamp continue working exactly as before \u2014 nothing here is required. Opening this panel only matters once you actually change a value below.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Reconstruction Mode</p>
+          <select id="epeReconMode" title="Quick/Balanced/Professional/Maximum use tuned presets. Custom unlocks every parameter below.">
+            <option value="quick">Quick</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="professional">Professional</option>
+            <option value="maximum">Maximum Quality</option>
+            <option value="custom">Custom</option>
+          </select>
+
+          <div class="row" style="margin-top:10px;align-items:center;">
+            <span style="font-size:12px;color:var(--ink-soft);">Estimated quality:</span>
+            <strong id="epeQualityMeter">Good</strong>
+            <span style="font-size:12px;color:var(--ink-soft);margin-left:12px;">Estimated speed:</span>
+            <strong id="epePerformanceMeter">Fast</strong>
+          </div>
+          <p class="editor-hint">Estimates are calculated from the parameters currently selected below \u2014 not measured from an actual run, and not a guarantee.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Repair Presets</p>
+          <select id="epeRepairPresetSelect" title="Applies a tuned parameter bundle for this product type. Switches Reconstruction Mode to Custom and every value stays editable afterward.">
+            <option value="">Choose a preset\u2026</option>
+            <option value="product-photography">Product Photography</option>
+            <option value="portrait">Portrait</option>
+            <option value="beauty">Beauty</option>
+            <option value="electronics">Electronics</option>
+            <option value="jewelry">Jewelry</option>
+            <option value="furniture">Furniture</option>
+            <option value="food">Food</option>
+            <option value="clothing">Clothing</option>
+            <option value="cosmetics">Cosmetics</option>
+            <option value="documents">Documents</option>
+          </select>
+
+          <div id="epeCustomReconControls" class="hidden">
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Patch Size</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvPatchSize" title="Small = finer detail, more seams on large holes. Large = smoother large-area fills, less fine detail. Real parameter -- directly controls the reconstruction patch window.">Patch Size: <span id="epeAdvPatchSizeVal">5</span>px</label><input type="range" id="epeAdvPatchSize" min="3" max="11" step="2" value="5"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Search Radius</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvSearchRadius" title="How far the algorithm searches for matching texture. Larger radius finds more distant matches but is slower.">Search Radius \u00d7<span id="epeAdvSearchRadiusVal">1</span></label><input type="range" id="epeAdvSearchRadius" min="0.5" max="2" step="0.1" value="1"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Randomness</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvRandomness" title="More random search attempts per step = more thorough exploration, slower. Low randomness converges faster but may settle for a less ideal match.">Search Trials: <span id="epeAdvRandomnessVal">1</span></label><input type="range" id="epeAdvRandomness" min="1" max="4" step="1" value="1"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Iterations</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvIterations" title="More propagation/search passes = better convergence, slower. Real parameter -- directly controls the PatchMatch iteration count.">Iterations: <span id="epeAdvIterationsVal">5</span></label><input type="range" id="epeAdvIterations" min="2" max="10" step="1" value="5"></div></div>
+            <p class="editor-hint">Higher iterations can noticeably increase processing time on large selections.</p>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Edge Preservation</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvEdgePreservation" title="Adds a real penalty for mismatched local gradients between candidate patches, so straight lines/edges/borders are less likely to be broken by the reconstruction.">Edge Preservation: <span id="epeAdvEdgePreservationVal">0</span></label><input type="range" id="epeAdvEdgePreservation" min="0" max="100" value="0"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Structure Priority</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvStructurePriority" title="Positive values weight the exact center of each patch more heavily (favors precise structural match). Negative values weight the whole patch more evenly (favors overall texture statistics over exact placement).">Texture \u2190\u2192 Structure: <span id="epeAdvStructurePriorityVal">0</span></label><input type="range" id="epeAdvStructurePriority" min="-100" max="100" value="0"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Color Preservation</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvColorMatch" title="After reconstruction, nudges the filled region's average brightness and color toward the immediately surrounding area's average -- a real post-process color correction, not per-pixel color grading.">Color Matching: <span id="epeAdvColorMatchVal">0</span></label><input type="range" id="epeAdvColorMatch" min="0" max="100" value="0"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Noise Handling</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvNoiseMatch" title="Measures the actual grain/noise level in the surrounding known area and re-introduces matching noise into the reconstruction, avoiding an artificially smooth or 'plastic' result on grainy surfaces.">Noise Matching: <span id="epeAdvNoiseMatchVal">0</span></label><input type="range" id="epeAdvNoiseMatch" min="0" max="100" value="0"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Blend</p>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvBlendRadius" title="Feather width (in pixels) at the mask boundary between original and reconstructed pixels.">Blend / Feather Radius: <span id="epeAdvBlendRadiusVal">2</span>px</label><input type="range" id="epeAdvBlendRadius" min="0" max="12" value="2"></div></div>
+
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">My Presets</p>
+            <div class="row">
+              <select id="epeCustomPresetSelect"><option value="">My presets\u2026</option></select>
+            </div>
+            <div class="row" style="margin-top:8px;">
+              <input type="text" id="epeCustomPresetName" placeholder="Preset name\u2026" style="flex:1;">
+            </div>
+            <div class="row" style="margin-top:8px;flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="epeSaveCustomPresetBtn" type="button">Save</button>
+              <button class="btn btn-ghost" id="epeRenameCustomPresetBtn" type="button">Rename Selected</button>
+              <button class="btn btn-ghost" id="epeDuplicateCustomPresetBtn" type="button">Duplicate Selected</button>
+              <button class="btn btn-danger" id="epeDeleteCustomPresetBtn" type="button">Delete Selected</button>
+            </div>
+
+            <div class="row" style="margin-top:14px;flex-wrap:wrap;">
+              <button class="btn btn-primary" id="epeApplyAdvReconBtn" type="button">Remove Object With These Settings</button>
+            </div>
+            <p class="editor-hint">Applies to the current selection made in the Selection &amp; Object Remove panel \u2014 draw one there first if you haven\u2019t already.</p>
+
+            <div class="row" style="margin-top:14px;flex-wrap:wrap;">
+              <button class="btn btn-ghost" id="epeResetAdvSectionBtn" type="button">Reset These Settings</button>
+              <button class="btn btn-ghost" id="epeResetReconModeBtn" type="button">Reset Entire Panel</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionAnalytics">
+          <summary class="pp-accordion-summary">Performance Analytics (Expert)</summary>
+          <p class="editor-hint">For advanced users. All measurements are real (captured with the browser\u2019s own timing APIs) or clearly-labeled heuristics computed from actual pixel data \u2014 nothing here is simulated. Stored locally in this browser only; nothing is sent anywhere.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Performance Dashboard</p>
+          <div id="epePerfDashboardBody" style="font-size:12.5px;line-height:1.7;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Live Timer (last operation)</p>
+          <div id="epeLiveTimerBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Quality Analytics (last reconstruction)</p>
+          <div id="epeQualityAnalyticsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Before / After (Estimate vs. Actual)</p>
+          <div id="epeBeforeAfterAnalyticsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Optimization Suggestions</p>
+          <div id="epeOptimizationSuggestionsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Benchmark Mode</p>
+          <button class="btn btn-secondary" id="epeRunBenchmarkBtn" type="button">Run Benchmark (3 runs on current selection)</button>
+          <p class="editor-hint">Runs the real reconstruction three times on your current selection to measure consistency. This is genuinely expensive \u2014 only use it when you want the numbers, not as part of normal editing.</p>
+          <div id="epeBenchmarkStatus" style="font-size:12px;color:var(--ink-soft);"></div>
+          <div id="epeBenchmarkResults" class="hidden" style="font-size:12.5px;line-height:1.6;margin-top:6px;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Quality vs. Speed</p>
+          <canvas id="epeQualitySpeedCanvas" style="width:100%;height:120px;background:var(--card);border:1px solid var(--card-border);border-radius:8px;"></canvas>
+          <p class="editor-hint">Relative comparison based on each mode\u2019s actual configured patch size, iterations, and pyramid depth \u2014 not a live measurement of your specific image.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Memory Analytics</p>
+          <div id="epeMemoryAnalyticsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Export Analytics</p>
+          <div id="epeExportAnalyticsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Device Analysis</p>
+          <div id="epeDeviceAnalysisBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Visual Warnings</p>
+          <div id="epeVisualWarningsBody" style="font-size:12.5px;line-height:1.6;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Performance Log</p>
+          <div class="row">
+            <input type="text" id="epePerfLogSearch" placeholder="Search by operation\u2026" style="flex:1;">
+            <select id="epePerfLogSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="slowest">Slowest first</option><option value="fastest">Fastest first</option></select>
+          </div>
+          <div id="epePerfLogBody" style="max-height:200px;overflow-y:auto;margin-top:8px;"></div>
+          <div class="row" style="margin-top:8px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="epePerfLogExportJsonBtn" type="button">Export JSON</button>
+            <button class="btn btn-ghost" id="epePerfLogExportCsvBtn" type="button">Export CSV</button>
+            <button class="btn btn-danger" id="epePerfLogClearBtn" type="button">Clear History</button>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionSession">
+          <summary class="pp-accordion-summary">Session &amp; Recovery (Expert)</summary>
+          <p class="editor-hint">For advanced users. Benchmark Mode (in Performance Analytics) now automatically saves a snapshot before running and restores it afterward \u2014 your project is never permanently affected by benchmarking. Everything below is optional and stored locally in this browser only.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Recovery Panel</p>
+          <div id="epeRecoveryPanelBody" style="font-size:12.5px;line-height:1.7;"></div>
+          <button class="btn btn-ghost" id="epeRunHealthCheckBtn" type="button" style="margin-top:8px;">Run Project Health Check</button>
+          <div id="epeHealthCheckBody" style="font-size:12.5px;line-height:1.6;margin-top:6px;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Save a Snapshot</p>
+          <div class="row">
+            <input type="text" id="epeSnapshotName" placeholder="Snapshot name (optional)\u2026" style="flex:1;">
+            <button class="btn btn-secondary" id="epeCreateSnapshotBtn" type="button">Save Snapshot</button>
+          </div>
+          <p class="editor-hint">Captures your full project \u2014 layers, canvas, selection, viewport, brush settings, and current tool \u2014 so you can safely experiment and return to this exact point.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Saved Snapshots</p>
+          <div id="epeSnapshotListBody" style="display:flex;flex-direction:column;gap:4px;"></div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Auto Save</p>
+          <div class="row" style="align-items:center;">
+            <label for="epeAutoSaveInterval" style="font-size:12.5px;">Save a snapshot every:</label>
+            <select id="epeAutoSaveInterval">
+              <option value="0">Off</option>
+              <option value="5">5 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="15">15 minutes</option>
+            </select>
+            <button class="btn btn-ghost" id="epeManualSaveBtn" type="button">Save Now</button>
+          </div>
+          <p class="editor-hint">This is in addition to the existing automatic session-recovery save, which already protects against accidental tab closes.</p>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Version History</p>
+          <div id="epeVersionHistoryBody" style="max-height:200px;overflow-y:auto;"></div>
+        </details>
+
+        <details class="pp-accordion" id="epeAccordionExport">
+
+
+
+
+
+
+
+
+
+          <summary class="pp-accordion-summary">Export</summary>
+          <div class="row">
+            <select id="epeExportFormat"><option value="png">PNG (transparent-capable)</option><option value="jpeg" selected>JPG (max quality)</option><option value="webp">WEBP (max quality)</option></select>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn btn-primary" id="epeDownloadBtn" type="button" style="flex:1;">Download</button>
+          </div>
+          <div id="epeOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;"></div>
+        </details>
+      </div>"""
+
+
 IMAGE_TOOLS = [
+    {"slug":"ecommerce-product-editor","name":"Ecommerce Product Editor","desc":"A full product design studio \u2014 layers, typography, shapes, marketplace presets, professional retouching, and real object-removal reconstruction, entirely in your browser.",
+     "subtitle":"A professional product design studio \u2014 layers, text, shapes, marketing components, marketplace-ready presets, and studio-grade retouching, all free and running entirely on your device.",
+     "meta":"Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.",
+     "category":"PhotoEditingApplication","form":EPE_FORM,
+     "intro":"Ecommerce Product Editor is a complete, artboard-based design studio for product photography and marketing graphics \u2014 built to rival dedicated design apps while running entirely in your browser. Position, scale, and rotate your product as one of many layers alongside text, shapes, icons, and marketing components, then export marketplace-ready images sized exactly right for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest, and more.",
+     "features":["Full layer system \u2014 image, text, shape, icon, and group layers with alignment, blend modes, and opacity","Professional typography engine with a real Google Fonts library, gradients, shadows, stroke, and curved text","Shape and icon library, plus marketing components: CTA buttons, promotional ribbons, offer badges, trust badges, comparison tables, and review cards","Marketplace canvas presets with real, researched dimensions for Amazon, Etsy, Shopify, Daraz, Instagram, TikTok, Pinterest, YouTube, and more","Professional retouching: Clone Stamp, Healing Brush, Spot Healing, and face-aware skin/teeth/eye/lips/hair enhancement","Real reconstruction-based Object Remove and Patch Tool, built on a genuine PatchMatch-style algorithm \u2014 no AI, no cloud, entirely local","Safe area guides, smart guides, and grid overlays to keep every marketplace listing compliant","Session snapshots, auto-save, and safe benchmarking that automatically restores your project afterward","Unlimited undo/redo history","Export as PNG (with transparency), JPG, or WEBP at full resolution"],
+     "benefits":["Nothing is uploaded \u2014 the entire editor, including reconstruction and retouching, runs locally in your browser","No sign-up, no watermark, no premium lock \u2014 completely free","What you see in the editor is exactly what gets exported, pixel for pixel"],
+     "how_to":"Upload a product photo, then build your design using layers \u2014 add text, shapes, marketing components, or additional images, and use Transform to position everything on the artboard. Pick a Marketplace Preset to size your canvas correctly, use the Retouch Studio to clean up the product photo, and Export when you're ready \u2014 undo and redo are always available, and your session is saved automatically if you need to step away.",
+     "faq":[("Is this really free, with no watermark?","Yes \u2014 the editor is completely free with no sign-up, no watermark, and no premium lock. Everything runs in your browser."),
+            ("What image formats can I upload?","PNG, JPG, JPEG, WEBP, and AVIF. Export is offered as PNG, JPG, or WEBP \u2014 AVIF export isn't reliably supported across browsers yet, so it's not offered as an output format even though it's accepted as input."),
+            ("Will my editing session be lost if I accidentally close the tab?","No \u2014 your session auto-saves in your browser as you work, capturing every layer and adjustment. Reopening the tool within 24 hours will offer to restore it."),
+            ("Does this support text, shapes, and marketplace templates?","Yes \u2014 the editor includes a full typography engine, a shape and icon library, marketing components like CTA buttons and trust badges, and marketplace-specific canvas presets with real dimensions researched for each platform."),
+            ("Does object removal use AI?","No \u2014 it uses a genuine, from-scratch implementation of PatchMatch, a well-established non-AI image reconstruction algorithm, running entirely in your browser. There's no cloud processing and no external AI API involved."),
+            ("Is my photo uploaded anywhere?","No \u2014 the entire editor, including auto-save and reconstruction, runs locally in your browser. Your photo is never sent to a server.")],
+     "related":["image-crop","background-remover"]},
     {"slug":"passport-photo-maker","name":"Passport & Visa Photo Maker","desc":"Auto-cropped passport and visa photos for 42 countries with real AI face detection.",
      "subtitle":"Professional passport and visa photos for 42 countries, with AI face detection and automatic sizing \u2014 entirely in your browser.",
      "meta":"Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.",
@@ -1902,7 +2947,7 @@ IMAGE_TOOLS = [
             ("Does background blur work on any photo?","Background blur uses on-device AI subject detection, which works best on portraits with one clear subject reasonably separated from the background \\u2014 similar to the technology behind our AI Background Remover. Complex or busy scenes may blur less precisely."),
             ("Is this the same as your AI Photo Enhancer?","No \\u2014 AI Photo Enhancer is a simpler, faster one-click enhancement tool. This is a full manual retouching studio with a complete adjustment panel, face-aware skin smoothing, and background blur, for people who want direct control over every aspect of the edit."),
             ("Is my photo uploaded anywhere?","No. Every adjustment, and the AI models used for face and subject detection, run entirely in your browser. Your photo is never sent to a server.")],
-     "related":["background-remover","ai-photo-enhancer"]},
+     "related":["background-remover","ai-photo-enhancer","ecommerce-product-editor"]},
 
     {"slug":"image-crop","name":"Image Crop Tool","desc":"Free crop or locked ratios (1:1, 16:9, 9:16), plus rotate.",
      "subtitle":"Free crop or locked ratios — 1:1, 16:9, 9:16 — plus rotate, all at full resolution.",
@@ -1938,7 +2983,7 @@ IMAGE_TOOLS = [
      "how_to":"Upload a photo, then tap Remove background (AI). The first use downloads a small AI model (a few MB, cached afterward), then the background is removed automatically using machine learning. Use the Refine tools below to fix any rough edges before exporting.",
      "faq":[("Is my photo uploaded anywhere?","No — the AI model runs entirely inside your browser using WebAssembly. Your image is never sent to a server."),
             ("What does this work best on?","People, animals, vehicles, furniture, and other common photo subjects. Very fine detail like flyaway hair may not be as precise as a specialized paid tool — that's exactly what the manual refine tools are for.")],
-     "related":["background-changer","magic-eraser"]},
+     "related":["background-changer","magic-eraser","ecommerce-product-editor"]},
 
     {"slug":"background-changer","name":"Background Changer","desc":"Solid colors, gradients, or a custom background image.",
      "subtitle":"Place any transparent image on a solid color, gradient, or custom background.",
@@ -1950,7 +2995,7 @@ IMAGE_TOOLS = [
      "how_to":"Upload a transparent-background image, choose Solid color, Gradient, or Custom image, then adjust and download. Works seamlessly with the AI Background Remover's output.",
      "faq":[("Why does my image need transparency first?","This tool composites your subject onto a new background — it needs to know which pixels are the subject versus the old background, which is exactly what a transparent PNG/WEBP encodes."),
             ("Is the result full resolution?","Yes — the download matches the resolution of the transparent image you uploaded.")],
-     "related":["background-remover","magic-eraser"]},
+     "related":["background-remover","magic-eraser","ecommerce-product-editor"]},
 
     {"slug":"ai-photo-enhancer","name":"AI Photo Enhancer","desc":"Natural photo enhancement with AI-targeted face smoothing \u2014 not a beauty filter.",
      "subtitle":"Natural photo enhancement with AI-targeted face smoothing \u2014 not a beauty filter, not plastic skin.",
@@ -1992,7 +3037,7 @@ IMAGE_TOOLS = [
             ("Why does the first use take a while?","The AI model is roughly 200MB and downloads once on first use. Your browser caches it afterward, so later uses on the same device are much faster."),
             ("Does this work on very large or very detailed objects?","It works best on small to medium objects with a reasonably plain or repeating surrounding background \u2014 like most inpainting tools, very large or highly detailed removals are more likely to show visible artifacts."),
             ("Is my photo uploaded anywhere?","No \u2014 both the AI model and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
-     "related":["background-remover","ai-photo-enhancer"]},
+     "related":["background-remover","ai-photo-enhancer","ecommerce-product-editor"]},
     {"slug":"image-watermark","name":"Image Watermark Tool","desc":"Add draggable text or logo watermarks with adjustable opacity.",
      "subtitle":"Add a draggable text or logo watermark, with adjustable size, color, and opacity.",
      "meta":"Free online image watermark tool. Add a text or logo watermark with adjustable size, color, opacity, and position, at full resolution.",
@@ -2004,7 +3049,6 @@ IMAGE_TOOLS = [
      "faq":[("Can I use my own logo?","Yes — switch to \"Logo watermark\" and upload any PNG, JPG, or WEBP image; a transparent PNG logo works best."),
             ("Is the watermark placed at full resolution?","Yes — the downloaded file is rebuilt from your original image at its full original size.")],
      "related":["image-crop","image-compress"]},
-
 ]
 IMG_TOOL_BY_SLUG = {t["slug"]: t for t in IMAGE_TOOLS}
 
