@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260719-1941" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260719-1941">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260719-1941">
+<link rel="icon" href="assets/favicon.ico?v=20260719-2055" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260719-2055">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260719-2055">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719-1941">
+<link rel="stylesheet" href="css/style.css?v=20260719-2055">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260719-1941" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260719-2055" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -99,8 +99,8 @@
   </div>
 
   <div class="workspace">
-      <div class="view-title"><h2>Ecommerce Product Editor</h2></div>
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional product image editor \u2014 position, scale, rotate, and crop your product photo on a real artboard, entirely in your browser. Free, no sign-up, no watermark.</p>
+      <div class="view-title" id="epeViewTitle"><h2>Ecommerce Product Editor</h2></div>
+      <p id="epeViewSubtitle" style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional product design studio \u2014 layers, typography, shapes, marketplace presets, and professional retouching, entirely in your browser. Free, no sign-up, no watermark.</p>
 
       <div class="drop-zone" id="epeDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -118,30 +118,73 @@
       </div>
 
       <div id="epeStage" class="hidden">
-        <div class="row" style="margin-top:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" id="epeFitScreenBtn" type="button">Fit to Screen</button>
-          <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
-          <button class="btn btn-ghost" id="epeUndoBtn" type="button" disabled>Undo</button>
-          <button class="btn btn-ghost" id="epeRedoBtn" type="button" disabled>Redo</button>
-          <button class="btn btn-ghost" id="epeReplaceBtn" type="button">Replace Image</button>
-          <button class="btn btn-danger" id="epeResetBtn" type="button">Reset</button>
-        </div>
-        <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
-          <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
-          <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
-        </div>
-        <div class="row" style="margin-top:8px;align-items:center;">
-          <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
-          <input type="range" id="epeZoomSlider" min="10" max="400" value="100" style="flex:1;">
-          <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
-            <option value="">Presets…</option>
-            <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
-            <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
-            <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
-          </select>
+        <div id="epeTopAppBar">
+          <span id="epeTopAppBarTitle">Product Editor</span>
+          <div class="row">
+            <button id="epeReplaceBtn" type="button" title="Replace Image" aria-label="Replace Image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 12a8 8 0 0 1 14.9-4M20 12a8 8 0 0 1-14.9 4M4 4v5h5M20 20v-5h-5"/></svg></button>
+            <button id="epeResetBtn" type="button" title="Reset" aria-label="Reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+          </div>
         </div>
 
+        <div id="epeShellBody">
+          <nav id="epeLeftRail" aria-label="Tool categories">
+            <button class="epe-rail-btn" type="button" data-epe-category="transform" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg><span>Transform</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="adjust" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3"/><circle cx="4" cy="13" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/></svg><span>Adjust</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="brush" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.06M9.06 11.9L6 15l-3 6 6-3 2.94-2.94"/></svg><span>Retouch</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="text" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg><span>Text</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="elements" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="4"/><path d="M14 4h6v6h-6zM4 16h16v4H4z"/></svg><span>Elements</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="layers" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg><span>Layers</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="templates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Templates</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="settings" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg><span>Settings</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="expert" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-6 3 4 5-8"/></svg><span>Expert</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+          </nav>
+
+          <div id="epeCanvasArea">
+            <div class="row" id="epeCanvasTopControls" style="flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="epeFitScreenBtn" type="button">Fit to Screen</button>
+              <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
+            </div>
+            <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="margin-top:14px;cursor:default;">
+              <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
+              <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+              <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
+              <div id="epeFloatingControls" role="toolbar" aria-label="Canvas controls">
+                <button type="button" id="epeUndoBtn" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
+                <button type="button" id="epeRedoBtn" disabled title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeFloatZoomOutBtn" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35M8 11h6"/></svg></button>
+                <span id="epeFloatZoomLabel">100%</span>
+                <button type="button" id="epeFloatZoomInBtn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/></svg></button>
+                <button type="button" id="epeFloatFitBtn" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeFloatBeforeAfterBtn" title="Before / After" aria-label="Before and after comparison"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></button>
+              </div>
+            </div>
+            <div class="row" style="margin-top:8px;align-items:center;">
+              <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
+              <input type="range" id="epeZoomSlider" min="10" max="400" value="100" style="flex:1;">
+              <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
+                <option value="">Presets…</option>
+                <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
+                <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
+                <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="epeSheetBackdrop"></div>
+          <div id="epeToolPanel">
+            <div id="epePanelResizeHandle"></div>
+            <div id="epeToolPanelHeader">
+              <div id="epeSheetDragHandle"></div>
+              <span id="epeToolPanelTitle">Transform</span>
+              <div class="row" style="flex:0;gap:4px;">
+                <button id="epePanelCollapseBtn" type="button" title="Collapse panel" aria-label="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg></button>
+                <button id="epeSheetCloseBtn" type="button" title="Close" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+            <div id="epeToolPanelBody">
         <details class="pp-accordion" id="epeAccordionTransform" open>
           <summary class="pp-accordion-summary">Transform</summary>
           <div class="qr-controls">
@@ -1133,10 +1176,27 @@
           </div>
           <div id="epeOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;"></div>
         </details>
+            </div>
+          </div>
+        </div>
+
+        <nav id="epeBottomToolbar" aria-label="Tool categories">
+          <button class="epe-tab-btn active" type="button" data-epe-category="transform" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg><span>Transform</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="adjust" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3"/><circle cx="4" cy="13" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/></svg><span>Adjust</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="brush" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.06M9.06 11.9L6 15l-3 6 6-3 2.94-2.94"/></svg><span>Retouch</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="text" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg><span>Text</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="elements" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="4"/><path d="M14 4h6v6h-6zM4 16h16v4H4z"/></svg><span>Elements</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="layers" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg><span>Layers</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="templates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Templates</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="settings" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg><span>Settings</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="expert" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-6 3 4 5-8"/></svg><span>Expert</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+        </nav>
       </div>
+
   </div>
 
-  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+  <div id="toolSeoContent" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
     <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the Ecommerce Product Editor</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Ecommerce Product Editor is a complete, artboard-based design studio for product photography and marketing graphics — built to rival dedicated design apps while running entirely in your browser. Position, scale, and rotate your product as one of many layers alongside text, shapes, icons, and marketing components, then export marketplace-ready images sized exactly right for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest, and more.</p>
 
@@ -1173,7 +1233,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260719-1941" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260719-2055" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1210,6 +1270,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260719-1941"></script>
+<script defer src="js/app.js?v=20260719-2055"></script>
 </body>
 </html>
