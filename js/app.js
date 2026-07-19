@@ -9645,12 +9645,22 @@ if (document.getElementById('epeDrop')){
     if (epeSegmenter) return epeSegmenter;
     if (!epeSegmenterLoadPromise){
       epeSegmenterLoadPromise = (async () => {
-        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14`);
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2`);
         const { ImageSegmenter, FilesetResolver } = mod;
-        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm`);
+        // FIX (root cause of AI Background Remove failing on real product
+        // photos): this previously used selfie_segmenter, a model trained
+        // ONLY to detect people. A shoe, bottle, or bag photo has no
+        // person in it, so that model would classify nearly the entire
+        // image as background, and this tool's own plausibility check
+        // would then correctly-but-uselessly report "AI could not
+        // confidently separate the product" on almost every real product
+        // photo. Switched to DeepLab v3, the same general-purpose,
+        // multi-category segmentation model already proven working in
+        // ToolFlight's standalone AI Background Remover tool.
         const seg = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite' },
-          outputCategoryMask: true, outputConfidenceMasks: true, runningMode: 'IMAGE',
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite' },
+          outputCategoryMask: true, outputConfidenceMasks: false, runningMode: 'IMAGE',
         });
         epeSegmenter = seg; return seg;
       })().catch((err) => { epeSegmenterLoadPromise = null; throw err; });
@@ -9671,43 +9681,29 @@ if (document.getElementById('epeDrop')){
       const mask = result.categoryMask;
       const maskData = mask.getAsUint8Array();
       const mw = mask.width, mh = mask.height;
-      const confMasks = result.confidenceMasks;
-      const personConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
-      const cw = confMasks && confMasks[1] ? confMasks[1].width : mw, ch = confMasks && confMasks[1] ? confMasks[1].height : mh;
 
-      // NOTE ON HONEST LIMITATION: unlike Passport Photo Maker, this tool
-      // has no face-landmark signal available for products, so there is
-      // no independent ground truth to calibrate polarity against here.
-      // This uses MediaPipe's documented convention (category 1 = subject)
-      // directly. If real-world testing on an actual device ever shows
-      // this is inverted for products the way it was for portraits, the
-      // same class of fix (evidence-based recalibration) would apply --
-      // but that would require real device evidence first, not a guess
-      // made now.
+      // DeepLab v3 convention (matches the standalone AI Background
+      // Remover tool exactly): category 0 = background, any other
+      // category (person, animal, vehicle, furniture, everyday object,
+      // etc.) = subject/foreground. No per-pixel confidence output is
+      // available from this model configuration, so the plausibility
+      // check below is area-based only, same spirit as before but
+      // without a confidence signal that no longer exists.
       const newMask = new Uint8ClampedArray(w*h);
-      let subjectPixels = 0, confSum = 0, confSamples = 0;
+      let subjectPixels = 0;
       for (let y=0; y<h; y++){
         for (let x=0; x<w; x++){
           const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
-          const isSubject = maskData[my*mw+mx] > 0;
+          const category = maskData[my*mw+mx];
+          const isSubject = category !== 0;
           if (isSubject) subjectPixels++;
-          if (personConf){
-            const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
-            const conf = personConf[cy*cw+cx];
-            confSum += conf; confSamples++;
-            newMask[y*w+x] = Math.round(255*(1-conf));
-          } else {
-            newMask[y*w+x] = isSubject ? 0 : 255;
-          }
+          newMask[y*w+x] = isSubject ? 0 : 255;
         }
       }
       mask.close && mask.close();
-      confMasks && confMasks.forEach(m => m.close && m.close());
-      const avgConf = confSamples ? confSum/confSamples : null;
       const subjectFrac = subjectPixels/(w*h);
-      const areaImplausible = subjectFrac < 0.03 || subjectFrac > 0.98;
-      const lowConfidence = avgConf !== null && avgConf < 0.65;
-      if (areaImplausible || lowConfidence){
+      const areaImplausible = subjectFrac < 0.02 || subjectFrac > 0.98;
+      if (areaImplausible){
         statusEl.textContent = 'AI could not confidently separate the product.';
         document.getElementById('epeManualBgRow').classList.remove('hidden');
       } else {
@@ -10303,7 +10299,7 @@ if (document.getElementById('epeDrop')){
   function fitEpeCanvasDisplay(){
     const wrap = document.getElementById('epeCanvasStageWrap');
     if (!epeArtboardW || !wrap) return;
-    const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
+    const availW = wrap.clientWidth - 4, availH = Math.max(120, wrap.clientHeight - 4);
     const fitScale = Math.min(1, availW/epeArtboardW, availH/epeArtboardH) * epeViewZoom;
     const dispW = Math.round(epeArtboardW*fitScale), dispH = Math.round(epeArtboardH*fitScale);
     epeArtboardEl.style.width = dispW+'px'; epeArtboardEl.style.height = dispH+'px';
@@ -10603,6 +10599,7 @@ if (document.getElementById('epeDrop')){
         await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('bad image')); img.src = data.image; });
         epeSourceImg = img; epeArtboardW = data.w; epeArtboardH = data.h; epeLayer = data.layer;
         document.getElementById('epeStage').classList.remove('hidden');
+        epeEnterShellMode();
         if (data.fullSnapshot && typeof epeRestoreFullSnapshot === 'function'){
           // Full recovery path: layers, adjustments, masks, selection, viewport all restored
           epeHistoryStack = []; epeHistoryIndex = -1;
@@ -10672,6 +10669,7 @@ if (document.getElementById('epeDrop')){
     epeExifSummary = f.type === 'image/jpeg' ? 'Present in the original file, but not read out here \u2014 this tool does not currently parse EXIF fields.' : 'Not applicable for this file format.';
     document.getElementById('epeStage').classList.remove('hidden');
     document.getElementById('epeAutoSaveBanner').classList.add('hidden');
+    epeEnterShellMode();
     epeSyncControlsFromLayer();
     if (typeof epeSyncAdjControlsFromState === 'function') epeSyncAdjControlsFromState();
     document.getElementById('epeZoomSlider').value='100'; document.getElementById('epeZoomVal').textContent='100'; epeViewZoom=1;
@@ -14874,6 +14872,247 @@ if (document.getElementById('epeDrop')){
   });
 
   epeLoadSnapshots();
+
+
+  /* ============================================================
+     UI SHELL — Phase A (layout/navigation only)
+     ============================================================
+     This is presentation-layer code only. Every existing accordion
+     and its handlers are completely untouched -- this just controls
+     WHICH accordion group is visible/scrolled-to, and the open/closed
+     state of the panel container (bottom sheet on mobile, sidebar on
+     desktop) that wraps them. No rendering, history, or export code
+     is touched by anything below.
+     ============================================================ */
+  const EPE_CATEGORY_ACCORDIONS = {
+    transform: ['epeAccordionTransform','epeAccordionCrop','epeAccordionGuides','epeAccordionSafeArea'],
+    adjust:    ['epeAccordionAdjustments','epeAccordionBackground','epeAccordionShadow','epeAccordionReflection','epeAccordionAnalysis','epeAccordionUpscaleCompress','epeAccordionBeforeAfter'],
+    brush:     ['epeAccordionRetouch','epeAccordionFaceRetouch','epeAccordionMaskSystem','epeAccordionSelection'],
+    text:      ['epeAccordionAddText'],
+    elements:  ['epeAccordionShapesIcons','epeAccordionStickersBadges','epeAccordionHighlightsCallouts','epeAccordionCtaRibbons','epeAccordionOffersTrust','epeAccordionTablesReviews','epeAccordionLogoCode'],
+    layers:    ['epeAccordionLayers','epeAccordionArrangeAlign','epeAccordionBrandColors','epeAccordionBrandDefaults'],
+    templates: ['epeAccordionMarketplace'],
+    settings:  ['epeAccordionSession'],
+    expert:    ['epeAccordionAnalytics','epeAccordionAdvancedRecon'],
+    export:    ['epeAccordionExport'],
+  };
+  const EPE_CATEGORY_LABELS = {
+    transform:'Transform', adjust:'Adjust', brush:'Retouch', text:'Text', elements:'Elements',
+    layers:'Layers', templates:'Templates', settings:'Settings', expert:'Expert', export:'Export',
+  };
+  let epeActiveCategory = 'transform';
+  let epeIsDesktopShell = window.innerWidth >= 900;
+
+  function epeIsMobileShell(){ return window.innerWidth < 900; }
+
+  function epeEnterShellMode(){
+    document.getElementById('epeViewTitle') && document.getElementById('epeViewTitle').classList.add('hidden');
+    document.getElementById('epeViewSubtitle') && document.getElementById('epeViewSubtitle').classList.add('hidden');
+    document.getElementById('epeDrop') && document.getElementById('epeDrop').classList.add('hidden');
+    document.getElementById('toolSeoContent') && document.getElementById('toolSeoContent').classList.add('hidden');
+    const heroSub = document.querySelector('.hero-sub');
+    if (heroSub) heroSub.classList.add('hidden');
+    const backBtn = document.querySelector('.btn-back');
+    if (backBtn && backBtn.parentElement) backBtn.parentElement.classList.add('hidden');
+    const footer = document.querySelector('footer');
+    if (footer) footer.classList.add('hidden');
+    const navbar = document.querySelector('.navbar');
+    if (navbar) document.documentElement.style.setProperty('--epe-navbar-h', navbar.getBoundingClientRect().height + 'px');
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('resize', () => {
+    const navbar = document.querySelector('.navbar');
+    if (navbar && !document.getElementById('epeStage').classList.contains('hidden')){
+      document.documentElement.style.setProperty('--epe-navbar-h', navbar.getBoundingClientRect().height + 'px');
+    }
+  });
+
+  function epeSelectCategory(cat, opts){
+    opts = opts || {};
+    if (!EPE_CATEGORY_ACCORDIONS[cat]) return;
+    epeActiveCategory = cat;
+    document.querySelectorAll('.epe-rail-btn, .epe-tab-btn').forEach(btn => {
+      const isActive = btn.dataset.epeCategory === cat;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
+    });
+    const titleEl = document.getElementById('epeToolPanelTitle');
+    if (titleEl) titleEl.textContent = EPE_CATEGORY_LABELS[cat] || cat;
+
+    // Open the first accordion in this category's group, close the others
+    // in the group (existing accordion-exclusivity logic handles closing
+    // accordions OUTSIDE the group already; within the group we open just
+    // the first so the panel doesn't open fully-expanded and enormous).
+    const ids = EPE_CATEGORY_ACCORDIONS[cat];
+    ids.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (i === 0) el.open = true; else if (opts.collapseRest !== false) el.open = false;
+    });
+    const panelBody = document.getElementById('epeToolPanelBody');
+    if (panelBody) panelBody.scrollTop = 0;
+    const firstEl = document.getElementById(ids[0]);
+    if (firstEl && firstEl.scrollIntoView && !opts.noScroll) firstEl.scrollIntoView({ block:'start', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto' });
+
+    if (!opts.skipOpenPanel) epeOpenToolPanel();
+  }
+  document.querySelectorAll('[data-epe-category]').forEach(btn => btn.addEventListener('click', () => epeSelectCategory(btn.dataset.epeCategory)));
+
+  /* ---- Panel open/close: bottom sheet (mobile) or sidebar (desktop) ---- */
+  let epeSheetState = 'closed'; // closed | half | full
+  function epeOpenToolPanel(){
+    const panel = document.getElementById('epeToolPanel');
+    if (!panel) return;
+    if (epeIsMobileShell()){
+      panel.classList.remove('collapsed');
+      panel.classList.add('sheet-open');
+      panel.classList.remove('sheet-full');
+      panel.classList.add('sheet-half');
+      epeSheetState = 'half';
+      const backdrop = document.getElementById('epeSheetBackdrop');
+      if (backdrop) backdrop.classList.add('visible');
+    } else {
+      panel.classList.remove('collapsed');
+    }
+  }
+  function epeCloseToolPanel(){
+    const panel = document.getElementById('epeToolPanel');
+    if (!panel) return;
+    if (epeIsMobileShell()){
+      panel.classList.remove('sheet-open','sheet-half','sheet-full');
+      epeSheetState = 'closed';
+      const backdrop = document.getElementById('epeSheetBackdrop');
+      if (backdrop) backdrop.classList.remove('visible');
+    } else {
+      panel.classList.add('collapsed');
+    }
+  }
+  document.getElementById('epeSheetCloseBtn') && document.getElementById('epeSheetCloseBtn').addEventListener('click', epeCloseToolPanel);
+  document.getElementById('epeSheetBackdrop') && document.getElementById('epeSheetBackdrop').addEventListener('click', epeCloseToolPanel);
+  document.getElementById('epePanelCollapseBtn') && document.getElementById('epePanelCollapseBtn').addEventListener('click', () => {
+    const panel = document.getElementById('epeToolPanel');
+    if (!panel) return;
+    const collapsing = !panel.classList.contains('collapsed');
+    panel.classList.toggle('collapsed', collapsing);
+    const icon = document.getElementById('epePanelCollapseBtn');
+    if (icon) icon.style.transform = collapsing ? 'rotate(180deg)' : 'none';
+  });
+
+  /* ---- Bottom sheet drag: pointer-based, live height tracking, snaps
+     to half/full/closed on release based on drag distance + velocity. ---- */
+  (function setupSheetDrag(){
+    const handle = document.getElementById('epeSheetDragHandle');
+    const panel = document.getElementById('epeToolPanel');
+    if (!handle || !panel) return;
+    let dragging = false, startY = 0, startHeightVh = 45, lastY = 0, lastT = 0, velocity = 0;
+    function vh(px){ return (px/window.innerHeight)*100; }
+    handle.addEventListener('pointerdown', (e) => {
+      if (!epeIsMobileShell()) return;
+      dragging = true; startY = e.clientY; lastY = e.clientY; lastT = performance.now();
+      const rect = panel.getBoundingClientRect();
+      startHeightVh = vh(rect.height);
+      panel.style.transition = 'none';
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dy = e.clientY - startY;
+      const now = performance.now();
+      if (now - lastT > 16){ velocity = (e.clientY - lastY) / (now - lastT); lastY = e.clientY; lastT = now; }
+      let newHeightVh = startHeightVh - vh(dy);
+      newHeightVh = Math.max(10, Math.min(88, newHeightVh));
+      panel.style.height = newHeightVh + 'vh';
+    });
+    function endDrag(e){
+      if (!dragging) return;
+      dragging = false;
+      panel.style.transition = '';
+      const rect = panel.getBoundingClientRect();
+      const heightVh = vh(rect.height);
+      panel.style.height = '';
+      // Snap based on final position + fling velocity (fast downward flick closes/half regardless of position)
+      if (velocity > 0.6 || heightVh < 22){ epeCloseToolPanel(); }
+      else if (velocity < -0.6 || heightVh > 65){ panel.classList.remove('sheet-half'); panel.classList.add('sheet-full'); epeSheetState='full'; }
+      else { panel.classList.remove('sheet-full'); panel.classList.add('sheet-half'); epeSheetState='half'; }
+      velocity = 0;
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+  })();
+
+  /* ---- Desktop panel resize: drag the left edge to resize width ---- */
+  (function setupPanelResize(){
+    const handle = document.getElementById('epePanelResizeHandle');
+    const stage = document.getElementById('epeStage');
+    if (!handle || !stage) return;
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+      if (epeIsMobileShell()) return;
+      dragging = true; handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const panel = document.getElementById('epeToolPanel');
+      const rect = panel.getBoundingClientRect();
+      let newW = rect.right - e.clientX;
+      newW = Math.max(280, Math.min(560, newW));
+      stage.style.setProperty('--epe-panel-w', newW + 'px');
+    });
+    function endDrag(){ dragging = false; }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+  })();
+
+  /* ---- Floating canvas controls: reuse existing zoom/fit logic, don't
+     reimplement it -- these just drive the same epeZoomSlider that
+     already has a working input handler elsewhere in this module. ---- */
+  function epeNudgeZoom(deltaPercent){
+    const slider = document.getElementById('epeZoomSlider');
+    if (!slider) return;
+    const next = Math.max(+slider.min, Math.min(+slider.max, (+slider.value) + deltaPercent));
+    slider.value = next;
+    slider.dispatchEvent(new Event('input', { bubbles:true }));
+  }
+  document.getElementById('epeFloatZoomInBtn') && document.getElementById('epeFloatZoomInBtn').addEventListener('click', () => epeNudgeZoom(25));
+  document.getElementById('epeFloatZoomOutBtn') && document.getElementById('epeFloatZoomOutBtn').addEventListener('click', () => epeNudgeZoom(-25));
+  document.getElementById('epeFloatFitBtn') && document.getElementById('epeFloatFitBtn').addEventListener('click', () => {
+    const fitBtn = document.getElementById('epeFitScreenBtn');
+    if (fitBtn) fitBtn.click(); // reuses the existing, already-correct Fit to Screen handler
+  });
+  document.getElementById('epeFloatBeforeAfterBtn') && document.getElementById('epeFloatBeforeAfterBtn').addEventListener('click', () => {
+    // The Before/After comparison is a full canvas-based split-view widget,
+    // not a simple toggle -- too complex to reproduce inside the floating
+    // pill in this phase, so this opens the panel directly to it instead.
+    epeSelectCategory('adjust', { collapseRest:false });
+    const el = document.getElementById('epeAccordionBeforeAfter');
+    if (el) el.open = true;
+  });
+  // Keep the floating zoom label synced to the real zoom value, whatever changed it
+  const epeZoomSliderEl = document.getElementById('epeZoomSlider');
+  if (epeZoomSliderEl){
+    epeZoomSliderEl.addEventListener('input', () => {
+      const lbl = document.getElementById('epeFloatZoomLabel');
+      if (lbl) lbl.textContent = epeZoomSliderEl.value + '%';
+    });
+  }
+
+  /* ---- Initial shell state on load ---- */
+  epeSelectCategory('transform', { skipOpenPanel: true, noScroll: true });
+  if (!epeIsMobileShell()){
+    const panel = document.getElementById('epeToolPanel');
+    if (panel) panel.classList.remove('collapsed');
+  }
+  window.addEventListener('resize', () => {
+    // Re-apply correct open/closed semantics if the viewport crosses the
+    // mobile/desktop breakpoint while the panel is in a sheet-specific state
+    const panel = document.getElementById('epeToolPanel');
+    if (!panel) return;
+    if (!epeIsMobileShell()){
+      panel.classList.remove('sheet-open','sheet-half','sheet-full');
+      const backdrop = document.getElementById('epeSheetBackdrop');
+      if (backdrop) backdrop.classList.remove('visible');
+    }
+  });
 
 
   function setupEpeAccordionExclusivity(){
