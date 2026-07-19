@@ -120,6 +120,14 @@ a{color:inherit;}
   margin-top:30px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
   padding:28px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
 }
+/* The ecommerce editor's mobile bottom sheet uses position:fixed, which
+   must be positioned relative to the true viewport to work correctly
+   while the page is scrolled. backdrop-filter on an ancestor creates a
+   new CSS containing block for fixed-position descendants (per spec),
+   which broke this. Scoped to only the page containing the editor via
+   :has() so no other tool's .workspace styling is affected. */
+.workspace:has(#epeToolPanel){ backdrop-filter:none; -webkit-backdrop-filter:none; }
+.workspace:has(#epeStage:not(.hidden)){ margin-top:0; padding:0; border:none; box-shadow:none; background:transparent; }
 .tool-view{display:none;}
 .tool-view.active{display:block;animation:fadein .35s ease;}
 @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
@@ -874,3 +882,167 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 /* ============ Session & Recovery — Phase 10 ============ */
 .dse-snapshot-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);}
 .dse-snapshot-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ============================================================
+   ECOMMERCE EDITOR — UI SHELL (Phase A: layout/navigation only)
+   ============================================================
+   This redesigns presentation only. Every existing accordion,
+   control, and its JS handler is untouched -- #epeToolPanelBody
+   contains the exact same 32 accordions as before, just repositioned:
+   a persistent right sidebar on desktop/tablet-landscape, a draggable
+   bottom sheet on mobile/tablet-portrait. Canvas stays visible at all
+   times; the panel never covers it on desktop, and on mobile the
+   panel is collapsed (off-screen) until the user opens it.
+   Breakpoint: >=900px uses the desktop rail+panel layout (comfortably
+   fits tablet landscape and up); <900px uses the mobile bottom
+   toolbar+sheet layout (mobile portrait/landscape and tablet portrait).
+   ============================================================ */
+
+#epeStage{ --epe-topbar-h:52px; --epe-bottombar-h:64px; --epe-rail-w:76px; --epe-panel-w:360px; }
+#epeStage.hidden{ display:none; }
+#epeStage:not(.hidden){
+  position:relative;
+  height:calc(100vh - var(--epe-navbar-h, 60px));
+  min-height:220px;
+  display:flex; flex-direction:column;
+  margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); /* break out of the centered content column to use the full viewport width */
+  width:100vw;
+}
+#epeShellBody{ flex:1 1 auto; min-height:0; }
+
+/* ---- Top App Bar (mobile/tablet-portrait only) ---- */
+#epeTopAppBar{
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  height:var(--epe-topbar-h); padding:0 12px; position:sticky; top:0; z-index:40;
+  background:var(--card); backdrop-filter:blur(10px); border-bottom:1px solid var(--card-border);
+}
+#epeTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#epeTopAppBar .row{ flex:0; gap:6px; }
+#epeTopAppBar button{ min-width:40px; min-height:40px; padding:0 10px; }
+
+/* ---- Overall shell body: switches between row (desktop) and column (mobile) ---- */
+#epeShellBody{ display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+/* ---- Left icon rail (desktop/tablet-landscape only) ---- */
+#epeLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--epe-rail-w); flex:0 0 var(--epe-rail-w); padding:10px 6px;
+  border-right:1px solid var(--card-border); background:var(--card);
+}
+.epe-rail-btn{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px;
+  border:none; background:transparent; border-radius:12px; cursor:pointer; color:var(--ink-soft);
+  font-size:10.5px; font-weight:600; line-height:1.2; min-height:56px;
+}
+.epe-rail-btn svg{ width:20px; height:20px; }
+.epe-rail-btn:hover{ background:rgba(109,94,245,0.08); color:var(--ink); }
+.epe-rail-btn.active{ background:var(--accent1); color:#fff; }
+.epe-rail-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+/* ---- Canvas area ---- */
+#epeCanvasArea{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+#epeCanvasTopControls{ margin-bottom:10px; }
+
+/* ---- Floating canvas controls ---- */
+#epeFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:rgba(255,255,255,0.92); backdrop-filter:blur(10px); box-shadow:var(--shadow);
+  border:1px solid var(--card-border); z-index:60; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+}
+#epeFloatingControls button{
+  min-width:38px; min-height:38px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#epeFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#epeFloatingControls button:disabled{ opacity:0.35; cursor:not-allowed; }
+#epeFloatingControls button svg{ width:18px; height:18px; }
+#epeFloatZoomLabel{ font-size:12px; font-weight:600; color:var(--ink-soft); padding:0 4px; white-space:nowrap; }
+#epeFloatingControls .epe-float-sep{ width:1px; height:22px; background:var(--card-border); flex:0 0 auto; margin:0 2px; }
+
+/* ---- Tool panel: right sidebar on desktop, bottom sheet on mobile ---- */
+#epeToolPanel{
+  display:flex; flex-direction:column; background:var(--card); border-left:1px solid var(--card-border);
+  width:var(--epe-panel-w); flex:0 0 var(--epe-panel-w); max-height:100vh; position:sticky; top:0;
+  transition:width 0.2s ease;
+}
+#epeToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#epeToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--card-border); gap:8px; }
+#epeToolPanelTitle{ font-weight:700; font-size:14px; }
+#epeSheetDragHandle{ display:none; }
+#epePanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#epePanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#epePanelResizeHandle{ display:none; }
+#epeSheetCloseBtn{ display:none; }
+#epeToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+/* ---- Bottom toolbar (mobile/tablet-portrait only) ---- */
+#epeBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:40; height:var(--epe-bottombar-h);
+  background:var(--card); backdrop-filter:blur(10px); border-top:1px solid var(--card-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.epe-tab-btn{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  flex:1 0 64px; min-width:64px; border:none; background:transparent; cursor:pointer; color:var(--ink-soft);
+  font-size:10px; font-weight:600; padding:4px 2px;
+}
+.epe-tab-btn svg{ width:20px; height:20px; }
+.epe-tab-btn.active{ color:var(--accent1-solid); }
+.epe-tab-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+/* ============================================================
+   MOBILE / TABLET-PORTRAIT LAYOUT (<900px)
+   ============================================================ */
+@media (max-width: 899.98px){
+  #epeTopAppBar{ display:flex; }
+  #epeBottomToolbar{ display:flex; }
+  #epeLeftRail{ display:none; }
+  #epeCanvasArea{ padding:10px; padding-bottom:10px; }
+
+  /* Bottom sheet: fixed to viewport, slides via translateY, drag handle visible */
+  #epeToolPanel{
+    position:fixed; left:0; right:0; bottom:var(--epe-bottombar-h); top:auto;
+    width:auto; flex:none; max-height:85vh; height:45vh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--epe-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #epeToolPanel.sheet-open{ transform:translateY(0); }
+  #epeToolPanel.sheet-half{ height:45vh; }
+  #epeToolPanel.sheet-full{ height:88vh; }
+  #epeToolPanel.collapsed{ width:auto; } /* collapse button doesn't apply on mobile */
+  #epeSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #epeToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #epePanelCollapseBtn{ display:none; }
+  #epeSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:32px; min-height:32px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  /* Sheet backdrop */
+  #epeSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(20,15,45,0.35); z-index:45; }
+  #epeSheetBackdrop.visible{ display:block; }
+}
+
+/* ============================================================
+   DESKTOP / TABLET-LANDSCAPE LAYOUT (>=900px)
+   ============================================================ */
+@media (min-width: 900px){
+  #epeTopAppBar{ display:none; }
+  #epeBottomToolbar{ display:none; }
+  #epeLeftRail{ display:flex; }
+  #epeSheetBackdrop{ display:none !important; }
+  #epePanelResizeHandle{
+    display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5;
+  }
+  #epePanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #epeToolPanel{ position:relative; }
+}
+
+@media (min-width: 1400px){
+  #epeStage{ --epe-panel-w:400px; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  #epeToolPanel{ transition:none !important; }
+}
