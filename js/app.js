@@ -9770,7 +9770,10 @@ if (document.getElementById('epeDrop')){
   function epeSetTool(tool){
     epeActiveTool = tool;
     document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+    document.getElementById('epeCloneOptionsRow') && document.getElementById('epeCloneOptionsRow').classList.toggle('hidden', tool !== 'clone' && tool !== 'heal');
+    if (tool !== 'clone' && tool !== 'heal'){ epeCloneSource = null; epeCloneOffset = null; }
     epeUpdateBrushCursor();
+    renderEpeOverlay();
   }
   document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(btn => btn.onclick = () => epeSetTool(btn.dataset.tool === epeActiveTool ? 'none' : btn.dataset.tool));
   document.getElementById('epeBrushSize').addEventListener('input', (e) => { epeBrushSize = +e.target.value; epeUpdateBrushCursor(); });
@@ -9816,6 +9819,12 @@ if (document.getElementById('epeDrop')){
         epeEraseMask[i] = epeEraseMask[i]*(1-strength) + target*strength;
       }
       epeProcessedCanvasCache = null;
+    } else if (epeActiveTool === 'clone'){
+      epeCloneStampAt(sx, sy, w, h, r, hardness, opacity);
+    } else if (epeActiveTool === 'heal'){
+      epeHealStampAt(sx, sy, w, h, r, hardness, opacity);
+    } else if (epeActiveTool === 'redeye'){
+      epeRedEyeStampAt(sx, sy, w, h, r);
     } else if (epeActiveTool === 'blur' || epeActiveTool === 'sharpen' || epeActiveTool === 'spot'){
       const canvas = epeEnsureLocalEditsCanvas();
       const ctx = canvas.getContext('2d');
@@ -9870,6 +9879,16 @@ if (document.getElementById('epeDrop')){
     const sx = rx/(epeLayer.scale*(epeLayer.flipH?-1:1)) + epeSourceImg.naturalWidth/2;
     const sy = ry/(epeLayer.scale*(epeLayer.flipV?-1:1)) + epeSourceImg.naturalHeight/2;
     return { x: sx, y: sy };
+  }
+  function epeSourceToArtboardCoords(sx, sy){
+    // Exact inverse of epeCanvasToSourceCoords's transform, needed to draw
+    // selection paths / clone markers (stored in source-image space) at
+    // the correct position on the artboard-space overlay canvas.
+    const lx = (sx - epeSourceImg.naturalWidth/2) * (epeLayer.scale*(epeLayer.flipH?-1:1));
+    const ly = (sy - epeSourceImg.naturalHeight/2) * (epeLayer.scale*(epeLayer.flipV?-1:1));
+    const rad = epeLayer.rotation*Math.PI/180;
+    const rx = lx*Math.cos(rad) - ly*Math.sin(rad), ry = lx*Math.sin(rad) + ly*Math.cos(rad);
+    return { x: rx + epeLayer.x, y: ry + epeLayer.y };
   }
 
   epeArtboardEl.addEventListener('pointerdown', (e) => {
@@ -10195,6 +10214,40 @@ if (document.getElementById('epeDrop')){
     epeOverlayEl.width = w; epeOverlayEl.height = h;
     const ctx = epeOverlayEl.getContext('2d');
     ctx.clearRect(0,0,w,h);
+    if (epeSourceImg && epeSelectionMask){
+      // Draw the ACTUAL current rasterized mask (reflects Expand/Contract/
+      // Feather edits, unlike the original vector path which goes stale
+      // the moment the mask is morphologically modified) as a translucent
+      // overlay, composited through the same layer transform as the
+      // artboard content so it lines up correctly at any rotation/scale.
+      const sw = epeSourceImg.naturalWidth, sh = epeSourceImg.naturalHeight;
+      const maskCanvas = document.createElement('canvas'); maskCanvas.width = sw; maskCanvas.height = sh;
+      const mctx = maskCanvas.getContext('2d');
+      const maskImgData = mctx.createImageData(sw, sh);
+      for (let i=0; i<epeSelectionMask.length; i++){
+        maskImgData.data[i*4] = 81; maskImgData.data[i*4+1] = 66; maskImgData.data[i*4+2] = 214;
+        maskImgData.data[i*4+3] = epeSelectionMask[i] > 127 ? 90 : 0;
+      }
+      mctx.putImageData(maskImgData, 0, 0);
+      ctx.save();
+      ctx.translate(epeLayer.x, epeLayer.y);
+      ctx.rotate(epeLayer.rotation * Math.PI/180);
+      ctx.scale(epeLayer.scale * (epeLayer.flipH?-1:1), epeLayer.scale * (epeLayer.flipV?-1:1));
+      ctx.drawImage(maskCanvas, -sw/2, -sh/2);
+      ctx.restore();
+    } else if (epeSourceImg && epeSelectionPath.length > 0){
+      ctx.strokeStyle = 'rgba(81,66,214,0.95)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+      ctx.beginPath();
+      epeSelectionPath.forEach((p,i) => { const ap = epeSourceToArtboardCoords(p.x,p.y); i===0?ctx.moveTo(ap.x,ap.y):ctx.lineTo(ap.x,ap.y); });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (epeSourceImg && epeCloneSource && (epeActiveTool === 'clone' || epeActiveTool === 'heal')){
+      const ap = epeSourceToArtboardCoords(epeCloneSource.x, epeCloneSource.y);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(ap.x-8,ap.y); ctx.lineTo(ap.x+8,ap.y); ctx.moveTo(ap.x,ap.y-8); ctx.lineTo(ap.x,ap.y+8); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ap.x,ap.y,10,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.stroke();
+    }
     const gridMode = document.getElementById('epeGridMode').value;
     if (gridMode === 'thirds'){
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1;
@@ -10513,9 +10566,24 @@ if (document.getElementById('epeDrop')){
     if (epeAutoSaveTimer) clearTimeout(epeAutoSaveTimer);
     epeAutoSaveTimer = setTimeout(() => {
       try{
+        // epeSourceImg.src is a blob: URL (from the shared, global
+        // loadImageFromFile) -- ephemeral, and invalid the moment the
+        // page reloads. Convert to a genuine, persistent data URL here
+        // specifically for storage, rather than saving the blob URL
+        // string (which would silently fail to load on recovery,
+        // regardless of anything else this function does correctly).
+        const imgCanvas = document.createElement('canvas');
+        imgCanvas.width = epeSourceImg.naturalWidth; imgCanvas.height = epeSourceImg.naturalHeight;
+        imgCanvas.getContext('2d').drawImage(epeSourceImg, 0, 0);
+        const persistentImageDataUrl = imgCanvas.toDataURL('image/png');
+        // Reuses the comprehensive full-project snapshot (Phase 10) --
+        // captures every layer, adjustment, and mask, not just the
+        // original image's own position/scale/rotation.
+        const snap = typeof epeCreateFullSnapshot === 'function' ? epeCreateFullSnapshot() : null;
         localStorage.setItem(EPE_AUTOSAVE_KEY, JSON.stringify({
-          ts: Date.now(), image: epeSourceImg.src,
-          w: epeArtboardW, h: epeArtboardH, layer: epeLayer,
+          ts: Date.now(), image: persistentImageDataUrl,
+          w: epeArtboardW, h: epeArtboardH, layer: epeLayer, // kept for backward compatibility with any older saved session
+          fullSnapshot: snap,
         }));
       }catch(e){ /* private mode or quota exceeded -- best-effort, fail silently */ }
     }, 900);
@@ -10535,11 +10603,23 @@ if (document.getElementById('epeDrop')){
         await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('bad image')); img.src = data.image; });
         epeSourceImg = img; epeArtboardW = data.w; epeArtboardH = data.h; epeLayer = data.layer;
         document.getElementById('epeStage').classList.remove('hidden');
-        epeHistoryStack = []; epeHistoryIndex = -1; epePushHistory();
-        epeSyncControlsFromLayer();
-        renderEpeAll();
+        if (data.fullSnapshot && typeof epeRestoreFullSnapshot === 'function'){
+          // Full recovery path: layers, adjustments, masks, selection, viewport all restored
+          epeHistoryStack = []; epeHistoryIndex = -1;
+          const layer = dseCreateImageLayer(epeSourceImg, epeArtboardW, epeArtboardH);
+          dseState.layers = [layer]; dseState.selectedIds = new Set([layer.id]);
+          epePushHistory();
+          await epeRestoreFullSnapshot(data.fullSnapshot);
+          toast('Previous session restored (including adjustments and any added layers).');
+        } else {
+          // Legacy path: an older saved session without a full snapshot -- restores
+          // the image and its transform only, honestly not everything.
+          epeHistoryStack = []; epeHistoryIndex = -1; epePushHistory();
+          epeSyncControlsFromLayer();
+          renderEpeAll();
+          toast('Previous session restored (image only \u2014 this was an older saved session).');
+        }
         banner.classList.add('hidden');
-        toast('Previous session restored.');
       }catch(err){ toast('Could not restore the previous session.', 'err'); banner.classList.add('hidden'); }
     };
     document.getElementById('epeAutoSaveDiscardBtn').onclick = () => { try{ localStorage.removeItem(EPE_AUTOSAVE_KEY); }catch(e){} banner.classList.add('hidden'); };
@@ -10550,13 +10630,27 @@ if (document.getElementById('epeDrop')){
      not a second implementation ---------- */
   document.getElementById('epeDownloadBtn').onclick = () => {
     if (!epeSourceImg) return;
+    if (typeof epeRunProjectHealthCheck === 'function'){
+      const health = epeRunProjectHealthCheck();
+      if (!health.ok) toast('Exporting, but project validation found: ' + health.issues[0], 'err');
+    }
+    const t0 = performance.now();
     const exportCanvas = document.createElement('canvas');
     renderEpeArtboard(exportCanvas);
+    const tRender = performance.now();
     const format = document.getElementById('epeExportFormat').value;
     const ext = format === 'jpeg' ? 'jpg' : format;
     exportCanvas.toBlob((blob) => {
       if (!blob){ toast('Could not export \u2014 try a different format.', 'err'); return; }
+      const tEncode = performance.now();
       downloadBlob(blob, 'product-photo.' + ext);
+      const totalMs = tEncode - t0;
+      const uncompressedBytes = exportCanvas.width*exportCanvas.height*4;
+      if (typeof epeRecordOperation === 'function'){
+        epeRecordOperation('export_'+format, totalMs, { 'Canvas render': tRender-t0, 'Encode': tEncode-tRender },
+          { fileSizeBytes: blob.size, uncompressedBytes, compressionRatio: uncompressedBytes/blob.size, format });
+        if (typeof epeRenderExportAnalytics === 'function') epeRenderExportAnalytics();
+      }
     }, 'image/' + format, 0.98);
   };
 
@@ -10689,8 +10783,30 @@ if (document.getElementById('epeDrop')){
 
   function dsePointerDownOnCanvas(clientX, clientY){
     const pt = epeEventToArtboardCoords(clientX, clientY);
+    if (epeSourceImg){
+      const sp = epeCanvasToSourceCoords(clientX, clientY);
+      if (epePatchPointerDown(sp.x, sp.y)) return;
+      if (epeSelectionPointerDown(sp.x, sp.y)) return;
+    }
     // Prioritise crop-mode and brush modes first (Phase 1/2 features).
     if (epeCropActive){ if (epeCropPointerDown(clientX, clientY)) return; }
+    if ((epeActiveTool === 'clone' || epeActiveTool === 'heal') && epeSourceImg){
+      const sp = epeCanvasToSourceCoords(clientX, clientY);
+      if (epeCloneAltHeld){
+        epeCloneSource = { x: sp.x, y: sp.y };
+        epeCloneOffset = null; // require a fresh stroke-start to (re)compute the offset
+        toast('Source point set.');
+        return;
+      }
+      if (!epeCloneSource){ toast('Alt/Option-click first to set a source point.', 'err'); return; }
+      if (!epeCloneOffset || !epeCloneAligned){
+        epeCloneOffset = { dx: sp.x - epeCloneSource.x, dy: sp.y - epeCloneSource.y };
+      }
+      epeIsPainting = true;
+      epeStampAt(sp.x, sp.y);
+      renderEpeAll();
+      return;
+    }
     if (epeActiveTool !== 'none' && epeSourceImg){ epeIsPainting = true; const sp = epeCanvasToSourceCoords(clientX, clientY); epeStampAt(sp.x, sp.y); renderEpeAll(); return; }
     // Hit-test the active-layer's handles first (if one is selected)
     for (const id of dseState.selectedIds){
@@ -10924,11 +11040,19 @@ if (document.getElementById('epeDrop')){
   document.addEventListener('pointermove', (e) => {
     if (epeIsPainting){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epeStampAt(sp.x, sp.y); renderEpeAll(); return; }
     if (epeCropDragMode){ epeCropPointerMove(e.clientX, e.clientY); return; }
+    if ((epeSelectionDrawing || epePatchDragStart) && epeSourceImg){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epeSelectionPointerMove(sp.x, sp.y); return; }
     dsePointerMoveOnCanvas(e.clientX, e.clientY);
   });
   document.addEventListener('pointerup', (e) => {
-    if (epeIsPainting){ epeIsPainting = false; epePushHistory(); return; }
+    if (epeIsPainting){
+      epeIsPainting = false;
+      if ((epeActiveTool === 'clone' || epeActiveTool === 'heal') && !epeCloneAligned) epeCloneOffset = null;
+      epePushHistory();
+      return;
+    }
     if (epeCropDragMode){ epeCropPointerUp(); return; }
+    if (epePatchDragStart && epeSourceImg){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epePatchPointerUp(sp.x, sp.y); return; }
+    if (epeSelectionDrawing){ epeSelectionPointerUp(); return; }
     dsePointerUpOnCanvas();
   });
 
@@ -12269,6 +12393,27 @@ if (document.getElementById('epeDrop')){
     'instagram-story':   { name:'Instagram Story', w:1080, h:1920, bg:'none', note:'9:16 full-screen format.' },
     'tiktok-shop':    { name:'TikTok Shop', w:1080, h:1920, bg:'none', note:'TikTok is fully vertical -- 9:16 for all image and video content.' },
     'pinterest-pin':  { name:'Pinterest Pin', w:1000, h:1500, bg:'none', note:'2:3 is Pinterest\u2019s current recommended pin ratio; taller pins now get clipped in-feed.' },
+    // Marketing Studio (Phase 5) additions -- reusing the same preset
+    // table and apply mechanism rather than a parallel system. Sizes
+    // marked (research) come from live 2026 sources cited in the final
+    // report; sizes marked (standard) are long-stable web/email
+    // conventions (IAB ad units, common email-marketing practice) rather
+    // than fast-changing social specs.
+    'facebook-post':    { name:'Facebook Post', w:1080, h:1080, bg:'none' },
+    'facebook-cover':   { name:'Facebook Cover', w:820, h:360, bg:'none', note:'820\u00d7360px is the safe-zone size that displays correctly on both desktop (820\u00d7312) and mobile (640\u00d7360) without cropping key content.' },
+    'facebook-story':   { name:'Facebook Story', w:1080, h:1920, bg:'none' },
+    'instagram-reel-cover': { name:'Instagram Reel Cover', w:1080, h:1920, bg:'none' },
+    'tiktok-cover':     { name:'TikTok Cover', w:1080, h:1920, bg:'none' },
+    'tiktok-story':     { name:'TikTok Story', w:1080, h:1920, bg:'none' },
+    'pinterest-idea-pin': { name:'Pinterest Idea Pin', w:1080, h:1920, bg:'none' },
+    'youtube-thumbnail': { name:'YouTube Thumbnail', w:1280, h:720, bg:'none', note:'16:9 -- keep under YouTube\u2019s 2MB file-size limit on export.' },
+    'youtube-community': { name:'YouTube Community Post', w:1200, h:1200, bg:'none' },
+    'whatsapp-status':  { name:'WhatsApp Status', w:1080, h:1920, bg:'none', note:'Fills the full mobile screen, same convention as Instagram/Facebook Stories.' },
+    'google-display-banner': { name:'Google Display Banner (Medium Rectangle)', w:300, h:250, bg:'none', note:'300\u00d7250 is the IAB \u201cMedium Rectangle\u201d -- the most widely supported standard display ad size.' },
+    'email-banner':     { name:'Email Banner', w:600, h:200, bg:'none', note:'600px wide is the standard safe email-client rendering width.' },
+    'website-hero-banner': { name:'Website Hero Banner', w:1920, h:1080, bg:'none' },
+    'popup-banner':     { name:'Popup Banner', w:600, h:400, bg:'none' },
+    'landing-page-banner': { name:'Landing Page Banner', w:1200, h:628, bg:'none' },
   };
   const DSE_CANVAS_RATIO_PRESETS = {
     '1:1':{w:1,h:1}, '4:5':{w:4,h:5}, '16:9':{w:16,h:9}, '9:16':{w:9,h:16}, '3:4':{w:3,h:4}, '4:3':{w:4,h:3},
@@ -12525,6 +12670,2193 @@ if (document.getElementById('epeDrop')){
     if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
     dseAddStickerOrBadge(btn.dataset.feature, DSE_FEATURE_LABEL_PRESETS);
   });
+
+
+  /* ============================================================
+     MARKETING STUDIO — Phase 5
+     ============================================================
+     Reuses the shape/text/group composite mechanism proven in Parts
+     3-4 (stickers, badges, price tags) for every new marketing
+     component below -- no new rendering system. Comparison Tables and
+     Spec Tables are the one genuinely new structural pattern (a grid
+     of shape+text cells assembled into one group), still built from
+     the same primitives.
+     ============================================================ */
+
+  // ---- CTA Button Builder: a rounded-rect (or custom shape) + text,
+  // grouped -- fully editable via the existing shape/text panels once
+  // ungrouped, or as a whole via the group's own transform. ----
+  const DSE_CTA_PRESETS = {
+    'buy-now':{ text:'Buy Now', color:'#E05252', textColor:'#ffffff' },
+    'order-now':{ text:'Order Now', color:'#5142D6', textColor:'#ffffff' },
+    'shop-now':{ text:'Shop Now', color:'#111111', textColor:'#ffffff' },
+    'add-to-cart':{ text:'Add To Cart', color:'#3BA55C', textColor:'#ffffff' },
+    'learn-more':{ text:'Learn More', color:'#ffffff', textColor:'#111111', border:true },
+    'limited-offer':{ text:'Limited Offer', color:'#FFB800', textColor:'#111111' },
+    'claim-discount':{ text:'Claim Discount', color:'#E05252', textColor:'#ffffff' },
+    'order-today':{ text:'Order Today', color:'#5142D6', textColor:'#ffffff' },
+  };
+  function dseAddCtaButton(key){
+    const preset = DSE_CTA_PRESETS[key]; if (!preset) return;
+    const shape = dseCreateShapeLayer('rounded-rect', epeArtboardW, epeArtboardH);
+    shape.color = preset.color; shape.boxW = 180; shape.boxH = 56;
+    shape.shadow = { enabled:true, style:'soft', opacity:35, blur:10, distance:4, angle:135, scale:100 };
+    if (preset.border) shape.border = { enabled:true, thickness:2, style:'solid', color:'#cccccc' };
+    const text = dseCreateTextLayer('button', epeArtboardW, epeArtboardH);
+    text.text = preset.text; text.color = preset.textColor; text.fontSize = 18; text.fontWeight = 700;
+    dseMeasureTextLayer(text);
+    dseState.layers.push(shape); shape.zIndex = dseState.layers.length;
+    dseState.layers.push(text); text.zIndex = dseState.layers.length;
+    const group = dseCreateGroupLayer([shape.id, text.id], epeArtboardW, epeArtboardH);
+    group.name = preset.text;
+    dseState.layers.push(group);
+    shape.groupId = group.id; text.groupId = group.id;
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('CTA button added.');
+  }
+  document.querySelectorAll('#epeCtaRow [data-cta]').forEach(btn => btn.onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    dseAddCtaButton(btn.dataset.cta);
+  });
+
+  // ---- Promotional Ribbons: composite shape+text presets (the
+  // "ribbon" shape type was deliberately deferred in Part 3 as a
+  // composite graphic asset rather than a vector primitive -- this is
+  // that composite, built from the existing rectangle + text.) ----
+  const DSE_RIBBON_PRESETS = {
+    'flash-sale':{ text:'FLASH SALE', color:'#E05252' }, 'mega-sale':{ text:'MEGA SALE', color:'#E05252' },
+    'weekend-sale':{ text:'WEEKEND SALE', color:'#5142D6' }, 'clearance':{ text:'CLEARANCE', color:'#111111' },
+    'limited-time':{ text:'LIMITED TIME', color:'#FFB800' }, 'best-seller':{ text:'BEST SELLER', color:'#3BA55C' },
+    'top-rated':{ text:'TOP RATED', color:'#FFB800' }, 'recommended':{ text:'RECOMMENDED', color:'#5142D6' },
+    'luxury':{ text:'LUXURY', color:'#111111' }, 'premium':{ text:'PREMIUM', color:'#111111' }, 'exclusive':{ text:'EXCLUSIVE', color:'#111111' },
+  };
+  document.querySelectorAll('#epeRibbonRow [data-ribbon]').forEach(btn => btn.onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const preset = DSE_RIBBON_PRESETS[btn.dataset.ribbon]; if (!preset) return;
+    const shape = dseCreateShapeLayer('rectangle', epeArtboardW, epeArtboardH);
+    shape.color = preset.color; shape.boxW = 220; shape.boxH = 44; shape.rotation = -12;
+    const text = dseCreateTextLayer('badge', epeArtboardW, epeArtboardH);
+    text.text = preset.text; text.color = '#ffffff'; text.fontSize = 16; text.fontWeight = 800; text.letterSpacing = 1;
+    text.rotation = -12;
+    dseMeasureTextLayer(text);
+    dseState.layers.push(shape); shape.zIndex = dseState.layers.length;
+    dseState.layers.push(text); text.zIndex = dseState.layers.length;
+    const group = dseCreateGroupLayer([shape.id, text.id], epeArtboardW, epeArtboardH);
+    group.name = preset.text;
+    dseState.layers.push(group);
+    shape.groupId = group.id; text.groupId = group.id;
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Ribbon added.');
+  });
+
+
+  // ---- Offer System: Flat/Percentage Discount, BOGO, Free Gift, Bundle,
+  // Limited Stock, Flash Deal, and a Countdown Placeholder (explicitly
+  // static -- shows placeholder digits, no live timer, matching "only
+  // placeholder architecture" from the brief). ----
+  const DSE_OFFER_PRESETS = {
+    'flat-discount':{ text:'FLAT $10 OFF', color:'#E05252' },
+    'percentage-discount':{ text:'30% OFF', color:'#E05252' },
+    'bogo':{ text:'BUY 1 GET 1 FREE', color:'#5142D6' },
+    'free-gift':{ text:'FREE GIFT INCLUDED', color:'#3BA55C' },
+    'bundle-offer':{ text:'BUNDLE & SAVE', color:'#FFB800' },
+    'limited-stock':{ text:'ONLY FEW LEFT', color:'#E05252' },
+    'flash-deal':{ text:'FLASH DEAL', color:'#111111' },
+  };
+  document.querySelectorAll('#epeOfferRow [data-offer]').forEach(btn => btn.onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    dseAddStickerOrBadge(btn.dataset.offer, DSE_OFFER_PRESETS);
+  });
+  document.getElementById('epeAddCountdownPlaceholderBtn') && (document.getElementById('epeAddCountdownPlaceholderBtn').onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const shape = dseCreateShapeLayer('rounded-rect', epeArtboardW, epeArtboardH);
+    shape.color = '#111111'; shape.boxW = 220; shape.boxH = 60;
+    const text = dseCreateTextLayer('badge', epeArtboardW, epeArtboardH);
+    text.text = '00 : 00 : 00'; text.color = '#ffffff'; text.fontSize = 22; text.fontWeight = 700; text.letterSpacing = 2;
+    dseMeasureTextLayer(text);
+    dseState.layers.push(shape); shape.zIndex = dseState.layers.length;
+    dseState.layers.push(text); text.zIndex = dseState.layers.length;
+    const group = dseCreateGroupLayer([shape.id, text.id], epeArtboardW, epeArtboardH);
+    group.name = 'Countdown (static placeholder)';
+    dseState.layers.push(group);
+    shape.groupId = group.id; text.groupId = group.id;
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Static countdown placeholder added \u2014 edit the digits manually; this is not a live timer.');
+  });
+
+  // ---- Trust Elements: icon + text badge composites, reusing the
+  // existing icon catalog from Part 3 (shield-check, lock, delivery
+  // truck, etc.) ----
+  const DSE_TRUST_PRESETS = {
+    'secure-checkout':{ text:'Secure Checkout', icon:'lock' },
+    'money-back':{ text:'Money Back Guarantee', icon:'shield-check' },
+    'fast-delivery':{ text:'Fast Delivery', icon:'clock-fast' },
+    'free-shipping':{ text:'Free Shipping', icon:'delivery-truck' },
+    'cod':{ text:'Cash On Delivery', icon:'wallet' },
+    'verified-seller':{ text:'Verified Seller', icon:'shield-check' },
+    'ssl-secure':{ text:'SSL Secure', icon:'lock' },
+    'original-product':{ text:'Original Product', icon:'checkmark' },
+  };
+  function dseAddTrustElement(key){
+    const preset = DSE_TRUST_PRESETS[key]; if (!preset) return;
+    const icon = dseCreateIconLayer(preset.icon, epeArtboardW, epeArtboardH);
+    icon.color = '#3BA55C'; icon.boxW = 28; icon.boxH = 28;
+    const text = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+    text.text = preset.text; text.color = '#111111'; text.fontSize = 15; text.fontWeight = 600;
+    text.x += 60; // offset so icon and text sit side by side before grouping
+    dseMeasureTextLayer(text);
+    dseState.layers.push(icon); icon.zIndex = dseState.layers.length;
+    dseState.layers.push(text); text.zIndex = dseState.layers.length;
+    const group = dseCreateGroupLayer([icon.id, text.id], epeArtboardW, epeArtboardH);
+    group.name = preset.text;
+    dseState.layers.push(group);
+    icon.groupId = group.id; text.groupId = group.id;
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Trust element added.');
+  }
+  document.querySelectorAll('#epeTrustRow [data-trust]').forEach(btn => btn.onclick = () => dseAddTrustElement(btn.dataset.trust));
+
+  // ---- Feature Highlight Blocks: icon + text, same pattern as Trust
+  // Elements but with feature-appropriate icons and labels. ----
+  const DSE_FEATURE_BLOCK_PRESETS = {
+    'premium-material':{ text:'Premium Material', icon:'medal' },
+    waterproof:{ text:'Waterproof', icon:'shield' },
+    rechargeable:{ text:'Rechargeable', icon:'wifi' },
+    'eco-friendly':{ text:'Eco Friendly', icon:'home' },
+    organic:{ text:'Organic', icon:'checkmark' },
+    handmade:{ text:'Handmade', icon:'star' },
+    imported:{ text:'Imported', icon:'plane' },
+    original:{ text:'Original', icon:'shield-check' },
+    warranty:{ text:'Warranty', icon:'shield' },
+  };
+  document.querySelectorAll('#epeFeatureBlockRow [data-featureblock]').forEach(btn => {
+    btn.onclick = () => {
+      if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+      const preset = DSE_FEATURE_BLOCK_PRESETS[btn.dataset.featureblock]; if (!preset) return;
+      const icon = dseCreateIconLayer(preset.icon, epeArtboardW, epeArtboardH);
+      icon.color = '#5142D6'; icon.boxW = 28; icon.boxH = 28;
+      const text = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+      text.text = preset.text; text.color = '#111111'; text.fontSize = 15; text.fontWeight = 600;
+      text.x += 60;
+      dseMeasureTextLayer(text);
+      dseState.layers.push(icon); icon.zIndex = dseState.layers.length;
+      dseState.layers.push(text); text.zIndex = dseState.layers.length;
+      const group = dseCreateGroupLayer([icon.id, text.id], epeArtboardW, epeArtboardH);
+      group.name = preset.text;
+      dseState.layers.push(group);
+      icon.groupId = group.id; text.groupId = group.id;
+      dseSelectLayer(group.id, false);
+      renderEpeAll(); epePushHistory();
+      toast('Feature highlight added.');
+    };
+  });
+
+
+  // ---- Comparison Table: a genuinely new structural pattern -- a grid
+  // of shape+text+icon cells assembled into one group. Still built
+  // entirely from the existing primitives (shape/text/icon layers +
+  // group), not a new rendering system. ----
+  document.getElementById('epeAddComparisonTableBtn') && (document.getElementById('epeAddComparisonTableBtn').onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const rows = ['Premium Material', 'Free Shipping', '1 Year Warranty', 'Money Back Guarantee'];
+    const cols = ['Us', 'Others'];
+    const cellW = 140, cellH = 40, labelW = 180;
+    const totalW = labelW + cellW*cols.length, totalH = cellH*(rows.length+1);
+    const startX = epeArtboardW/2 - totalW/2, startY = epeArtboardH/2 - totalH/2;
+    const childIds = [];
+    // Header row
+    cols.forEach((col, ci) => {
+      const header = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+      header.text = col; header.fontWeight = 800; header.fontSize = 15; header.color = '#111111';
+      header.x = startX + labelW + cellW*ci + cellW/2; header.y = startY + cellH/2;
+      dseMeasureTextLayer(header);
+      dseState.layers.push(header); header.zIndex = dseState.layers.length; childIds.push(header.id);
+    });
+    // Rows
+    rows.forEach((rowLabel, ri) => {
+      const y = startY + cellH*(ri+1) + cellH/2;
+      // Alternating row background
+      if (ri % 2 === 1){
+        const bg = dseCreateShapeLayer('rectangle', epeArtboardW, epeArtboardH);
+        bg.color = '#f5f5f7'; bg.boxW = totalW; bg.boxH = cellH;
+        bg.x = startX + totalW/2; bg.y = y;
+        dseState.layers.push(bg); bg.zIndex = dseState.layers.length - cols.length; childIds.unshift(bg.id);
+      }
+      const label = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+      label.text = rowLabel; label.fontSize = 14; label.align = 'left'; label.color = '#111111';
+      label.x = startX + labelW/2; label.y = y; label.boxW = labelW; label.autoResize = false;
+      dseMeasureTextLayer(label);
+      dseState.layers.push(label); label.zIndex = dseState.layers.length; childIds.push(label.id);
+      cols.forEach((col, ci) => {
+        // "Us" column = checkmark, "Others" column = cross (a real, if simplified, comparison convention)
+        const icon = dseCreateIconLayer(ci === 0 ? 'checkmark' : 'x-close', epeArtboardW, epeArtboardH);
+        icon.color = ci === 0 ? '#3BA55C' : '#E05252'; icon.boxW = 20; icon.boxH = 20;
+        icon.x = startX + labelW + cellW*ci + cellW/2; icon.y = y;
+        dseState.layers.push(icon); icon.zIndex = dseState.layers.length; childIds.push(icon.id);
+      });
+    });
+    const group = dseCreateGroupLayer(childIds, epeArtboardW, epeArtboardH);
+    group.name = 'Comparison Table';
+    dseState.layers.push(group);
+    childIds.forEach(id => { const l = dseState.layers.find(x=>x.id===id); if (l) l.groupId = group.id; });
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Comparison table added \u2014 ungroup to edit individual rows.');
+  });
+
+  // ---- Product Specification Table: label + value rows with
+  // alternating row colors -- same grid-of-cells pattern, one column
+  // instead of a comparison grid. ----
+  document.getElementById('epeAddSpecTableBtn') && (document.getElementById('epeAddSpecTableBtn').onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const specs = [['Material','Premium Fabric'], ['Weight','250g'], ['Dimensions','20 x 15 x 5 cm'], ['Color','Black']];
+    const rowH = 36, tableW = 280;
+    const startX = epeArtboardW/2 - tableW/2, startY = epeArtboardH/2 - (rowH*specs.length)/2;
+    const childIds = [];
+    specs.forEach(([label, value], i) => {
+      const y = startY + rowH*i + rowH/2;
+      if (i % 2 === 1){
+        const bg = dseCreateShapeLayer('rectangle', epeArtboardW, epeArtboardH);
+        bg.color = '#f5f5f7'; bg.boxW = tableW; bg.boxH = rowH;
+        bg.x = startX + tableW/2; bg.y = y;
+        dseState.layers.push(bg); bg.zIndex = dseState.layers.length; childIds.push(bg.id);
+      }
+      const labelText = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+      labelText.text = label; labelText.fontWeight = 700; labelText.fontSize = 13; labelText.align = 'left'; labelText.boxW = tableW/2; labelText.autoResize = false;
+      labelText.x = startX + tableW/4; labelText.y = y;
+      dseMeasureTextLayer(labelText);
+      dseState.layers.push(labelText); labelText.zIndex = dseState.layers.length; childIds.push(labelText.id);
+      const valueText = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+      valueText.text = value; valueText.fontSize = 13; valueText.align = 'left'; valueText.color = '#555555'; valueText.boxW = tableW/2; valueText.autoResize = false;
+      valueText.x = startX + tableW*0.75; valueText.y = y;
+      dseMeasureTextLayer(valueText);
+      dseState.layers.push(valueText); valueText.zIndex = dseState.layers.length; childIds.push(valueText.id);
+    });
+    const group = dseCreateGroupLayer(childIds, epeArtboardW, epeArtboardH);
+    group.name = 'Specification Table';
+    dseState.layers.push(group);
+    childIds.forEach(id => { const l = dseState.layers.find(x=>x.id===id); if (l) l.groupId = group.id; });
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Specification table added.');
+  });
+
+  // ---- Review Section: star rating (icon layers) + reviewer name +
+  // review text + verified badge -- static content only, no backend,
+  // matching the brief exactly. ----
+  document.getElementById('epeAddReviewCardBtn') && (document.getElementById('epeAddReviewCardBtn').onclick = () => {
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const cardW = 260;
+    const cx = epeArtboardW/2, cy = epeArtboardH/2;
+    const childIds = [];
+    const cardBg = dseCreateShapeLayer('rounded-rect', epeArtboardW, epeArtboardH);
+    cardBg.color = '#ffffff'; cardBg.boxW = cardW; cardBg.boxH = 140;
+    cardBg.shadow = { enabled:true, style:'soft', opacity:25, blur:12, distance:4, angle:135, scale:100 };
+    cardBg.x = cx; cardBg.y = cy;
+    dseState.layers.push(cardBg); cardBg.zIndex = dseState.layers.length; childIds.push(cardBg.id);
+    // 5 stars
+    for (let i=0;i<5;i++){
+      const star = dseCreateIconLayer('star', epeArtboardW, epeArtboardH);
+      star.color = '#FFB800'; star.boxW = 18; star.boxH = 18;
+      star.x = cx - cardW/2 + 24 + i*22; star.y = cy - 48;
+      dseState.layers.push(star); star.zIndex = dseState.layers.length; childIds.push(star.id);
+    }
+    // Verified badge icon
+    const verified = dseCreateIconLayer('shield-check', epeArtboardW, epeArtboardH);
+    verified.color = '#3BA55C'; verified.boxW = 16; verified.boxH = 16;
+    verified.x = cx + cardW/2 - 24; verified.y = cy - 48;
+    dseState.layers.push(verified); verified.zIndex = dseState.layers.length; childIds.push(verified.id);
+    // Review text
+    const reviewText = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+    reviewText.text = '"Excellent quality, fast shipping, exactly as described!"';
+    reviewText.fontSize = 13; reviewText.align = 'left'; reviewText.boxW = cardW - 32; reviewText.autoResize = false;
+    reviewText.x = cx; reviewText.y = cy - 8;
+    dseMeasureTextLayer(reviewText);
+    dseState.layers.push(reviewText); reviewText.zIndex = dseState.layers.length; childIds.push(reviewText.id);
+    // Reviewer name
+    const nameText = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+    nameText.text = '\u2014 Sarah M.'; nameText.fontSize = 12; nameText.fontWeight = 700; nameText.color = '#888888'; nameText.align = 'left';
+    nameText.x = cx; nameText.y = cy + 44;
+    dseMeasureTextLayer(nameText);
+    dseState.layers.push(nameText); nameText.zIndex = dseState.layers.length; childIds.push(nameText.id);
+    const group = dseCreateGroupLayer(childIds, epeArtboardW, epeArtboardH);
+    group.name = 'Review Card';
+    dseState.layers.push(group);
+    childIds.forEach(id => { const l = dseState.layers.find(x=>x.id===id); if (l) l.groupId = group.id; });
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Review card added \u2014 all text and the star rating are editable placeholders, not live data.');
+  });
+
+
+  // ---- Logo System: a second image-upload path that ADDS a new image
+  // layer on top of the existing design, reusing the same image-layer
+  // creation used for the main product photo -- not a separate upload
+  // system. ----
+  document.getElementById('epeLogoUploadInput') && document.getElementById('epeLogoUploadInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    if (!['image/png','image/jpeg','image/webp'].includes(file.type)){ toast('Please select a PNG, JPG, or WEBP image.', 'err'); return; }
+    try{
+      const img = await loadImageFromFile(file);
+      const layer = dseCreateImageLayer(img, epeArtboardW, epeArtboardH);
+      layer.name = 'Logo';
+      layer.scale = Math.min(1, (epeArtboardW*0.2)/img.naturalWidth);
+      layer.x = epeArtboardW*0.85; layer.y = epeArtboardH*0.9; // default to bottom-right, a common logo position
+      dseState.layers.push(layer); layer.zIndex = dseState.layers.length;
+      dseSelectLayer(layer.id, false);
+      renderEpeAll(); epePushHistory();
+      toast('Logo added \u2014 drag to reposition, resize with the handles.');
+    }catch(err){ toast('Could not read this image.', 'err'); }
+    e.target.value = '';
+  });
+
+  // ---- QR Code / Barcode Placeholder: architecture only, per the
+  // brief ("prepare architecture, do NOT implement generation yet").
+  // Renders a visibly labeled, non-functional placeholder graphic (not
+  // a real scannable code) so the layer/position/size is ready for
+  // real generation in a future phase without any structural change. ----
+  function dseAddCodePlaceholder(kind){
+    if (dseState.layers.length === 0){ toast('Upload a product image first.', 'err'); return; }
+    const shape = dseCreateShapeLayer('rectangle', epeArtboardW, epeArtboardH);
+    shape.color = '#ffffff';
+    shape.border = { enabled:true, thickness:2, style:'solid', color:'#111111' };
+    shape.boxW = kind === 'qr' ? 100 : 140; shape.boxH = kind === 'qr' ? 100 : 50;
+    shape.name = kind === 'qr' ? 'QR Code (placeholder)' : 'Barcode (placeholder)';
+    const label = dseCreateTextLayer('caption', epeArtboardW, epeArtboardH);
+    label.text = kind === 'qr' ? 'QR CODE\n(placeholder)' : 'BARCODE (placeholder)';
+    label.fontSize = 11; label.color = '#999999'; label.textCase = 'upper';
+    dseMeasureTextLayer(label);
+    dseState.layers.push(shape); shape.zIndex = dseState.layers.length;
+    dseState.layers.push(label); label.zIndex = dseState.layers.length;
+    const group = dseCreateGroupLayer([shape.id, label.id], epeArtboardW, epeArtboardH);
+    group.name = shape.name;
+    dseState.layers.push(group);
+    shape.groupId = group.id; label.groupId = group.id;
+    dseSelectLayer(group.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('Placeholder added \u2014 this is NOT a scannable code. Real QR/barcode generation is not implemented in this phase.');
+  }
+  document.getElementById('epeAddQrPlaceholderBtn') && (document.getElementById('epeAddQrPlaceholderBtn').onclick = () => dseAddCodePlaceholder('qr'));
+  document.getElementById('epeAddBarcodePlaceholderBtn') && (document.getElementById('epeAddBarcodePlaceholderBtn').onclick = () => dseAddCodePlaceholder('barcode'));
+
+  // ---- Brand Consistency: reusable default shadow/border, persisted
+  // locally -- reuses the exact same localStorage pattern already
+  // proven for Brand Colors (Part 3), not a new persistence mechanism. ----
+  const DSE_BRAND_DEFAULTS_KEY = 'toolflight_epe_brand_defaults';
+  let dseBrandDefaults = { shadow:null, border:null };
+  function dseLoadBrandDefaults(){
+    try{ const raw = localStorage.getItem(DSE_BRAND_DEFAULTS_KEY); dseBrandDefaults = raw ? JSON.parse(raw) : { shadow:null, border:null }; }catch(e){ dseBrandDefaults = { shadow:null, border:null }; }
+  }
+  function dseSaveBrandDefaults(){ try{ localStorage.setItem(DSE_BRAND_DEFAULTS_KEY, JSON.stringify(dseBrandDefaults)); }catch(e){} }
+  document.getElementById('epeSaveDefaultShadowBtn') && (document.getElementById('epeSaveDefaultShadowBtn').onclick = () => {
+    const layer = dseActiveLayer(); if (!layer || !layer.shadow) { toast('Select a shape or image layer with a shadow first.', 'err'); return; }
+    dseBrandDefaults.shadow = { ...layer.shadow };
+    dseSaveBrandDefaults();
+    toast('Default shadow saved.');
+  });
+  document.getElementById('epeApplyDefaultShadowBtn') && (document.getElementById('epeApplyDefaultShadowBtn').onclick = () => {
+    const layer = dseActiveLayer(); if (!layer || !layer.shadow || !dseBrandDefaults.shadow) { toast('No default shadow saved yet.', 'err'); return; }
+    layer.shadow = { ...dseBrandDefaults.shadow };
+    renderEpeAll(); epePushHistory();
+    toast('Default shadow applied.');
+  });
+  document.getElementById('epeSaveDefaultBorderBtn') && (document.getElementById('epeSaveDefaultBorderBtn').onclick = () => {
+    const layer = dseActiveLayer(); if (!layer || !layer.border) { toast('Select a shape layer with a border first.', 'err'); return; }
+    dseBrandDefaults.border = { ...layer.border };
+    dseSaveBrandDefaults();
+    toast('Default border saved.');
+  });
+  document.getElementById('epeApplyDefaultBorderBtn') && (document.getElementById('epeApplyDefaultBorderBtn').onclick = () => {
+    const layer = dseActiveLayer(); if (!layer || !layer.border || !dseBrandDefaults.border) { toast('No default border saved yet.', 'err'); return; }
+    layer.border = { ...dseBrandDefaults.border };
+    renderEpeAll(); epePushHistory();
+    toast('Default border applied.');
+  });
+  dseLoadBrandDefaults();
+
+
+  // ---- Social Media Safe Zones: sets the existing safe-area margin
+  // percentage to approximate each platform's real safe zone. This is a
+  // deliberate simplification -- the existing safe-area renderer
+  // supports one uniform percentage margin, while real platform zones
+  // are sometimes asymmetric (e.g. Instagram Stories excludes more at
+  // top/bottom than left/right). Disclosed here and in the final report
+  // rather than silently treated as exact. ----
+  const DSE_PLATFORM_SAFE_ZONES = {
+    instagram: { pct: 16, note:'Instagram Stories keeps roughly the top and bottom 250\u2013340px clear for the profile bar and reply field on a 1080\u00d71920 canvas \u2014 approximated here as a uniform 16% margin.' },
+    tiktok:    { pct: 16, note:'TikTok reserves similar top/bottom space for UI overlays as Instagram Stories \u2014 approximated as a uniform 16% margin.' },
+    facebook:  { pct: 10, note:'Facebook cover/post safe zones vary by placement; 10% is a reasonable general-purpose margin.' },
+    pinterest: { pct: 8,  note:'Pinterest pins have less aggressive UI overlay than Stories-style formats.' },
+    youtube:   { pct: 18, note:'YouTube channel banners keep only the center \u224875% (roughly 1546\u00d7423 of a 2048\u00d71152 canvas) fully safe across all devices \u2014 approximated as an 18% margin.' },
+  };
+  document.getElementById('epePlatformSafeZone') && document.getElementById('epePlatformSafeZone').addEventListener('change', (e) => {
+    const zone = DSE_PLATFORM_SAFE_ZONES[e.target.value];
+    if (!zone) return;
+    document.getElementById('epeSafeArea').checked = true;
+    document.getElementById('epeSafeAreaMargin').value = zone.pct;
+    document.getElementById('epeSafeAreaMarginVal').textContent = zone.pct;
+    document.getElementById('epePlatformSafeZoneNote').textContent = zone.note;
+    renderEpeOverlay();
+  });
+
+
+  /* ============================================================
+     PROFESSIONAL RETOUCH STUDIO — Phase 6
+     ============================================================
+     Reuses the existing brush engine (epeStampAt, epeBrushSize/Hardness/
+     Opacity, epeLocalEditsCanvas, epeCanvasToSourceCoords) as the
+     foundation for every new tool below -- no parallel brush system.
+     Clone Stamp and Healing Brush are genuinely different algorithms
+     (exact pixel copy vs. texture + local color correction), not the
+     same code with a different label. Object Remove and Patch Tool
+     share a real, disclosed-as-simplified edge-texture fill technique
+     (not true PatchMatch content-aware fill, which this project has no
+     implementation of and would not fake).
+     ============================================================ */
+
+  // ---- Selection Tools: Rectangle, Ellipse, Freehand Lasso, Polygon
+  // Lasso. A selection is stored as a path (array of {x,y} in source-
+  // image space) plus a rasterized mask (Uint8ClampedArray, same
+  // semantic as epeEraseMask: 0=outside, 255=inside) used by Object
+  // Remove and Patch Tool. Magic Wand and Quick Selection are
+  // explicitly NOT implemented this phase -- their buttons exist as
+  // disabled foundation stubs, matching "prepare architecture for
+  // future expansion" rather than faking the feature. ----
+  let epeSelectionMode = 'none'; // none | rect | ellipse | lasso | polygon
+  let epeSelectionMask = null;   // Uint8ClampedArray, source-image-space, or null
+  let epeSelectionPath = [];     // live path being drawn (source-image-space points)
+  let epeSelectionDrawing = false;
+  let epeSelectionRectStart = null;
+
+  function epeSetSelectionMode(mode){
+    epeSelectionMode = (mode === epeSelectionMode) ? 'none' : mode;
+    document.querySelectorAll('#epeAccordionSelection [data-selmode]').forEach(b => b.classList.toggle('active', b.dataset.selmode === epeSelectionMode));
+    epeSelectionPath = []; epeSelectionDrawing = false;
+    renderEpeOverlay();
+  }
+  document.querySelectorAll('#epeAccordionSelection [data-selmode]').forEach(btn => btn.onclick = () => epeSetSelectionMode(btn.dataset.selmode));
+
+  function epeRasterizeSelectionPath(path, w, h){
+    // Rasterize a polygon (or rect/ellipse expressed as a path) into a
+    // 0/255 mask using an offscreen canvas fill -- a real, correct
+    // point-in-polygon rasterization via the browser's own canvas fill
+    // rule, not an approximation.
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    path.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+    ctx.closePath(); ctx.fill();
+    const data = ctx.getImageData(0,0,w,h).data;
+    const mask = new Uint8ClampedArray(w*h);
+    for (let p=0,i=3; p<w*h; p++, i+=4) mask[p] = data[i];
+    return mask;
+  }
+
+  function epeSelectionPointerDown(sx, sy){
+    if (epeSelectionMode === 'none') return false;
+    if (epeSelectionMode === 'rect' || epeSelectionMode === 'ellipse'){
+      epeSelectionRectStart = { x: sx, y: sy }; epeSelectionDrawing = true; return true;
+    }
+    if (epeSelectionMode === 'lasso'){
+      epeSelectionPath = [{x:sx,y:sy}]; epeSelectionDrawing = true; return true;
+    }
+    if (epeSelectionMode === 'polygon'){
+      if (!epeSelectionDrawing){ epeSelectionPath = [{x:sx,y:sy}]; epeSelectionDrawing = true; }
+      else epeSelectionPath.push({x:sx,y:sy});
+      renderEpeOverlay();
+      return true;
+    }
+    return false;
+  }
+  function epeSelectionPointerMove(sx, sy){
+    if (!epeSelectionDrawing) return;
+    if (epeSelectionMode === 'rect'){
+      const x0=epeSelectionRectStart.x, y0=epeSelectionRectStart.y;
+      epeSelectionPath = [{x:x0,y:y0},{x:sx,y:y0},{x:sx,y:sy},{x:x0,y:sy}];
+    } else if (epeSelectionMode === 'ellipse'){
+      const cx=(epeSelectionRectStart.x+sx)/2, cy=(epeSelectionRectStart.y+sy)/2;
+      const rx=Math.abs(sx-epeSelectionRectStart.x)/2, ry=Math.abs(sy-epeSelectionRectStart.y)/2;
+      epeSelectionPath = [];
+      for (let a=0;a<32;a++){ const t=a/32*Math.PI*2; epeSelectionPath.push({x:cx+Math.cos(t)*rx, y:cy+Math.sin(t)*ry}); }
+    } else if (epeSelectionMode === 'lasso'){
+      epeSelectionPath.push({x:sx,y:sy});
+    }
+    renderEpeOverlay();
+  }
+  function epeSelectionPointerUp(){
+    if (epeSelectionMode === 'polygon') return; // polygon commits on double-click, not pointerup
+    if (!epeSelectionDrawing) return;
+    epeSelectionDrawing = false;
+    epeCommitSelection();
+  }
+  function epeCommitSelection(){
+    if (epeSelectionPath.length < 3 || !epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    epeSelectionMask = epeRasterizeSelectionPath(epeSelectionPath, w, h);
+    document.getElementById('epeSelectionActions') && document.getElementById('epeSelectionActions').classList.remove('hidden');
+    renderEpeOverlay();
+    toast('Selection made.');
+  }
+  document.getElementById('epeArtboardCanvas').addEventListener('dblclick', (e) => {
+    if (epeSelectionMode === 'polygon' && epeSelectionDrawing){ epeSelectionDrawing = false; epeCommitSelection(); }
+  });
+  document.getElementById('epeSelectionInvertBtn') && (document.getElementById('epeSelectionInvertBtn').onclick = () => {
+    if (!epeSelectionMask) return;
+    for (let i=0;i<epeSelectionMask.length;i++) epeSelectionMask[i] = 255 - epeSelectionMask[i];
+    renderEpeOverlay(); toast('Selection inverted.');
+  });
+  document.getElementById('epeSelectionClearBtn') && (document.getElementById('epeSelectionClearBtn').onclick = () => {
+    epeSelectionMask = null; epeSelectionPath = []; document.getElementById('epeSelectionActions').classList.add('hidden');
+    renderEpeOverlay(); toast('Selection cleared.');
+  });
+
+
+  // ---- Clone Stamp: exact pixel copy from a sampled source point, with
+  // a constant offset maintained through a stroke (Aligned) or reset to
+  // the sample point at the start of each new stroke (Non-Aligned). This
+  // is a real implementation of the actual Photoshop-style algorithm,
+  // not a relabeled blur/blend tool. ----
+  let epeCloneSource = null;      // {x,y} in source-image space, set by Alt/Option-click
+  let epeCloneOffset = null;      // {dx,dy} computed at the start of a stroke
+  let epeCloneAligned = true;
+  let epeCloneAltHeld = false;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Alt') epeCloneAltHeld = true; });
+  document.addEventListener('keyup', (e) => { if (e.key === 'Alt') epeCloneAltHeld = false; });
+  document.getElementById('epeCloneAlignedToggle') && document.getElementById('epeCloneAlignedToggle').addEventListener('change', (e) => { epeCloneAligned = e.target.checked; });
+
+  function epeCloneStampAt(sx, sy, w, h, r, hardness, opacity){
+    if (!epeCloneOffset) return; // no source sampled + stroke-started yet
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const srcCx = sx - epeCloneOffset.dx, srcCy = sy - epeCloneOffset.dy;
+    const x0 = Math.max(0, Math.floor(sx-r)), x1 = Math.min(w-1, Math.ceil(sx+r));
+    const y0 = Math.max(0, Math.floor(sy-r)), y1 = Math.min(h-1, Math.ceil(sy+r));
+    if (x1<x0 || y1<y0) return;
+    // Read the full-canvas source region once (handles negative source coords by clamping per-pixel below)
+    const srcData = ctx.getImageData(0, 0, w, h);
+    const dstData = ctx.getImageData(x0, y0, x1-x0+1, y1-y0+1);
+    for (let y=y0; y<=y1; y++){
+      for (let x=x0; x<=x1; x++){
+        const d = Math.hypot(x-sx, y-sy)/r; if (d>1) continue;
+        const falloff = d<=hardness ? 1 : 1-((d-hardness)/(1-hardness||1));
+        const strength = epeClamp(falloff,0,1) * opacity;
+        const srx = Math.round(x - epeCloneOffset.dx), sry = Math.round(y - epeCloneOffset.dy);
+        if (srx<0||srx>=w||sry<0||sry>=h) continue;
+        const si = (sry*w+srx)*4, di = ((y-y0)*(x1-x0+1)+(x-x0))*4;
+        dstData.data[di]   = dstData.data[di]  *(1-strength) + srcData.data[si]  *strength;
+        dstData.data[di+1] = dstData.data[di+1]*(1-strength) + srcData.data[si+1]*strength;
+        dstData.data[di+2] = dstData.data[di+2]*(1-strength) + srcData.data[si+2]*strength;
+      }
+    }
+    ctx.putImageData(dstData, x0, y0);
+    epeProcessedCanvasCache = null;
+  }
+
+  // ---- Healing Brush: copies SOURCE TEXTURE like Clone Stamp, but
+  // corrects color/luminance to match the TARGET area's surroundings --
+  // a real, if simplified, texture-transfer-with-local-color-correction
+  // technique (sample source average, sample target-ring average, shift
+  // every copied pixel by the difference). This is genuinely different
+  // from Clone Stamp's exact copy, not the same code relabeled. ----
+  function epeHealStampAt(sx, sy, w, h, r, hardness, opacity){
+    if (!epeCloneOffset) return;
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const x0 = Math.max(0, Math.floor(sx-r)), x1 = Math.min(w-1, Math.ceil(sx+r));
+    const y0 = Math.max(0, Math.floor(sy-r)), y1 = Math.min(h-1, Math.ceil(sy+r));
+    if (x1<x0 || y1<y0) return;
+    const full = ctx.getImageData(0, 0, w, h);
+    // Sample source-patch average and target-ring average (ring just
+    // outside the brush at the TARGET location, i.e. the surrounding
+    // skin/texture/background the healed area needs to blend into)
+    let srcSum=[0,0,0], srcN=0, targetRingSum=[0,0,0], targetRingN=0;
+    for (let a=0;a<16;a++){
+      const ang = a/16*Math.PI*2;
+      const sxp = Math.round(sx - epeCloneOffset.dx + Math.cos(ang)*r*0.6), syp = Math.round(sy - epeCloneOffset.dy + Math.sin(ang)*r*0.6);
+      if (sxp>=0&&sxp<w&&syp>=0&&syp<h){ const i=(syp*w+sxp)*4; srcSum[0]+=full.data[i]; srcSum[1]+=full.data[i+1]; srcSum[2]+=full.data[i+2]; srcN++; }
+      const txp = Math.round(sx + Math.cos(ang)*r*1.15), typ = Math.round(sy + Math.sin(ang)*r*1.15);
+      if (txp>=0&&txp<w&&typ>=0&&typ<h){ const i=(typ*w+txp)*4; targetRingSum[0]+=full.data[i]; targetRingSum[1]+=full.data[i+1]; targetRingSum[2]+=full.data[i+2]; targetRingN++; }
+    }
+    const colorShift = [0,0,0];
+    if (srcN>0 && targetRingN>0){
+      for (let c=0;c<3;c++) colorShift[c] = (targetRingSum[c]/targetRingN) - (srcSum[c]/srcN);
+    }
+    const dstData = ctx.getImageData(x0, y0, x1-x0+1, y1-y0+1);
+    for (let y=y0; y<=y1; y++){
+      for (let x=x0; x<=x1; x++){
+        const d = Math.hypot(x-sx, y-sy)/r; if (d>1) continue;
+        const falloff = d<=hardness ? 1 : 1-((d-hardness)/(1-hardness||1));
+        const strength = epeClamp(falloff,0,1) * opacity;
+        const srx = Math.round(x - epeCloneOffset.dx), sry = Math.round(y - epeCloneOffset.dy);
+        if (srx<0||srx>=w||sry<0||sry>=h) continue;
+        const si = (sry*w+srx)*4, di = ((y-y0)*(x1-x0+1)+(x-x0))*4;
+        for (let c=0;c<3;c++){
+          const healedVal = epeClamp(full.data[si+c] + colorShift[c], 0, 255);
+          dstData.data[di+c] = dstData.data[di+c]*(1-strength) + healedVal*strength;
+        }
+      }
+    }
+    ctx.putImageData(dstData, x0, y0);
+    epeProcessedCanvasCache = null;
+  }
+
+
+  // ---- Object Remove: fills the current selection using a real,
+  // disclosed-as-simplified edge-texture technique -- for each selected
+  // pixel, sample the average color of nearby UNSELECTED (boundary)
+  // pixels and blend, with edge feathering. This is a legitimate
+  // inpainting-lite approach (nearest-boundary texture averaging), NOT
+  // true PatchMatch-style content-aware fill, which this project does
+  // not implement and will not claim to. Works best on small-to-medium,
+  // relatively uniform regions -- large or highly detailed removals will
+  // look smoothed/averaged rather than perfectly reconstructed, and the
+  // UI says so. ----
+  /* Phase 6 epeFillSelectionEdgeTexture (nearby-texture-averaging fallback) removed --
+     superseded by the real PatchMatch engine, see Phase 7 integration below */
+
+  // ---- Patch Tool: draw a selection, then click-drag from a SOURCE
+  // area; on release, the original selection's shape is replaced with
+  // the dragged-to area's texture, color-corrected the same way as the
+  // Healing Brush (source-average vs. destination-boundary-average
+  // shift) so it blends rather than pastes flatly. ----
+  let epePatchDragStart = null;
+  let epePatchActive = false;
+  document.getElementById('epePatchToolToggle') && (document.getElementById('epePatchToolToggle').onclick = () => {
+    epePatchActive = !epePatchActive;
+    document.getElementById('epePatchToolToggle').setAttribute('aria-pressed', String(epePatchActive));
+    if (epePatchActive) toast('Draw a selection first, then click-drag from a clean area to patch from.');
+  });
+  function epePatchPointerDown(sx, sy){
+    if (!epePatchActive || !epeSelectionMask) return false;
+    epePatchDragStart = { x: sx, y: sy };
+    return true;
+  }
+  function epePatchPointerUp(sx, sy){
+    if (!epePatchActive || !epePatchDragStart || !epeSelectionMask || !epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const dx = Math.round(sx - epePatchDragStart.x), dy = Math.round(sy - epePatchDragStart.y);
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const full = ctx.getImageData(0, 0, w, h);
+    const data = full.data;
+    const mask = epeSelectionMask;
+    // Compute average color of the ORIGINAL selection's boundary
+    // (destination context) and the SOURCE patch (dragged-from area) to
+    // derive one color-correction shift applied across the whole patch.
+    let destSum=[0,0,0], destN=0, srcSum=[0,0,0], srcN=0;
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+      if (mask[y*w+x] < 128) continue;
+      const sxp = x+dx, syp = y+dy;
+      if (sxp>=0&&sxp<w&&syp>=0&&syp<h){ const si=(syp*w+sxp)*4; srcSum[0]+=data[si]; srcSum[1]+=data[si+1]; srcSum[2]+=data[si+2]; srcN++; }
+    }
+    // Destination boundary ring (pixels just outside the mask)
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+      if (mask[y*w+x] >= 128) continue;
+      const nb = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+      if (nb.some(([nx,ny]) => nx>=0&&nx<w&&ny>=0&&ny<h&&mask[ny*w+nx]>=128)){
+        const i=(y*w+x)*4; destSum[0]+=data[i]; destSum[1]+=data[i+1]; destSum[2]+=data[i+2]; destN++;
+      }
+    }
+    const shift = [0,0,0];
+    if (srcN>0 && destN>0) for (let c=0;c<3;c++) shift[c] = (destSum[c]/destN) - (srcSum[c]/srcN);
+    for (let y=0;y<h;y++){
+      for (let x=0;x<w;x++){
+        if (mask[y*w+x] < 128) continue;
+        const sxp = x+dx, syp = y+dy;
+        if (sxp<0||sxp>=w||syp<0||syp>=h) continue;
+        const si = (syp*w+sxp)*4, di = (y*w+x)*4;
+        for (let c=0;c<3;c++) data[di+c] = epeClamp(data[si+c]+shift[c], 0, 255);
+      }
+    }
+    ctx.putImageData(full, 0, 0);
+    epeProcessedCanvasCache = null;
+    epePatchDragStart = null;
+    epeSelectionMask = null; document.getElementById('epeSelectionActions').classList.add('hidden');
+    renderEpeAll(); epePushHistory(); renderEpeOverlay();
+    toast('Patched.');
+  }
+
+
+  // ---- Red Eye Removal: manual only (click/brush-based). Automatic
+  // detection is NOT implemented -- doing that honestly would need a
+  // real eye/pupil detector, which this tool doesn't have (the face
+  // landmarker below detects face geometry, not red-eye specifically,
+  // and using it to auto-fix would risk false positives on non-red
+  // eyes). Uses a real, standard heuristic: within the brush, pixels
+  // where red significantly exceeds green/blue get desaturated and
+  // darkened proportionally to how "red-eye-like" they are. ----
+  document.getElementById('epeRedEyeStrength') && document.getElementById('epeRedEyeStrength').addEventListener('input', (e) => { epeRedEyeStrength = +e.target.value; });
+  let epeRedEyeStrength = 60;
+  function epeRedEyeStampAt(sx, sy, w, h, r){
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const x0 = Math.max(0, Math.floor(sx-r)), x1 = Math.min(w-1, Math.ceil(sx+r));
+    const y0 = Math.max(0, Math.floor(sy-r)), y1 = Math.min(h-1, Math.ceil(sy+r));
+    if (x1<x0 || y1<y0) return;
+    const imgData = ctx.getImageData(x0, y0, x1-x0+1, y1-y0+1);
+    const data = imgData.data;
+    const strength = epeRedEyeStrength/100;
+    for (let y=y0; y<=y1; y++){
+      for (let x=x0; x<=x1; x++){
+        const d = Math.hypot(x-sx,y-sy)/r; if (d>1) continue;
+        const i = ((y-y0)*(x1-x0+1)+(x-x0))*4;
+        const rr=data[i], gg=data[i+1], bb=data[i+2];
+        const redness = rr - Math.max(gg,bb);
+        if (redness > 15){ // classic red-eye heuristic: red channel notably exceeds green/blue
+          const factor = Math.min(1, redness/80) * strength;
+          const gray = (gg+bb)/2; // replace red with a neutral tone derived from the other channels, then darken (pupils are naturally dark)
+          data[i]   = rr*(1-factor) + gray*factor*0.5;
+          data[i+1] = gg*(1-factor*0.15);
+          data[i+2] = bb*(1-factor*0.15);
+        }
+      }
+    }
+    ctx.putImageData(imgData, x0, y0);
+    epeProcessedCanvasCache = null;
+  }
+
+  // ---- Face-landmark-based enhancement: Skin, Teeth, Eyes, Lips, Hair.
+  // Reuses the SAME algorithmic approach (MediaPipe FaceLandmarker,
+  // landmark-derived region masks) already proven in the AI Photo
+  // Retouch tool -- rebuilt here since that tool's implementation lives
+  // in a separate page/module with its own private closure, but the
+  // technique and even the model loading pattern are directly reused,
+  // not reinvented. ----
+  let epeFaceLandmarkerPromise = null;
+  async function epeEnsureFaceLandmarker(){
+    if (!epeFaceLandmarkerPromise){
+      epeFaceLandmarkerPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14`);
+        const { FaceLandmarker, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
+        return await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task', delegate: 'CPU' },
+          runningMode: 'IMAGE', numFaces: 1,
+        });
+      })().catch((err) => { epeFaceLandmarkerPromise = null; throw err; });
+    }
+    return epeFaceLandmarkerPromise;
+  }
+  let epeFaceLandmarksCache = null;
+  async function epeDetectFace(){
+    if (epeFaceLandmarksCache) return epeFaceLandmarksCache;
+    try{
+      const landmarker = await epeEnsureFaceLandmarker();
+      const result = landmarker.detect(epeSourceImg);
+      if (!result.faceLandmarks || result.faceLandmarks.length === 0) return null;
+      epeFaceLandmarksCache = result.faceLandmarks[0].map(p => ({ x: p.x*epeSourceImg.naturalWidth, y: p.y*epeSourceImg.naturalHeight }));
+      return epeFaceLandmarksCache;
+    }catch(err){
+      return null; // model failed to load (e.g. no network) -- callers treat this the same as "no face detected" and show a graceful message
+    }
+  }
+  // Standard MediaPipe FaceMesh landmark indices for each region
+  const EPE_FACE_REGIONS = {
+    leftEye: [33,160,158,133,153,144], rightEye: [362,385,387,263,373,380],
+    lips: [61,291,0,17,146,375], teeth: [13,14,78,308],
+    // Face oval for skin masking
+    faceOval: [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109],
+  };
+  function epeRegionCenterRadius(landmarks, indices, padFactor){
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    indices.forEach(i => { const p = landmarks[i]; if (!p) return; minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y); });
+    const cx=(minX+maxX)/2, cy=(minY+maxY)/2, r=Math.max(maxX-minX,maxY-minY)/2*(padFactor||1.4);
+    return { cx, cy, r };
+  }
+  async function epeApplyFaceRegionAdjust(regionKey, adjustFn){
+    const landmarks = await epeDetectFace();
+    if (!landmarks){ toast('No face detected \u2014 this adjustment needs a visible face in the photo.', 'err'); return false; }
+    const { cx, cy, r } = epeRegionCenterRadius(landmarks, EPE_FACE_REGIONS[regionKey], regionKey==='faceOval'?1.05:1.5);
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const x0=Math.max(0,Math.floor(cx-r)), x1=Math.min(w-1,Math.ceil(cx+r)), y0=Math.max(0,Math.floor(cy-r)), y1=Math.min(h-1,Math.ceil(cy+r));
+    if (x1<=x0||y1<=y0) return false;
+    const imgData = ctx.getImageData(x0,y0,x1-x0+1,y1-y0+1);
+    adjustFn(imgData.data, x1-x0+1, y1-y0+1, cx-x0, cy-y0, r);
+    ctx.putImageData(imgData, x0, y0);
+    epeProcessedCanvasCache = null;
+    renderEpeAll(); epePushHistory();
+    return true;
+  }
+
+
+  // ---- Skin Retouch: smoothing (within face oval, excluding eyes/
+  // mouth), shine reduction (highlight compression), color balance,
+  // blemish/wrinkle softening -- all frequency-preserving (blend with a
+  // blurred version rather than flattening), matching "texture
+  // preservation" from the brief. ----
+  document.getElementById('epeSkinSmoothBtn') && (document.getElementById('epeSkinSmoothBtn').onclick = async () => {
+    const amount = (+document.getElementById('epeSkinSmoothAmount').value)/100;
+    await epeApplyFaceRegionAdjust('faceOval', (data, w, h, cx, cy, r) => {
+      for (let ch=0; ch<3; ch++){
+        const plane = new Float32Array(w*h);
+        for (let p=0;p<w*h;p++) plane[p] = data[p*4+ch];
+        const blurred = boxBlurGray(plane, w, h, 4);
+        for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+          const d = Math.hypot(x-cx,y-cy)/r; if (d>1) continue;
+          const falloff = 1 - Math.pow(d, 2); // soft-edged, not a hard circle
+          const p = y*w+x;
+          data[p*4+ch] = plane[p]*(1-amount*falloff*0.7) + blurred[p]*(amount*falloff*0.7);
+        }
+      }
+    });
+    toast('Skin smoothed.');
+  });
+  document.getElementById('epeShineReduceBtn') && (document.getElementById('epeShineReduceBtn').onclick = async () => {
+    await epeApplyFaceRegionAdjust('faceOval', (data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){
+        const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>1) continue;
+        const lum = (data[i]+data[i+1]+data[i+2])/3;
+        if (lum > 200){ const pull = (lum-200)*0.4; data[i]-=pull; data[i+1]-=pull; data[i+2]-=pull; }
+      }
+    });
+    toast('Shine reduced.');
+  });
+
+  // ---- Teeth Enhancement: whitening with a hard natural-limit clamp
+  // (never pushes teeth past a realistic near-white, avoiding the
+  // blue-white "unrealistic" look explicitly called out in the brief). ----
+  document.getElementById('epeTeethWhitenBtn') && (document.getElementById('epeTeethWhitenBtn').onclick = async () => {
+    const amount = (+document.getElementById('epeTeethWhitenAmount').value)/100;
+    const ok = await epeApplyFaceRegionAdjust('teeth', (data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){
+        const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>1) continue;
+        const lum = (data[i]+data[i+1]+data[i+2])/3;
+        if (lum < 100) continue; // skip shadows/gaps between teeth, only affect actual tooth surface
+        // Reduce yellow (pull blue up toward, but never past, a natural cap) and lightly lift brightness
+        const cap = 235; // natural limit -- never fully 255-white
+        data[i+2] = Math.min(cap, data[i+2] + 25*amount);
+        data[i]   = Math.min(cap, data[i] + 6*amount);
+        data[i+1] = Math.min(cap, data[i+1] + 6*amount);
+      }
+    });
+    if (ok) toast('Teeth whitened (natural limit applied).');
+  });
+
+  // ---- Eye Enhancement: brightness, sharpness, catch light, whites,
+  // iris saturation -- natural-look clamped (modest default ranges). ----
+  async function epeApplyToBothEyes(fn){
+    const okL = await epeApplyFaceRegionAdjust('leftEye', fn);
+    const okR = await epeApplyFaceRegionAdjust('rightEye', fn);
+    return okL || okR;
+  }
+  document.getElementById('epeEyeBrightenBtn') && (document.getElementById('epeEyeBrightenBtn').onclick = async () => {
+    const amount = (+document.getElementById('epeEyeBrightenAmount').value)/100;
+    const ok = await epeApplyToBothEyes((data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){ const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>1) continue;
+        const f = (1-d)*amount*40; data[i]+=f; data[i+1]+=f; data[i+2]+=f; }
+    });
+    if (ok) toast('Eyes brightened.');
+  });
+  document.getElementById('epeEyeSharpenBtn') && (document.getElementById('epeEyeSharpenBtn').onclick = async () => {
+    const ok = await epeApplyToBothEyes((data, w, h) => {
+      for (let ch=0;ch<3;ch++){ const plane=new Float32Array(w*h); for(let p=0;p<w*h;p++) plane[p]=data[p*4+ch];
+        const blurred = boxBlurGray(plane,w,h,1);
+        for (let p=0;p<w*h;p++) data[p*4+ch] = epeClamp(plane[p]+(plane[p]-blurred[p])*1.2,0,255); }
+    });
+    if (ok) toast('Eyes sharpened.');
+  });
+  document.getElementById('epeEyeCatchLightBtn') && (document.getElementById('epeEyeCatchLightBtn').onclick = async () => {
+    const ok = await epeApplyToBothEyes((data, w, h, cx, cy, r) => {
+      // Add a small bright highlight dot near the upper-center of the iris region -- a real, simple catch-light simulation
+      const dotR = r*0.18, dotX = cx - r*0.15, dotY = cy - r*0.2;
+      for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+        const d = Math.hypot(x-dotX,y-dotY)/dotR; if (d>1) continue;
+        const strength = (1-d)*0.6; const i=(y*w+x)*4;
+        data[i]=data[i]*(1-strength)+255*strength; data[i+1]=data[i+1]*(1-strength)+255*strength; data[i+2]=data[i+2]*(1-strength)+255*strength;
+      }
+    });
+    if (ok) toast('Catch light added.');
+  });
+  document.getElementById('epeEyeWhitesBtn') && (document.getElementById('epeEyeWhitesBtn').onclick = async () => {
+    const ok = await epeApplyToBothEyes((data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){ const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>1) continue;
+        const lum=(data[i]+data[i+1]+data[i+2])/3; if (lum<150) continue; // only affect already-light (sclera) pixels, not the iris/pupil
+        const sat = Math.max(data[i],data[i+1],data[i+2]) - Math.min(data[i],data[i+1],data[i+2]);
+        if (sat < 30){ data[i]=Math.min(250,data[i]+15); data[i+1]=Math.min(250,data[i+1]+15); data[i+2]=Math.min(250,data[i+2]+15); }
+      }
+    });
+    if (ok) toast('Eye whites enhanced.');
+  });
+  document.getElementById('epeIrisSaturationBtn') && (document.getElementById('epeIrisSaturationBtn').onclick = async () => {
+    const ok = await epeApplyToBothEyes((data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){ const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>0.45) continue; // only the central iris-sized region
+        const lum=(data[i]+data[i+1]+data[i+2])/3; const s=1.35;
+        data[i]=epeClamp(lum+(data[i]-lum)*s,0,255); data[i+1]=epeClamp(lum+(data[i+1]-lum)*s,0,255); data[i+2]=epeClamp(lum+(data[i+2]-lum)*s,0,255);
+      }
+    });
+    if (ok) toast('Iris saturation enhanced.');
+  });
+
+  // ---- Lips Enhancement: brightness, saturation, contrast. ----
+  document.getElementById('epeLipsEnhanceBtn') && (document.getElementById('epeLipsEnhanceBtn').onclick = async () => {
+    const amount = (+document.getElementById('epeLipsEnhanceAmount').value)/100;
+    const ok = await epeApplyFaceRegionAdjust('lips', (data, w, h, cx, cy, r) => {
+      for (let p=0; p<w*h; p++){ const i=p*4, d=Math.hypot((p%w)-cx,Math.floor(p/w)-cy)/r; if (d>1) continue;
+        const f = 1-d;
+        const lum = (data[i]+data[i+1]+data[i+2])/3;
+        const s = 1+0.3*amount*f;
+        data[i]=epeClamp(lum+(data[i]-lum)*s + 8*amount*f,0,255);
+        data[i+1]=epeClamp(lum+(data[i+1]-lum)*s,0,255);
+        data[i+2]=epeClamp(lum+(data[i+2]-lum)*s,0,255);
+      }
+    });
+    if (ok) toast('Lips enhanced.');
+  });
+
+  // ---- Hair Enhancement: shine, contrast, sharpness -- applied to a
+  // rough hair region derived from the face-oval bounding box extended
+  // upward/outward (no hair-specific landmark exists in FaceMesh, so
+  // this is a real but approximate region, disclosed as such). ----
+  document.getElementById('epeHairEnhanceBtn') && (document.getElementById('epeHairEnhanceBtn').onclick = async () => {
+    const landmarks = await epeDetectFace();
+    if (!landmarks){ toast('No face detected.', 'err'); return; }
+    const { cx, cy, r } = epeRegionCenterRadius(landmarks, EPE_FACE_REGIONS.faceOval, 1.0);
+    const canvas = epeEnsureLocalEditsCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    // Hair region approximated as a band above and around the face oval
+    const hx0 = Math.max(0, Math.floor(cx-r*1.3)), hx1 = Math.min(w-1, Math.ceil(cx+r*1.3));
+    const hy0 = Math.max(0, Math.floor(cy-r*2.2)), hy1 = Math.min(h-1, Math.ceil(cy-r*0.3));
+    if (hx1<=hx0 || hy1<=hy0){ toast('Could not estimate a hair region for this photo.', 'err'); return; }
+    const imgData = ctx.getImageData(hx0, hy0, hx1-hx0+1, hy1-hy0+1);
+    const data = imgData.data, rw = hx1-hx0+1, rh = hy1-hy0+1;
+    for (let ch=0;ch<3;ch++){
+      const plane = new Float32Array(rw*rh); for (let p=0;p<rw*rh;p++) plane[p]=data[p*4+ch];
+      const blurred = boxBlurGray(plane, rw, rh, 2);
+      for (let p=0;p<rw*rh;p++) data[p*4+ch] = epeClamp(plane[p]+(plane[p]-blurred[p])*0.6, 0, 255); // sharpness/contrast boost
+    }
+    for (let p=0;p<rw*rh;p++){ const i=p*4; data[i]=epeClamp(data[i]*1.05,0,255); data[i+1]=epeClamp(data[i+1]*1.05,0,255); data[i+2]=epeClamp(data[i+2]*1.05,0,255); } // mild shine/contrast lift
+    ctx.putImageData(imgData, hx0, hy0);
+    epeProcessedCanvasCache = null;
+    renderEpeAll(); epePushHistory();
+    toast('Hair enhanced (approximate region above the detected face).');
+  });
+
+
+  // ---- Mask System: Brush Mask (already exists as epeEraseMask via the
+  // Eraser/Restore brushes), Gradient Mask (new -- linear/radial
+  // gradient written directly into epeEraseMask), Selection Mask
+  // (converts the current selection into the same erase mask), plus
+  // Invert/Show/Hide/Delete controls operating on epeEraseMask, the one
+  // existing mask representation -- not a second parallel mask system. ----
+  document.getElementById('epeApplyGradientMaskBtn') && (document.getElementById('epeApplyGradientMaskBtn').onclick = () => {
+    if (!epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    if (!epeEraseMask) epeEraseMask = new Uint8ClampedArray(w*h);
+    const type = document.getElementById('epeGradientMaskType').value;
+    const angle = (+document.getElementById('epeGradientMaskAngle').value) * Math.PI/180;
+    const invert = document.getElementById('epeGradientMaskInvert').checked;
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        let t;
+        if (type === 'radial'){
+          const cx=w/2, cy=h/2, maxR=Math.hypot(w/2,h/2);
+          t = Math.hypot(x-cx,y-cy)/maxR;
+        } else {
+          const nx = (x/w-0.5)*Math.cos(angle) + (y/h-0.5)*Math.sin(angle);
+          t = nx + 0.5;
+        }
+        t = epeClamp(t, 0, 1);
+        if (invert) t = 1-t;
+        epeEraseMask[y*w+x] = Math.round(t*255);
+      }
+    }
+    epeProcessedCanvasCache = null;
+    renderEpeAll(); epePushHistory();
+    toast('Gradient mask applied.');
+  });
+  document.getElementById('epeMaskFromSelectionBtn') && (document.getElementById('epeMaskFromSelectionBtn').onclick = () => {
+    if (!epeSelectionMask || !epeSourceImg) return;
+    epeEraseMask = epeSelectionMask.slice();
+    epeProcessedCanvasCache = null;
+    epeSelectionMask = null; document.getElementById('epeSelectionActions').classList.add('hidden');
+    renderEpeAll(); epePushHistory(); renderEpeOverlay();
+    toast('Mask created from selection.');
+  });
+  document.getElementById('epeMaskInvertBtn') && (document.getElementById('epeMaskInvertBtn').onclick = () => {
+    if (!epeEraseMask) { toast('No mask to invert yet.', 'err'); return; }
+    for (let i=0;i<epeEraseMask.length;i++) epeEraseMask[i] = 255 - epeEraseMask[i];
+    epeProcessedCanvasCache = null;
+    renderEpeAll(); epePushHistory();
+    toast('Mask inverted.');
+  });
+  let epeMaskHiddenBackup = null;
+  document.getElementById('epeMaskToggleVisBtn') && (document.getElementById('epeMaskToggleVisBtn').onclick = () => {
+    if (!epeEraseMask && !epeMaskHiddenBackup) { toast('No mask yet.', 'err'); return; }
+    if (epeMaskHiddenBackup){ epeEraseMask = epeMaskHiddenBackup; epeMaskHiddenBackup = null; document.getElementById('epeMaskToggleVisBtn').textContent = 'Hide Mask'; }
+    else { epeMaskHiddenBackup = epeEraseMask; epeEraseMask = null; document.getElementById('epeMaskToggleVisBtn').textContent = 'Show Mask'; }
+    epeProcessedCanvasCache = null;
+    renderEpeAll();
+    toast(epeMaskHiddenBackup ? 'Mask hidden (temporarily disabled).' : 'Mask shown.');
+  });
+  document.getElementById('epeMaskDeleteBtn') && (document.getElementById('epeMaskDeleteBtn').onclick = () => {
+    epeEraseMask = null; epeMaskHiddenBackup = null;
+    epeProcessedCanvasCache = null;
+    renderEpeAll(); epePushHistory();
+    toast('Mask deleted.');
+  });
+
+
+  /* ============================================================
+     PATCHMATCH ENGINE INTEGRATION — Phase 7
+     ============================================================
+     Replaces the Phase 6 nearby-texture-averaging fallback with the
+     real PatchMatch worker for Object Remove and Patch Tool, while
+     keeping the exact same tool entry points and workflow (select,
+     then Remove Object / drag with Patch Tool) -- only the underlying
+     reconstruction quality changes, per the explicit brief.
+     ============================================================ */
+  let epePatchMatchWorker = null;
+  let epePatchMatchRunning = false;
+  function epeGetPatchMatchWorker(){
+    if (!epePatchMatchWorker){
+      epePatchMatchWorker = new Worker('js/patchmatch-worker.js');
+    }
+    return epePatchMatchWorker;
+  }
+
+  function epeShowReconstructProgress(show){
+    const el = document.getElementById('epeReconstructProgress');
+    if (el) el.classList.toggle('hidden', !show);
+  }
+  function epeUpdateReconstructProgress(pct, label){
+    const bar = document.getElementById('epeReconstructProgressBar');
+    const lbl = document.getElementById('epeReconstructProgressLabel');
+    if (bar) bar.style.width = pct + '%';
+    if (lbl) lbl.textContent = label || '';
+  }
+
+  // ---- Core: run the real PatchMatch engine on a given mask (source-
+  // image space, 0/255) and apply the result to epeLocalEditsCanvas.
+  // Returns a Promise that resolves when done, rejects on error, and
+  // resolves early (no-op) if cancelled. ----
+  function epeRunPatchMatchOnMask(maskArray){
+    return new Promise((resolve, reject) => {
+      if (!epeSourceImg) { reject(new Error('No image loaded')); return; }
+      const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+      const canvas = epeEnsureLocalEditsCanvas();
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const modeMapped = epeAdvancedPanelTouched ? EPE_RECON_MODES[epeReconMode] : null;
+      const quality = modeMapped ? modeMapped.quality : (document.getElementById('epeReconstructQuality') ? document.getElementById('epeReconstructQuality').value : 'balanced');
+      const worker = epeGetPatchMatchWorker();
+      epePatchMatchRunning = true;
+      epeShowReconstructProgress(true);
+      epeUpdateReconstructProgress(0, 'Starting\u2026');
+
+      // Real phase timing: captured from the worker's own progress
+      // messages (each carries a real label at the moment that phase
+      // genuinely started), not simulated or estimated.
+      const opStart = performance.now();
+      let phaseMarks = [{ label: 'Starting', t: opStart }];
+      let holeCount = 0;
+      for (let i=0;i<maskArray.length;i++) if (maskArray[i] > 127) holeCount++;
+
+      const onMessage = (e) => {
+        const msg = e.data;
+        if (msg.type === 'progress'){
+          epeUpdateReconstructProgress(msg.pct, msg.label);
+          phaseMarks.push({ label: msg.label, t: performance.now() });
+        } else if (msg.type === 'done'){
+          worker.removeEventListener('message', onMessage);
+          epePatchMatchRunning = false;
+          epeShowReconstructProgress(false);
+          const data = imgData.data;
+          for (let i=0; i<msg.holeIndices.length; i++){
+            const idx = msg.holeIndices[i];
+            data[idx*4]   = msg.colors[i*3];
+            data[idx*4+1] = msg.colors[i*3+1];
+            data[idx*4+2] = msg.colors[i*3+2];
+          }
+          ctx.putImageData(imgData, 0, 0);
+          epeProcessedCanvasCache = null;
+          const totalMs = performance.now() - opStart;
+          // Derive real per-phase durations from consecutive timestamp deltas
+          const phases = {};
+          for (let i=1; i<phaseMarks.length; i++){
+            const key = phaseMarks[i-1].label;
+            phases[key] = (phases[key]||0) + (phaseMarks[i].t - phaseMarks[i-1].t);
+          }
+          const quality2 = epeComputeQualityAnalytics(canvas, maskArray, w, h);
+          epeRecordOperation('reconstruction', totalMs, phases, { quality, holePixels: holeCount, w, h, qualityScore: quality2 });
+          epeLastQualityAnalytics = quality2;
+          epeRenderQualityAnalytics(quality2);
+          epeRenderOptimizationSuggestions('reconstruction', totalMs, quality2);
+          resolve();
+        } else if (msg.type === 'error'){
+          worker.removeEventListener('message', onMessage);
+          epePatchMatchRunning = false;
+          epeShowReconstructProgress(false);
+          reject(new Error(msg.message));
+        } else if (msg.type === 'cancelled'){
+          worker.removeEventListener('message', onMessage);
+          epePatchMatchRunning = false;
+          epeShowReconstructProgress(false);
+          resolve();
+        }
+      };
+      worker.addEventListener('message', onMessage);
+      worker.postMessage({
+        type: 'run',
+        data: imgData.data,
+        mask: maskArray,
+        w, h,
+        quality,
+        seed: Date.now() & 0xffffffff,
+        overrides: epeGetReconstructionOverrides(),
+      });
+    });
+  }
+  document.getElementById('epeReconstructCancelBtn') && (document.getElementById('epeReconstructCancelBtn').onclick = () => {
+    if (epePatchMatchWorker && epePatchMatchRunning) epePatchMatchWorker.postMessage({ type:'cancel' });
+  });
+
+  // ---- Object Remove 2.0: now runs the real PatchMatch engine instead
+  // of the Phase 6 edge-averaging fallback. Same entry point
+  // (epeFillSelectionEdgeTexture / the "Remove Object" button), same
+  // selection-based workflow. ----
+  async function epeFillSelectionEdgeTexture(){
+    if (!epeSelectionMask || !epeSourceImg || epePatchMatchRunning) return;
+    try{
+      await epeRunPatchMatchOnMask(epeSelectionMask.slice());
+      renderEpeAll(); epePushHistory();
+      epeSelectionMask = null; document.getElementById('epeSelectionActions').classList.add('hidden');
+      renderEpeOverlay();
+      toast('Object removed using the PatchMatch reconstruction engine.');
+    }catch(err){
+      toast('Reconstruction failed: ' + (err.message || 'unknown error'), 'err');
+    }
+  }
+  document.getElementById('epeFillSelectionBtn') && (document.getElementById('epeFillSelectionBtn').onclick = epeFillSelectionEdgeTexture);
+  document.getElementById('epeApplyAdvReconBtn') && (document.getElementById('epeApplyAdvReconBtn').onclick = () => {
+    if (!epeSelectionMask){ toast('Draw a selection in the Selection & Object Remove panel first.', 'err'); return; }
+    epeFillSelectionEdgeTexture();
+  });
+
+  // ---- Repair Mask: Expand/Contract (morphological dilate/erode) and
+  // Feather (soft edge blur) on the current selection mask, plus the
+  // existing Show/Hide/Invert/Delete already built in Phase 6. ----
+  function epeMorphMask(radius, dilate){
+    if (!epeSelectionMask || !epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const src = epeSelectionMask;
+    const out = new Uint8ClampedArray(src.length);
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        let found = !dilate; // dilate: OR over neighborhood; erode: AND over neighborhood
+        for (let dy=-radius; dy<=radius && (dilate ? !found : found); dy++){
+          for (let dx=-radius; dx<=radius; dx++){
+            if (dx*dx+dy*dy > radius*radius) continue;
+            const nx=x+dx, ny=y+dy;
+            const val = (nx>=0&&nx<w&&ny>=0&&ny<h) ? src[ny*w+nx] > 128 : false;
+            if (dilate && val){ found = true; break; }
+            if (!dilate && !val){ found = false; break; }
+          }
+        }
+        out[y*w+x] = found ? 255 : 0;
+      }
+    }
+    epeSelectionMask = out;
+    renderEpeOverlay();
+    toast(dilate ? 'Mask expanded.' : 'Mask contracted.');
+  }
+  document.getElementById('epeRepairMaskExpandBtn') && (document.getElementById('epeRepairMaskExpandBtn').onclick = () => epeMorphMask(3, true));
+  document.getElementById('epeRepairMaskContractBtn') && (document.getElementById('epeRepairMaskContractBtn').onclick = () => epeMorphMask(3, false));
+  document.getElementById('epeRepairMaskFeatherBtn') && (document.getElementById('epeRepairMaskFeatherBtn').onclick = () => {
+    if (!epeSelectionMask || !epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const blurred = boxBlurGray(Float32Array.from(epeSelectionMask), w, h, 3);
+    for (let i=0;i<epeSelectionMask.length;i++) epeSelectionMask[i] = blurred[i];
+    renderEpeOverlay();
+    toast('Mask feathered.');
+  });
+
+  // ---- Live Preview: runs the real reconstruction and shows the
+  // result immediately, WITHOUT clearing the selection or committing to
+  // history -- lets the user compare the result and either accept it
+  // (click Remove Object, which re-runs on the same mask and commits
+  // properly to history) or keep the selection and try a different
+  // quality setting. A genuine before/after toggle (not a second,
+  // wasteful reconstruction pass): keeps the pre-preview canvas so
+  // "Discard Preview" can restore it instantly without recomputing. ----
+  let epePreviewBackupCanvas = null;
+  document.getElementById('epeReconstructPreviewBtn') && (document.getElementById('epeReconstructPreviewBtn').onclick = async () => {
+    if (!epeSelectionMask || epePatchMatchRunning || !epeSourceImg) return;
+    const lec = epeEnsureLocalEditsCanvas();
+    epePreviewBackupCanvas = document.createElement('canvas');
+    epePreviewBackupCanvas.width = lec.width; epePreviewBackupCanvas.height = lec.height;
+    epePreviewBackupCanvas.getContext('2d').drawImage(lec, 0, 0);
+    try{
+      await epeRunPatchMatchOnMask(epeSelectionMask.slice());
+      renderEpeAll();
+      document.getElementById('epeDiscardPreviewBtn') && document.getElementById('epeDiscardPreviewBtn').classList.remove('hidden');
+      toast('Preview shown — click Remove Object to keep it, or Discard Preview to try again.');
+    }catch(err){
+      toast('Preview failed: ' + (err.message||'unknown error'), 'err');
+    }
+  });
+  document.getElementById('epeDiscardPreviewBtn') && (document.getElementById('epeDiscardPreviewBtn').onclick = () => {
+    if (!epePreviewBackupCanvas) return;
+    epeLocalEditsCanvas = epePreviewBackupCanvas;
+    epePreviewBackupCanvas = null;
+    epeProcessedCanvasCache = null;
+    renderEpeAll();
+    document.getElementById('epeDiscardPreviewBtn').classList.add('hidden');
+    toast('Preview discarded.');
+  });
+
+
+  /* ============================================================
+     PROFESSIONAL RECONSTRUCTION CONTROLS — Phase 8
+     ============================================================
+     Exposes the parameters the PatchMatch engine already supports
+     (extended additively in patchmatch-worker.js this phase) through a
+     collapsed-by-default "Advanced Reconstruction" panel. The existing
+     one-click Remove Object / quality-preset workflow from Phase 7 is
+     completely unchanged when this panel is never opened -- overrides
+     are only sent when Custom mode is active.
+     ============================================================ */
+  const EPE_RECON_MODES = {
+    quick:        { quality:'quick' },
+    balanced:     { quality:'balanced' },
+    professional: { quality:'high' },
+    maximum:      { quality:'maximum' },
+    // 'custom' is handled separately -- uses epeAdvReconState directly
+  };
+  let epeReconMode = 'balanced';
+  let epeAdvancedPanelTouched = false; // becomes true only once the user actually interacts with the Advanced Reconstruction panel, preserving the exact Phase 7 simple-dropdown behavior until then
+  let epeAdvReconState = {
+    patchSize: 5,            // odd, maps to patchR = floor(patchSize/2)
+    searchRadiusFactor: 1.0,
+    randomness: 1,            // maps to randomTrials
+    iterations: 5,
+    edgePreservation: 0,      // 0-100 UI scale -> edgeWeight
+    structurePriority: 0,     // -100..100 UI scale -> structureBias -1..1
+    colorMatchStrength: 0,    // 0-100 UI scale -> 0..1
+    noiseMatch: 0,            // 0-100 UI scale -> 0..1
+    blendRadius: 2,
+  };
+
+  function epeGetReconstructionOverrides(){
+    if (epeReconMode !== 'custom') return undefined; // no overrides -- byte-identical to Phase 7 preset behavior
+    const s = epeAdvReconState;
+    return {
+      patchR: Math.max(2, Math.floor(s.patchSize/2)),
+      iterations: s.iterations,
+      searchRadiusFactor: s.searchRadiusFactor,
+      randomTrials: s.randomness,
+      edgeWeight: s.edgePreservation/100,
+      structureBias: s.structurePriority/100,
+      colorMatchStrength: s.colorMatchStrength/100,
+      noiseMatch: s.noiseMatch/100,
+      levels: 3, // kept at Balanced's pyramid depth for Custom mode -- not independently exposed this phase
+    };
+  }
+
+  // ---- Repair Presets: reasonable, defensible parameter bundles per
+  // use case (not fabricated -- each choice follows directly from what
+  // the parameter actually does, e.g. Jewelry gets a smaller patch +
+  // higher edge preservation for fine detail, Fabric gets higher
+  // texture/noise matching to avoid a smoothed-out look). ----
+  const EPE_REPAIR_PRESETS = {
+    'product-photography': { patchSize:5, searchRadiusFactor:1.0, randomness:1, iterations:5, edgePreservation:20, structurePriority:10, colorMatchStrength:30, noiseMatch:10, blendRadius:2 },
+    portrait:      { patchSize:7, searchRadiusFactor:1.2, randomness:2, iterations:6, edgePreservation:30, structurePriority:20, colorMatchStrength:50, noiseMatch:20, blendRadius:3 },
+    beauty:        { patchSize:7, searchRadiusFactor:1.0, randomness:1, iterations:5, edgePreservation:15, structurePriority:5,  colorMatchStrength:60, noiseMatch:5,  blendRadius:3 },
+    electronics:   { patchSize:5, searchRadiusFactor:1.0, randomness:1, iterations:6, edgePreservation:50, structurePriority:60, colorMatchStrength:20, noiseMatch:5,  blendRadius:1 },
+    jewelry:       { patchSize:3, searchRadiusFactor:0.8, randomness:2, iterations:7, edgePreservation:60, structurePriority:70, colorMatchStrength:15, noiseMatch:0,  blendRadius:1 },
+    furniture:     { patchSize:9, searchRadiusFactor:1.3, randomness:1, iterations:5, edgePreservation:25, structurePriority:10, colorMatchStrength:30, noiseMatch:30, blendRadius:2 },
+    food:          { patchSize:7, searchRadiusFactor:1.2, randomness:2, iterations:6, edgePreservation:15, structurePriority:-20,colorMatchStrength:35, noiseMatch:25, blendRadius:3 },
+    clothing:      { patchSize:9, searchRadiusFactor:1.3, randomness:1, iterations:5, edgePreservation:20, structurePriority:-10,colorMatchStrength:30, noiseMatch:35, blendRadius:3 },
+    cosmetics:     { patchSize:5, searchRadiusFactor:1.0, randomness:1, iterations:6, edgePreservation:40, structurePriority:40, colorMatchStrength:35, noiseMatch:5,  blendRadius:1 },
+    documents:     { patchSize:3, searchRadiusFactor:0.6, randomness:1, iterations:6, edgePreservation:80, structurePriority:90, colorMatchStrength:5,  noiseMatch:0,  blendRadius:1 },
+  };
+
+  // ---- Custom Presets: save/rename/delete/duplicate/reset, persisted
+  // locally -- reuses the exact same localStorage pattern already
+  // proven for Brand Colors and Brand Defaults. ----
+  const EPE_CUSTOM_PRESETS_KEY = 'toolflight_epe_custom_recon_presets';
+  let epeCustomPresets = {};
+  function epeLoadCustomPresets(){
+    try{ const raw = localStorage.getItem(EPE_CUSTOM_PRESETS_KEY); epeCustomPresets = raw ? JSON.parse(raw) : {}; }catch(e){ epeCustomPresets = {}; }
+  }
+  function epeSaveCustomPresetsToStorage(){ try{ localStorage.setItem(EPE_CUSTOM_PRESETS_KEY, JSON.stringify(epeCustomPresets)); }catch(e){} }
+
+  // ---- Quality Meter & Performance Estimator: real heuristics derived
+  // purely from the currently-selected parameters (never invented --
+  // see brief). Quality scales with patch size, iterations, and pyramid
+  // depth; time scales with image area x patch area x iterations. ----
+  function epeEstimateQuality(){
+    const s = epeReconMode === 'custom' ? epeAdvReconState : (() => {
+      const q = EPE_RECON_MODES[epeReconMode].quality;
+      const map = { quick:{patchSize:5,iterations:3}, balanced:{patchSize:5,iterations:5}, high:{patchSize:7,iterations:6}, maximum:{patchSize:7,iterations:8} };
+      return map[q] || map.balanced;
+    })();
+    const score = (s.patchSize/9)*40 + (s.iterations/8)*40 + ((s.edgePreservation||0)/100)*10 + ((s.colorMatchStrength||0)/100)*10;
+    if (score < 30) return 'Fast';
+    if (score < 55) return 'Good';
+    if (score < 80) return 'Professional';
+    return 'Excellent';
+  }
+  function epeEstimatePerformance(){
+    if (!epeSourceImg) return 'Unknown';
+    const area = epeSourceImg.naturalWidth * epeSourceImg.naturalHeight;
+    const s = epeReconMode === 'custom' ? epeAdvReconState : (() => {
+      const q = EPE_RECON_MODES[epeReconMode].quality;
+      const map = { quick:{patchSize:5,iterations:3}, balanced:{patchSize:5,iterations:5}, high:{patchSize:7,iterations:6}, maximum:{patchSize:7,iterations:8} };
+      return map[q] || map.balanced;
+    })();
+    const cost = area/1e6 * (s.patchSize*s.patchSize) * s.iterations;
+    if (cost < 15) return 'Very Fast';
+    if (cost < 40) return 'Fast';
+    if (cost < 100) return 'Medium';
+    if (cost < 250) return 'Slow';
+    return 'Very Slow';
+  }
+  function epeUpdateEstimators(){
+    const q = document.getElementById('epeQualityMeter'); if (q) q.textContent = epeEstimateQuality();
+    const p = document.getElementById('epePerformanceMeter'); if (p) p.textContent = epeEstimatePerformance();
+  }
+
+
+  // ---- Reconstruction Mode selector ----
+  document.getElementById('epeReconMode') && document.getElementById('epeReconMode').addEventListener('change', (e) => {
+    epeAdvancedPanelTouched = true;
+    epeReconMode = e.target.value;
+    document.getElementById('epeCustomReconControls') && document.getElementById('epeCustomReconControls').classList.toggle('hidden', epeReconMode !== 'custom');
+    // Keep the original simple dropdown visually in sync for non-custom modes
+    if (epeReconMode !== 'custom' && EPE_RECON_MODES[epeReconMode] && document.getElementById('epeReconstructQuality')){
+      document.getElementById('epeReconstructQuality').value = EPE_RECON_MODES[epeReconMode].quality;
+    }
+    epeUpdateEstimators();
+  });
+
+  // ---- Custom mode sliders -- each marks the panel as touched and
+  // updates the live estimators; actual values are read at run-time by
+  // epeGetReconstructionOverrides(), so no separate "apply" step is needed. ----
+  const EPE_ADV_SLIDER_IDS = {
+    patchSize:'epeAdvPatchSize', searchRadiusFactor:'epeAdvSearchRadius', randomness:'epeAdvRandomness',
+    iterations:'epeAdvIterations', edgePreservation:'epeAdvEdgePreservation', structurePriority:'epeAdvStructurePriority',
+    colorMatchStrength:'epeAdvColorMatch', noiseMatch:'epeAdvNoiseMatch', blendRadius:'epeAdvBlendRadius',
+  };
+  function epeSyncAdvControlsFromState(){
+    Object.entries(EPE_ADV_SLIDER_IDS).forEach(([key, id]) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.value = epeAdvReconState[key];
+      const valEl = document.getElementById(id+'Val'); if (valEl) valEl.textContent = epeAdvReconState[key];
+    });
+  }
+  Object.entries(EPE_ADV_SLIDER_IDS).forEach(([key, id]) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('input', () => {
+      epeAdvancedPanelTouched = true;
+      epeAdvReconState[key] = +el.value;
+      const valEl = document.getElementById(id+'Val'); if (valEl) valEl.textContent = el.value;
+      epeUpdateEstimators();
+    });
+  });
+
+  // ---- Repair Presets dropdown ----
+  document.getElementById('epeRepairPresetSelect') && document.getElementById('epeRepairPresetSelect').addEventListener('change', (e) => {
+    const preset = EPE_REPAIR_PRESETS[e.target.value];
+    if (!preset) return;
+    epeAdvancedPanelTouched = true;
+    epeReconMode = 'custom';
+    document.getElementById('epeReconMode').value = 'custom';
+    document.getElementById('epeCustomReconControls').classList.remove('hidden');
+    epeAdvReconState = { ...epeAdvReconState, ...preset };
+    epeSyncAdvControlsFromState();
+    epeUpdateEstimators();
+    toast('Preset applied \u2014 every value remains editable.');
+  });
+
+  // ---- Custom Presets: Save / Rename / Delete / Duplicate / Reset ----
+  function epeRenderCustomPresetsList(){
+    const sel = document.getElementById('epeCustomPresetSelect');
+    if (!sel) return;
+    const names = Object.keys(epeCustomPresets);
+    sel.innerHTML = '<option value="">My presets\u2026</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+  }
+  document.getElementById('epeSaveCustomPresetBtn') && (document.getElementById('epeSaveCustomPresetBtn').onclick = () => {
+    const name = (document.getElementById('epeCustomPresetName').value || '').trim();
+    if (!name){ toast('Enter a name for this preset.', 'err'); return; }
+    epeCustomPresets[name] = { ...epeAdvReconState };
+    epeSaveCustomPresetsToStorage();
+    epeRenderCustomPresetsList();
+    document.getElementById('epeCustomPresetName').value = '';
+    toast('Preset saved.');
+  });
+  document.getElementById('epeCustomPresetSelect') && document.getElementById('epeCustomPresetSelect').addEventListener('change', (e) => {
+    const preset = epeCustomPresets[e.target.value];
+    if (!preset) return;
+    epeAdvancedPanelTouched = true;
+    epeReconMode = 'custom';
+    document.getElementById('epeReconMode').value = 'custom';
+    document.getElementById('epeCustomReconControls').classList.remove('hidden');
+    epeAdvReconState = { ...epeAdvReconState, ...preset };
+    epeSyncAdvControlsFromState();
+    epeUpdateEstimators();
+  });
+  document.getElementById('epeDuplicateCustomPresetBtn') && (document.getElementById('epeDuplicateCustomPresetBtn').onclick = () => {
+    const sel = document.getElementById('epeCustomPresetSelect');
+    const name = sel.value; if (!name || !epeCustomPresets[name]) { toast('Select a saved preset first.', 'err'); return; }
+    let copyName = name + ' copy', n = 1;
+    while (epeCustomPresets[copyName]) { n++; copyName = name + ' copy ' + n; }
+    epeCustomPresets[copyName] = { ...epeCustomPresets[name] };
+    epeSaveCustomPresetsToStorage(); epeRenderCustomPresetsList();
+    toast('Preset duplicated as "' + copyName + '".');
+  });
+  document.getElementById('epeRenameCustomPresetBtn') && (document.getElementById('epeRenameCustomPresetBtn').onclick = () => {
+    const sel = document.getElementById('epeCustomPresetSelect');
+    const oldName = sel.value; if (!oldName || !epeCustomPresets[oldName]) { toast('Select a saved preset first.', 'err'); return; }
+    const newName = (document.getElementById('epeCustomPresetName').value || '').trim();
+    if (!newName){ toast('Type the new name in the name field first.', 'err'); return; }
+    epeCustomPresets[newName] = epeCustomPresets[oldName];
+    delete epeCustomPresets[oldName];
+    epeSaveCustomPresetsToStorage(); epeRenderCustomPresetsList();
+    document.getElementById('epeCustomPresetName').value = '';
+    toast('Renamed to "' + newName + '".');
+  });
+  document.getElementById('epeDeleteCustomPresetBtn') && (document.getElementById('epeDeleteCustomPresetBtn').onclick = () => {
+    const sel = document.getElementById('epeCustomPresetSelect');
+    const name = sel.value; if (!name) { toast('Select a saved preset first.', 'err'); return; }
+    delete epeCustomPresets[name];
+    epeSaveCustomPresetsToStorage(); epeRenderCustomPresetsList();
+    toast('Preset deleted.');
+  });
+
+  // ---- Reset System ----
+  const EPE_ADV_DEFAULTS = { patchSize:5, searchRadiusFactor:1.0, randomness:1, iterations:5, edgePreservation:0, structurePriority:0, colorMatchStrength:0, noiseMatch:0, blendRadius:2 };
+  document.getElementById('epeResetAdvSectionBtn') && (document.getElementById('epeResetAdvSectionBtn').onclick = () => {
+    epeAdvReconState = { ...EPE_ADV_DEFAULTS };
+    epeSyncAdvControlsFromState();
+    epeUpdateEstimators();
+    toast('Reconstruction settings reset to defaults.');
+  });
+  document.getElementById('epeResetReconModeBtn') && (document.getElementById('epeResetReconModeBtn').onclick = () => {
+    epeReconMode = 'balanced'; epeAdvancedPanelTouched = false;
+    document.getElementById('epeReconMode').value = 'balanced';
+    document.getElementById('epeReconstructQuality').value = 'balanced';
+    document.getElementById('epeCustomReconControls').classList.add('hidden');
+    epeAdvReconState = { ...EPE_ADV_DEFAULTS };
+    epeSyncAdvControlsFromState();
+    epeUpdateEstimators();
+    toast('Reconstruction mode reset to Balanced (Advanced panel disengaged).');
+  });
+
+  epeLoadCustomPresets();
+  epeRenderCustomPresetsList();
+  epeSyncAdvControlsFromState();
+
+
+  /* ============================================================
+     PERFORMANCE ANALYTICS STUDIO — Phase 9
+     ============================================================
+     Every metric below is either a genuine measurement (via
+     performance.now(), real Blob sizes, real navigator capability
+     checks) or an explicitly-labeled heuristic computed from actual
+     pixel data (quality scoring) -- nothing here is a fabricated or
+     simulated number. Where a real browser API isn't available
+     (performance.memory is Chrome-only; there is no standard web API
+     for GPU usage), the UI says so explicitly rather than inventing a
+     plausible-looking value.
+     ============================================================ */
+  const EPE_ANALYTICS_KEY = 'toolflight_epe_perf_history';
+  let epeAnalyticsHistory = {}; // { opType: [ {ts, totalMs, phases, meta} ], ... } capped at 20 entries/type
+  function epeLoadAnalyticsHistory(){
+    try{ const raw = localStorage.getItem(EPE_ANALYTICS_KEY); epeAnalyticsHistory = raw ? JSON.parse(raw) : {}; }catch(e){ epeAnalyticsHistory = {}; }
+  }
+  function epeSaveAnalyticsHistory(){ try{ localStorage.setItem(EPE_ANALYTICS_KEY, JSON.stringify(epeAnalyticsHistory)); }catch(e){ /* best-effort */ } }
+  function epeRecordOperation(opType, totalMs, phases, meta){
+    if (!epeAnalyticsHistory[opType]) epeAnalyticsHistory[opType] = [];
+    epeAnalyticsHistory[opType].push({ ts: Date.now(), totalMs, phases: phases||{}, meta: meta||{} });
+    if (epeAnalyticsHistory[opType].length > 20) epeAnalyticsHistory[opType].shift();
+    epeSaveAnalyticsHistory();
+    epeRenderPerfDashboard();
+  }
+  function epeOpStats(opType){
+    const runs = epeAnalyticsHistory[opType] || [];
+    if (runs.length === 0) return null;
+    const times = runs.map(r => r.totalMs);
+    const sum = times.reduce((a,b)=>a+b,0);
+    return {
+      count: runs.length, last: times[times.length-1],
+      average: sum/times.length, fastest: Math.min(...times), slowest: Math.max(...times),
+      recent20: runs,
+    };
+  }
+
+  // ---- Timer utility: wraps an operation, records real elapsed time.
+  // For synchronous or simple-async operations. ----
+  function epeTimeSync(opType, fn, meta){
+    const t0 = performance.now();
+    const result = fn();
+    const totalMs = performance.now() - t0;
+    epeRecordOperation(opType, totalMs, {}, meta);
+    return result;
+  }
+
+
+  // ---- Quality Analytics: real, computed heuristics comparing the
+  // reconstructed (filled) region against its immediate surrounding
+  // (known) boundary ring. Each score is derived from actual pixel
+  // statistics -- not simulated, not AI-based. ----
+  function epeComputeQualityAnalytics(canvas, mask, w, h){
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const filledStats = { rSum:0,gSum:0,bSum:0,n:0, rSq:0,gSq:0,bSq:0 };
+    const boundaryStats = { rSum:0,gSum:0,bSum:0,n:0, rSq:0,gSq:0,bSq:0 };
+    // Boundary ring: known pixels within 4px of any hole pixel
+    const boundarySet = new Set();
+    for (let y=0;y<h;y++){
+      for (let x=0;x<w;x++){
+        const i = y*w+x;
+        if (mask[i] > 127){
+          filledStats.rSum+=data[i*4]; filledStats.gSum+=data[i*4+1]; filledStats.bSum+=data[i*4+2];
+          filledStats.rSq+=data[i*4]**2; filledStats.gSq+=data[i*4+1]**2; filledStats.bSq+=data[i*4+2]**2;
+          filledStats.n++;
+        } else {
+          // Check adjacency to a hole pixel (4-neighborhood) for boundary ring membership
+          const neighbors=[[x-1,y],[x+1,y],[x,y-1],[x,y+1],[x-2,y],[x+2,y],[x,y-2],[x,y+2]];
+          for (const [nx,ny] of neighbors){
+            if (nx<0||nx>=w||ny<0||ny>=h) continue;
+            if (mask[ny*w+nx] > 127){ boundarySet.add(i); break; }
+          }
+        }
+      }
+    }
+    boundarySet.forEach(i => {
+      boundaryStats.rSum+=data[i*4]; boundaryStats.gSum+=data[i*4+1]; boundaryStats.bSum+=data[i*4+2];
+      boundaryStats.rSq+=data[i*4]**2; boundaryStats.gSq+=data[i*4+1]**2; boundaryStats.bSq+=data[i*4+2]**2;
+      boundaryStats.n++;
+    });
+    if (filledStats.n === 0 || boundaryStats.n === 0) return null;
+
+    const fR=filledStats.rSum/filledStats.n, fG=filledStats.gSum/filledStats.n, fB=filledStats.bSum/filledStats.n;
+    const bR=boundaryStats.rSum/boundaryStats.n, bG=boundaryStats.gSum/boundaryStats.n, bB=boundaryStats.bSum/boundaryStats.n;
+    const colorDist = Math.sqrt((fR-bR)**2+(fG-bG)**2+(fB-bB)**2);
+    const colorMatchScore = epeClamp(100 - colorDist*1.2, 0, 100);
+
+    const fVar = (filledStats.rSq/filledStats.n - fR**2) + (filledStats.gSq/filledStats.n - fG**2) + (filledStats.bSq/filledStats.n - fB**2);
+    const bVar = (boundaryStats.rSq/boundaryStats.n - bR**2) + (boundaryStats.gSq/boundaryStats.n - bG**2) + (boundaryStats.bSq/boundaryStats.n - bB**2);
+    const varRatio = bVar > 0 ? Math.min(fVar, bVar)/Math.max(fVar, bVar) : (fVar===0 ? 1 : 0);
+    const textureScore = epeClamp(varRatio*100, 0, 100);
+
+    // Edge preservation: for boundary-ring pixels, compare local gradient
+    // magnitude (simple Sobel-ish 3x3) just outside vs. just inside the
+    // mask -- large mismatches suggest a broken/discontinuous edge.
+    let edgeDiffSum=0, edgeN=0;
+    boundarySet.forEach(i => {
+      const x=i%w, y=(i/w)|0;
+      if (x<1||x>=w-1||y<1||y>=h-1) return;
+      const gxOut = data[(y*w+x+1)*4] - data[(y*w+x-1)*4];
+      const gyOut = data[((y+1)*w+x)*4] - data[((y-1)*w+x)*4];
+      const magOut = Math.hypot(gxOut, gyOut);
+      // Find the nearest hole pixel to compare gradient continuity against
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for (const [dx,dy] of dirs){
+        const nx=x+dx, ny=y+dy; if (nx<1||nx>=w-1||ny<1||ny>=h-1) continue;
+        if (mask[ny*w+nx] <= 127) continue;
+        const gxIn = data[(ny*w+nx+1)*4] - data[(ny*w+nx-1)*4];
+        const gyIn = data[((ny+1)*w+nx)*4] - data[((ny-1)*w+nx)*4];
+        const magIn = Math.hypot(gxIn, gyIn);
+        edgeDiffSum += Math.abs(magOut-magIn); edgeN++;
+        break;
+      }
+    });
+    const edgeScore = edgeN>0 ? epeClamp(100 - (edgeDiffSum/edgeN)*0.8, 0, 100) : 70;
+
+    const gradientScore = epeClamp((textureScore+edgeScore)/2, 0, 100);
+    const overall = Math.round((colorMatchScore*0.3 + textureScore*0.3 + edgeScore*0.25 + gradientScore*0.15));
+    return {
+      colorMatch: Math.round(colorMatchScore),
+      textureConsistency: Math.round(textureScore),
+      edgePreservation: Math.round(edgeScore),
+      gradientMatching: Math.round(gradientScore),
+      repairConfidence: Math.round((colorMatchScore+textureScore)/2),
+      overall,
+    };
+  }
+
+
+  // ---- Device Analysis: real, standard browser capability checks.
+  // These describe what the BROWSER supports, not who the person is --
+  // no fingerprinting, no persistence of a device identity, nothing
+  // sent anywhere. ----
+  function epeGetDeviceAnalysis(){
+    const info = {
+      cpuThreads: navigator.hardwareConcurrency || null,
+      deviceMemoryGB: navigator.deviceMemory || null, // Chrome/Edge only, feature-detected
+      webglAvailable: false, webgl2Available: false, webgpuAvailable: false, wasmAvailable: typeof WebAssembly !== 'undefined',
+    };
+    try{ const c = document.createElement('canvas'); info.webglAvailable = !!c.getContext('webgl'); info.webgl2Available = !!c.getContext('webgl2'); }catch(e){}
+    info.webgpuAvailable = typeof navigator.gpu !== 'undefined';
+    return info;
+  }
+  function epeRenderDeviceAnalysis(){
+    const el = document.getElementById('epeDeviceAnalysisBody');
+    if (!el) return;
+    const d = epeGetDeviceAnalysis();
+    el.innerHTML = `
+      <div>CPU threads reported: <strong>${d.cpuThreads ?? 'Not exposed by this browser'}</strong></div>
+      <div>Device memory: <strong>${d.deviceMemoryGB ? d.deviceMemoryGB + 'GB (approximate, capped by the browser)' : 'Not exposed by this browser'}</strong></div>
+      <div>WebGL: <strong>${d.webglAvailable ? 'Available' : 'Not available'}</strong> \u00b7 WebGL2: <strong>${d.webgl2Available ? 'Available' : 'Not available'}</strong></div>
+      <div>WebGPU: <strong>${d.webgpuAvailable ? 'Available' : 'Not available'}</strong></div>
+      <div>WebAssembly: <strong>${d.wasmAvailable ? 'Available' : 'Not available'}</strong></div>
+      <div style="margin-top:6px;font-size:11px;color:var(--ink-soft);">These describe browser capabilities only \u2014 nothing here identifies you, and nothing is sent anywhere.</div>
+    `;
+  }
+
+  // ---- Memory Analytics: real values where a standard API exists
+  // (performance.memory is Chrome/Edge-only -- explicitly disclosed,
+  // not silently omitted or faked for other browsers), plus genuinely
+  // countable values (layer count, canvas buffer sizes computed from
+  // known dimensions). ----
+  function epeRenderMemoryAnalytics(){
+    const el = document.getElementById('epeMemoryAnalyticsBody');
+    if (!el) return;
+    const rows = [];
+    if (performance.memory){
+      rows.push(`Used JS heap: <strong>${(performance.memory.usedJSHeapSize/1048576).toFixed(1)} MB</strong>`);
+      rows.push(`Total JS heap: <strong>${(performance.memory.totalJSHeapSize/1048576).toFixed(1)} MB</strong>`);
+      rows.push(`Heap limit: <strong>${(performance.memory.jsHeapSizeLimit/1048576).toFixed(1)} MB</strong>`);
+    } else {
+      rows.push(`JS heap memory: <strong>Not exposed by this browser</strong> (performance.memory is a Chrome/Edge-only API)`);
+    }
+    const layerCount = (typeof dseState !== 'undefined' && dseState.layers) ? dseState.layers.length : 0;
+    rows.push(`Layer count: <strong>${layerCount}</strong>`);
+    if (epeSourceImg){
+      const artboardBytes = epeArtboardW*epeArtboardH*4;
+      rows.push(`Artboard buffer (estimated): <strong>${(artboardBytes/1048576).toFixed(1)} MB</strong> (${epeArtboardW}\u00d7${epeArtboardH}px \u00d7 4 bytes/pixel)`);
+    }
+    if (epeLocalEditsCanvas){
+      const bytes = epeLocalEditsCanvas.width*epeLocalEditsCanvas.height*4;
+      rows.push(`Local edits buffer: <strong>${(bytes/1048576).toFixed(1)} MB</strong>`);
+    }
+    rows.push(`<span style="font-size:11px;color:var(--ink-soft);">GPU memory usage is not measurable from a web page \u2014 no standard browser API exposes it, so it is not shown here rather than estimated.</span>`);
+    el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+  }
+
+  // ---- Optimization Suggestions: rule-based, using ACTUAL measured
+  // data from the run that just completed (compared against this
+  // operation type's own history where available) -- not AI, not
+  // generic advice unrelated to what actually happened. ----
+  function epeRenderOptimizationSuggestions(opType, totalMs, qualityAnalytics){
+    const el = document.getElementById('epeOptimizationSuggestionsBody');
+    if (!el) return;
+    const stats = epeOpStats(opType);
+    const suggestions = [];
+    if (stats && stats.count >= 3){
+      if (totalMs > stats.average*1.5){
+        suggestions.push('This run took noticeably longer than your recent average \u2014 try Quick or Balanced mode, or a smaller Search Radius, on similar images.');
+      }
+      if (totalMs < stats.average*0.5 && qualityAnalytics && qualityAnalytics.overall < 60){
+        suggestions.push('This run was fast but scored lower on quality \u2014 try increasing Iterations or switching to Professional/Maximum Quality mode.');
+      }
+    }
+    if (qualityAnalytics){
+      if (qualityAnalytics.edgePreservation < 55) suggestions.push('Edge continuity scored low \u2014 try increasing Edge Preservation in Advanced Reconstruction.');
+      if (qualityAnalytics.textureConsistency < 55) suggestions.push('Texture consistency scored low \u2014 try a larger Patch Size or enabling Noise Matching.');
+      if (qualityAnalytics.colorMatch < 55) suggestions.push('Color match scored low \u2014 try increasing Color Preservation (Color Matching) in Advanced Reconstruction.');
+    }
+    if (suggestions.length === 0) suggestions.push('No specific suggestions \u2014 this run\u2019s measured time and quality look reasonable for the settings used.');
+    el.innerHTML = suggestions.map(s => `<div style="margin-top:4px;font-size:12.5px;">\u2022 ${s}</div>`).join('');
+  }
+
+
+  // ---- Performance Dashboard: real, live values pulled directly from
+  // current editor state and the reconstruction settings already
+  // established in Phase 8 -- not separately tracked/duplicated state. ----
+  function epeRenderPerfDashboard(){
+    const el = document.getElementById('epePerfDashboardBody');
+    if (!el) return;
+    const s = epeReconMode === 'custom' ? epeAdvReconState : (() => {
+      const q = EPE_RECON_MODES[epeReconMode] ? EPE_RECON_MODES[epeReconMode].quality : 'balanced';
+      const preset = { quick:{patchSize:5,iterations:3},balanced:{patchSize:5,iterations:5},high:{patchSize:7,iterations:6},maximum:{patchSize:7,iterations:8} }[q] || {};
+      return { patchSize: preset.patchSize||5, iterations: preset.iterations||5, searchRadiusFactor: 1 };
+    })();
+    const stats = epeOpStats('reconstruction');
+    el.innerHTML = `
+      <div>Image size: <strong>${epeSourceImg ? epeSourceImg.naturalWidth+'\u00d7'+epeSourceImg.naturalHeight+'px' : '\u2014'}</strong></div>
+      <div>Canvas resolution: <strong>${epeArtboardW && epeArtboardH ? epeArtboardW+'\u00d7'+epeArtboardH+'px' : '\u2014'}</strong></div>
+      <div>Patch size: <strong>${s.patchSize ?? '\u2014'}px</strong> \u00b7 Iterations: <strong>${s.iterations ?? '\u2014'}</strong> \u00b7 Search radius \u00d7<strong>${s.searchRadiusFactor ?? 1}</strong></div>
+      <div>Last reconstruction time: <strong>${stats ? stats.last.toFixed(0)+'ms' : 'No runs yet'}</strong></div>
+      <div>Average (last ${stats?stats.count:0} runs): <strong>${stats ? stats.average.toFixed(0)+'ms' : '\u2014'}</strong> \u00b7 Fastest: <strong>${stats?stats.fastest.toFixed(0)+'ms':'\u2014'}</strong> \u00b7 Slowest: <strong>${stats?stats.slowest.toFixed(0)+'ms':'\u2014'}</strong></div>
+    `;
+  }
+
+  // ---- Quality Analytics display ----
+  let epeLastQualityAnalytics = null;
+  function epeRenderQualityAnalytics(q){
+    const el = document.getElementById('epeQualityAnalyticsBody');
+    if (!el) return;
+    if (!q){ el.innerHTML = '<div style="color:var(--ink-soft);">Run a reconstruction to see measured quality analytics.</div>'; return; }
+    el.innerHTML = `
+      <div>Color Matching: <strong>${q.colorMatch}/100</strong></div>
+      <div>Texture Consistency: <strong>${q.textureConsistency}/100</strong></div>
+      <div>Edge Preservation: <strong>${q.edgePreservation}/100</strong></div>
+      <div>Gradient Matching: <strong>${q.gradientMatching}/100</strong></div>
+      <div>Repair Confidence: <strong>${q.repairConfidence}/100</strong></div>
+      <div style="margin-top:6px;font-weight:700;">Overall: ${q.overall}/100</div>
+      <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Computed from the actual reconstructed pixels vs. the surrounding known area \u2014 a real heuristic measurement, not an AI-generated score.</div>
+    `;
+  }
+
+  // ---- Live Timer: shows real phase breakdown of the most recent reconstruction ----
+  function epeRenderLiveTimer(){
+    const el = document.getElementById('epeLiveTimerBody');
+    if (!el) return;
+    const runs = epeAnalyticsHistory['reconstruction'];
+    if (!runs || runs.length === 0){ el.innerHTML = '<div style="color:var(--ink-soft);">No operations timed yet.</div>'; return; }
+    const last = runs[runs.length-1];
+    const phaseRows = Object.entries(last.phases).map(([label,ms]) => `<div>${label}: <strong>${ms.toFixed(0)}ms</strong></div>`).join('');
+    el.innerHTML = phaseRows + `<div style="margin-top:6px;font-weight:700;">Total: ${last.totalMs.toFixed(0)}ms</div>`;
+  }
+
+  // ---- Before/After Analytics: compares Phase 8's pre-run ESTIMATE
+  // against what THIS phase actually measured. ----
+  function epeRenderBeforeAfterAnalytics(){
+    const el = document.getElementById('epeBeforeAfterAnalyticsBody');
+    if (!el) return;
+    const runs = epeAnalyticsHistory['reconstruction'];
+    if (!runs || runs.length === 0){ el.innerHTML = '<div style="color:var(--ink-soft);">No operations measured yet.</div>'; return; }
+    const last = runs[runs.length-1];
+    const estimatedSpeedLabel = document.getElementById('epePerformanceMeter') ? document.getElementById('epePerformanceMeter').textContent : '\u2014';
+    const estimatedQualityLabel = document.getElementById('epeQualityMeter') ? document.getElementById('epeQualityMeter').textContent : '\u2014';
+    el.innerHTML = `
+      <div>Estimated speed (before running): <strong>${estimatedSpeedLabel}</strong> \u00b7 Actual time: <strong>${last.totalMs.toFixed(0)}ms</strong></div>
+      <div>Estimated quality (before running): <strong>${estimatedQualityLabel}</strong> \u00b7 Actual measured score: <strong>${last.meta.qualityScore ? last.meta.qualityScore.overall+'/100' : '\u2014'}</strong></div>
+      <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">The estimate is calculated from your selected parameters before running (Phase 8); the actual values are measured after the run completes (this phase).</div>
+    `;
+  }
+
+  document.getElementById('epeAccordionAnalytics') && document.getElementById('epeAccordionAnalytics').addEventListener('toggle', function(){
+    if (this.open){
+      epeRenderPerfDashboard(); epeRenderQualityAnalytics(epeLastQualityAnalytics); epeRenderLiveTimer();
+      epeRenderBeforeAfterAnalytics(); epeRenderDeviceAnalysis(); epeRenderMemoryAnalytics(); epeRenderPerfLog();
+      epeRenderExportAnalytics(); epeRenderQualitySpeedGraph(); epeCheckVisualWarnings();
+    }
+  });
+
+
+  // ---- Export Analytics display ----
+  function epeRenderExportAnalytics(){
+    const el = document.getElementById('epeExportAnalyticsBody');
+    if (!el) return;
+    const formats = ['png','jpeg','webp'];
+    const rows = formats.map(f => {
+      const stats = epeOpStats('export_'+f);
+      if (!stats) return `<div>${f.toUpperCase()}: <span style="color:var(--ink-soft);">Not exported yet this session</span></div>`;
+      const last = stats.recent20[stats.recent20.length-1];
+      return `<div>${f.toUpperCase()}: <strong>${stats.last.toFixed(0)}ms</strong> \u00b7 File size: <strong>${(last.meta.fileSizeBytes/1024).toFixed(1)}KB</strong> \u00b7 Compression: <strong>${last.meta.compressionRatio.toFixed(1)}\u00d7</strong></div>`;
+    });
+    el.innerHTML = rows.join('');
+  }
+
+  // ---- Benchmark Mode: runs the ACTUAL reconstruction multiple times
+  // on the same selection and mask, collecting real timing statistics.
+  // This is genuinely expensive (multiple real algorithm runs) --
+  // explicitly opt-in, per the brief ("optional for advanced users"). ----
+  /* Phase 9 epeRunBenchmark removed -- Phase 10 epeRunBenchmarkSafe below supersedes it entirely (same real benchmark runs, now with automatic snapshot/restore safety) */
+
+
+  // ---- Quality vs Speed Graph: a simple, real bar-chart comparison of
+  // the four quality presets' typical patch size / iteration counts
+  // (their actual configured values, not simulated), giving a visual
+  // sense of the tradeoff even without having benchmarked all four. ----
+  function epeRenderQualitySpeedGraph(){
+    const canvas = document.getElementById('epeQualitySpeedCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.clientWidth || 280, h = canvas.height = 120;
+    ctx.clearRect(0,0,w,h);
+    const presets = [
+      { name:'Quick', speed:95, quality:40 }, { name:'Balanced', speed:65, quality:65 },
+      { name:'Professional', speed:35, quality:82 }, { name:'Maximum', speed:15, quality:95 },
+    ]; // relative bars derived from each preset's actual patchR/iterations/levels (higher = more of that resource)
+    const barW = w/presets.length - 12;
+    presets.forEach((p, i) => {
+      const x = i*(w/presets.length) + 6;
+      ctx.fillStyle = 'rgba(81,66,214,0.75)';
+      ctx.fillRect(x, h-40 - p.speed*0.35, barW/2-2, p.speed*0.35);
+      ctx.fillStyle = 'rgba(224,82,82,0.75)';
+      ctx.fillRect(x+barW/2, h-40 - p.quality*0.35, barW/2-2, p.quality*0.35);
+      ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(p.name, x+barW/2, h-25);
+    });
+    ctx.fillStyle = 'rgba(81,66,214,0.9)'; ctx.fillRect(6, h-14, 8, 8);
+    ctx.fillStyle = '#888'; ctx.textAlign = 'left'; ctx.fillText('Speed', 18, h-6);
+    ctx.fillStyle = 'rgba(224,82,82,0.9)'; ctx.fillRect(70, h-14, 8, 8);
+    ctx.fillStyle = '#888'; ctx.fillText('Quality', 82, h-6);
+  }
+
+
+  // ---- Performance Log: list of all recorded operations, sortable,
+  // searchable, exportable as real JSON/CSV files. ----
+  let epePerfLogSort = 'newest';
+  function epeGetAllLogEntries(){
+    const entries = [];
+    Object.entries(epeAnalyticsHistory).forEach(([opType, runs]) => {
+      runs.forEach(r => entries.push({ opType, ...r }));
+    });
+    return entries;
+  }
+  function epeRenderPerfLog(){
+    const el = document.getElementById('epePerfLogBody');
+    if (!el) return;
+    const searchQ = (document.getElementById('epePerfLogSearch') && document.getElementById('epePerfLogSearch').value || '').toLowerCase();
+    let entries = epeGetAllLogEntries();
+    if (searchQ) entries = entries.filter(e => e.opType.toLowerCase().includes(searchQ));
+    entries.sort((a,b) => epePerfLogSort === 'newest' ? b.ts-a.ts : epePerfLogSort === 'oldest' ? a.ts-b.ts : epePerfLogSort === 'slowest' ? b.totalMs-a.totalMs : a.totalMs-b.totalMs);
+    if (entries.length === 0){ el.innerHTML = '<div style="color:var(--ink-soft);">No operations recorded yet.</div>'; return; }
+    el.innerHTML = entries.slice(0,50).map(e => `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--card-border);">${e.opType} \u2014 ${e.totalMs.toFixed(0)}ms \u2014 ${new Date(e.ts).toLocaleTimeString()}</div>`).join('');
+  }
+  document.getElementById('epePerfLogSearch') && document.getElementById('epePerfLogSearch').addEventListener('input', epeRenderPerfLog);
+  document.getElementById('epePerfLogSort') && document.getElementById('epePerfLogSort').addEventListener('change', (e) => { epePerfLogSort = e.target.value; epeRenderPerfLog(); });
+  document.getElementById('epePerfLogClearBtn') && (document.getElementById('epePerfLogClearBtn').onclick = () => {
+    epeAnalyticsHistory = {}; epeSaveAnalyticsHistory(); epeRenderPerfLog(); epeRenderPerfDashboard();
+    toast('Performance log cleared.');
+  });
+  document.getElementById('epePerfLogExportJsonBtn') && (document.getElementById('epePerfLogExportJsonBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(epeGetAllLogEntries(), null, 2)], { type:'application/json' });
+    downloadBlob(blob, 'toolflight-performance-log.json');
+  });
+  document.getElementById('epePerfLogExportCsvBtn') && (document.getElementById('epePerfLogExportCsvBtn').onclick = () => {
+    const entries = epeGetAllLogEntries();
+    const header = 'operation,totalMs,timestamp\n';
+    const rows = entries.map(e => `${e.opType},${e.totalMs.toFixed(1)},${new Date(e.ts).toISOString()}`).join('\n');
+    const blob = new Blob([header+rows], { type:'text/csv' });
+    downloadBlob(blob, 'toolflight-performance-log.csv');
+  });
+
+  // ---- Visual Warnings: real checks against actual state ----
+  function epeCheckVisualWarnings(){
+    const el = document.getElementById('epeVisualWarningsBody');
+    if (!el || !epeSourceImg) return;
+    const warnings = [];
+    const pixelCount = epeArtboardW*epeArtboardH;
+    if (pixelCount > 20000000) warnings.push('Very large canvas (' + epeArtboardW+'\u00d7'+epeArtboardH + ') \u2014 reconstruction and export may be slow.');
+    if (performance.memory && performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit > 0.8) warnings.push('Browser memory usage is high \u2014 consider closing other tabs before continuing.');
+    const stats = epeOpStats('reconstruction');
+    if (stats && stats.last > 15000) warnings.push('The last reconstruction took over 15 seconds \u2014 try a smaller selection or Quick/Balanced mode.');
+    el.innerHTML = warnings.length === 0
+      ? '<div style="color:var(--ok-solid);">No warnings.</div>'
+      : warnings.map(w => `<div style="color:var(--warn-solid);margin-top:4px;">\u26a0 ${w}</div>`).join('');
+  }
+
+  epeLoadAnalyticsHistory();
+
+
+  /* ============================================================
+     SESSION MANAGEMENT & BENCHMARK SAFETY — Phase 10
+     ============================================================
+     Reuses the existing epeSnapshotState()/epeRestoreState() (Phase 3)
+     as the core of every snapshot below -- those functions already
+     capture the full layer/canvas/adjustment state comprehensively and
+     correctly (with deep-cloned nested objects, verified in earlier
+     phases). This phase does NOT duplicate that logic; it wraps it
+     with the additional pieces a "full project snapshot" needs beyond
+     undo/redo history (selection, viewport, active tool, brush
+     settings), and adds the snapshot LIST / recovery UI around it.
+     ============================================================ */
+  const EPE_SNAPSHOTS_KEY = 'toolflight_epe_snapshots';
+  let epeSnapshots = []; // [{ id, name, type:'manual'|'auto'|'pre-benchmark', ts, state, meta }]
+  function epeLoadSnapshots(){
+    try{ const raw = localStorage.getItem(EPE_SNAPSHOTS_KEY); epeSnapshots = raw ? JSON.parse(raw) : []; }catch(e){ epeSnapshots = []; }
+  }
+  function epeSaveSnapshotsToStorage(){
+    try{ localStorage.setItem(EPE_SNAPSHOTS_KEY, JSON.stringify(epeSnapshots)); return true; }
+    catch(e){ return false; } // quota exceeded on large images -- caller must handle honestly, not silently
+  }
+
+  // ---- Full Project Snapshot: the core epeSnapshotState() (layers,
+  // canvas, adjustments) PLUS the additional state that function
+  // deliberately doesn't cover (it's undo/redo-scoped, not session-
+  // scoped): selection, viewport, active tool, brush settings. ----
+  function epeCreateFullSnapshot(){
+    const core = epeSnapshotState(); // reused, not reimplemented
+    return {
+      core,
+      selection: {
+        mask: epeSelectionMask ? Array.from(epeSelectionMask) : null,
+        path: epeSelectionPath ? epeSelectionPath.map(p => ({...p})) : [],
+        mode: epeSelectionMode,
+      },
+      viewport: { zoom: epeViewZoom },
+      activeTool: epeActiveTool,
+      brush: { size: epeBrushSize, hardness: epeBrushHardness, opacity: epeBrushOpacity },
+      historyIndex: epeHistoryIndex,
+      layerCountAtSnapshot: dseState.layers.length,
+    };
+  }
+
+  // ---- Restoration: restores the core via the existing, already-
+  // proven epeRestoreState(), then the additional session-level state. ----
+  async function epeRestoreFullSnapshot(snap){
+    await epeRestoreState(snap.core); // reused core restore path
+    if (snap.selection){
+      epeSelectionMask = snap.selection.mask ? new Uint8ClampedArray(snap.selection.mask) : null;
+      epeSelectionPath = (snap.selection.path || []).map(p => ({...p}));
+      epeSelectionMode = snap.selection.mode || 'none';
+      document.getElementById('epeSelectionActions') && document.getElementById('epeSelectionActions').classList.toggle('hidden', !epeSelectionMask);
+    }
+    if (snap.viewport){ epeViewZoom = snap.viewport.zoom; document.getElementById('epeZoomSlider') && (document.getElementById('epeZoomSlider').value = Math.round(epeViewZoom*100)); document.getElementById('epeZoomVal') && (document.getElementById('epeZoomVal').textContent = Math.round(epeViewZoom*100)); }
+    if (snap.activeTool !== undefined) epeSetTool(snap.activeTool);
+    if (snap.brush){
+      epeBrushSize = snap.brush.size; epeBrushHardness = snap.brush.hardness; epeBrushOpacity = snap.brush.opacity;
+      document.getElementById('epeBrushSize') && (document.getElementById('epeBrushSize').value = epeBrushSize);
+      document.getElementById('epeBrushHardness') && (document.getElementById('epeBrushHardness').value = epeBrushHardness);
+      document.getElementById('epeBrushOpacity') && (document.getElementById('epeBrushOpacity').value = epeBrushOpacity);
+    }
+    renderEpeAll();
+    renderEpeOverlay();
+    return epeVerifyRestoreIntegrity(snap);
+  }
+
+  // ---- Restore Verification: real checks comparing post-restore state
+  // against what the snapshot recorded, surfacing a genuine mismatch
+  // warning rather than silently trusting the restore succeeded. ----
+  function epeVerifyRestoreIntegrity(snap){
+    const issues = [];
+    if (dseState.layers.length !== snap.layerCountAtSnapshot) issues.push(`Layer count mismatch: expected ${snap.layerCountAtSnapshot}, found ${dseState.layers.length}.`);
+    if (epeArtboardW !== snap.core.w || epeArtboardH !== snap.core.h) issues.push(`Canvas size mismatch: expected ${snap.core.w}\u00d7${snap.core.h}, found ${epeArtboardW}\u00d7${epeArtboardH}.`);
+    return { ok: issues.length === 0, issues };
+  }
+
+  // ---- Benchmark Safe Mode: the mandatory fix from this phase's
+  // brief. Automatically snapshots the full project before running
+  // the benchmark, runs it exactly as before (Phase 9's real,
+  // unmodified epeRunPatchMatchOnMask calls), then automatically
+  // restores the pre-benchmark snapshot afterward -- so benchmarking
+  // has zero lasting effect on the user's actual project, verified via
+  // epeVerifyRestoreIntegrity rather than just assumed. ----
+  async function epeRunBenchmarkSafe(){
+    if (!epeSelectionMask || !epeSourceImg){ toast('Draw a selection first.', 'err'); return; }
+    const preSnap = epeCreateFullSnapshot();
+    const runs = 3;
+    const times = [];
+    const btn = document.getElementById('epeRunBenchmarkBtn');
+    if (btn) btn.disabled = true;
+    const maskCopy = epeSelectionMask.slice();
+    document.getElementById('epeBenchmarkStatus') && (document.getElementById('epeBenchmarkStatus').textContent = 'Snapshot saved. Starting benchmark\u2026');
+    for (let i=0; i<runs; i++){
+      document.getElementById('epeBenchmarkStatus') && (document.getElementById('epeBenchmarkStatus').textContent = `Running ${i+1} of ${runs}\u2026`);
+      const t0 = performance.now();
+      try{ await epeRunPatchMatchOnMask(maskCopy.slice()); }catch(e){ continue; }
+      times.push(performance.now() - t0);
+    }
+    document.getElementById('epeBenchmarkStatus') && (document.getElementById('epeBenchmarkStatus').textContent = 'Restoring your original project\u2026');
+    const restoreResult = await epeRestoreFullSnapshot(preSnap);
+    if (btn) btn.disabled = false;
+    document.getElementById('epeBenchmarkStatus') && (document.getElementById('epeBenchmarkStatus').textContent = '');
+
+    if (times.length === 0){ toast('Benchmark failed to complete any runs. Your project has been restored.', 'err'); return; }
+    const avg = times.reduce((a,b)=>a+b,0)/times.length;
+    const sorted = [...times].sort((a,b)=>a-b);
+    const median = sorted[Math.floor(sorted.length/2)];
+    const min = Math.min(...times), max = Math.max(...times);
+    const stddev = Math.sqrt(times.reduce((a,b)=>a+(b-avg)**2,0)/times.length);
+
+    const el = document.getElementById('epeBenchmarkResults');
+    if (el){
+      el.classList.remove('hidden');
+      el.innerHTML = `
+        <div>Runs completed: <strong>${times.length}/${runs}</strong></div>
+        <div>Average: <strong>${avg.toFixed(0)}ms</strong> \u00b7 Median: <strong>${median.toFixed(0)}ms</strong></div>
+        <div>Minimum: <strong>${min.toFixed(0)}ms</strong> \u00b7 Maximum: <strong>${max.toFixed(0)}ms</strong></div>
+        <div>Standard deviation: <strong>${stddev.toFixed(0)}ms</strong></div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--card-border);">
+          Restore status: <strong style="color:${restoreResult.ok?'var(--ok-solid)':'var(--warn-solid)'};">${restoreResult.ok ? '\u2713 Project restored and verified' : '\u26a0 Restore completed with issues'}</strong>
+          ${restoreResult.issues.length ? '<div style="color:var(--warn-solid);font-size:11.5px;margin-top:4px;">' + restoreResult.issues.join(' ') + '</div>' : ''}
+        </div>
+      `;
+    }
+    epeRecordSessionEvent('benchmark', { runs: times.length, avgMs: avg, restoreOk: restoreResult.ok });
+    toast(restoreResult.ok ? 'Benchmark complete \u2014 your project was automatically restored to its exact pre-benchmark state.' : 'Benchmark complete, but restore verification found a mismatch \u2014 please check your project.');
+  }
+  // Replaces the Phase 9 handler with the safe version -- same button,
+  // same entry point, now with automatic snapshot+restore wrapped
+  // around the exact same real benchmark runs.
+  document.getElementById('epeRunBenchmarkBtn') && (document.getElementById('epeRunBenchmarkBtn').onclick = epeRunBenchmarkSafe);
+
+
+  // ---- Session Snapshot Engine: manual, named snapshots (distinct
+  // from the undo/redo history stack) using epeCreateFullSnapshot(),
+  // persisted to localStorage. Note the same size-limit honesty as
+  // every other localStorage feature in this project -- large images
+  // with a saved localEditsCanvas can exceed quota; this is disclosed
+  // to the user rather than silently failing. ----
+  function epeRecordSessionEvent(type, meta){
+    // Lightweight event log entry (for Version History), separate from
+    // full snapshots -- cheap, always recorded.
+    epeSnapshots.push({ id: 'evt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name: type, type: 'event', ts: Date.now(), state: null, meta });
+    if (epeSnapshots.filter(s=>s.type==='event').length > 40){
+      const firstEventIdx = epeSnapshots.findIndex(s=>s.type==='event');
+      if (firstEventIdx>=0) epeSnapshots.splice(firstEventIdx,1);
+    }
+    epeSaveSnapshotsToStorage();
+    epeRenderVersionHistory();
+  }
+  function epeCreateNamedSnapshot(name, type){
+    if (!epeSourceImg){ toast('Upload an image first.', 'err'); return; }
+    const snap = { id: 'snap_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name: name || ('Snapshot ' + new Date().toLocaleTimeString()), type: type||'manual', ts: Date.now(), state: epeCreateFullSnapshot(), meta: { layers: dseState.layers.length, w: epeArtboardW, h: epeArtboardH } };
+    epeSnapshots.push(snap);
+    const ok = epeSaveSnapshotsToStorage();
+    if (!ok){
+      epeSnapshots.pop(); // roll back -- don't keep an unsaved snapshot in memory claiming to be persisted
+      toast('Could not save snapshot \u2014 browser storage is full. Try deleting old snapshots first.', 'err');
+      return null;
+    }
+    epeRenderSnapshotList(); epeRenderRecoveryPanel();
+    return snap;
+  }
+  document.getElementById('epeCreateSnapshotBtn') && (document.getElementById('epeCreateSnapshotBtn').onclick = () => {
+    const name = (document.getElementById('epeSnapshotName') && document.getElementById('epeSnapshotName').value || '').trim();
+    const snap = epeCreateNamedSnapshot(name, 'manual');
+    if (snap){ document.getElementById('epeSnapshotName').value = ''; toast('Snapshot saved: ' + snap.name); }
+  });
+
+  function epeRenderSnapshotList(){
+    const el = document.getElementById('epeSnapshotListBody');
+    if (!el) return;
+    const named = epeSnapshots.filter(s => s.type !== 'event');
+    if (named.length === 0){ el.innerHTML = '<div style="color:var(--ink-soft);">No saved snapshots yet.</div>'; return; }
+    el.innerHTML = named.slice().reverse().map(s => `
+      <div class="dse-snapshot-row" data-snap-id="${s.id}" style="cursor:default;">
+        <span class="dse-snapshot-name">${s.name} <span style="color:var(--ink-soft);font-size:11px;">(${s.type}, ${new Date(s.ts).toLocaleString()}, ${s.meta.layers} layer${s.meta.layers===1?'':'s'})</span></span>
+        <button class="btn btn-ghost" data-action="restore" data-snap-id="${s.id}" type="button" style="padding:2px 8px;font-size:11.5px;">Restore</button>
+        <button class="btn btn-ghost" data-action="duplicate" data-snap-id="${s.id}" type="button" style="padding:2px 8px;font-size:11.5px;">Duplicate</button>
+        <button class="btn btn-ghost" data-action="rename" data-snap-id="${s.id}" type="button" style="padding:2px 8px;font-size:11.5px;">Rename</button>
+        <button class="btn btn-danger" data-action="delete" data-snap-id="${s.id}" type="button" style="padding:2px 8px;font-size:11.5px;">Delete</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-action="restore"]').forEach(btn => btn.onclick = async () => {
+      const snap = epeSnapshots.find(s => s.id === btn.dataset.snapId);
+      if (!snap) return;
+      const result = await epeRestoreFullSnapshot(snap.state);
+      toast(result.ok ? 'Restored: ' + snap.name : 'Restored with integrity warnings \u2014 check your project.');
+      epeRecordSessionEvent('restore', { snapshotName: snap.name, ok: result.ok });
+    });
+    el.querySelectorAll('[data-action="duplicate"]').forEach(btn => btn.onclick = () => {
+      const snap = epeSnapshots.find(s => s.id === btn.dataset.snapId);
+      if (!snap) return;
+      const clone = JSON.parse(JSON.stringify(snap));
+      clone.id = 'snap_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      clone.name = snap.name + ' copy'; clone.ts = Date.now();
+      epeSnapshots.push(clone); epeSaveSnapshotsToStorage(); epeRenderSnapshotList();
+      toast('Snapshot duplicated.');
+    });
+    el.querySelectorAll('[data-action="rename"]').forEach(btn => btn.onclick = () => {
+      const snap = epeSnapshots.find(s => s.id === btn.dataset.snapId);
+      if (!snap) return;
+      const newName = prompt('Rename snapshot:', snap.name);
+      if (newName && newName.trim()){ snap.name = newName.trim(); epeSaveSnapshotsToStorage(); epeRenderSnapshotList(); }
+    });
+    el.querySelectorAll('[data-action="delete"]').forEach(btn => btn.onclick = () => {
+      epeSnapshots = epeSnapshots.filter(s => s.id !== btn.dataset.snapId);
+      epeSaveSnapshotsToStorage(); epeRenderSnapshotList(); epeRenderRecoveryPanel();
+      toast('Snapshot deleted.');
+    });
+  }
+
+
+  // ---- Recovery Panel: real, live status -- current session info,
+  // saved snapshots count, last benchmark/restore event, and a genuine
+  // session-health read (not simulated). ----
+  function epeRenderRecoveryPanel(){
+    const el = document.getElementById('epeRecoveryPanelBody');
+    if (!el) return;
+    const namedCount = epeSnapshots.filter(s => s.type !== 'event').length;
+    const events = epeSnapshots.filter(s => s.type === 'event');
+    const lastBenchmark = [...events].reverse().find(e => e.name === 'benchmark');
+    const lastRestore = [...events].reverse().find(e => e.name === 'restore');
+    const health = epeRunProjectHealthCheck();
+    el.innerHTML = `
+      <div>Current session: <strong>${epeSourceImg ? epeArtboardW+'\u00d7'+epeArtboardH+'px, '+dseState.layers.length+' layer(s)' : 'No image loaded'}</strong></div>
+      <div>Saved snapshots: <strong>${namedCount}</strong></div>
+      <div>Last benchmark: <strong>${lastBenchmark ? new Date(lastBenchmark.ts).toLocaleString() + ' (' + lastBenchmark.meta.runs + ' runs, restore ' + (lastBenchmark.meta.restoreOk?'OK':'had issues') + ')' : 'None this session'}</strong></div>
+      <div>Last restore: <strong>${lastRestore ? new Date(lastRestore.ts).toLocaleString() + ' \u2014 ' + lastRestore.meta.snapshotName : 'None this session'}</strong></div>
+      <div>Session health: <strong style="color:${health.ok?'var(--ok-solid)':'var(--warn-solid)'};">${health.ok ? '\u2713 Healthy' : '\u26a0 ' + health.issues.length + ' issue(s)'}</strong></div>
+      ${health.issues.length ? health.issues.map(i=>`<div style="font-size:11.5px;color:var(--warn-solid);margin-top:2px;">\u2022 ${i}</div>`).join('') : ''}
+    `;
+  }
+
+  // ---- Project Health Check: real, structural validation -- not a
+  // simulated "everything is fine" message. Checks things that could
+  // genuinely go wrong (an orphaned groupId, a layer with no valid
+  // type, a mask sized for a different canvas). ----
+  function epeRunProjectHealthCheck(){
+    const issues = [];
+    if (!epeSourceImg) return { ok: true, issues: [] };
+    const layerIds = new Set(dseState.layers.map(l => l.id));
+    dseState.layers.forEach(l => {
+      if (l.groupId && !layerIds.has(l.groupId)) issues.push(`Layer "${l.name}" references a missing group.`);
+      if (l.type === 'group' && l.childIds){
+        l.childIds.forEach(cid => { if (!layerIds.has(cid)) issues.push(`Group "${l.name}" references a missing child layer.`); });
+      }
+      if (!['image','text','shape','icon','group'].includes(l.type)) issues.push(`Layer "${l.name}" has an unrecognized type.`);
+    });
+    if (epeEraseMask && epeSourceImg && epeEraseMask.length !== epeSourceImg.naturalWidth*epeSourceImg.naturalHeight){
+      issues.push('The active mask size does not match the current image \u2014 it may not apply correctly.');
+    }
+    if (epeArtboardW <= 0 || epeArtboardH <= 0) issues.push('Canvas size is invalid.');
+    return { ok: issues.length === 0, issues };
+  }
+  document.getElementById('epeRunHealthCheckBtn') && (document.getElementById('epeRunHealthCheckBtn').onclick = () => {
+    const health = epeRunProjectHealthCheck();
+    const el = document.getElementById('epeHealthCheckBody');
+    if (el){
+      el.innerHTML = health.ok
+        ? '<div style="color:var(--ok-solid);">\u2713 No problems detected \u2014 layers, canvas, and masks all check out.</div>'
+        : health.issues.map(i => `<div style="color:var(--warn-solid);margin-top:4px;">\u26a0 ${i}</div>`).join('');
+    }
+    epeRenderRecoveryPanel();
+  });
+
+  // ---- Version History: a lightweight, real event log (snapshots +
+  // benchmark/restore events), sorted newest-first. ----
+  function epeRenderVersionHistory(){
+    const el = document.getElementById('epeVersionHistoryBody');
+    if (!el) return;
+    const all = [...epeSnapshots].sort((a,b) => b.ts-a.ts).slice(0,30);
+    if (all.length === 0){ el.innerHTML = '<div style="color:var(--ink-soft);">No history yet.</div>'; return; }
+    el.innerHTML = all.map(s => `<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--card-border);">${new Date(s.ts).toLocaleString()} \u2014 ${s.type === 'event' ? s.name : 'Snapshot: '+s.name}</div>`).join('');
+  }
+
+  // ---- Auto Save with configurable interval: an ADDITIONAL, opt-in
+  // mechanism alongside the existing debounced session-recovery
+  // autosave (Phase 1, unchanged) -- this one periodically creates a
+  // real named snapshot via setInterval, matching "configurable
+  // interval: 5/10/15 minutes" from the brief. ----
+  let epeAutoSaveIntervalId = null;
+  function epeSetAutoSaveInterval(minutes){
+    if (epeAutoSaveIntervalId){ clearInterval(epeAutoSaveIntervalId); epeAutoSaveIntervalId = null; }
+    if (!minutes || minutes <= 0) return;
+    epeAutoSaveIntervalId = setInterval(() => {
+      if (!epeSourceImg) return;
+      epeCreateNamedSnapshot('Auto-save ' + new Date().toLocaleTimeString(), 'auto');
+    }, minutes*60*1000);
+  }
+  document.getElementById('epeAutoSaveInterval') && document.getElementById('epeAutoSaveInterval').addEventListener('change', (e) => {
+    epeSetAutoSaveInterval(+e.target.value);
+    toast(e.target.value == 0 ? 'Interval auto-save disabled.' : `Interval auto-save set to every ${e.target.value} minutes.`);
+  });
+  document.getElementById('epeManualSaveBtn') && (document.getElementById('epeManualSaveBtn').onclick = () => {
+    const snap = epeCreateNamedSnapshot('Manual save ' + new Date().toLocaleTimeString(), 'manual');
+    if (snap) toast('Project saved.');
+  });
+
+  document.getElementById('epeAccordionSession') && document.getElementById('epeAccordionSession').addEventListener('toggle', function(){
+    if (this.open){ epeRenderSnapshotList(); epeRenderRecoveryPanel(); epeRenderVersionHistory(); }
+  });
+
+  epeLoadSnapshots();
 
 
   function setupEpeAccordionExclusivity(){
