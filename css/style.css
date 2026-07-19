@@ -648,6 +648,14 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .editor-stage-wrap.tool-refine canvas{cursor:crosshair;}
 .editor-stage-wrap.overlay-on{position:relative;}
 
+/* Ecommerce Product Editor: the stage wrap must be a positioned ancestor
+   so the in-place text-edit textarea (position:absolute) and any other
+   absolutely-positioned overlay inside it are placed relative to the
+   canvas area itself, not some distant, unrelated ancestor further up
+   the page. Scoped to this tool's specific ID so it never affects the
+   shared .editor-stage-wrap class used by other tools. */
+#epeCanvasStageWrap{position:relative;}
+
 .compare-wrap{position:relative;overflow:hidden;border-radius:12px;user-select:none;touch-action:none;}
 .compare-wrap img, .compare-wrap canvas{display:block;width:100%;height:auto;pointer-events:none;}
 .compare-after{position:absolute;top:0;left:0;height:100%;overflow:hidden;}
