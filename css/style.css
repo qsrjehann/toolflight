@@ -875,8 +875,8 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .dse-layer-row:hover{background:var(--card-hover,var(--bg2));}
 .dse-layer-selected{border-color:var(--accent1-solid);background:color-mix(in srgb, var(--accent1-solid) 8%, var(--card));}
 .dse-layer-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dse-layer-vis,.dse-layer-lock{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;color:var(--ink-soft);}
-.dse-layer-vis:hover,.dse-layer-lock:hover{background:var(--card-border);}
+.dse-layer-vis,.dse-layer-lock,.dse-layer-move{background:none;border:none;cursor:pointer;font-size:14px;border-radius:4px;color:var(--ink-soft);min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.dse-layer-vis:hover,.dse-layer-lock:hover,.dse-layer-move:hover{background:var(--card-border);}
 .dse-layer-hidden{opacity:0.45;}
 .dse-layer-locked{color:var(--accent1-solid);}
 
@@ -929,7 +929,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 /* ---- Top App Bar (mobile/tablet-portrait only) ---- */
 #epeTopAppBar{
   display:none; align-items:center; justify-content:space-between; gap:10px;
-  height:var(--epe-topbar-h); padding:0 12px; position:sticky; top:0; z-index:40;
+  height:var(--epe-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
   background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
 }
 #epeTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -967,7 +967,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   border:1px solid var(--epe-shell-border); z-index:60; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
 }
 #epeFloatingControls button{
-  min-width:38px; min-height:38px; border-radius:999px; border:none; background:transparent;
+  min-width:44px; min-height:44px; border-radius:999px; border:none; background:transparent;
   display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
 }
 #epeFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
@@ -975,6 +975,50 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 #epeFloatingControls button svg{ width:18px; height:18px; }
 #epeFloatZoomLabel{ font-size:12px; font-weight:600; color:var(--ink-soft); padding:0 4px; white-space:nowrap; }
 #epeFloatingControls .epe-float-sep{ width:1px; height:22px; background:var(--epe-shell-border); flex:0 0 auto; margin:0 2px; }
+
+/* ---- Floating Brush Controls (Phase B): compact, always-reachable
+   brush settings that appear whenever a brush-type tool is active, so
+   the person never needs to open the full accordion/sheet mid-stroke. ---- */
+#epeFloatingBrushBar{
+  position:absolute; left:50%; bottom:66px; transform:translateX(-50%);
+  display:flex; align-items:center; gap:10px; padding:8px 14px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:59; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  pointer-events:none; /* empty areas of the bar let clicks pass through to the canvas underneath */
+}
+#epeFloatingBrushBar.hidden{ display:none; }
+#epeFloatingBrushBar > *{ pointer-events:auto; } /* the bar's own controls stay fully clickable */
+#epeFloatingBrushBar.hidden{ display:none; }
+#epeSelectSourceBtn{
+  min-height:48px; padding:0 16px; border-radius:999px; border:1px solid var(--epe-shell-border);
+  background:transparent; color:var(--ink); font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; flex:0 0 auto;
+}
+#epeSelectSourceBtn.active{ background:var(--accent1); color:#fff; border-color:transparent; }
+#epeSelectSourceBtn.hidden{ display:none; }
+.epe-float-brush-ctrl{ display:flex; flex-direction:column; align-items:center; gap:2px; flex:0 0 auto; }
+.epe-float-brush-ctrl label{ font-size:9.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; }
+.epe-float-brush-ctrl input[type="range"]{ width:64px; height:24px; margin:0; }
+
+/* ---- Selection Mini-Toolbar (Phase B): compact quick actions for the
+   currently selected object, top-anchored so it doesn't compete with
+   the bottom-anchored brush bar or floating controls. ---- */
+#epeSelectionMiniToolbar{
+  position:absolute; left:50%; top:10px; transform:translateX(-50%);
+  display:flex; align-items:center; gap:2px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:58; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  pointer-events:none;
+}
+#epeSelectionMiniToolbar.hidden{ display:none; }
+#epeSelectionMiniToolbar > *{ pointer-events:auto; }
+#epeSelectionMiniToolbar button{
+  min-width:48px; min-height:48px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#epeSelectionMiniToolbar button:hover{ background:rgba(109,94,245,0.12); }
+#epeSelectionMiniToolbar button svg{ width:18px; height:18px; }
+#epeSelectionMiniToolbar button.active{ background:var(--accent1); color:#fff; }
+#epeSelectionMiniToolbar #epeMiniDeleteBtn:hover{ background:rgba(239,68,68,0.15); color:var(--err-solid); }
 
 /* ---- Tool panel: right sidebar on desktop, bottom sheet on mobile ---- */
 #epeToolPanel{
@@ -994,7 +1038,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 
 /* ---- Bottom toolbar (mobile/tablet-portrait only) ---- */
 #epeBottomToolbar{
-  display:none; position:sticky; bottom:0; z-index:40; height:var(--epe-bottombar-h);
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--epe-bottombar-h);
   background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
   align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
 }
@@ -1032,7 +1076,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   #epeSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
   #epeToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
   #epePanelCollapseBtn{ display:none; }
-  #epeSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:32px; min-height:32px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+  #epeSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
 
   /* Sheet backdrop */
   #epeSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
