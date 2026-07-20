@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260719-2112" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260719-2112">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260719-2112">
+<link rel="icon" href="assets/favicon.ico?v=20260720-1908" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260720-1908">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260720-1908">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719-2112">
+<link rel="stylesheet" href="css/style.css?v=20260720-1908">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260719-2112" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260720-1908" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -146,6 +146,19 @@
               <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
             </div>
             <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="margin-top:14px;cursor:default;">
+              <div id="epeSelectionMiniToolbar" class="hidden" role="toolbar" aria-label="Selected object actions">
+                <button type="button" id="epeMiniDuplicateBtn" title="Duplicate" aria-label="Duplicate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                <button type="button" id="epeMiniDeleteBtn" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeMiniForwardBtn" title="Bring Forward" aria-label="Bring forward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+                <button type="button" id="epeMiniBackwardBtn" title="Send Backward" aria-label="Send backward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeMiniLockBtn" title="Lock" aria-label="Lock layer" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeMiniOpacity">Opacity</label>
+                  <input type="range" id="epeMiniOpacity" min="0" max="100" value="100" aria-label="Object opacity">
+                </div>
+              </div>
               <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
               <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
               <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
@@ -159,6 +172,21 @@
                 <button type="button" id="epeFloatFitBtn" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
                 <div class="epe-float-sep"></div>
                 <button type="button" id="epeFloatBeforeAfterBtn" title="Before / After" aria-label="Before and after comparison"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></button>
+              </div>
+              <div id="epeFloatingBrushBar" class="hidden" role="toolbar" aria-label="Brush controls">
+                <button type="button" id="epeSelectSourceBtn" class="hidden" aria-pressed="false">Select Source</button>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushSize">Size</label>
+                  <input type="range" id="epeFloatBrushSize" min="4" max="200" value="40" aria-label="Brush size">
+                </div>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushHardness">Hardness</label>
+                  <input type="range" id="epeFloatBrushHardness" min="0" max="100" value="60" aria-label="Brush hardness">
+                </div>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushOpacity">Opacity</label>
+                  <input type="range" id="epeFloatBrushOpacity" min="1" max="100" value="100" aria-label="Brush opacity">
+                </div>
               </div>
             </div>
             <div class="row" style="margin-top:8px;align-items:center;">
@@ -1233,7 +1261,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260719-2112" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260720-1908" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1270,6 +1298,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260719-2112"></script>
+<script defer src="js/app.js?v=20260720-1908"></script>
 </body>
 </html>
