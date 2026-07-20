@@ -9461,6 +9461,7 @@ if (document.getElementById('epeDrop')){
     renderEpeOverlay();
     if (typeof dseSyncTextControlsFromLayer === 'function') dseSyncTextControlsFromLayer(active);
     if (typeof dseUpdateObjectPropertiesPanel === 'function') dseUpdateObjectPropertiesPanel();
+    if (typeof epeUpdateSelectionMiniToolbar === 'function') epeUpdateSelectionMiniToolbar();
   }
 
   // ---- Compute the axis-aligned bounding box of a layer in artboard-space ----
@@ -9768,8 +9769,16 @@ if (document.getElementById('epeDrop')){
     document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
     document.getElementById('epeCloneOptionsRow') && document.getElementById('epeCloneOptionsRow').classList.toggle('hidden', tool !== 'clone' && tool !== 'heal');
     if (tool !== 'clone' && tool !== 'heal'){ epeCloneSource = null; epeCloneOffset = null; }
+    if (typeof epeSelectSourceMode !== 'undefined') epeSelectSourceMode = false;
     epeUpdateBrushCursor();
     renderEpeOverlay();
+    if (typeof epeUpdateFloatingBrushBar === 'function') epeUpdateFloatingBrushBar();
+    // Selecting an actual brush tool (not "none") hands off from the
+    // tool-picker sheet to canvas-focused editing on mobile, so the
+    // floating brush bar isn't obstructed by the still-open sheet.
+    if (tool !== 'none' && typeof epeIsMobileShell === 'function' && epeIsMobileShell() && typeof epeCloseToolPanel === 'function'){
+      epeCloseToolPanel();
+    }
   }
   document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(btn => btn.onclick = () => epeSetTool(btn.dataset.tool === epeActiveTool ? 'none' : btn.dataset.tool));
   document.getElementById('epeBrushSize').addEventListener('input', (e) => { epeBrushSize = +e.target.value; epeUpdateBrushCursor(); });
@@ -9887,22 +9896,20 @@ if (document.getElementById('epeDrop')){
     return { x: rx + epeLayer.x, y: ry + epeLayer.y };
   }
 
-  epeArtboardEl.addEventListener('pointerdown', (e) => {
-    if (epeActiveTool === 'none' || !epeSourceImg) return;
-    epeIsPainting = true;
-    const pt = epeCanvasToSourceCoords(e.clientX, e.clientY);
-    epeStampAt(pt.x, pt.y);
-    renderEpeAll();
-  });
-  document.addEventListener('pointermove', (e) => {
-    if (!epeIsPainting) return;
-    const pt = epeCanvasToSourceCoords(e.clientX, e.clientY);
-    epeStampAt(pt.x, pt.y);
-    renderEpeAll();
-  });
-  document.addEventListener('pointerup', () => {
-    if (epeIsPainting){ epeIsPainting = false; epePushHistory(); }
-  });
+  // NOTE: the old direct epeArtboardEl pointerdown handler that used to
+  // live here was removed -- it was fully superseded by (and duplicated
+  // with bugs) the dsePointerDownOnCanvas routing below, which already
+  // handles the generic "any active brush tool" case (see the
+  // `epeActiveTool !== 'none'` fallback) as well as clone/heal
+  // specifically. Keeping both caused two real problems: an unnecessary
+  // extra fitEpeCanvasDisplay() call on every pointerdown (the actual
+  // root cause of the canvas visibly resizing between source-selection
+  // and painting on mobile), and, for Clone Stamp/Healing Brush
+  // specifically, a premature stamp attempt before epeCloneOffset was
+  // even computed. The matching pointermove/pointerup pair that used to
+  // sit here was also removed as fully redundant with the more complete
+  // pair further below (which additionally handles crop/selection/patch
+  // drag and the clone/heal non-aligned offset reset).
 
 
   /* ---------- Histogram: real, computed from actual pixel data,
@@ -10790,13 +10797,15 @@ if (document.getElementById('epeDrop')){
     if (epeCropActive){ if (epeCropPointerDown(clientX, clientY)) return; }
     if ((epeActiveTool === 'clone' || epeActiveTool === 'heal') && epeSourceImg){
       const sp = epeCanvasToSourceCoords(clientX, clientY);
-      if (epeCloneAltHeld){
+      if (epeCloneAltHeld || epeSelectSourceMode){
         epeCloneSource = { x: sp.x, y: sp.y };
         epeCloneOffset = null; // require a fresh stroke-start to (re)compute the offset
         toast('Source point set.');
+        if (typeof epeHapticFeedback === 'function') epeHapticFeedback('light');
+        if (epeSelectSourceMode) epeSetSelectSourceMode(false);
         return;
       }
-      if (!epeCloneSource){ toast('Alt/Option-click first to set a source point.', 'err'); return; }
+      if (!epeCloneSource){ toast(epeActiveTool === 'heal' ? 'Tap Sample first to set a source point.' : 'Tap Select Source first to set a source point.', 'err'); epeSetSelectSourceMode(true); return; }
       if (!epeCloneOffset || !epeCloneAligned){
         epeCloneOffset = { dx: sp.x - epeCloneSource.x, dy: sp.y - epeCloneSource.y };
       }
@@ -10893,6 +10902,8 @@ if (document.getElementById('epeDrop')){
       return `<div class="dse-layer-row${isSelected?' dse-layer-selected':''}" data-id="${layer.id}" role="option" aria-selected="${isSelected}" tabindex="0" draggable="true">
         <button class="dse-layer-vis${layer.visible?'':' dse-layer-hidden'}" data-id="${layer.id}" type="button" aria-label="${layer.visible?'Hide':'Show'} layer" title="${layer.visible?'Visible':'Hidden'}">${layer.visible?'\u{1F441}':'\u25a1'}</button>
         <span class="dse-layer-name" data-id="${layer.id}">${layer.name}</span>
+        <button class="dse-layer-move" data-id="${layer.id}" data-dir="up" type="button" aria-label="Move layer up">\u2191</button>
+        <button class="dse-layer-move" data-id="${layer.id}" data-dir="down" type="button" aria-label="Move layer down">\u2193</button>
         <button class="dse-layer-lock${layer.locked?' dse-layer-locked':''}" data-id="${layer.id}" type="button" aria-label="${layer.locked?'Unlock':'Lock'} layer">${layer.locked?'\uD83D\uDD12':'\uD83D\uDD13'}</button>
       </div>`;
     }).join('');
@@ -10911,6 +10922,36 @@ if (document.getElementById('epeDrop')){
         const layer = dseState.layers.find(l => l.id===btn.dataset.id);
         if (layer){ layer.locked = !layer.locked; dseRenderLayersPanel(); }
       };
+    });
+    // Touch-friendly reordering: native HTML5 drag-and-drop (draggable
+    // attribute above) doesn't work on touch devices, so these buttons
+    // give touch users a reliable alternative -- they select the layer
+    // then trigger the exact same Bring Forward/Send Backward buttons
+    // used elsewhere, not a separate reordering implementation.
+    panel.querySelectorAll('.dse-layer-move').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        dseSelectLayer(btn.dataset.id, false);
+        const target = document.getElementById(btn.dataset.dir === 'up' ? 'epeLayerForwardBtn' : 'epeLayerBackwardBtn');
+        if (target) target.click();
+      };
+    });
+    // Long press on a row opens quick actions -- currently triggers the
+    // same rename flow as double-click, since that's the action touch
+    // users have the hardest time reaching (double-tap precision on a
+    // small row is unreliable on a phone).
+    panel.querySelectorAll('.dse-layer-row').forEach(row => {
+      let pressTimer = null;
+      const start = () => { pressTimer = setTimeout(() => {
+        const nameEl = row.querySelector('.dse-layer-name');
+        if (nameEl) nameEl.dispatchEvent(new Event('dblclick', {bubbles:true}));
+        if (typeof epeHapticFeedback === 'function') epeHapticFeedback('medium');
+      }, 550); };
+      const cancel = () => { if (pressTimer) clearTimeout(pressTimer); };
+      row.addEventListener('pointerdown', start);
+      row.addEventListener('pointerup', cancel);
+      row.addEventListener('pointerleave', cancel);
+      row.addEventListener('pointermove', cancel);
     });
     // Rename via double-click on the name
     panel.querySelectorAll('.dse-layer-name').forEach(nameEl => {
@@ -15113,6 +15154,139 @@ if (document.getElementById('epeDrop')){
       if (backdrop) backdrop.classList.remove('visible');
     }
   });
+
+
+  /* ============================================================
+     PHASE B — Mobile-First Touch Workflow
+     ============================================================
+     Reuses the existing Clone Stamp / Healing Brush engine
+     (epeCloneSource, epeCloneOffset, epeCloneAligned, epeStampAt,
+     epeCloneStampAt, epeHealStampAt) entirely unchanged. This only
+     adds an explicit, tap-friendly way to SET epeCloneSource that
+     doesn't depend on a keyboard modifier -- the desktop Alt-click
+     path (epeCloneAltHeld) is untouched and still works.
+     ============================================================ */
+  let epeSelectSourceMode = false;
+  function epeSetSelectSourceMode(on){
+    epeSelectSourceMode = on;
+    const btn = document.getElementById('epeSelectSourceBtn');
+    if (btn){
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.textContent = on ? 'Tap the image to set source\u2026' : (epeCloneSource ? (epeActiveTool === 'heal' ? 'Resample' : 'Reselect Source') : (epeActiveTool === 'heal' ? 'Sample' : 'Select Source'));
+    }
+    epeUpdateFloatingBrushBar();
+  }
+  document.getElementById('epeSelectSourceBtn') && (document.getElementById('epeSelectSourceBtn').onclick = () => {
+    epeSetSelectSourceMode(!epeSelectSourceMode);
+  });
+
+  // ---- Floating Brush Controls: shows/hides based on the active tool,
+  // and keeps its compact sliders in perfect sync with the existing
+  // accordion sliders -- both read/write the SAME epeBrushSize/
+  // epeBrushHardness/epeBrushOpacity variables, so there is exactly one
+  // source of truth, not two parallel brush-setting systems. ----
+  const EPE_BRUSH_TOOLS = new Set(['erase','restore','blur','sharpen','spot','clone','heal','redeye']);
+  function epeUpdateFloatingBrushBar(){
+    const bar = document.getElementById('epeFloatingBrushBar');
+    if (!bar) return;
+    const isBrush = EPE_BRUSH_TOOLS.has(epeActiveTool);
+    bar.classList.toggle('hidden', !isBrush);
+    if (!isBrush) return;
+    const sourceBtn = document.getElementById('epeSelectSourceBtn');
+    const isCloneHeal = epeActiveTool === 'clone' || epeActiveTool === 'heal';
+    sourceBtn.classList.toggle('hidden', !isCloneHeal);
+    if (isCloneHeal && !epeSelectSourceMode){
+      sourceBtn.textContent = epeCloneSource ? (epeActiveTool === 'heal' ? 'Resample' : 'Reselect Source') : (epeActiveTool === 'heal' ? 'Sample' : 'Select Source');
+      sourceBtn.classList.remove('active');
+      sourceBtn.setAttribute('aria-pressed', 'false');
+    }
+    // Sync compact sliders FROM the current source-of-truth values
+    document.getElementById('epeFloatBrushSize').value = epeBrushSize;
+    document.getElementById('epeFloatBrushHardness').value = epeBrushHardness;
+    document.getElementById('epeFloatBrushOpacity').value = epeBrushOpacity;
+  }
+  // Two-way sync: moving the compact floating slider updates the SAME
+  // variables the accordion slider uses, and mirrors the value back to
+  // the accordion slider's own input so both stay visually consistent
+  // whichever one the person used most recently.
+  document.getElementById('epeFloatBrushSize') && document.getElementById('epeFloatBrushSize').addEventListener('input', (e) => {
+    epeBrushSize = +e.target.value;
+    document.getElementById('epeBrushSize').value = e.target.value;
+    epeUpdateBrushCursor();
+  });
+  document.getElementById('epeFloatBrushHardness') && document.getElementById('epeFloatBrushHardness').addEventListener('input', (e) => {
+    epeBrushHardness = +e.target.value;
+    document.getElementById('epeBrushHardness').value = e.target.value;
+  });
+  document.getElementById('epeFloatBrushOpacity') && document.getElementById('epeFloatBrushOpacity').addEventListener('input', (e) => {
+    epeBrushOpacity = +e.target.value;
+    document.getElementById('epeBrushOpacity').value = e.target.value;
+  });
+  // Mirror the reverse direction too, so opening the full accordion and
+  // adjusting there also updates the floating bar next time it's shown.
+  document.getElementById('epeBrushSize').addEventListener('input', () => { const f=document.getElementById('epeFloatBrushSize'); if (f) f.value = epeBrushSize; });
+  document.getElementById('epeBrushHardness').addEventListener('input', () => { const f=document.getElementById('epeFloatBrushHardness'); if (f) f.value = epeBrushHardness; });
+  document.getElementById('epeBrushOpacity').addEventListener('input', () => { const f=document.getElementById('epeFloatBrushOpacity'); if (f) f.value = epeBrushOpacity; });
+
+
+  // ---- Selection Mini-Toolbar: appears whenever any layer is selected,
+  // giving touch-friendly quick access to the most common object
+  // actions without opening the full Object panel. Every button
+  // delegates to the EXISTING accordion buttons/logic via .click() or
+  // by driving the same underlying state -- nothing here is a second,
+  // parallel implementation of duplicate/delete/reorder/opacity. ----
+  function epeUpdateSelectionMiniToolbar(){
+    const bar = document.getElementById('epeSelectionMiniToolbar');
+    if (!bar) return;
+    const active = (typeof dseActiveLayer === 'function') ? dseActiveLayer() : null;
+    const hasSelection = !!active && dseState.selectedIds.size > 0;
+    bar.classList.toggle('hidden', !hasSelection);
+    if (!hasSelection) return;
+    document.getElementById('epeMiniOpacity').value = active.opacity;
+    document.getElementById('epeMiniLockBtn').classList.toggle('active', !!active.locked);
+    document.getElementById('epeMiniLockBtn').setAttribute('aria-pressed', String(!!active.locked));
+  }
+  document.getElementById('epeMiniDuplicateBtn') && (document.getElementById('epeMiniDuplicateBtn').onclick = () => {
+    const btn = document.getElementById('epeDuplicateLayerBtn'); if (btn) btn.click();
+  });
+  document.getElementById('epeMiniDeleteBtn') && (document.getElementById('epeMiniDeleteBtn').onclick = () => {
+    const btn = document.getElementById('epeDeleteLayerBtn'); if (btn) btn.click();
+    if (typeof epeHapticFeedback === 'function') epeHapticFeedback('medium');
+    epeUpdateSelectionMiniToolbar();
+  });
+  document.getElementById('epeMiniForwardBtn') && (document.getElementById('epeMiniForwardBtn').onclick = () => {
+    const btn = document.getElementById('epeLayerForwardBtn'); if (btn) btn.click();
+  });
+  document.getElementById('epeMiniBackwardBtn') && (document.getElementById('epeMiniBackwardBtn').onclick = () => {
+    const btn = document.getElementById('epeLayerBackwardBtn'); if (btn) btn.click();
+  });
+  document.getElementById('epeMiniLockBtn') && (document.getElementById('epeMiniLockBtn').onclick = () => {
+    const active = dseActiveLayer(); if (!active) return;
+    active.locked = !active.locked;
+    if (typeof dseRenderLayersPanel === 'function') dseRenderLayersPanel();
+    epeUpdateSelectionMiniToolbar();
+    renderEpeAll();
+  });
+  document.getElementById('epeMiniOpacity') && document.getElementById('epeMiniOpacity').addEventListener('input', (e) => {
+    const objOpacity = document.getElementById('epeObjectOpacity');
+    if (objOpacity){ objOpacity.value = e.target.value; objOpacity.dispatchEvent(new Event('input', {bubbles:true})); }
+  });
+  document.getElementById('epeMiniOpacity') && document.getElementById('epeMiniOpacity').addEventListener('change', () => { if (typeof epePushHistory === 'function') epePushHistory(); });
+
+
+  // ---- Haptic-ready architecture (Phase B): a single, real call site
+  // for haptic feedback across the editor, currently a no-op per the
+  // brief ("do NOT implement vibration now, only keep structure
+  // ready"). When real haptic feedback is added later, it only needs
+  // to be implemented once, here -- every call site below already
+  // routes through this function. navigator.vibrate is NOT called
+  // yet, intentionally. ----
+  function epeHapticFeedback(intensity){
+    // intensity: 'light' | 'medium' | 'heavy' -- reserved for future use.
+    // Intentionally not calling navigator.vibrate() yet.
+    return;
+  }
 
 
   function setupEpeAccordionExclusivity(){
