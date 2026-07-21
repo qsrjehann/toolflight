@@ -14962,8 +14962,8 @@ if (document.getElementById('epeDrop')){
      ============================================================ */
   const EPE_CATEGORY_ACCORDIONS = {
     transform: ['epeAccordionTransform','epeAccordionCrop','epeAccordionGuides','epeAccordionSafeArea'],
-    adjust:    ['epeAccordionAdjustments','epeAccordionBackground','epeAccordionShadow','epeAccordionReflection','epeAccordionAnalysis','epeAccordionUpscaleCompress','epeAccordionBeforeAfter'],
-    brush:     ['epeAccordionRetouch','epeAccordionFaceRetouch','epeAccordionMaskSystem','epeAccordionSelection'],
+    adjust:    ['epeAccordionAdjustments','epeAccordionShadow','epeAccordionReflection','epeAccordionAnalysis','epeAccordionUpscaleCompress','epeAccordionBeforeAfter'],
+    brush:     ['epeAccordionRetouch','epeAccordionBackground','epeAccordionFaceRetouch','epeAccordionMaskSystem','epeAccordionSelection'],
     text:      ['epeAccordionAddText'],
     elements:  ['epeAccordionShapesIcons','epeAccordionStickersBadges','epeAccordionHighlightsCallouts','epeAccordionCtaRibbons','epeAccordionOffersTrust','epeAccordionTablesReviews','epeAccordionLogoCode'],
     layers:    ['epeAccordionLayers','epeAccordionArrangeAlign','epeAccordionBrandColors','epeAccordionBrandDefaults'],
@@ -15003,6 +15003,7 @@ if (document.getElementById('epeDrop')){
     }
   });
 
+  const EPE_ALL_CATEGORY_ACCORDION_IDS = Object.values(EPE_CATEGORY_ACCORDIONS).flat();
   function epeSelectCategory(cat, opts){
     opts = opts || {};
     if (!EPE_CATEGORY_ACCORDIONS[cat]) return;
@@ -15015,11 +15016,19 @@ if (document.getElementById('epeDrop')){
     const titleEl = document.getElementById('epeToolPanelTitle');
     if (titleEl) titleEl.textContent = EPE_CATEGORY_LABELS[cat] || cat;
 
-    // Open the first accordion in this category's group, close the others
-    // in the group (existing accordion-exclusivity logic handles closing
-    // accordions OUTSIDE the group already; within the group we open just
-    // the first so the panel doesn't open fully-expanded and enormous).
+    // Show only this category's accordions; hide every other
+    // category's accordion entirely (not just collapse it) -- this is
+    // the actual fix for the sheet showing every feature at once.
+    // Contextual panels outside EPE_CATEGORY_ACCORDIONS (Object, Text,
+    // Shape properties) are untouched here; they're governed by
+    // current selection, independent of category.
     const ids = EPE_CATEGORY_ACCORDIONS[cat];
+    const idSet = new Set(ids);
+    EPE_ALL_CATEGORY_ACCORDION_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('epe-category-hidden', !idSet.has(id));
+    });
     ids.forEach((id, i) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -15047,6 +15056,12 @@ if (document.getElementById('epeDrop')){
       epeSheetState = 'half';
       const backdrop = document.getElementById('epeSheetBackdrop');
       if (backdrop) backdrop.classList.add('visible');
+      // The floating controls bar sits low enough on the canvas that the
+      // sheet visually covers the same area once open -- hide it while
+      // the sheet has focus rather than let it render on top of the
+      // sheet (which is what created the "two toolbars" appearance).
+      const floatBar = document.getElementById('epeFloatingControls');
+      if (floatBar) floatBar.classList.add('hidden');
     } else {
       panel.classList.remove('collapsed');
     }
@@ -15059,6 +15074,8 @@ if (document.getElementById('epeDrop')){
       epeSheetState = 'closed';
       const backdrop = document.getElementById('epeSheetBackdrop');
       if (backdrop) backdrop.classList.remove('visible');
+      const floatBar = document.getElementById('epeFloatingControls');
+      if (floatBar) floatBar.classList.remove('hidden');
     } else {
       panel.classList.add('collapsed');
     }
@@ -15431,6 +15448,86 @@ if (document.getElementById('epeDrop')){
     }
     renderEpeOverlay();
   }
+
+
+  // ---- Floating toolbar drag (Phase F fix): the toolbar was not
+  // draggable at all -- no drag logic existed anywhere in the
+  // codebase (verified by search before writing this). Implemented as
+  // genuine pointer-based dragging via a dedicated handle (matching
+  // Canva's own pattern -- dragging from anywhere on a button-filled
+  // bar would conflict with button clicks), clamped to stay fully
+  // within the canvas stage bounds, working for mouse and touch via
+  // the unified Pointer Events API. Position persists across
+  // interactions within the session (not reset on re-render) since
+  // it's stored in the element's own inline style, which nothing else
+  // in the render pipeline touches.
+  (function setupEpeFloatingToolbarDrag(){
+    const handle = document.getElementById('epeFloatDragHandle');
+    const bar = document.getElementById('epeFloatingControls');
+    const wrap = document.getElementById('epeCanvasStageWrap');
+    if (!handle || !bar || !wrap) return;
+    let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
+
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    function beginDrag(clientX, clientY){
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      // Switch from the centered (left:50%, transform) default to
+      // absolute pixel positioning relative to the canvas stage, using
+      // the bar's CURRENT on-screen position so there's no visual jump.
+      barStartLeft = barRect.left - wrapRect.left;
+      barStartTop = barRect.top - wrapRect.top;
+      bar.style.left = barStartLeft + 'px';
+      bar.style.top = barStartTop + 'px';
+      bar.style.bottom = 'auto';
+      bar.style.transform = 'none';
+      bar.classList.add('epe-dragging');
+      startX = clientX; startY = clientY;
+      dragging = true;
+    }
+    function moveDrag(clientX, clientY){
+      if (!dragging) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const dx = clientX - startX, dy = clientY - startY;
+      let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
+      // Never leave the canvas bounds, per the explicit requirement.
+      newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
+      newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
+      bar.style.left = newLeft + 'px';
+      bar.style.top = newTop + 'px';
+    }
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      bar.classList.remove('epe-dragging');
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      beginDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      moveDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+
+    // Re-clamp on resize/orientation change so the toolbar never ends
+    // up outside the (possibly now-smaller) canvas bounds.
+    window.addEventListener('resize', () => {
+      if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const curLeft = parseFloat(bar.style.left) || 0, curTop = parseFloat(bar.style.top) || 0;
+      bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
+      bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
+    });
+  })();
 
 
   function setupEpeAccordionExclusivity(){
