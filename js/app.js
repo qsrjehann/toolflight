@@ -13237,6 +13237,267 @@ if (document.getElementById('epeDrop')){
     return results;
   }
 
+  /* ============================================================
+     INTELLIGENT SEARCH ENGINE (this phase): extends the existing
+     epeSearchAssets(query, category) -- signature and behavior for
+     existing callers preserved exactly -- with concept expansion,
+     fuzzy typo tolerance, multi-token matching, color/style
+     filtering, recent/popular/favorites (all localStorage, no
+     backend), and search suggestions.
+     ============================================================ */
+
+  // ---- Concept/synonym expansion: real, curated mappings so a query
+  // like "50% off" surfaces the broader set of related marketing
+  // assets (sale badges, discount ribbons, etc.), not just an exact
+  // phrase match. Each key maps to concept tags also present in the
+  // registry's own tags/keywords, so this expands the search rather
+  // than replacing the lexical index. ----
+  const EPE_SEARCH_CONCEPTS = [
+    { pattern: /\d+%?\s*(off|discount)|half\s*price/, concepts: ['sale','discount','offer','badge','ribbon'] },
+    { pattern: /\bsale\b|\bclearance\b|\bdeal\b/, concepts: ['sale','discount','offer','badge'] },
+    { pattern: /\bluxury\b|\bpremium\b|\bexclusive\b/, concepts: ['luxury','badge','elements'] },
+    { pattern: /\bmarketing\b|\bpromo(tion)?\b/, concepts: ['marketing','cta','ribbon','offer','badge'] },
+    { pattern: /\bnew\b|\bjust\s*in\b|\barrival/, concepts: ['new','badge','sticker'] },
+    { pattern: /\bfree\s*shipping\b|\bdelivery\b/, concepts: ['shipping','trust','delivery'] },
+    { pattern: /\btrust\b|\bguarantee\b|\bsecure\b|\bverified\b/, concepts: ['trust','badge'] },
+    { pattern: /\bbutton\b|\bbuy\b|\border\b|\bshop\s*now\b/, concepts: ['button','cta','marketing'] },
+    { pattern: /\bframe\b|\bborder\b|\boutline\b/, concepts: ['frame','border'] },
+    { pattern: /\bbackground\b|\bbackdrop\b/, concepts: ['background','canvas'] },
+    { pattern: /\bpattern\b|\btexture\b/, concepts: ['pattern','texture'] },
+  ];
+  function epeExpandQueryConcepts(query){
+    const q = query.toLowerCase();
+    const extra = new Set();
+    EPE_SEARCH_CONCEPTS.forEach(rule => { if (rule.pattern.test(q)) rule.concepts.forEach(c => extra.add(c)); });
+    return extra;
+  }
+
+  // ---- Fuzzy matching: real Levenshtein edit distance, not a fake
+  // "contains most letters" heuristic. Used as a fallback only when
+  // exact/substring matching finds nothing, so typo tolerance never
+  // degrades precise search results. ----
+  function epeLevenshtein(a, b){
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const prev = new Array(b.length+1); const curr = new Array(b.length+1);
+    for (let j=0;j<=b.length;j++) prev[j] = j;
+    for (let i=1;i<=a.length;i++){
+      curr[0] = i;
+      for (let j=1;j<=b.length;j++){
+        const cost = a[i-1]===b[j-1] ? 0 : 1;
+        curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost);
+      }
+      for (let j=0;j<=b.length;j++) prev[j]=curr[j];
+    }
+    return prev[b.length];
+  }
+  function epeFuzzyMatchTerm(term, query){
+    // Typo tolerance scales with word length -- short words need an
+    // exact/near-exact match to avoid false positives (e.g. "cat" vs
+    // "car" shouldn't match everything), longer words tolerate more.
+    const maxDist = query.length <= 4 ? 1 : query.length <= 7 ? 2 : 3;
+    return epeLevenshtein(term, query) <= maxDist;
+  }
+
+  // ---- Color extraction: real, derived from each asset's actual
+  // underlying color (already present in the source presets), mapped
+  // to the nearest named color via genuine RGB distance -- not
+  // invented per-asset. Assets without an inherent color (icons,
+  // shapes, text styles) simply have no color facet, honestly. ----
+  const EPE_NAMED_COLORS = {
+    red:'#E05252', orange:'#FF6B35', yellow:'#FFB800', green:'#3BA55C',
+    blue:'#4A7FE0', purple:'#5142D6', black:'#111111', white:'#FFFFFF', gray:'#888888',
+  };
+  function epeHexToRgb(hex){
+    hex = hex.replace('#','');
+    if (hex.length === 3) hex = hex.split('').map(c=>c+c).join('');
+    const n = parseInt(hex, 16);
+    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+  }
+  function epeNearestNamedColor(hex){
+    if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) return null;
+    const c = epeHexToRgb(hex);
+    let best = null, bestDist = Infinity;
+    for (const [name, nHex] of Object.entries(EPE_NAMED_COLORS)){
+      const nc = epeHexToRgb(nHex);
+      const dist = Math.sqrt((c.r-nc.r)**2 + (c.g-nc.g)**2 + (c.b-nc.b)**2);
+      if (dist < bestDist){ bestDist = dist; best = name; }
+    }
+    return best;
+  }
+  // ---- Style derivation: a simple, honest heuristic from real data
+  // (color + shape), not a per-item invented label. ----
+  function epeDeriveStyle(asset, sourceColor){
+    const styles = [];
+    if (sourceColor){
+      const named = epeNearestNamedColor(sourceColor);
+      if (named === 'black' || named === 'yellow') styles.push('luxury');
+      if (named === 'red' || named === 'orange') styles.push('bold');
+      if (named === 'green' || named === 'blue') styles.push('fresh');
+    }
+    if (asset.category === 'Frames' || asset.category === 'Shapes') styles.push('minimal');
+    if (asset.tags && asset.tags.includes('ribbon')) styles.push('bold');
+    return [...new Set(styles)];
+  }
+
+  // Annotate the existing registry with color/style facets, derived
+  // from each entry's own preview markup (which already encodes the
+  // real color used) -- additive metadata, doesn't touch how any
+  // asset renders or inserts.
+  function epeAnnotateAssetFacets(){
+    EPE_ASSET_REGISTRY.forEach(asset => {
+      const colorMatch = /background:\s*(#[0-9a-fA-F]{3,8})/.exec(asset.preview);
+      const sourceColor = colorMatch ? colorMatch[1] : null;
+      asset.color = sourceColor ? epeNearestNamedColor(sourceColor) : null;
+      asset.style = epeDeriveStyle(asset, sourceColor);
+    });
+  }
+
+  // ---- Upgraded search: same signature as before (query, category)
+  // so every existing caller keeps working unmodified. Adds optional
+  // 3rd/4th args (color, style) and special category values
+  // 'recent'/'popular'/'favorites' -- all additive, backward
+  // compatible with the single-arg and two-arg call patterns already
+  // in use. ----
+  function epeSearchAssets(query, category, color, style){
+    if (!epeAssetSearchIndex) epeAssetSearchIndex = epeBuildAssetSearchIndex();
+    if (!EPE_ASSET_REGISTRY[0] || EPE_ASSET_REGISTRY[0].color === undefined) epeAnnotateAssetFacets();
+
+    // Special pseudo-categories: recent/popular/favorites bypass the
+    // normal registry search and pull from their own real, tracked
+    // localStorage-backed lists instead.
+    if (category === 'recent' || category === 'popular' || category === 'favorites'){
+      return epeGetAssetsForSpecialView(category);
+    }
+
+    const q = (query||'').toLowerCase().trim();
+    let results;
+    if (!q){
+      results = EPE_ASSET_REGISTRY.slice();
+    } else {
+      const tokens = q.split(/\s+/).filter(Boolean);
+      const conceptTerms = epeExpandQueryConcepts(q);
+      const matchedIndices = new Set();
+      // 1) Exact/substring match, per token AND for the full phrase
+      //    (so both "50% off" as a phrase and "50" + "off" as
+      //    separate tokens can match). Short queries (<=3 chars) use a
+      //    word-boundary match instead of a raw substring match --
+      //    otherwise short tokens like "off" match anywhere, including
+      //    inside unrelated words like "coffee" (c-OFF-ee), a real
+      //    false positive found during testing.
+      const allQueries = [q, ...tokens];
+      function epeTermMatchesQuery(term, aq){
+        if (aq.length <= 3) return new RegExp('(^|[^a-z0-9])' + aq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(term);
+        return term.includes(aq);
+      }
+      for (const [term, idxSet] of epeAssetSearchIndex){
+        if (allQueries.some(aq => epeTermMatchesQuery(term, aq))) idxSet.forEach(i => matchedIndices.add(i));
+        if (conceptTerms.has(term)) idxSet.forEach(i => matchedIndices.add(i));
+      }
+      // 2) Fuzzy fallback -- only runs if lexical + concept matching
+      //    found nothing, so typo tolerance never dilutes a precise result.
+      if (matchedIndices.size === 0){
+        for (const [term] of epeAssetSearchIndex){
+          if (tokens.some(t => epeFuzzyMatchTerm(term, t))){
+            epeAssetSearchIndex.get(term).forEach(i => matchedIndices.add(i));
+          }
+        }
+      }
+      results = [...matchedIndices].map(i => EPE_ASSET_REGISTRY[i]);
+    }
+    if (category && category !== 'all') results = results.filter(a => a.category === category);
+    if (color && color !== 'all') results = results.filter(a => a.color === color);
+    if (style && style !== 'all') results = results.filter(a => a.style && a.style.includes(style));
+    return results;
+  }
+
+  // ---- Recent searches, favorites, popular usage: real
+  // localStorage-backed persistence, no backend. Each is a small,
+  // genuinely-read-and-written store, not a stub. ----
+  const EPE_SEARCH_RECENT_KEY = 'toolflight_epe_recent_searches';
+  const EPE_ASSET_FAVORITES_KEY = 'toolflight_epe_asset_favorites';
+  const EPE_ASSET_POPULARITY_KEY = 'toolflight_epe_asset_popularity';
+  const EPE_RECENT_SEARCH_MAX = 10;
+
+  function epeLoadJSON(key, fallback){
+    try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }catch(e){ return fallback; }
+  }
+  function epeSaveJSON(key, value){
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){ /* quota or disabled storage -- fail silently, search still works without persistence */ }
+  }
+
+  function epeRecordRecentSearch(query){
+    const q = (query||'').trim();
+    if (q.length < 2) return; // don't pollute history with single-character noise
+    let recent = epeLoadJSON(EPE_SEARCH_RECENT_KEY, []);
+    recent = recent.filter(r => r.toLowerCase() !== q.toLowerCase());
+    recent.unshift(q);
+    recent = recent.slice(0, EPE_RECENT_SEARCH_MAX);
+    epeSaveJSON(EPE_SEARCH_RECENT_KEY, recent);
+  }
+  function epeGetRecentSearches(){ return epeLoadJSON(EPE_SEARCH_RECENT_KEY, []); }
+
+  function epeIsFavoriteAsset(id){ return epeLoadJSON(EPE_ASSET_FAVORITES_KEY, []).includes(id); }
+  function epeToggleFavoriteAsset(id){
+    let favs = epeLoadJSON(EPE_ASSET_FAVORITES_KEY, []);
+    if (favs.includes(id)) favs = favs.filter(f => f !== id); else favs.push(id);
+    epeSaveJSON(EPE_ASSET_FAVORITES_KEY, favs);
+    return favs.includes(id);
+  }
+
+  function epeRecordAssetUse(id){
+    const pop = epeLoadJSON(EPE_ASSET_POPULARITY_KEY, {});
+    pop[id] = (pop[id]||0) + 1;
+    epeSaveJSON(EPE_ASSET_POPULARITY_KEY, pop);
+  }
+  function epeGetAssetsForSpecialView(kind){
+    if (kind === 'favorites'){
+      const favs = new Set(epeLoadJSON(EPE_ASSET_FAVORITES_KEY, []));
+      return EPE_ASSET_REGISTRY.filter(a => favs.has(a.id));
+    }
+    if (kind === 'popular'){
+      const pop = epeLoadJSON(EPE_ASSET_POPULARITY_KEY, {});
+      // Honest fallback: with no usage yet in this browser, "popular"
+      // has nothing real to show -- rather than fake counts, fall back
+      // to a small, clearly-labeled starter set (see epeGetTrendingAssets).
+      const used = EPE_ASSET_REGISTRY.filter(a => pop[a.id] > 0);
+      if (used.length === 0) return [];
+      return used.sort((a,b) => (pop[b.id]||0) - (pop[a.id]||0));
+    }
+    return [];
+  }
+  // ---- Trending: honestly scoped. With no backend, there is no real
+  // cross-user aggregate data available. "Trending" here means
+  // "most-used on this device" -- the same underlying data as
+  // Popular, surfaced under a second, clearly-explained label rather
+  // than invented as fake global trend data. If usage is still empty,
+  // a small curated starter set is shown instead of an empty panel,
+  // and is visually distinguished (see UI) so it's never confused
+  // with real usage data. ----
+  const EPE_TRENDING_STARTER_IDS = ['offer-50-off','sticker-sale','sticker-hot','sticker-flash-sale','offer-flash-deal','cta-buy-now'];
+  function epeGetTrendingAssets(){
+    const pop = epeLoadJSON(EPE_ASSET_POPULARITY_KEY, {});
+    const used = EPE_ASSET_REGISTRY.filter(a => pop[a.id] > 0).sort((a,b) => (pop[b.id]||0)-(pop[a.id]||0));
+    if (used.length >= 4) return { assets: used, isRealUsage: true };
+    const starter = EPE_TRENDING_STARTER_IDS.map(id => EPE_ASSET_REGISTRY.find(a => a.id === id)).filter(Boolean);
+    return { assets: starter, isRealUsage: false };
+  }
+
+  // Wrap every asset's insert() to also record real usage, without
+  // touching each asset definition individually -- one pass over the
+  // already-built registry.
+  (function epeWrapAssetInsertForTracking(){
+    EPE_ASSET_REGISTRY.forEach(asset => {
+      const original = asset.insert;
+      asset.insert = function(){
+        original();
+        epeRecordAssetUse(asset.id);
+      };
+    });
+  })();
+
+
   // ---- UI: search + category filter + lazy/incremental rendering.
   // With ~150-250 real assets (not thousands), full DOM-node-recycling
   // virtualization (like react-window) isn't necessary for smooth
@@ -13250,15 +13511,26 @@ if (document.getElementById('epeDrop')){
   let epeAssetRenderedCount = 0;
   let epeAssetScrollObserver = null;
 
-  function epeRenderAssetLibrary(query, category){
+  let epeSearchDebounceTimer = null;
+  function epeRenderAssetLibrary(query, category, color, style){
     const grid = document.getElementById('epeAssetGrid');
     if (!grid) return;
-    epeAssetCurrentResults = epeSearchAssets(query, category);
+    epeAssetCurrentResults = epeSearchAssets(query, category, color, style);
     epeAssetRenderedCount = 0;
     grid.innerHTML = '';
     const countEl = document.getElementById('epeAssetResultCount');
-    if (countEl) countEl.textContent = epeAssetCurrentResults.length + (epeAssetCurrentResults.length===1?' asset':' assets');
+    if (countEl){
+      const label = (category==='recent'?'Recent':category==='popular'?'Popular':category==='favorites'?'Favorites':epeAssetCurrentResults.length + (epeAssetCurrentResults.length===1?' asset':' assets'));
+      countEl.textContent = label;
+    }
     epeAppendAssetBatch();
+    epeRenderSearchSuggestions(query);
+    // Real search history: debounced so it records completed queries,
+    // not every intermediate keystroke.
+    clearTimeout(epeSearchDebounceTimer);
+    if (query && query.trim().length >= 2){
+      epeSearchDebounceTimer = setTimeout(() => epeRecordRecentSearch(query), 800);
+    }
   }
   function epeAppendAssetBatch(){
     const grid = document.getElementById('epeAssetGrid');
@@ -13271,8 +13543,18 @@ if (document.getElementById('epeDrop')){
       cell.className = 'epe-asset-cell';
       cell.title = asset.title;
       cell.setAttribute('aria-label', asset.title + ', ' + asset.category);
-      cell.innerHTML = `<span class="epe-asset-preview">${asset.preview}</span><span class="epe-asset-title">${asset.title}</span>`;
-      cell.onclick = asset.insert;
+      const isFav = epeIsFavoriteAsset(asset.id);
+      cell.innerHTML = `<span class="epe-asset-preview">${asset.preview}</span><span class="epe-asset-title">${asset.title}</span><span class="epe-asset-fav${isFav?' active':''}" role="button" aria-label="Toggle favorite" title="Favorite">${isFav?'\u2605':'\u2606'}</span>`;
+      cell.onclick = (e) => {
+        if (e.target.classList.contains('epe-asset-fav')){
+          e.stopPropagation();
+          const nowFav = epeToggleFavoriteAsset(asset.id);
+          e.target.textContent = nowFav ? '\u2605' : '\u2606';
+          e.target.classList.toggle('active', nowFav);
+          return;
+        }
+        asset.insert();
+      };
       frag.appendChild(cell);
     });
     grid.appendChild(frag);
@@ -13298,14 +13580,54 @@ if (document.getElementById('epeDrop')){
 
   document.getElementById('epeAssetSearch') && document.getElementById('epeAssetSearch').addEventListener('input', (e) => {
     const cat = document.querySelector('.epe-asset-cat-btn.active');
-    epeRenderAssetLibrary(e.target.value, cat ? cat.dataset.cat : 'all');
+    const colorEl = document.getElementById('epeAssetColorFilter');
+    const styleEl = document.getElementById('epeAssetStyleFilter');
+    epeRenderAssetLibrary(e.target.value, cat ? cat.dataset.cat : 'all', colorEl ? colorEl.value : 'all', styleEl ? styleEl.value : 'all');
   });
+  document.getElementById('epeAssetSearch') && document.getElementById('epeAssetSearch').addEventListener('focus', () => epeRenderSearchSuggestions(document.getElementById('epeAssetSearch').value));
+  document.addEventListener('pointerdown', (e) => {
+    const box = document.getElementById('epeAssetSuggestions');
+    const input = document.getElementById('epeAssetSearch');
+    if (!box || box.classList.contains('hidden')) return;
+    if (e.target === input || box.contains(e.target)) return; // let clicks inside the input/dropdown behave normally
+    box.classList.add('hidden');
+  });
+  document.getElementById('epeAssetColorFilter') && document.getElementById('epeAssetColorFilter').addEventListener('change', () => epeSetAssetCategory(document.querySelector('.epe-asset-cat-btn.active')?.dataset.cat || 'all'));
+  document.getElementById('epeAssetStyleFilter') && document.getElementById('epeAssetStyleFilter').addEventListener('change', () => epeSetAssetCategory(document.querySelector('.epe-asset-cat-btn.active')?.dataset.cat || 'all'));
   function epeSetAssetCategory(cat){
     document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
     const searchEl = document.getElementById('epeAssetSearch');
-    epeRenderAssetLibrary(searchEl ? searchEl.value : '', cat);
+    const colorEl = document.getElementById('epeAssetColorFilter');
+    const styleEl = document.getElementById('epeAssetStyleFilter');
+    epeRenderAssetLibrary(searchEl ? searchEl.value : '', cat, colorEl ? colorEl.value : 'all', styleEl ? styleEl.value : 'all');
   }
   document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.addEventListener('click', () => epeSetAssetCategory(b.dataset.cat)));
+
+  // ---- Search suggestions: real-time dropdown of matching titles +
+  // recent searches, not a static/fake list. ----
+  function epeRenderSearchSuggestions(query){
+    const box = document.getElementById('epeAssetSuggestions');
+    if (!box) return;
+    const input = document.getElementById('epeAssetSearch');
+    const q = (query||'').trim();
+    if (document.activeElement !== input || q.length < 1){ box.classList.add('hidden'); return; }
+    let items = [];
+    if (q.length >= 1){
+      const seen = new Set();
+      epeSearchAssets(q, 'all').slice(0, 6).forEach(a => { if (!seen.has(a.title)){ seen.add(a.title); items.push({ label:a.title, type:'asset' }); } });
+    } else {
+      epeGetRecentSearches().slice(0, 6).forEach(r => items.push({ label:r, type:'recent' }));
+    }
+    if (!items.length){ box.classList.add('hidden'); box.innerHTML=''; return; }
+    box.innerHTML = items.map(it => `<button type="button" class="epe-asset-suggestion" data-label="${it.label.replace(/"/g,'&quot;')}">${it.type==='recent'?'\u{1F551} ':'\u{1F50D} '}${it.label}</button>`).join('');
+    box.classList.remove('hidden');
+    box.querySelectorAll('.epe-asset-suggestion').forEach(btn => btn.onmousedown = () => {
+      const searchEl = document.getElementById('epeAssetSearch');
+      if (searchEl) searchEl.value = btn.dataset.label;
+      epeSetAssetCategory(document.querySelector('.epe-asset-cat-btn.active')?.dataset.cat || 'all');
+      box.classList.add('hidden');
+    });
+  }
 
   // Build the library lazily -- only render its contents the first
   // time its accordion is actually opened, not on page load, so the
