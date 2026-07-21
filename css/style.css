@@ -836,6 +836,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    accidentally touch -- not just visually hidden, structurally absent from
    the scroll path until deliberately opened. */
 .pp-accordion{border:1.5px solid var(--card-border);border-radius:14px;margin-top:12px;padding:0 14px;background:var(--card);}
+.pp-accordion.epe-category-hidden{ display:none !important; }
 #epeToolPanel .pp-accordion{ background:var(--epe-shell-surface); border-color:var(--epe-shell-border); }
 .pp-accordion[open]{padding-bottom:14px;}
 /* Explicit, defensive rule: without this, author rules elsewhere on the page
@@ -957,15 +958,29 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 
 /* ---- Canvas area ---- */
 #epeCanvasArea{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+/* Fix for the Fit to Screen cumulative-shrink bug: #epeCanvasStageWrap
+   inherits .editor-stage-wrap, which has no explicit width and an
+   arbitrary max-height:520px unrelated to actual available space.
+   Without a stable, parent-determined size, each fitEpeCanvasDisplay()
+   call measured wrap.clientWidth/Height AFTER the previous call had
+   already resized the canvas inside it, creating a feedback loop.
+   width:100% and flex:1 1 auto make the wrap's size depend only on its
+   parent, never on its child canvas's current size. */
+#epeCanvasStageWrap{ width:100%; max-width:100%; max-height:none; flex:1 1 auto; min-height:0; box-sizing:border-box; }
 #epeCanvasTopControls{ margin-bottom:10px; }
 
 /* ---- Floating canvas controls ---- */
 #epeFloatingControls{
-  position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
   display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
   background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
-  border:1px solid var(--epe-shell-border); z-index:60; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
 }
+#epeFloatingControls.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+.epe-drag-handle{ cursor:grab; touch-action:none; }
+.epe-drag-handle:active{ cursor:grabbing; }
+#epeFloatingControls.epe-dragging{ transition:none !important; }
 #epeFloatingControls button{
   min-width:44px; min-height:44px; border-radius:999px; border:none; background:transparent;
   display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
@@ -987,7 +1002,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   pointer-events:none; /* empty areas of the bar let clicks pass through to the canvas underneath */
   opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
 }
-#epeFloatingBrushBar.hidden{ opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#epeFloatingBrushBar.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
 #epeFloatingBrushBar > *{ pointer-events:auto; } /* the bar's own controls stay fully clickable */
 #epeSelectSourceBtn{
   min-height:48px; padding:0 16px; border-radius:999px; border:1px solid var(--epe-shell-border);
@@ -1010,7 +1025,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
   pointer-events:none;
   opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
 }
-#epeSelectionMiniToolbar.hidden{ opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#epeSelectionMiniToolbar.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
 #epeSelectionMiniToolbar > *{ pointer-events:auto; }
 #epeSelectionMiniToolbar button{
   min-width:48px; min-height:48px; border-radius:999px; border:none; background:transparent;
