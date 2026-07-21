@@ -966,7 +966,9 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    already resized the canvas inside it, creating a feedback loop.
    width:100% and flex:1 1 auto make the wrap's size depend only on its
    parent, never on its child canvas's current size. */
-#epeCanvasStageWrap{ width:100%; max-width:100%; max-height:none; flex:1 1 auto; min-height:0; box-sizing:border-box; }
+#epeCanvasStageWrap{ width:100%; max-width:100%; max-height:none; flex:1 1 auto; min-height:0; box-sizing:border-box;
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
 #epeCanvasTopControls{ margin-bottom:10px; }
 
 /* ---- Floating canvas controls ---- */
@@ -1123,3 +1125,22 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 @media (prefers-reduced-motion: reduce){
   #epeToolPanel{ transition:none !important; }
 }
+
+/* Status bar (desktop only -- mobile uses that space for the bottom nav) */
+#epeStatusBar{
+  display:none; align-items:center; gap:8px; padding-top:8px; font-size:11.5px; color:var(--ink-soft);
+  border-top:1px solid var(--epe-shell-border); margin-top:8px; font-variant-numeric:tabular-nums;
+}
+.epe-status-sep{ opacity:0.4; }
+@media (min-width:900px){ #epeStatusBar{ display:flex; } }
+
+/* Smooth zoom transitions -- short enough (150ms) to stay responsive
+   during slider drags and pinch gestures, but perceptible for discrete
+   changes (buttons, presets, Fit to Screen). Purely visual; does not
+   affect the underlying canvas pixel data or exports. */
+#epeArtboardCanvas, #epeOverlayCanvas{ transition:width 0.15s ease, height 0.15s ease; }
+
+/* Pan mode cursor feedback */
+#epeCanvasStageWrap.epe-pan-mode{ cursor:grab; }
+#epeCanvasStageWrap.epe-pan-mode:active{ cursor:grabbing; }
+#epeFloatPanBtn.active{ background:var(--accent1); color:#fff; }
