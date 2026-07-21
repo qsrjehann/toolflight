@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260721-2331" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260721-2331">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260721-2331">
+<link rel="icon" href="assets/favicon.ico?v=20260721-2344" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260721-2344">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260721-2344">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260721-2331">
+<link rel="stylesheet" href="css/style.css?v=20260721-2344">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260721-2331" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260721-2344" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -664,11 +664,61 @@
 
         <details class="pp-accordion hidden" id="epeAccordionShapePanel">
           <summary class="pp-accordion-summary">Shape / Icon Style</summary>
-          <div class="row"><input type="color" id="epeShapeColorInput" value="#5142D6"></div>
-          <div class="row" id="epeShapeBorderRow" style="margin-top:8px;">
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Fill</p>
+          <div class="row" style="flex-wrap:wrap;gap:8px;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="epeShapeFillType" value="solid" checked> Solid</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="epeShapeFillType" value="gradient"> Gradient</label>
+          </div>
+          <div class="row" id="epeShapeSolidRow" style="margin-top:8px;">
+            <input type="color" id="epeShapeColorInput" value="#5142D6">
+            <button class="btn btn-ghost" id="epeShapeReplaceColorBtn" type="button" title="Replace this color everywhere it's used across the whole design">Replace Color Everywhere</button>
+          </div>
+          <div class="row hidden" id="epeShapeGradientRow" style="margin-top:8px;flex-wrap:wrap;gap:8px;">
+            <input type="color" id="epeShapeGradientFrom" value="#5142D6" aria-label="Gradient start color">
+            <input type="color" id="epeShapeGradientTo" value="#8B7CF6" aria-label="Gradient end color">
+            <select id="epeShapeGradientMode" aria-label="Gradient shape"><option value="linear">Linear</option><option value="radial">Radial</option></select>
+            <input type="range" id="epeShapeGradientAngle" min="0" max="360" value="45" aria-label="Gradient angle" style="flex:1;min-width:80px;">
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Corner Radius</p>
+          <div class="row" id="epeShapeCornerRadiusRow">
+            <input type="range" id="epeShapeCornerRadius" min="0" max="50" value="0" style="flex:1;">
+            <span id="epeShapeCornerRadiusVal" style="font-size:12px;color:var(--ink-soft);min-width:32px;">0%</span>
+          </div>
+
+          <div class="row" id="epeShapeBorderRow" style="margin-top:14px;flex-wrap:wrap;gap:8px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShapeBorderEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Border</label>
+            <input type="color" id="epeShapeBorderColor" value="#111111">
+            <input type="range" id="epeShapeBorderWidth" min="1" max="20" value="2" aria-label="Border width" style="flex:1;min-width:70px;">
+            <select id="epeShapeBorderStyle" aria-label="Border style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Shadow</p>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="epeShapeShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable shadow</label>
+          <div class="qr-controls" id="epeShapeShadowControls">
+            <div class="ctrl"><label for="epeShapeShadowColor">Color</label><input type="color" id="epeShapeShadowColor" value="#000000"></div>
+            <div class="ctrl"><label for="epeShapeShadowBlur">Blur</label><input type="range" id="epeShapeShadowBlur" min="0" max="40" value="4"></div>
+            <div class="ctrl"><label for="epeShapeShadowOffsetX">Offset X</label><input type="range" id="epeShapeShadowOffsetX" min="-30" max="30" value="2"></div>
+            <div class="ctrl"><label for="epeShapeShadowOffsetY">Offset Y</label><input type="range" id="epeShapeShadowOffsetY" min="-30" max="30" value="2"></div>
+            <div class="ctrl"><label for="epeShapeShadowOpacity">Opacity</label><input type="range" id="epeShapeShadowOpacity" min="0" max="100" value="40"></div>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Glow</p>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="epeShapeGlowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable glow</label>
+          <div class="qr-controls" id="epeShapeGlowControls">
+            <div class="ctrl"><label for="epeShapeGlowColor">Color</label><input type="color" id="epeShapeGlowColor" value="#5142D6"></div>
+            <div class="ctrl"><label for="epeShapeGlowBlur">Blur</label><input type="range" id="epeShapeGlowBlur" min="0" max="40" value="12"></div>
+            <div class="ctrl"><label for="epeShapeGlowOpacity">Opacity</label><input type="range" id="epeShapeGlowOpacity" min="0" max="100" value="70"></div>
+          </div>
+
+          <div id="epeIconSwapSection" class="hidden">
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Edit Icon</p>
+            <input type="search" id="epeIconSwapSearch" placeholder="Search to replace this icon…" aria-label="Search replacement icon" style="width:100%;margin-bottom:8px;">
+            <div id="epeIconSwapGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(36px, 1fr));gap:6px;max-height:160px;overflow-y:auto;"></div>
+            <p class="editor-hint">Choosing a new icon keeps this layer’s position, size, color, gradient, shadow, and glow — only the shape changes.</p>
           </div>
         </details>
+
 
         <details class="pp-accordion" id="epeAccordionArrangeAlign">
           <summary class="pp-accordion-summary">Arrange &amp; Align</summary>
@@ -1323,7 +1373,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260721-2331" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260721-2344" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1360,6 +1410,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260721-2331"></script>
+<script defer src="js/app.js?v=20260721-2344"></script>
 </body>
 </html>
