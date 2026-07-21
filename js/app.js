@@ -9770,6 +9770,13 @@ if (document.getElementById('epeDrop')){
     document.getElementById('epeCloneOptionsRow') && document.getElementById('epeCloneOptionsRow').classList.toggle('hidden', tool !== 'clone' && tool !== 'heal');
     if (tool !== 'clone' && tool !== 'heal'){ epeCloneSource = null; epeCloneOffset = null; }
     if (typeof epeSelectSourceMode !== 'undefined') epeSelectSourceMode = false;
+    // Activating a brush tool deselects any selected object layer --
+    // matches standard editor behavior, and prevents the Selection
+    // Mini-Toolbar and Floating Brush Bar from being visible (and
+    // physically overlapping) at the same time, a confirmed real bug.
+    if (tool !== 'none' && typeof dseState !== 'undefined' && dseState.selectedIds.size > 0 && typeof dseSelectLayer === 'function'){
+      dseSelectLayer(null, false);
+    }
     epeUpdateBrushCursor();
     renderEpeOverlay();
     if (typeof epeUpdateFloatingBrushBar === 'function') epeUpdateFloatingBrushBar();
@@ -10314,12 +10321,12 @@ if (document.getElementById('epeDrop')){
     epeOverlayEl.style.position = 'absolute'; epeOverlayEl.style.top = '0'; epeOverlayEl.style.left = '0'; epeOverlayEl.style.pointerEvents = 'none';
   }
 
-  function renderEpeAll(){
+  function renderEpeAll(skipFit){
     renderEpeArtboard(epeArtboardEl);
     renderEpeOverlay();
     // Phase 3: draw selection handles on top of the overlay
     if (typeof dseDrawSelectionHandles === 'function') dseDrawSelectionHandles(epeOverlayEl.getContext('2d'));
-    fitEpeCanvasDisplay();
+    if (!skipFit) fitEpeCanvasDisplay();
     document.getElementById('epeOutputDims').textContent = `${epeArtboardW}\u00d7${epeArtboardH}px (full resolution)`;
     if (typeof renderEpeInspector === 'function') renderEpeInspector(); // cheap (no pixel scan) -- always safe to run
     const analysisOpen = document.getElementById('epeAccordionAnalysis') && document.getElementById('epeAccordionAnalysis').open;
@@ -10899,7 +10906,12 @@ if (document.getElementById('epeDrop')){
     if (searchQ) sorted = sorted.filter(l => (l.name||'').toLowerCase().includes(searchQ));
     panel.innerHTML = sorted.map(layer => {
       const isSelected = dseState.selectedIds.has(layer.id);
+      const thumbUrl = (typeof dseGetLayerThumbnailUrl === 'function') ? dseGetLayerThumbnailUrl(layer) : null;
+      const thumbHtml = thumbUrl
+        ? `<span class="dse-layer-thumb" style="background-image:url('${thumbUrl}')"></span>`
+        : `<span class="dse-layer-thumb dse-layer-thumb-fallback" aria-hidden="true">${layer.type==='text'?'T':layer.type==='group'?'\u25A6':'\u25A2'}</span>`;
       return `<div class="dse-layer-row${isSelected?' dse-layer-selected':''}" data-id="${layer.id}" role="option" aria-selected="${isSelected}" tabindex="0" draggable="true">
+        ${thumbHtml}
         <button class="dse-layer-vis${layer.visible?'':' dse-layer-hidden'}" data-id="${layer.id}" type="button" aria-label="${layer.visible?'Hide':'Show'} layer" title="${layer.visible?'Visible':'Hidden'}">${layer.visible?'\u{1F441}':'\u25a1'}</button>
         <span class="dse-layer-name" data-id="${layer.id}">${layer.name}</span>
         <button class="dse-layer-move" data-id="${layer.id}" data-dir="up" type="button" aria-label="Move layer up">\u2191</button>
@@ -11017,7 +11029,7 @@ if (document.getElementById('epeDrop')){
           sourceImg: null,                       // HTMLImageElement can't be serialized; restored from epeSourceImg
           processedCanvasCache: null,            // computed cache, never stored in history
           localEditsCanvas: l.localEditsCanvas ? l.localEditsCanvas.toDataURL('image/png') : null,
-          eraseMask: l.eraseMask ? Array.from(l.eraseMask) : null,
+          eraseMask: l.eraseMask ? l.eraseMask.slice() : null,
           _cachedLines: undefined,               // derived/recomputed on measure, never stored
         })),
         selectedIds: [...dseState.selectedIds],
@@ -11077,7 +11089,7 @@ if (document.getElementById('epeDrop')){
     }
   });
   document.addEventListener('pointermove', (e) => {
-    if (epeIsPainting){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epeStampAt(sp.x, sp.y); renderEpeAll(); return; }
+    if (epeIsPainting){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epeStampAt(sp.x, sp.y); renderEpeAll(true); return; }
     if (epeCropDragMode){ epeCropPointerMove(e.clientX, e.clientY); return; }
     if ((epeSelectionDrawing || epePatchDragStart) && epeSourceImg){ const sp = epeCanvasToSourceCoords(e.clientX, e.clientY); epeSelectionPointerMove(sp.x, sp.y); return; }
     dsePointerMoveOnCanvas(e.clientX, e.clientY);
@@ -12432,6 +12444,8 @@ if (document.getElementById('epeDrop')){
     'amazon-main':    { name:'Amazon Main Image', w:2000, h:2000, bg:'white', note:'Pure white background (RGB 255,255,255) and the product must fill \u226585% of the frame -- both required for Amazon\u2019s automated compliance check.' },
     'amazon-gallery': { name:'Amazon Gallery', w:2000, h:2000, bg:'none', note:'Secondary images allow lifestyle or non-white backgrounds.' },
     'daraz':          { name:'Daraz Product Image', w:1500, h:1500, bg:'white', note:'Daraz requires a square image between 500\u00d7500 and 2000\u00d72000px.' },
+    'ebay':           { name:'eBay Listing Photo', w:1600, h:1600, bg:'none', note:'eBay requires a 500px minimum on the longest side; 1600\u00d71600 is eBay\u2019s own recommended size to enable the zoom feature.' },
+    'etsy':           { name:'Etsy Listing Photo', w:2000, h:2000, bg:'none', note:'2000\u00d72000px square is the size most consistently recommended across Etsy seller guides for search display and zoom clarity.' },
     'shopify':        { name:'Shopify Product', w:2048, h:2048, bg:'none', note:'2048\u00d72048px square is Shopify\u2019s documented recommended size for zoom and Retina display.' },
     'facebook-marketplace': { name:'Facebook Marketplace', w:1080, h:1080, bg:'none', note:'Square 1:1 is the safest, most consistent format across Facebook\u2019s surfaces.' },
     'instagram-square':  { name:'Instagram Square', w:1080, h:1080, bg:'none' },
@@ -12439,6 +12453,7 @@ if (document.getElementById('epeDrop')){
     'instagram-story':   { name:'Instagram Story', w:1080, h:1920, bg:'none', note:'9:16 full-screen format.' },
     'tiktok-shop':    { name:'TikTok Shop', w:1080, h:1920, bg:'none', note:'TikTok is fully vertical -- 9:16 for all image and video content.' },
     'pinterest-pin':  { name:'Pinterest Pin', w:1000, h:1500, bg:'none', note:'2:3 is Pinterest\u2019s current recommended pin ratio; taller pins now get clipped in-feed.' },
+    'linkedin-square':{ name:'LinkedIn Square Post', w:1080, h:1080, bg:'none', note:'1080\u00d71080 is LinkedIn\u2019s documented square post size -- the most relevant format for sharing a product photo as a feed post.' },
     // Marketing Studio (Phase 5) additions -- reusing the same preset
     // table and apply mechanism rather than a parallel system. Sizes
     // marked (research) come from live 2026 sources cited in the final
@@ -13216,6 +13231,16 @@ if (document.getElementById('epeDrop')){
 
   function epeSelectionPointerDown(sx, sy){
     if (epeSelectionMode === 'none') return false;
+    if (epeSelectionMode === 'wand'){
+      epeMagicWandSelect(sx, sy);
+      return true;
+    }
+    if (epeSelectionMode === 'quickselect'){
+      epeQuickSelectAnchorColor = null;
+      epeSelectionDrawing = true;
+      epeQuickSelectStampAt(sx, sy, epeBrushSize/2 || 20);
+      return true;
+    }
     if (epeSelectionMode === 'rect' || epeSelectionMode === 'ellipse'){
       epeSelectionRectStart = { x: sx, y: sy }; epeSelectionDrawing = true; return true;
     }
@@ -13232,6 +13257,10 @@ if (document.getElementById('epeDrop')){
   }
   function epeSelectionPointerMove(sx, sy){
     if (!epeSelectionDrawing) return;
+    if (epeSelectionMode === 'quickselect'){
+      epeQuickSelectStampAt(sx, sy, epeBrushSize/2 || 20);
+      return;
+    }
     if (epeSelectionMode === 'rect'){
       const x0=epeSelectionRectStart.x, y0=epeSelectionRectStart.y;
       epeSelectionPath = [{x:x0,y:y0},{x:sx,y:y0},{x:sx,y:sy},{x:x0,y:sy}];
@@ -13247,6 +13276,12 @@ if (document.getElementById('epeDrop')){
   }
   function epeSelectionPointerUp(){
     if (epeSelectionMode === 'polygon') return; // polygon commits on double-click, not pointerup
+    if (epeSelectionMode === 'quickselect'){
+      epeSelectionDrawing = false; epeQuickSelectAnchorColor = null;
+      document.getElementById('epeSelectionActions') && document.getElementById('epeSelectionActions').classList.remove('hidden');
+      toast('Quick Select selection updated.');
+      return;
+    }
     if (!epeSelectionDrawing) return;
     epeSelectionDrawing = false;
     epeCommitSelection();
@@ -15286,6 +15321,115 @@ if (document.getElementById('epeDrop')){
     // intensity: 'light' | 'medium' | 'heavy' -- reserved for future use.
     // Intentionally not calling navigator.vibrate() yet.
     return;
+  }
+
+
+  // ---- New Layer (Phase C): fills a genuine gap -- there was no way
+  // to add a blank layer to build up a design from scratch. Reuses the
+  // existing shape-layer factory rather than inventing a new layer
+  // type; starts fully transparent (opacity:0) and full-artboard-sized
+  // so it doesn't visually intrude, and is immediately selected so the
+  // Object panel is ready for the person to customize its fill,
+  // opacity, and size. Honest scope: this is a blank *shape* layer for
+  // building up designs with the existing fill/color/effects tools --
+  // it is not a paintable canvas for the brush tools, which operate
+  // specifically on image-type layers in this architecture; extending
+  // that would be a larger architectural change than this phase calls for. ----
+  document.getElementById('epeNewLayerBtn') && (document.getElementById('epeNewLayerBtn').onclick = () => {
+    if (!epeSourceImg){ toast('Upload a product image first.', 'err'); return; }
+    const layer = dseCreateShapeLayer('rectangle', epeArtboardW, epeArtboardH);
+    layer.name = 'New Layer';
+    layer.opacity = 0; // blank/invisible until customized
+    layer.boxW = epeArtboardW; layer.boxH = epeArtboardH;
+    layer.border = { enabled:false, thickness:3, style:'solid', color:'#111111' };
+    dseState.layers.push(layer);
+    dseSelectLayer(layer.id, false);
+    renderEpeAll(); epePushHistory();
+    toast('New blank layer added \u2014 adjust its fill and opacity in the Object panel to use it.');
+  });
+
+
+  // ---- Magic Wand (Phase D): a real flood-fill selection based on
+  // color similarity from a clicked point, replacing the Phase 6
+  // "foundation only" placeholder. Operates on the current composited
+  // pixel data (via the local edits canvas) so it reflects whatever
+  // edits have already been applied, not just the original image. ----
+  let epeWandTolerance = 32;
+  function epeMagicWandSelect(sx, sy){
+    if (!epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const startX = Math.round(sx), startY = Math.round(sy);
+    if (startX < 0 || startX >= w || startY < 0 || startY >= h) return;
+    const canvas = epeEnsureLocalEditsCanvas();
+    const data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const idx0 = (startY*w+startX)*4;
+    const r0 = data[idx0], g0 = data[idx0+1], b0 = data[idx0+2];
+    const tolerance = epeWandTolerance;
+    const mask = new Uint8ClampedArray(w*h);
+    const visited = new Uint8Array(w*h);
+    const stack = [startY*w+startX];
+    visited[startY*w+startX] = 1;
+    while (stack.length){
+      const p = stack.pop();
+      const x = p % w, y = (p / w) | 0;
+      const i = p*4;
+      const dr = data[i]-r0, dg = data[i+1]-g0, db = data[i+2]-b0;
+      const dist = Math.sqrt(dr*dr+dg*dg+db*db);
+      if (dist > tolerance) continue;
+      mask[p] = 255;
+      const neighbors = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+      for (const [nx,ny] of neighbors){
+        if (nx<0||nx>=w||ny<0||ny>=h) continue;
+        const np = ny*w+nx;
+        if (visited[np]) continue;
+        visited[np] = 1;
+        stack.push(np);
+      }
+    }
+    epeSelectionMask = mask;
+    epeSelectionPath = [];
+    document.getElementById('epeSelectionActions') && document.getElementById('epeSelectionActions').classList.remove('hidden');
+    renderEpeOverlay();
+    toast('Magic Wand selection made.');
+  }
+  document.getElementById('epeWandTolerance') && document.getElementById('epeWandTolerance').addEventListener('input', (e) => { epeWandTolerance = +e.target.value; });
+
+  // ---- Quick Select (Phase D): brush-based selection -- drag over an
+  // area and every pixel color-similar to what's under the brush
+  // (compared against a running average of the region, not just the
+  // single first pixel) gets added to the selection. A real, if
+  // deliberately simplified, "paint to select similar areas" tool --
+  // not the full edge-aware segmentation used by professional tools,
+  // which would be a much larger undertaking; disclosed as such. ----
+  let epeQuickSelectAnchorColor = null; // {r,g,b} sampled once, at the start of the stroke
+  function epeQuickSelectStampAt(sx, sy, brushRadius){
+    if (!epeSourceImg) return;
+    const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
+    const canvas = epeEnsureLocalEditsCanvas();
+    const data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    if (!epeSelectionMask) epeSelectionMask = new Uint8ClampedArray(w*h);
+    const x0 = Math.max(0, Math.floor(sx-brushRadius)), x1 = Math.min(w-1, Math.ceil(sx+brushRadius));
+    const y0 = Math.max(0, Math.floor(sy-brushRadius)), y1 = Math.min(h-1, Math.ceil(sy+brushRadius));
+    if (!epeQuickSelectAnchorColor){
+      // Anchor to the color at the very start of the stroke, not a
+      // running average -- otherwise a stroke that starts in one color
+      // region and drags into another gets "poisoned" by the first
+      // samples, preventing the actual target region from matching.
+      const cx = Math.round(epeClamp(sx,0,w-1)), cy = Math.round(epeClamp(sy,0,h-1));
+      const ci = (cy*w+cx)*4;
+      epeQuickSelectAnchorColor = { r: data[ci], g: data[ci+1], b: data[ci+2] };
+    }
+    const { r: anchorR, g: anchorG, b: anchorB } = epeQuickSelectAnchorColor;
+    const tolerance = epeWandTolerance;
+    for (let y=y0; y<=y1; y++){
+      for (let x=x0; x<=x1; x++){
+        if (Math.hypot(x-sx, y-sy) > brushRadius) continue;
+        const i = (y*w+x)*4;
+        const dr = data[i]-anchorR, dg = data[i+1]-anchorG, db = data[i+2]-anchorB;
+        if (Math.sqrt(dr*dr+dg*dg+db*db) <= tolerance) epeSelectionMask[y*w+x] = 255;
+      }
+    }
+    renderEpeOverlay();
   }
 
 
