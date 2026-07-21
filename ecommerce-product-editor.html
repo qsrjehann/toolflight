@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260721-2053" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260721-2053">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260721-2053">
+<link rel="icon" href="assets/favicon.ico?v=20260721-2331" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260721-2331">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260721-2331">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260721-2053">
+<link rel="stylesheet" href="css/style.css?v=20260721-2331">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260721-2053" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260721-2331" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -565,8 +565,14 @@
 
         <details class="pp-accordion" id="epeAccordionAssetLibrary">
           <summary class="pp-accordion-summary">Asset Library <span id="epeAssetResultCount" style="font-weight:400;font-size:11px;color:var(--ink-soft);margin-left:4px;"></span></summary>
-          <div class="row" style="margin-top:4px;">
-            <input type="search" id="epeAssetSearch" placeholder="Search icons, shapes, stickers, elements…" aria-label="Search asset library" style="flex:1;">
+          <div class="row" style="margin-top:4px;position:relative;">
+            <input type="search" id="epeAssetSearch" placeholder="Try &quot;50% off&quot;, &quot;luxury badge&quot;, &quot;sale ribbon&quot;…" aria-label="Search asset library" style="flex:1;" autocomplete="off">
+            <div id="epeAssetSuggestions" class="hidden" role="listbox" aria-label="Search suggestions"></div>
+          </div>
+          <div class="row" style="flex-wrap:wrap;margin-top:8px;gap:6px;">
+            <button type="button" class="epe-asset-cat-btn" data-cat="recent" title="Your recent searches, this device">🕑 Recent</button>
+            <button type="button" class="epe-asset-cat-btn" data-cat="popular" title="Assets you use most, this device">📈 Popular</button>
+            <button type="button" class="epe-asset-cat-btn" data-cat="favorites" title="Your starred assets">★ Favorites</button>
           </div>
           <div class="row" id="epeAssetCategoryRow" style="flex-wrap:wrap;margin-top:8px;gap:6px;">
             <button type="button" class="epe-asset-cat-btn active" data-cat="all">All</button>
@@ -579,10 +585,23 @@
             <button type="button" class="epe-asset-cat-btn" data-cat="Backgrounds">Backgrounds</button>
             <button type="button" class="epe-asset-cat-btn" data-cat="Text Styles">Text Styles</button>
           </div>
+          <div class="row" style="margin-top:8px;gap:8px;">
+            <select id="epeAssetColorFilter" aria-label="Filter by color" style="flex:1;">
+              <option value="all">Any color</option>
+              <option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option>
+              <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+              <option value="black">Black</option><option value="white">White</option><option value="gray">Gray</option>
+            </select>
+            <select id="epeAssetStyleFilter" aria-label="Filter by style" style="flex:1;">
+              <option value="all">Any style</option>
+              <option value="luxury">Luxury</option><option value="bold">Bold</option>
+              <option value="fresh">Fresh</option><option value="minimal">Minimal</option>
+            </select>
+          </div>
           <div id="epeAssetGridScroll">
             <div id="epeAssetGrid" role="list" aria-label="Asset results"></div>
           </div>
-          <p class="editor-hint">Photos and stock Graphics aren’t included — they require a licensed external content source this environment doesn’t have access to. Everything shown here is real, working content, not placeholders.</p>
+          <p class="editor-hint">Photos and stock Graphics aren’t included — they require a licensed external content source this environment doesn’t have access to. Everything shown here is real, working content, not placeholders. Recent/Popular/Trending are tracked on this device only — there’s no backend, so nothing is shared across users.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionShapesIcons">
@@ -1304,7 +1323,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260721-2053" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260721-2331" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1341,6 +1360,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260721-2053"></script>
+<script defer src="js/app.js?v=20260721-2331"></script>
 </body>
 </html>
