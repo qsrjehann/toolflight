@@ -1144,3 +1144,20 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 #epeCanvasStageWrap.epe-pan-mode{ cursor:grab; }
 #epeCanvasStageWrap.epe-pan-mode:active{ cursor:grabbing; }
 #epeFloatPanBtn.active{ background:var(--accent1); color:#fff; }
+
+/* ---- Asset Library (new phase) ---- */
+.epe-asset-cat-btn{
+  font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:999px; border:1px solid var(--card-border);
+  background:var(--card); color:var(--ink-soft); cursor:pointer; white-space:nowrap;
+}
+.epe-asset-cat-btn.active{ background:var(--accent1); color:#fff; border-color:transparent; }
+#epeAssetGridScroll{ max-height:340px; overflow-y:auto; margin-top:10px; border-radius:10px; }
+#epeAssetGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); gap:8px; }
+.epe-asset-cell{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px;
+  border:1px solid var(--card-border); border-radius:10px; background:var(--card); cursor:pointer;
+  min-height:48px; color:var(--ink); transition:background 0.12s, border-color 0.12s;
+}
+.epe-asset-cell:hover{ background:color-mix(in srgb, var(--accent1) 8%, var(--card)); border-color:var(--accent1); }
+.epe-asset-preview{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; }
+.epe-asset-title{ font-size:8.5px; font-weight:600; text-align:center; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; color:var(--ink-soft); }
