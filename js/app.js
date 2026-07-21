@@ -11973,7 +11973,8 @@ if (document.getElementById('epeDrop')){
   function dseTraceShapePath(ctx, layer, w, h){
     const def = DSE_SHAPE_DEFS[layer.shapeType] || DSE_SHAPE_DEFS.rectangle;
     if (def.kind === 'rect'){
-      const r = Math.min(w,h) * (def.radius||0);
+      const radiusRatio = (layer.cornerRadius !== undefined && layer.cornerRadius !== null) ? layer.cornerRadius : (def.radius||0);
+      const r = Math.min(w,h) * radiusRatio;
       ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(-w/2, -h/2, w, h, r);
       else { ctx.rect(-w/2,-h/2,w,h); } // fallback for older engines
@@ -12009,8 +12010,9 @@ if (document.getElementById('epeDrop')){
   }
 
   // ---- Icon layer factory: a specialized shape layer whose "shape" is
-  // an SVG path, filled solid (recolorable), reusing the same transform/
-  // effects architecture as regular shapes rather than a parallel system. ----
+  // an SVG path, filled solid or gradient (recolorable), reusing the
+  // same transform/effects architecture as regular shapes rather than
+  // a parallel system. ----
   function dseCreateIconLayer(iconKey, artboardW, artboardH){
     return {
       id: dseUniqueId(), type: 'icon', iconKey,
@@ -12018,7 +12020,7 @@ if (document.getElementById('epeDrop')){
       opacity:100, blendMode:'normal', zIndex: dseState.layers.length,
       x: artboardW/2, y: artboardH/2, scale:1, rotation:0, flipH:false, flipV:false,
       boxW: 64, boxH: 64,
-      color: '#111111',
+      color: '#111111', fillType: 'solid', gradient: {from:'#5142D6', to:'#8B7CF6', angle:45, mode:'linear'},
       shadow: { enabled:false, offsetX:2, offsetY:2, blur:4, opacity:40, color:'#000000' },
       glow: { enabled:false, blur:12, opacity:70, color:'#5142D6' },
     };
@@ -12030,6 +12032,21 @@ if (document.getElementById('epeDrop')){
       let grad;
       if (g.mode === 'radial') grad = ctx.createRadialGradient(0,0,0,0,0,Math.max(w,h)/2);
       else { const rad=(g.angle||0)*Math.PI/180; grad = ctx.createLinearGradient(-Math.cos(rad)*w/2,-Math.sin(rad)*h/2,Math.cos(rad)*w/2,Math.sin(rad)*h/2); }
+      grad.addColorStop(0, g.from); grad.addColorStop(1, g.to);
+      return grad;
+    }
+    return layer.color;
+  }
+  // Icon gradients are computed in the icon's own 24x24 viewbox
+  // coordinate space (separate from dseGetShapeFillStyle's w/h-based
+  // space), since icon paths are authored and drawn in that fixed
+  // coordinate system regardless of the layer's actual on-canvas size.
+  function dseGetIconFillStyle(ctx, layer){
+    if (layer.fillType === 'gradient' && layer.gradient){
+      const g = layer.gradient;
+      let grad;
+      if (g.mode === 'radial') grad = ctx.createRadialGradient(12,12,0,12,12,17);
+      else { const rad=(g.angle||0)*Math.PI/180; grad = ctx.createLinearGradient(12-Math.cos(rad)*12,12-Math.sin(rad)*12,12+Math.cos(rad)*12,12+Math.sin(rad)*12); }
       grad.addColorStop(0, g.from); grad.addColorStop(1, g.to);
       return grad;
     }
@@ -12077,7 +12094,8 @@ if (document.getElementById('epeDrop')){
   }
 
   // ---- Icon rendering: strokes/fills the SVG path data (defined in the
-  // icon catalog below) using Path2D, recolored via the layer's own color. ----
+  // icon catalog below) using Path2D, recolored via the layer's own
+  // solid color or gradient. ----
   function dseRenderIconLayer(ctx, layer){
     const icon = DSE_ICON_CATALOG_BY_KEY[layer.iconKey];
     if (!icon) return;
@@ -12089,7 +12107,7 @@ if (document.getElementById('epeDrop')){
     ctx.scale(scale, scale);
     if (layer.glow.enabled){
       ctx.save(); ctx.shadowColor = layer.glow.color; ctx.shadowBlur = layer.glow.blur/scale; ctx.globalAlpha = layer.glow.opacity/100;
-      ctx.fillStyle = layer.color;
+      ctx.fillStyle = dseGetIconFillStyle(ctx, layer);
       const p = new Path2D(icon.path);
       for (let i=0;i<3;i++) ctx.fill(p);
       ctx.restore();
@@ -12097,10 +12115,10 @@ if (document.getElementById('epeDrop')){
     if (layer.shadow.enabled){
       ctx.save(); ctx.shadowColor = dseHexToRgbaLocal(layer.shadow.color, layer.shadow.opacity/100);
       ctx.shadowOffsetX = layer.shadow.offsetX/scale; ctx.shadowOffsetY = layer.shadow.offsetY/scale; ctx.shadowBlur = layer.shadow.blur/scale;
-      ctx.fillStyle = layer.color; ctx.fill(new Path2D(icon.path));
+      ctx.fillStyle = dseGetIconFillStyle(ctx, layer); ctx.fill(new Path2D(icon.path));
       ctx.restore();
     }
-    ctx.fillStyle = layer.color;
+    ctx.fillStyle = dseGetIconFillStyle(ctx, layer);
     ctx.fill(new Path2D(icon.path));
     ctx.restore();
   }
@@ -12440,6 +12458,46 @@ if (document.getElementById('epeDrop')){
     document.getElementById('epeShapeColorInput') && (document.getElementById('epeShapeColorInput').value = layer.color);
     document.getElementById('epeShapeBorderEnable') && (document.getElementById('epeShapeBorderEnable').checked = layer.border ? layer.border.enabled : false);
     document.getElementById('epeShapeBorderRow') && document.getElementById('epeShapeBorderRow').classList.toggle('hidden', isIcon);
+    if (layer.border){
+      document.getElementById('epeShapeBorderColor') && (document.getElementById('epeShapeBorderColor').value = layer.border.color);
+      document.getElementById('epeShapeBorderWidth') && (document.getElementById('epeShapeBorderWidth').value = layer.border.thickness);
+      document.getElementById('epeShapeBorderStyle') && (document.getElementById('epeShapeBorderStyle').value = layer.border.style);
+    }
+    // Fill type + gradient (both shapes and icons now support this)
+    document.querySelectorAll('input[name="epeShapeFillType"]').forEach(r => r.checked = r.value === (layer.fillType||'solid'));
+    document.getElementById('epeShapeSolidRow') && document.getElementById('epeShapeSolidRow').classList.toggle('hidden', layer.fillType==='gradient');
+    document.getElementById('epeShapeGradientRow') && document.getElementById('epeShapeGradientRow').classList.toggle('hidden', layer.fillType!=='gradient');
+    if (layer.gradient){
+      document.getElementById('epeShapeGradientFrom') && (document.getElementById('epeShapeGradientFrom').value = layer.gradient.from);
+      document.getElementById('epeShapeGradientTo') && (document.getElementById('epeShapeGradientTo').value = layer.gradient.to);
+      document.getElementById('epeShapeGradientMode') && (document.getElementById('epeShapeGradientMode').value = layer.gradient.mode||'linear');
+      document.getElementById('epeShapeGradientAngle') && (document.getElementById('epeShapeGradientAngle').value = layer.gradient.angle||0);
+    }
+    // Corner radius: only meaningful for rect-kind shapes, not icons or non-rect shapes
+    const def = DSE_SHAPE_DEFS[layer.shapeType];
+    const showRadius = !isIcon && def && def.kind === 'rect';
+    document.getElementById('epeShapeCornerRadiusRow') && document.getElementById('epeShapeCornerRadiusRow').classList.toggle('hidden', !showRadius);
+    if (showRadius){
+      const ratio = (layer.cornerRadius !== undefined && layer.cornerRadius !== null) ? layer.cornerRadius : (def.radius||0);
+      const pct = Math.round(ratio*100);
+      document.getElementById('epeShapeCornerRadius') && (document.getElementById('epeShapeCornerRadius').value = pct);
+      document.getElementById('epeShapeCornerRadiusVal') && (document.getElementById('epeShapeCornerRadiusVal').textContent = pct + '%');
+    }
+    // Shadow
+    document.getElementById('epeShapeShadowEnable') && (document.getElementById('epeShapeShadowEnable').checked = layer.shadow.enabled);
+    document.getElementById('epeShapeShadowColor') && (document.getElementById('epeShapeShadowColor').value = layer.shadow.color);
+    document.getElementById('epeShapeShadowBlur') && (document.getElementById('epeShapeShadowBlur').value = layer.shadow.blur);
+    document.getElementById('epeShapeShadowOffsetX') && (document.getElementById('epeShapeShadowOffsetX').value = layer.shadow.offsetX);
+    document.getElementById('epeShapeShadowOffsetY') && (document.getElementById('epeShapeShadowOffsetY').value = layer.shadow.offsetY);
+    document.getElementById('epeShapeShadowOpacity') && (document.getElementById('epeShapeShadowOpacity').value = layer.shadow.opacity);
+    // Glow
+    document.getElementById('epeShapeGlowEnable') && (document.getElementById('epeShapeGlowEnable').checked = layer.glow.enabled);
+    document.getElementById('epeShapeGlowColor') && (document.getElementById('epeShapeGlowColor').value = layer.glow.color);
+    document.getElementById('epeShapeGlowBlur') && (document.getElementById('epeShapeGlowBlur').value = layer.glow.blur);
+    document.getElementById('epeShapeGlowOpacity') && (document.getElementById('epeShapeGlowOpacity').value = layer.glow.opacity);
+    // Icon swap section only for icon layers
+    document.getElementById('epeIconSwapSection') && document.getElementById('epeIconSwapSection').classList.toggle('hidden', !isIcon);
+    if (isIcon) dseRenderIconSwapResults('');
   }
   document.getElementById('epeShapeColorInput') && document.getElementById('epeShapeColorInput').addEventListener('input', e => {
     const layer = dseActiveLayer(); if (!layer) return; layer.color = e.target.value; renderEpeAll();
@@ -12448,6 +12506,105 @@ if (document.getElementById('epeDrop')){
   document.getElementById('epeShapeBorderEnable') && document.getElementById('epeShapeBorderEnable').addEventListener('change', e => {
     const layer = dseActiveLayer(); if (!layer || !layer.border) return; layer.border.enabled = e.target.checked; renderEpeAll(); epePushHistory();
   });
+  document.getElementById('epeShapeBorderColor') && document.getElementById('epeShapeBorderColor').addEventListener('input', e => {
+    const layer = dseActiveLayer(); if (!layer || !layer.border) return; layer.border.color = e.target.value; renderEpeAll();
+  });
+  document.getElementById('epeShapeBorderWidth') && document.getElementById('epeShapeBorderWidth').addEventListener('input', e => {
+    const layer = dseActiveLayer(); if (!layer || !layer.border) return; layer.border.thickness = +e.target.value; renderEpeAll();
+  });
+  document.getElementById('epeShapeBorderStyle') && document.getElementById('epeShapeBorderStyle').addEventListener('change', e => {
+    const layer = dseActiveLayer(); if (!layer || !layer.border) return; layer.border.style = e.target.value; renderEpeAll(); epePushHistory();
+  });
+  [document.getElementById('epeShapeBorderColor'), document.getElementById('epeShapeBorderWidth')].forEach(el => el && el.addEventListener('change', () => epePushHistory()));
+
+  // ---- Fill type + gradient ----
+  document.querySelectorAll('input[name="epeShapeFillType"]').forEach(r => r.addEventListener('change', e => {
+    const layer = dseActiveLayer(); if (!layer) return;
+    layer.fillType = e.target.value;
+    document.getElementById('epeShapeSolidRow').classList.toggle('hidden', layer.fillType==='gradient');
+    document.getElementById('epeShapeGradientRow').classList.toggle('hidden', layer.fillType!=='gradient');
+    renderEpeAll(); epePushHistory();
+  }));
+  ['epeShapeGradientFrom','epeShapeGradientTo'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('input', () => { const layer = dseActiveLayer(); if (!layer || !layer.gradient) return; layer.gradient.from = document.getElementById('epeShapeGradientFrom').value; layer.gradient.to = document.getElementById('epeShapeGradientTo').value; renderEpeAll(); });
+    el.addEventListener('change', () => epePushHistory());
+  });
+  document.getElementById('epeShapeGradientMode') && document.getElementById('epeShapeGradientMode').addEventListener('change', e => {
+    const layer = dseActiveLayer(); if (!layer || !layer.gradient) return; layer.gradient.mode = e.target.value; renderEpeAll(); epePushHistory();
+  });
+  document.getElementById('epeShapeGradientAngle') && document.getElementById('epeShapeGradientAngle').addEventListener('input', e => {
+    const layer = dseActiveLayer(); if (!layer || !layer.gradient) return; layer.gradient.angle = +e.target.value; renderEpeAll();
+  });
+  document.getElementById('epeShapeGradientAngle') && document.getElementById('epeShapeGradientAngle').addEventListener('change', () => epePushHistory());
+
+  // ---- Corner radius (rect-kind shapes only) ----
+  document.getElementById('epeShapeCornerRadius') && document.getElementById('epeShapeCornerRadius').addEventListener('input', e => {
+    const layer = dseActiveLayer(); if (!layer) return;
+    layer.cornerRadius = (+e.target.value)/100;
+    document.getElementById('epeShapeCornerRadiusVal').textContent = e.target.value + '%';
+    renderEpeAll();
+  });
+  document.getElementById('epeShapeCornerRadius') && document.getElementById('epeShapeCornerRadius').addEventListener('change', () => epePushHistory());
+
+  // ---- Shadow (shapes and icons both already had this in the render
+  // pipeline and layer schema -- this wiring is the missing UI, not new
+  // rendering logic). ----
+  document.getElementById('epeShapeShadowEnable') && document.getElementById('epeShapeShadowEnable').addEventListener('change', e => {
+    const layer = dseActiveLayer(); if (!layer) return; layer.shadow.enabled = e.target.checked; renderEpeAll(); epePushHistory();
+  });
+  [['epeShapeShadowColor','color'],['epeShapeShadowBlur','blur'],['epeShapeShadowOffsetX','offsetX'],['epeShapeShadowOffsetY','offsetY'],['epeShapeShadowOpacity','opacity']].forEach(([id, field]) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('input', () => { const layer = dseActiveLayer(); if (!layer) return; layer.shadow[field] = el.type==='color' ? el.value : +el.value; renderEpeAll(); });
+    el.addEventListener('change', () => epePushHistory());
+  });
+  document.getElementById('epeShapeGlowEnable') && document.getElementById('epeShapeGlowEnable').addEventListener('change', e => {
+    const layer = dseActiveLayer(); if (!layer) return; layer.glow.enabled = e.target.checked; renderEpeAll(); epePushHistory();
+  });
+  [['epeShapeGlowColor','color'],['epeShapeGlowBlur','blur'],['epeShapeGlowOpacity','opacity']].forEach(([id, field]) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('input', () => { const layer = dseActiveLayer(); if (!layer) return; layer.glow[field] = el.type==='color' ? el.value : +el.value; renderEpeAll(); });
+    el.addEventListener('change', () => epePushHistory());
+  });
+
+  // ---- Replace Color Everywhere: a genuine bulk utility, distinct from
+  // just changing one layer's own color -- finds every shape/icon layer
+  // (including inside groups) currently using the active layer's exact
+  // color and updates them all to a new color in one action. ----
+  document.getElementById('epeShapeReplaceColorBtn') && (document.getElementById('epeShapeReplaceColorBtn').onclick = () => {
+    const layer = dseActiveLayer(); if (!layer) return;
+    const oldColor = layer.color;
+    const newColor = prompt('Replace ' + oldColor + ' with which color? (enter a hex code)', oldColor);
+    if (!newColor || !/^#[0-9a-fA-F]{6}$/.test(newColor)) { if (newColor) toast('Enter a valid hex color like #5142D6.', 'err'); return; }
+    let count = 0;
+    dseState.layers.forEach(l => {
+      if ((l.type === 'shape' || l.type === 'icon') && l.color && l.color.toLowerCase() === oldColor.toLowerCase()){
+        l.color = newColor; count++;
+      }
+    });
+    renderEpeAll(); epePushHistory(); dseSyncShapeControlsFromLayer(dseActiveLayer());
+    toast('Replaced ' + oldColor + ' with ' + newColor + ' on ' + count + (count===1?' layer.':' layers.'));
+  });
+
+  // ---- Edit Icon: swap the underlying icon shape on an existing icon
+  // layer, preserving position/size/color/gradient/shadow/glow -- only
+  // iconKey changes. ----
+  function dseRenderIconSwapResults(query){
+    const grid = document.getElementById('epeIconSwapGrid');
+    if (!grid) return;
+    const q = (query||'').toLowerCase().trim();
+    let results = DSE_ICON_CATALOG;
+    if (q) results = results.filter(i => i.key.toLowerCase().includes(q) || i.cat.toLowerCase().includes(q));
+    grid.innerHTML = results.slice(0, 60).map(icon => `<button type="button" class="dse-icon-option" data-key="${icon.key}" title="${icon.key}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="${icon.path}"/></svg></button>`).join('');
+    grid.querySelectorAll('.dse-icon-option').forEach(btn => btn.onclick = () => {
+      const layer = dseActiveLayer(); if (!layer || layer.type !== 'icon') return;
+      layer.iconKey = btn.dataset.key; layer.name = btn.dataset.key;
+      renderEpeAll(); epePushHistory(); dseRenderLayersPanel();
+      toast('Icon replaced.');
+    });
+  }
+  document.getElementById('epeIconSwapSearch') && document.getElementById('epeIconSwapSearch').addEventListener('input', e => dseRenderIconSwapResults(e.target.value));
+
 
   document.getElementById('epeLayerSearch') && document.getElementById('epeLayerSearch').addEventListener('input', dseRenderLayersPanel);
   dseLoadBrandColors();
