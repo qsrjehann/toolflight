@@ -10328,6 +10328,15 @@ if (document.getElementById('epeDrop')){
     if (typeof dseDrawSelectionHandles === 'function') dseDrawSelectionHandles(epeOverlayEl.getContext('2d'));
     if (!skipFit) fitEpeCanvasDisplay();
     document.getElementById('epeOutputDims').textContent = `${epeArtboardW}\u00d7${epeArtboardH}px (full resolution)`;
+    const statusDims = document.getElementById('epeStatusDims');
+    if (statusDims) statusDims.textContent = `${epeArtboardW}\u00d7${epeArtboardH}px`;
+    const statusZoom = document.getElementById('epeStatusZoom');
+    if (statusZoom) statusZoom.textContent = Math.round(epeViewZoom*100) + '% zoom';
+    const statusLayers = document.getElementById('epeStatusLayers');
+    if (statusLayers && typeof dseState !== 'undefined'){
+      const n = dseState.layers.length;
+      statusLayers.textContent = n + (n === 1 ? ' layer' : ' layers');
+    }
     if (typeof renderEpeInspector === 'function') renderEpeInspector(); // cheap (no pixel scan) -- always safe to run
     const analysisOpen = document.getElementById('epeAccordionAnalysis') && document.getElementById('epeAccordionAnalysis').open;
     if (analysisOpen){
@@ -15527,6 +15536,50 @@ if (document.getElementById('epeDrop')){
       bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
       bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
     });
+  })();
+
+
+  // ---- Smooth pan (architecture phase): a dedicated pan-mode toggle,
+  // matching the "hand tool" pattern used by professional editors --
+  // deliberately NOT a drag-anywhere gesture, since the canvas already
+  // handles pointerdown for painting, selection, and layer dragging,
+  // and overloading drag semantics there risks conflicting with all of
+  // those existing, verified behaviors. Pan mode uses the wrap's
+  // existing native overflow:auto scrolling (scrollLeft/scrollTop),
+  // not a new scroll mechanism. ----
+  let epePanMode = false;
+  (function setupEpePan(){
+    const panBtn = document.getElementById('epeFloatPanBtn');
+    const wrap = document.getElementById('epeCanvasStageWrap');
+    if (!panBtn || !wrap) return;
+    let panning = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+
+    function setPanMode(on){
+      epePanMode = on;
+      panBtn.classList.toggle('active', on);
+      panBtn.setAttribute('aria-pressed', String(on));
+      wrap.classList.toggle('epe-pan-mode', on);
+    }
+    panBtn.addEventListener('click', () => setPanMode(!epePanMode));
+
+    wrap.addEventListener('pointerdown', (e) => {
+      if (!epePanMode) return;
+      // Only engage on the wrap/canvas background, not on a floating
+      // control that happens to be a descendant.
+      if (e.target.closest('#epeFloatingControls, #epeFloatingBrushBar, #epeSelectionMiniToolbar')) return;
+      panning = true;
+      startX = e.clientX; startY = e.clientY;
+      startScrollLeft = wrap.scrollLeft; startScrollTop = wrap.scrollTop;
+      wrap.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      if (!panning) return;
+      wrap.scrollLeft = startScrollLeft - (e.clientX - startX);
+      wrap.scrollTop = startScrollTop - (e.clientY - startY);
+    });
+    wrap.addEventListener('pointerup', () => { panning = false; });
+    wrap.addEventListener('pointercancel', () => { panning = false; });
   })();
 
 
