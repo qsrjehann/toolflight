@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260720-1908" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260720-1908">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260720-1908">
+<link rel="icon" href="assets/favicon.ico?v=20260721-1832" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260721-1832">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260721-1832">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260720-1908">
+<link rel="stylesheet" href="css/style.css?v=20260721-1832">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260720-1908" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260721-1832" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -406,6 +406,9 @@
           <input type="text" id="epeLayerSearch" placeholder="Search layers…" style="width:100%;margin-top:8px;" aria-label="Search layers">
           <div id="epeLayersPanel" role="listbox" aria-label="Layers" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;min-height:40px;"></div>
           <div class="row" style="margin-top:10px;">
+            <button class="btn btn-secondary" id="epeNewLayerBtn" type="button">New Layer</button>
+          </div>
+          <div class="row" style="margin-top:10px;">
             <button class="btn btn-secondary" id="epeGroupBtn" type="button">Group Selected</button>
             <button class="btn btn-ghost" id="epeUngroupBtn" type="button" disabled>Ungroup</button>
           </div>
@@ -650,6 +653,8 @@
             <optgroup label="Marketplaces">
             <option value="amazon-main">Amazon Main Image (2000×2000)</option>
             <option value="amazon-gallery">Amazon Gallery (2000×2000)</option>
+            <option value="ebay">eBay Listing Photo (1600×1600)</option>
+            <option value="etsy">Etsy Listing Photo (2000×2000)</option>
             <option value="daraz">Daraz Product Image (1500×1500)</option>
             <option value="shopify">Shopify Product (2048×2048)</option>
             <option value="facebook-marketplace">Facebook Marketplace (1080×1080)</option>
@@ -658,6 +663,7 @@
             <option value="instagram-story">Instagram Story (1080×1920)</option>
             <option value="tiktok-shop">TikTok Shop (1080×1920)</option>
             <option value="pinterest-pin">Pinterest Pin (1000×1500)</option>
+            <option value="linkedin-square">LinkedIn Square Post (1080×1080)</option>
             </optgroup>
             <optgroup label="Marketing &amp; Social">
             <option value="facebook-post">Facebook Post (1080×1080)</option>
@@ -905,10 +911,13 @@
             <button class="btn btn-ghost" data-selmode="ellipse" type="button">Ellipse</button>
             <button class="btn btn-ghost" data-selmode="lasso" type="button">Freehand Lasso</button>
             <button class="btn btn-ghost" data-selmode="polygon" type="button">Polygon Lasso</button>
-            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Magic Wand (soon)</button>
-            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Quick Select (soon)</button>
+            <button class="btn btn-ghost" data-selmode="wand" type="button">Magic Wand</button>
+            <button class="btn btn-ghost" data-selmode="quickselect" type="button">Quick Select</button>
           </div>
-          <p class="editor-hint">Polygon Lasso: click to add each point, double-click to close the shape. Drag to draw Rectangle/Ellipse/Freehand Lasso.</p>
+          <div class="qr-controls" style="margin-top:8px;">
+            <div class="ctrl"><label for="epeWandTolerance">Color Tolerance</label><input type="range" id="epeWandTolerance" min="4" max="120" value="32"></div>
+          </div>
+          <p class="editor-hint">Polygon Lasso: click to add each point, double-click to close the shape. Drag to draw Rectangle/Ellipse/Freehand Lasso. Magic Wand: click once to select a connected area of similar color. Quick Select: drag like a brush to select similar-colored areas as you go — a real but simplified technique, not full edge-aware segmentation.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Repair Mask</p>
           <div class="row" style="flex-wrap:wrap;">
@@ -1261,7 +1270,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260720-1908" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260721-1832" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1298,6 +1307,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260720-1908"></script>
+<script defer src="js/app.js?v=20260721-1832"></script>
 </body>
 </html>
