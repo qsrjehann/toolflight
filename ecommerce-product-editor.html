@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Ecommerce Product Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free Ecommerce Product Editor for creating professional product images and marketing graphics directly in your browser. No sign-up required. Layers, typography, shapes, marketplace presets for Amazon, Etsy, Shopify, Instagram, TikTok, Pinterest and more, plus Clone Stamp, Healing Brush, and real reconstruction-based object removal.">
-<link rel="icon" href="assets/favicon.ico?v=20260722-0048" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260722-0048">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260722-0048">
+<link rel="icon" href="assets/favicon.ico?v=20260722-0056" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260722-0056">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260722-0056">
 <link rel="canonical" href="https://toolflight.com/ecommerce-product-editor.html">
 
 <meta property="og:title" content="Ecommerce Product Editor — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260722-0048">
+<link rel="stylesheet" href="css/style.css?v=20260722-0056">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260722-0048" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260722-0056" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -569,59 +569,59 @@
             <input type="search" id="epeAssetSearch" placeholder="Try &quot;50% off&quot;, &quot;luxury badge&quot;, &quot;sale ribbon&quot;…" aria-label="Search asset library" style="flex:1;" autocomplete="off">
             <div id="epeAssetSuggestions" class="hidden" role="listbox" aria-label="Search suggestions"></div>
           </div>
-          <div class="row" style="flex-wrap:wrap;margin-top:8px;gap:6px;">
+          <div class="row" style="flex-wrap:wrap;margin-top:10px;gap:6px;">
             <button type="button" class="epe-asset-cat-btn" data-cat="recent" title="Your recent searches, this device">🕑 Recent</button>
             <button type="button" class="epe-asset-cat-btn" data-cat="popular" title="Assets you use most, this device">📈 Popular</button>
             <button type="button" class="epe-asset-cat-btn" data-cat="favorites" title="Your starred assets">★ Favorites</button>
+            <button type="button" class="epe-asset-cat-btn active" data-cat="all" style="margin-left:auto;">All Assets</button>
           </div>
-          <div class="row" id="epeAssetCategoryRow" style="flex-wrap:wrap;margin-top:8px;gap:6px;">
-            <button type="button" class="epe-asset-cat-btn active" data-cat="all">All</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Icons">Icons</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Shapes">Shapes</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Stickers">Stickers</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Elements">Elements</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Frames">Frames</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Patterns">Patterns</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Backgrounds">Backgrounds</button>
-            <button type="button" class="epe-asset-cat-btn" data-cat="Text Styles">Text Styles</button>
+
+          <p class="epe-asset-section-title">Browse categories</p>
+          <div class="epe-tile-grid" id="epeAssetCategoryRow">
+            <button type="button" class="epe-cat-tile epe-tile-icons" data-cat="Icons"><span class="epe-cat-tile-glyph">☆</span><span class="epe-cat-tile-label">Icons</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-shapes" data-cat="Shapes"><span class="epe-cat-tile-glyph">▲</span><span class="epe-cat-tile-label">Shapes</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-stickers" data-cat="Stickers"><span class="epe-cat-tile-glyph">🏷</span><span class="epe-cat-tile-label">Stickers</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-elements" data-cat="Elements"><span class="epe-cat-tile-glyph">✦</span><span class="epe-cat-tile-label">Elements</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-frames" data-cat="Frames"><span class="epe-cat-tile-glyph">⬚</span><span class="epe-cat-tile-label">Frames</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-patterns" data-cat="Patterns"><span class="epe-cat-tile-glyph">∷</span><span class="epe-cat-tile-label">Patterns</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-backgrounds" data-cat="Backgrounds"><span class="epe-cat-tile-glyph">▣</span><span class="epe-cat-tile-label">Backgrounds</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-textstyles" data-cat="Text Styles"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Text Styles</span></button>
           </div>
-          <div class="row" style="margin-top:8px;">
-            <select id="epeMarketingCategorySelect" aria-label="Browse marketing categories by industry" style="flex:1;">
-              <option value="">Browse by industry…</option>
-              <option value="Marketing: Sale">Sale</option>
-              <option value="Marketing: Luxury">Luxury</option>
-              <option value="Marketing: Business">Business</option>
-              <option value="Marketing: Fashion">Fashion</option>
-              <option value="Marketing: Restaurant">Restaurant</option>
-              <option value="Marketing: Gym">Gym</option>
-              <option value="Marketing: Medical">Medical</option>
-              <option value="Marketing: Technology">Technology</option>
-              <option value="Marketing: Real Estate">Real Estate</option>
-              <option value="Marketing: Travel">Travel</option>
-              <option value="Marketing: Education">Education</option>
-              <option value="Marketing: Kids">Kids</option>
-              <option value="Marketing: Wedding">Wedding</option>
-            </select>
+
+          <p class="epe-asset-section-title">Marketing by industry</p>
+          <div class="epe-tile-scroll">
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-sale" data-cat="Marketing: Sale"><span class="epe-cat-tile-glyph">%</span><span class="epe-cat-tile-label">Sale</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-luxury" data-cat="Marketing: Luxury"><span class="epe-cat-tile-glyph">♕</span><span class="epe-cat-tile-label">Luxury</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-business" data-cat="Marketing: Business"><span class="epe-cat-tile-glyph">💼</span><span class="epe-cat-tile-label">Business</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-fashion" data-cat="Marketing: Fashion"><span class="epe-cat-tile-glyph">👗</span><span class="epe-cat-tile-label">Fashion</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-restaurant" data-cat="Marketing: Restaurant"><span class="epe-cat-tile-glyph">☕</span><span class="epe-cat-tile-label">Restaurant</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-gym" data-cat="Marketing: Gym"><span class="epe-cat-tile-glyph">🏋</span><span class="epe-cat-tile-label">Gym</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-medical" data-cat="Marketing: Medical"><span class="epe-cat-tile-glyph">⚕</span><span class="epe-cat-tile-label">Medical</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-technology" data-cat="Marketing: Technology"><span class="epe-cat-tile-glyph">💻</span><span class="epe-cat-tile-label">Technology</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-realestate" data-cat="Marketing: Real Estate"><span class="epe-cat-tile-glyph">🏢</span><span class="epe-cat-tile-label">Real Estate</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-travel" data-cat="Marketing: Travel"><span class="epe-cat-tile-glyph">✈</span><span class="epe-cat-tile-label">Travel</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-education" data-cat="Marketing: Education"><span class="epe-cat-tile-glyph">📚</span><span class="epe-cat-tile-label">Education</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-kids" data-cat="Marketing: Kids"><span class="epe-cat-tile-glyph">🍼</span><span class="epe-cat-tile-label">Kids</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-wedding" data-cat="Marketing: Wedding"><span class="epe-cat-tile-glyph">💍</span><span class="epe-cat-tile-label">Wedding</span></button>
           </div>
-          <div class="row" style="margin-top:8px;">
-            <select id="epeTextStyleCategorySelect" aria-label="Browse text styles by category" style="flex:1;">
-              <option value="">Browse text styles…</option>
-              <option value="Text Style: Luxury">Luxury</option>
-              <option value="Text Style: Gaming">Gaming</option>
-              <option value="Text Style: Minimal">Minimal</option>
-              <option value="Text Style: 3D">3D</option>
-              <option value="Text Style: Gradient">Gradient</option>
-              <option value="Text Style: Retro">Retro</option>
-              <option value="Text Style: Shadow">Shadow</option>
-              <option value="Text Style: Glass">Glass</option>
-              <option value="Text Style: Neon">Neon</option>
-              <option value="Text Style: Metal">Metal</option>
-              <option value="Text Style: Gold">Gold</option>
-              <option value="Text Style: Silver">Silver</option>
-              <option value="Text Style: Fashion">Fashion</option>
-              <option value="Text Style: Wedding">Wedding</option>
-              <option value="Text Style: Business">Business</option>
-            </select>
+
+          <p class="epe-asset-section-title">Text style looks</p>
+          <div class="epe-tile-scroll">
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-luxury" data-cat="Text Style: Luxury"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Luxury</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gaming" data-cat="Text Style: Gaming"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gaming</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-minimal" data-cat="Text Style: Minimal"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Minimal</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-3d" data-cat="Text Style: 3D"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">3D</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gradient" data-cat="Text Style: Gradient"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gradient</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-retro" data-cat="Text Style: Retro"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Retro</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-shadow" data-cat="Text Style: Shadow"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Shadow</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-glass" data-cat="Text Style: Glass"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Glass</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-neon" data-cat="Text Style: Neon"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Neon</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-metal" data-cat="Text Style: Metal"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Metal</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gold" data-cat="Text Style: Gold"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gold</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-silver" data-cat="Text Style: Silver"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Silver</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-fashion" data-cat="Text Style: Fashion"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Fashion</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-wedding" data-cat="Text Style: Wedding"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Wedding</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-business" data-cat="Text Style: Business"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Business</span></button>
           </div>
           <div class="row" style="margin-top:8px;gap:8px;">
             <select id="epeAssetColorFilter" aria-label="Filter by color" style="flex:1;">
@@ -1411,7 +1411,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260722-0048" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260722-0056" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -1448,6 +1448,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260722-0048"></script>
+<script defer src="js/app.js?v=20260722-0056"></script>
 </body>
 </html>
