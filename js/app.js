@@ -12196,6 +12196,10 @@ if (document.getElementById('epeDrop')){
     { key:'book', cat:'Education', path:'M4 4h9a3 3 0 0 1 3 3v13a3 3 0 0 0-3-2H4V4z M20 4h-4a3 3 0 0 0-3 3v13a3 3 0 0 1 3-2h4V4z' },
     { key:'plane', cat:'Travel', path:'M3 13l7-2 5-8 2 1-3 7 5 2v2l-5-1-3 6-2-1 1-5-7-1v-2z' },
     { key:'home', cat:'Lifestyle', path:'M4 11l8-7 8 7 M6 10v10h12V10' },
+    { key:'dumbbell', cat:'Lifestyle', path:'M2 9h2v6H2z M5 7h2v10H5z M17 7h2v10h-2z M20 9h2v6h-2z M8 11h8v2H8z' },
+    { key:'baby-bottle', cat:'Lifestyle', path:'M9 2h6v3l-1 1v2a4 4 0 0 1 2 3.5V19a3 3 0 0 1-3 3h-2a3 3 0 0 1-3-3v-7.5A4 4 0 0 1 10 8V6L9 5V2z M8 13h8' },
+    { key:'wedding-rings', cat:'Lifestyle', path:'M9 13a4 4 0 1 0 0.01 0 M15 13a4 4 0 1 0 0.01 0 M9 9l1.5-5h3L15 9' },
+    { key:'building', cat:'Lifestyle', path:'M5 21V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v16 M13 21v-9a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v9 M8 7h1 M8 11h1 M8 15h1 M17 13h1 M17 17h1' },
   ];
   const DSE_ICON_CATALOG_BY_KEY = {}; DSE_ICON_CATALOG.forEach(i => DSE_ICON_CATALOG_BY_KEY[i.key] = i);
   const DSE_ICON_CATEGORIES = [...new Set(DSE_ICON_CATALOG.map(i=>i.cat))];
@@ -13353,6 +13357,133 @@ if (document.getElementById('epeDrop')){
 
   console.log('EPE_ASSET_REGISTRY built:', EPE_ASSET_REGISTRY.length, 'real assets across', new Set(EPE_ASSET_REGISTRY.map(a=>a.category)).size, 'categories');
 
+  /* ============================================================
+     MARKETING ASSET LIBRARY (this phase): hundreds of genuinely
+     editable composite assets (shape + text, optionally + icon)
+     across 13 industry categories, generated programmatically from
+     real data tables -- reusing the exact same insertion pipeline as
+     the existing Stickers/Badges system (dseCreateShapeLayer +
+     dseCreateTextLayer + dseCreateGroupLayer), not a new rendering
+     path, and not raster images -- every asset is vector shapes/text/
+     icons composited live, fully editable after insertion (recolor,
+     resize, retype, restyle) exactly like any other layer. ----
+     ============================================================ */
+  const EPE_MARKETING_CATEGORIES = {
+    'Sale': {
+      colors: ['#E05252','#FF6B35','#FFB800'],
+      icon: 'percent',
+      labels: ['SALE','MEGA SALE','FLASH SALE','END OF SEASON','UP TO 50% OFF','UP TO 70% OFF','TODAY ONLY','LIMITED TIME','WHILE STOCKS LAST','SHOP THE SALE','SAVE BIG','PRICE DROP','DEAL OF THE DAY','CLEARANCE SALE','LAST CHANCE'],
+    },
+    'Luxury': {
+      colors: ['#111111','#8B7355','#111111'],
+      icon: 'crown',
+      labels: ['LUXURY COLLECTION','PREMIUM QUALITY','EXCLUSIVE EDITION','HANDCRAFTED','LIMITED EDITION','SIGNATURE SERIES','PRESTIGE','ELEGANCE REDEFINED','MASTERPIECE','ARTISAN MADE','FINE CRAFTSMANSHIP','ULTRA PREMIUM','COUTURE','BESPOKE','THE FINEST'],
+    },
+    'Business': {
+      colors: ['#1E3A5F','#2E5C8A','#5142D6'],
+      icon: 'briefcase',
+      labels: ['NOW HIRING','GROW YOUR BUSINESS','TRUSTED PARTNER','ENTERPRISE SOLUTIONS','B2B SERVICES','CONSULTING','CORPORATE OFFICE','MEET THE TEAM','OUR SERVICES','CLIENT TESTIMONIAL','CASE STUDY','FREE CONSULTATION','BOOK A MEETING','PROFESSIONAL SERVICES','INDUSTRY LEADER'],
+    },
+    'Fashion': {
+      colors: ['#D6336C','#111111','#C9A0DC'],
+      icon: 'tshirt',
+      labels: ['NEW COLLECTION','SPRING SEASON','STREETWEAR','TRENDING NOW','OUTFIT OF THE DAY','STYLE GUIDE','LOOKBOOK','SUSTAINABLE FASHION','MADE TO ORDER','SIZE GUIDE','SHOP THE LOOK','SEASONAL DROP','DESIGNER PICKS','WARDROBE ESSENTIALS','CATWALK READY'],
+    },
+    'Restaurant': {
+      colors: ['#C0392B','#E67E22','#3BA55C'],
+      icon: 'coffee',
+      labels: ['NOW OPEN','FRESH DAILY','CHEF\u2019S SPECIAL','FARM TO TABLE','ORDER NOW','DINE IN OR TAKEOUT','HAPPY HOUR','TASTING MENU','RESERVE A TABLE','TODAY\u2019S MENU','FRESHLY BAKED','100% ORGANIC','FAMILY RECIPE','WEEKEND BRUNCH','CATERING AVAILABLE'],
+    },
+    'Gym': {
+      colors: ['#111111','#E05252','#3BA55C'],
+      icon: 'dumbbell',
+      labels: ['JOIN NOW','FIRST CLASS FREE','PERSONAL TRAINING','NEW MEMBER OFFER','TRANSFORM YOUR BODY','24/7 ACCESS','GROUP CLASSES','NO EXCUSES','FITNESS GOALS','STRENGTH TRAINING','CARDIO ZONE','MEMBERSHIP DEALS','TRAIN HARDER','RESULTS GUARANTEED','FUEL YOUR WORKOUT'],
+    },
+    'Medical': {
+      colors: ['#2E86C1','#3BA55C','#ffffff'],
+      icon: 'cross-medical',
+      labels: ['BOOK APPOINTMENT','ACCEPTING NEW PATIENTS','TELEHEALTH AVAILABLE','BOARD CERTIFIED','WALK-INS WELCOME','INSURANCE ACCEPTED','TRUSTED CARE','PATIENT FIRST','24/7 EMERGENCY','ROUTINE CHECKUP','SPECIALIST CARE','HEALTH SCREENING','VACCINATIONS AVAILABLE','COMPASSIONATE CARE','SCHEDULE A VISIT'],
+    },
+    'Technology': {
+      colors: ['#5142D6','#111111','#00B8D9'],
+      icon: 'laptop',
+      labels: ['NEW RELEASE','NOW IN BETA','CLOUD POWERED','AI ENABLED','FREE TRIAL','UPGRADE NOW','NEXT-GEN TECH','DOWNLOAD THE APP','SECURE & ENCRYPTED','SUBSCRIBE FOR UPDATES','FASTER THAN EVER','INNOVATION FIRST','SMART TECHNOLOGY','SEAMLESS INTEGRATION','FUTURE READY'],
+    },
+    'Real Estate': {
+      colors: ['#1E3A5F','#3BA55C','#8B7355'],
+      icon: 'building',
+      labels: ['FOR SALE','FOR RENT','OPEN HOUSE','JUST LISTED','PRICE REDUCED','NEW LISTING','SOLD','SCHEDULE A TOUR','PRIME LOCATION','MOVE-IN READY','LUXURY LIVING','INVESTMENT OPPORTUNITY','WATERFRONT PROPERTY','FIRST TIME BUYER','VIRTUAL TOUR AVAILABLE'],
+    },
+    'Travel': {
+      colors: ['#00B8D9','#FFB800','#3BA55C'],
+      icon: 'plane',
+      labels: ['BOOK NOW','LIMITED SEATS','EXPLORE THE WORLD','SUMMER GETAWAY','ALL-INCLUSIVE','TRAVEL DEALS','ADVENTURE AWAITS','LAST MINUTE DEALS','WEEKEND ESCAPE','FLIGHT + HOTEL','DISCOVER NEW PLACES','TRAVEL PACKAGE','EARLY BIRD OFFER','DESTINATION GUIDE','WANDERLUST'],
+    },
+    'Education': {
+      colors: ['#5142D6','#3BA55C','#FFB800'],
+      icon: 'book',
+      labels: ['ENROLL NOW','NEW SEMESTER','ONLINE COURSES','CERTIFICATE PROGRAM','LEARN AT YOUR PACE','SCHOLARSHIPS AVAILABLE','EXPERT INSTRUCTORS','FREE WORKSHOP','STUDENT DISCOUNT','ADMISSIONS OPEN','SKILL BUILDING','LIFELONG LEARNING','CLASSES STARTING SOON','ACCREDITED PROGRAM','STUDY MATERIALS INCLUDED'],
+    },
+    'Kids': {
+      colors: ['#FFB800','#00B8D9','#D6336C'],
+      icon: 'baby-bottle',
+      labels: ['KIDS COLLECTION','BACK TO SCHOOL','SAFE & FUN','AGES 3-8','EDUCATIONAL TOYS','PARENT APPROVED','PLAYTIME ESSENTIALS','NEW ARRIVALS','MADE FOR LITTLE ONES','FUN FOR ALL AGES','SOFT & SAFE MATERIALS','LEARNING THROUGH PLAY','KIDS FAVORITE','GIFT FOR KIDS','GROWS WITH YOUR CHILD'],
+    },
+    'Wedding': {
+      colors: ['#D6336C','#8B7355','#ffffff'],
+      icon: 'wedding-rings',
+      labels: ['BOOK YOUR DATE','WEDDING PACKAGES','SAY I DO','NOW BOOKING 2027','BRIDAL COLLECTION','CUSTOM INVITATIONS','VENUE AVAILABLE','WEDDING PLANNING','JUST MARRIED','SAVE THE DATE','FOREVER STARTS HERE','WEDDING ESSENTIALS','BRIDAL SHOWER','HONEYMOON PACKAGES','YOUR DREAM WEDDING'],
+    },
+  };
+
+  // ---- Generator: builds one composite (shape+text[+icon]) asset per
+  // label, reusing the exact same primitives and insertion pattern as
+  // the existing Stickers/Badges system. Vector only -- no raster
+  // image generation anywhere in this pipeline. ----
+  let epeMarketingAssetCount = 0;
+  Object.entries(EPE_MARKETING_CATEGORIES).forEach(([catName, catData]) => {
+    catData.labels.forEach((label, i) => {
+      const color = catData.colors[i % catData.colors.length];
+      const textColor = (color === '#ffffff' || color === '#FFB800') ? '#111111' : '#ffffff';
+      const id = 'mkt-' + catName.toLowerCase().replace(/\s+/g,'-') + '-' + i;
+      epeMarketingAssetCount++;
+      epeRegisterAsset({
+        id, title: label.replace(/\u2019/g,"'"), category: 'Marketing: ' + catName,
+        tags: ['marketing', catName.toLowerCase(), 'badge'],
+        keywords: [catName.toLowerCase(), label.toLowerCase(), 'marketing'],
+        preview: `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:${color};color:${textColor};font-size:6.5px;font-weight:800;border-radius:5px;text-align:center;padding:2px;line-height:1.15;overflow:hidden;">${label}</div>`,
+        editable: true,
+        insert: () => {
+          if (!epeSourceImg){ toast('Upload a product image first.', 'err'); return; }
+          const shape = dseCreateShapeLayer('rounded-rect', epeArtboardW, epeArtboardH);
+          shape.color = color; shape.boxW = 180; shape.boxH = 56;
+          const text = dseCreateTextLayer('badge', epeArtboardW, epeArtboardH);
+          text.text = label.replace(/\u2019/g,"'"); text.color = textColor; text.fontSize = 16; text.fontWeight = 800;
+          dseMeasureTextLayer(text);
+          const memberIds = [];
+          dseState.layers.push(shape); shape.zIndex = dseState.layers.length; memberIds.push(shape.id);
+          if (catData.icon && DSE_ICON_CATALOG_BY_KEY[catData.icon]){
+            const icon = dseCreateIconLayer(catData.icon, epeArtboardW, epeArtboardH);
+            icon.color = textColor; icon.boxW = 22; icon.boxH = 22;
+            icon.x = shape.x - shape.boxW/2 + 20;
+            dseState.layers.push(icon); icon.zIndex = dseState.layers.length; memberIds.push(icon.id);
+            text.x += 12; // shift text right to make room for the icon
+          }
+          dseState.layers.push(text); text.zIndex = dseState.layers.length; memberIds.push(text.id);
+          const group = dseCreateGroupLayer(memberIds, epeArtboardW, epeArtboardH);
+          group.name = label;
+          dseState.layers.push(group);
+          memberIds.forEach(mid => { const l = dseState.layers.find(x=>x.id===mid); if (l) l.groupId = group.id; });
+          dseSelectLayer(group.id, false);
+          renderEpeAll(); epePushHistory();
+          toast('Marketing asset added \u2014 fully editable (ungroup, recolor, retype, resize).');
+        }
+      });
+    });
+  });
+  console.log('EPE_MARKETING library built:', epeMarketingAssetCount, 'assets across', Object.keys(EPE_MARKETING_CATEGORIES).length, 'industry categories');
+
+
   // ---- Search Index: a real inverted index (term -> asset ids), built
   // once and reused, not a linear re-scan on every keystroke. Genuinely
   // improves search performance as the registry grows. ----
@@ -13759,6 +13890,13 @@ if (document.getElementById('epeDrop')){
     epeRenderAssetLibrary(searchEl ? searchEl.value : '', cat, colorEl ? colorEl.value : 'all', styleEl ? styleEl.value : 'all');
   }
   document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.addEventListener('click', () => epeSetAssetCategory(b.dataset.cat)));
+  document.getElementById('epeMarketingCategorySelect') && document.getElementById('epeMarketingCategorySelect').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.remove('active')); // none of the top-row buttons correspond to a Marketing: X category
+    const searchEl = document.getElementById('epeAssetSearch');
+    if (searchEl) searchEl.value = '';
+    epeRenderAssetLibrary('', e.target.value, 'all', 'all');
+  });
 
   // ---- Search suggestions: real-time dropdown of matching titles +
   // recent searches, not a static/fake list. ----
