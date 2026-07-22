@@ -16402,22 +16402,20 @@ if (document.getElementById('epeDrop')){
      is touched by anything below.
      ============================================================ */
   const EPE_CATEGORY_ACCORDIONS = {
-    transform: ['epeAccordionTransform','epeAccordionCrop','epeAccordionGuides','epeAccordionSafeArea'],
-    adjust:    ['epeAccordionAdjustments','epeAccordionShadow','epeAccordionReflection','epeAccordionAnalysis','epeAccordionUpscaleCompress','epeAccordionBeforeAfter'],
-    brush:     ['epeAccordionRetouch','epeAccordionBackground','epeAccordionFaceRetouch','epeAccordionMaskSystem','epeAccordionSelection'],
+    edit:      ['epeAccordionTransform','epeAccordionCrop','epeAccordionGuides','epeAccordionSafeArea','epeAccordionRetouch','epeAccordionBackground','epeAccordionFaceRetouch','epeAccordionMaskSystem','epeAccordionSelection'],
+    effects:   ['epeAccordionAdjustments','epeAccordionShadow','epeAccordionReflection','epeAccordionAnalysis','epeAccordionUpscaleCompress','epeAccordionBeforeAfter'],
     text:      ['epeAccordionAddText'],
     elements:  ['epeAccordionAssetLibrary','epeAccordionShapesIcons','epeAccordionStickersBadges','epeAccordionHighlightsCallouts','epeAccordionCtaRibbons','epeAccordionOffersTrust','epeAccordionTablesReviews','epeAccordionLogoCode'],
     layers:    ['epeAccordionLayers','epeAccordionArrangeAlign','epeAccordionBrandColors','epeAccordionBrandDefaults'],
     templates: ['epeAccordionMarketplace'],
-    settings:  ['epeAccordionSession'],
-    expert:    ['epeAccordionAnalytics','epeAccordionAdvancedRecon'],
     export:    ['epeAccordionExport'],
+    more:      ['epeAccordionSession','epeAccordionAnalytics','epeAccordionAdvancedRecon'],
   };
   const EPE_CATEGORY_LABELS = {
-    transform:'Transform', adjust:'Adjust', brush:'Retouch', text:'Text', elements:'Elements',
-    layers:'Layers', templates:'Templates', settings:'Settings', expert:'Expert', export:'Export',
+    edit:'Edit', effects:'Effects', text:'Text', elements:'Elements',
+    layers:'Layers', templates:'Templates', export:'Export', more:'More',
   };
-  let epeActiveCategory = 'transform';
+  let epeActiveCategory = 'edit';
   let epeIsDesktopShell = window.innerWidth >= 900;
 
   function epeIsMobileShell(){ return window.innerWidth < 900; }
@@ -16631,7 +16629,7 @@ if (document.getElementById('epeDrop')){
   }
 
   /* ---- Initial shell state on load ---- */
-  epeSelectCategory('transform', { skipOpenPanel: true, noScroll: true });
+  epeSelectCategory('edit', { skipOpenPanel: true, noScroll: true });
   if (!epeIsMobileShell()){
     const panel = document.getElementById('epeToolPanel');
     if (panel) panel.classList.remove('collapsed');
@@ -16905,7 +16903,7 @@ if (document.getElementById('epeDrop')){
   (function setupEpeFloatingToolbarDrag(){
     const handle = document.getElementById('epeFloatDragHandle');
     const bar = document.getElementById('epeFloatingControls');
-    const wrap = document.getElementById('epeCanvasStageWrap');
+    const wrap = document.getElementById('epeWorkspaceViewport'); // bar's actual positioned ancestor (see comment above)
     if (!handle || !bar || !wrap) return;
     let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
 
@@ -16915,8 +16913,8 @@ if (document.getElementById('epeDrop')){
       const wrapRect = wrap.getBoundingClientRect();
       const barRect = bar.getBoundingClientRect();
       // Switch from the centered (left:50%, transform) default to
-      // absolute pixel positioning relative to the canvas stage, using
-      // the bar's CURRENT on-screen position so there's no visual jump.
+      // absolute pixel positioning relative to the workspace viewport,
+      // using the bar's CURRENT on-screen position so there's no visual jump.
       barStartLeft = barRect.left - wrapRect.left;
       barStartTop = barRect.top - wrapRect.top;
       bar.style.left = barStartLeft + 'px';
@@ -16933,7 +16931,7 @@ if (document.getElementById('epeDrop')){
       const barRect = bar.getBoundingClientRect();
       const dx = clientX - startX, dy = clientY - startY;
       let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
-      // Never leave the canvas bounds, per the explicit requirement.
+      // Never leave the visible workspace bounds, per the explicit requirement.
       newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
       newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
       bar.style.left = newLeft + 'px';
@@ -16952,14 +16950,24 @@ if (document.getElementById('epeDrop')){
     });
     handle.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
       moveDrag(e.clientX, e.clientY);
     });
-    handle.addEventListener('pointerup', endDrag);
-    handle.addEventListener('pointercancel', endDrag);
+    handle.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(); });
+    handle.addEventListener('pointercancel', (e) => { e.stopPropagation(); endDrag(); });
+
+    // Reset to the default (centered, bottom-anchored) position when
+    // Fit to Screen is pressed, per the explicit requirement.
+    function resetToDefaultPosition(){
+      bar.style.left = ''; bar.style.top = ''; bar.style.bottom = '';
+      bar.style.transform = '';
+      bar.classList.remove('epe-dragging');
+    }
+    document.getElementById('epeFitScreenBtn') && document.getElementById('epeFitScreenBtn').addEventListener('click', resetToDefaultPosition);
+    document.getElementById('epeFloatFitBtn') && document.getElementById('epeFloatFitBtn').addEventListener('click', resetToDefaultPosition);
 
     // Re-clamp on resize/orientation change so the toolbar never ends
-    // up outside the (possibly now-smaller) canvas bounds.
+    // up outside the (possibly now-smaller) workspace bounds.
     window.addEventListener('resize', () => {
       if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
       const wrapRect = wrap.getBoundingClientRect();
