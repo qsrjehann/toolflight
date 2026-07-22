@@ -6365,42 +6365,48 @@ if (document.getElementById('ppDrop')){
      source canvas with putImageData(), permanently discarding the erased
      pixels with no way to undo or restore them. */
   let ppEraseMask = null; // Uint8ClampedArray, length = w*h
-  let ppHistory = []; // array of Uint8ClampedArray mask snapshots
-  let ppHistoryIndex = -1;
   const PP_HISTORY_CAP = 50; // oldest states evicted beyond this -- full mask snapshots per state (see report: not true byte-diffs)
+
+  // Passport's instance of the shared History Engine. Stack mechanics
+  // (push/undo/redo/limit) are now genuinely shared with the Ecommerce
+  // Editor; what's snapshotted (the erase mask, not full editor state --
+  // see report for why this narrower scope is preserved as-is) stays
+  // exactly as it was. ppHistory/ppHistoryIndex kept as synced plain
+  // variables since nothing outside this block reads them.
+  let ppHistory = [], ppHistoryIndex = -1;
+  const ppHistoryEngine = createToolflightHistoryEngine({
+    maxSize: PP_HISTORY_CAP,
+    snapshotFn: () => ppEraseMask.slice(),
+    restoreFn: (snap) => { ppEraseMask = snap.slice(); renderPpPreview(); },
+    onChange: () => { ppHistory = ppHistoryEngine.getStack(); ppHistoryIndex = ppHistoryEngine.getIndex(); updatePpUndoRedoButtons(); },
+  });
 
   function initPpMask(w, h){
     ppEraseMask = new Uint8ClampedArray(w*h);
-    ppHistory = [ppEraseMask.slice()];
-    ppHistoryIndex = 0;
-    updatePpUndoRedoButtons();
+    ppHistoryEngine.clearHistory();
+    ppHistoryEngine.createSnapshot();
   }
   function pushPpHistory(){
-    ppHistory = ppHistory.slice(0, ppHistoryIndex+1);
-    ppHistory.push(ppEraseMask.slice());
-    if (ppHistory.length > PP_HISTORY_CAP) ppHistory.shift();
-    ppHistoryIndex = ppHistory.length - 1;
-    updatePpUndoRedoButtons();
+    ppHistoryEngine.createSnapshot();
   }
   function undoPp(){
-    if (ppHistoryIndex <= 0) return;
-    ppHistoryIndex--;
-    ppEraseMask = ppHistory[ppHistoryIndex].slice();
-    renderPpPreview();
-    updatePpUndoRedoButtons();
+    ppHistoryEngine.undo();
   }
   function redoPp(){
-    if (ppHistoryIndex >= ppHistory.length-1) return;
-    ppHistoryIndex++;
-    ppEraseMask = ppHistory[ppHistoryIndex].slice();
-    renderPpPreview();
-    updatePpUndoRedoButtons();
+    ppHistoryEngine.redo();
   }
   function updatePpUndoRedoButtons(){
     const undoBtn = document.getElementById('ppUndoBtn'), redoBtn = document.getElementById('ppRedoBtn');
-    if (undoBtn) undoBtn.disabled = ppHistoryIndex <= 0;
-    if (redoBtn) redoBtn.disabled = ppHistoryIndex >= ppHistory.length-1;
+    if (undoBtn) undoBtn.disabled = !ppHistoryEngine.canUndo();
+    if (redoBtn) redoBtn.disabled = !ppHistoryEngine.canRedo();
   }
+
+  // Passport's instance of the shared Plugin Engine, instantiated early
+  // (before any tool registration) -- Phase 8's temporal-dead-zone bug
+  // came from declaring the engine instance too late relative to its
+  // first use, so this is deliberately placed immediately after the
+  // History Engine block rather than near the first tool it registers.
+  const ppPluginEngine = createToolflightPluginEngine({});
 
   // Resolves ANY valid CSS color string (hex or named, e.g. 'white') to RGB by
   // letting the canvas API itself parse it, rather than a hand-rolled regex
@@ -6901,7 +6907,7 @@ if (document.getElementById('ppDrop')){
     for (let y=0;y<h;y++) for (let x=0;x<w;x++) out[y*w + (w-1-x)] = mask[y*w+x];
     return out;
   }
-  document.getElementById('ppRotateBtn').onclick = () => {
+  function ppRotate90(){
     const oldW = ppSourceCanvas.width, oldH = ppSourceCanvas.height;
     const c = document.createElement('canvas'); c.width = oldH; c.height = oldW;
     const ctx = c.getContext('2d'); ctx.translate(c.width/2, c.height/2); ctx.rotate(Math.PI/2); ctx.drawImage(ppSourceCanvas, -oldW/2, -oldH/2);
@@ -6909,8 +6915,8 @@ if (document.getElementById('ppDrop')){
     ppEraseMask = rotateMask90(ppEraseMask, oldW, oldH);
     pushPpHistory();
     ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview); renderPpPreview();
-  };
-  document.getElementById('ppFlipBtn').onclick = () => {
+  }
+  function ppFlipHorizontal(){
     const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(ppSourceCanvas,0,0);
@@ -6918,7 +6924,11 @@ if (document.getElementById('ppDrop')){
     ppEraseMask = flipMaskHorizontal(ppEraseMask, w, h);
     pushPpHistory();
     ppFaceLandmarks = null; runFaceDetectAndAutoPosition().then(renderPpPreview);
-  };
+  }
+  ppPluginEngine.register({ id: 'rotate90', category: 'edit', name: 'Rotate 90\u00b0', kind: 'action', activate: () => ppRotate90() });
+  ppPluginEngine.register({ id: 'flipHorizontal', category: 'edit', name: 'Flip', kind: 'action', activate: () => ppFlipHorizontal() });
+  document.getElementById('ppRotateBtn').onclick = () => ppPluginEngine.activate('rotate90');
+  document.getElementById('ppFlipBtn').onclick = () => ppPluginEngine.activate('flipHorizontal');
   document.getElementById('ppResetBtn').onclick = () => {
     resetPpAdjustments();
     if (ppSourceCanvas) initPpMask(ppSourceCanvas.width, ppSourceCanvas.height);
