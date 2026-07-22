@@ -6399,6 +6399,9 @@ if (document.getElementById('ppDrop')){
     const undoBtn = document.getElementById('ppUndoBtn'), redoBtn = document.getElementById('ppRedoBtn');
     if (undoBtn) undoBtn.disabled = !ppHistoryEngine.canUndo();
     if (redoBtn) redoBtn.disabled = !ppHistoryEngine.canRedo();
+    const floatUndoBtn = document.getElementById('ppFloatUndoBtn'), floatRedoBtn = document.getElementById('ppFloatRedoBtn');
+    if (floatUndoBtn) floatUndoBtn.disabled = !ppHistoryEngine.canUndo();
+    if (floatRedoBtn) floatRedoBtn.disabled = !ppHistoryEngine.canRedo();
   }
 
   // Passport's instance of the shared Plugin Engine, instantiated early
@@ -7107,6 +7110,63 @@ if (document.getElementById('ppDrop')){
     toast('Fit to screen.');
   };
   window.addEventListener('resize', () => { if (ppSourceCanvas) fitPpCanvasDisplay(); });
+
+  // Passport's instance of the shared Category Switcher (Toolbar
+  // Engine). Print and Export share ppAccordionExport since its
+  // content (dims, sheet layout, download/print buttons) genuinely
+  // spans both concepts and can't be cleanly split without HTML
+  // surgery -- the same pragmatic choice made for Ecommerce's own
+  // navigation cleanup when a single accordion covered two categories.
+  const PP_CATEGORY_ACCORDIONS = {
+    edit: ['ppAccordionManual', 'ppAccordionAdjustments'],
+    facePosition: ['ppAccordionPosition'],
+    background: ['ppAccordionBackground'],
+    print: ['ppAccordionExport'],
+    export: ['ppAccordionExport'],
+  };
+  const PP_CATEGORY_LABELS = { edit:'Edit', facePosition:'Face Position', background:'Background', print:'Print', export:'Export' };
+  const ppCategorySwitcher = createToolflightCategorySwitcher({
+    accordionMap: PP_CATEGORY_ACCORDIONS,
+    labelMap: PP_CATEGORY_LABELS,
+    navButtonSelector: '[data-pp-category]',
+    activeStateSelector: '.epe-rail-btn[data-pp-category], .epe-tab-btn[data-pp-category]',
+    categoryDataAttr: 'ppCategory',
+    panelTitleEl: () => document.getElementById('ppToolPanelTitle'),
+    panelBodyEl: () => document.getElementById('ppToolPanelBody'),
+    onOpenPanel: () => {
+      if (window.innerWidth < 900){
+        document.getElementById('ppToolPanel').classList.add('sheet-open', 'sheet-half');
+        document.getElementById('ppSheetBackdrop').classList.add('visible');
+      }
+    },
+  });
+  document.querySelectorAll('[data-pp-category]').forEach(btn => btn.addEventListener('click', () => ppCategorySwitcher.selectCategory(btn.dataset.ppCategory)));
+  ppCategorySwitcher.selectCategory('edit', { skipOpenPanel: true, noScroll: true });
+  document.getElementById('ppSheetBackdrop') && document.getElementById('ppSheetBackdrop').addEventListener('click', () => {
+    document.getElementById('ppToolPanel').classList.remove('sheet-open', 'sheet-half', 'sheet-full');
+    document.getElementById('ppSheetBackdrop').classList.remove('visible');
+  });
+  document.getElementById('ppSheetCloseBtn') && document.getElementById('ppSheetCloseBtn').addEventListener('click', () => {
+    document.getElementById('ppToolPanel').classList.remove('sheet-open', 'sheet-half', 'sheet-full');
+    document.getElementById('ppSheetBackdrop').classList.remove('visible');
+  });
+  document.getElementById('ppPanelCollapseBtn') && document.getElementById('ppPanelCollapseBtn').addEventListener('click', () => {
+    document.getElementById('ppToolPanel').classList.toggle('collapsed');
+  });
+
+  // Passport's instance of the shared Floating Toolbar Drag engine --
+  // same exact drag/clamp/reset mechanism as Ecommerce, reused
+  // directly, zero new drag math written.
+  createToolflightFloatingToolbarDrag({
+    handleEl: () => document.getElementById('ppFloatDragHandle'),
+    barEl: () => document.getElementById('ppFloatingControls'),
+    viewportEl: () => document.getElementById('ppWorkspaceViewport'),
+    draggingClass: 'pp-dragging',
+    resetTriggerEls: [ () => document.getElementById('ppViewFitBtn') ],
+  });
+  document.getElementById('ppFloatUndoBtn').onclick = () => undoPp();
+  document.getElementById('ppFloatRedoBtn').onclick = () => redoPp();
+  document.getElementById('ppFloatFitBtn').onclick = () => { ppViewZoom = 1; fitPpCanvasDisplay(); };
 
   // Touch pinch-zoom for the new display-level workspace was
   // deliberately NOT added: Passport already has an established
