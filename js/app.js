@@ -13790,7 +13790,7 @@ if (document.getElementById('epeDrop')){
           layer.text = p.label; layer.fontFamily = font; layer.fontWeight = weight;
           layer.color = p.color; layer.letterSpacing = p.ls || 0; layer.italic = !!p.italic;
           if (p.shadow) layer.shadow = { enabled:true, offsetX: p.shadowBig?8:3, offsetY: p.shadowBig?8:3, blur: p.shadowBig?0:3, opacity:70, color: p.color==='#FFFFFF'?'#888888':'#000000' };
-          if (p.stroke) layer.stroke = { enabled:true, thickness:2, position:'outside', opacity:100, color: p.color==='#FFFFFF'||p.color==='#E8E8E8'?'#000000':'#000000' };
+          if (p.stroke) layer.stroke = { enabled:true, thickness:2, position:'inside', opacity:100, color: '#000000' }; // position:'inside' uses source-over compositing, correctly visible on top of any background; 'outside' uses destination-over, which renders behind already-opaque content and would be invisible
           if (p.glow) layer.glow = { enabled:true, blur:20, opacity:90, color:p.color };
           dseMeasureTextLayer(layer);
           dseState.layers.push(layer); dseSelectLayer(layer.id, false);
@@ -13819,7 +13819,7 @@ if (document.getElementById('epeDrop')){
             layer.shadow = { enabled:true, offsetX:3, offsetY:3, blur:0, opacity:80, color:'#000000' };
           }
           if (catName === 'Glass'){
-            layer.stroke = { enabled:true, thickness:1, position:'outside', opacity:60, color:'#ffffff' };
+            layer.stroke = { enabled:true, thickness:1, position:'inside', opacity:60, color:'#ffffff' }; // 'inside' renders visibly on top; see note above
             layer.opacity = 92;
           }
           dseMeasureTextLayer(layer);
