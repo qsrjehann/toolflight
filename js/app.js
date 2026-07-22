@@ -16515,45 +16515,172 @@ if (document.getElementById('epeDrop')){
     }
   });
 
-  const EPE_ALL_CATEGORY_ACCORDION_IDS = Object.values(EPE_CATEGORY_ACCORDIONS).flat();
-  function epeSelectCategory(cat, opts){
-    opts = opts || {};
-    if (!EPE_CATEGORY_ACCORDIONS[cat]) return;
-    epeActiveCategory = cat;
-    document.querySelectorAll('.epe-rail-btn, .epe-tab-btn').forEach(btn => {
-      const isActive = btn.dataset.epeCategory === cat;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-pressed', String(isActive));
-    });
-    const titleEl = document.getElementById('epeToolPanelTitle');
-    if (titleEl) titleEl.textContent = EPE_CATEGORY_LABELS[cat] || cat;
+  /* ============================================================
+     TOOLFLIGHT TOOLBAR ENGINE -- Floating Toolbar Drag (Phase 2 of
+     the multi-editor migration plan). Tool-agnostic: takes handle/
+     bar/viewport elements and a list of "reset trigger" elements as
+     config, with no knowledge of "ecommerce" specifically. This is
+     the single, real implementation of drag + clamp-to-viewport +
+     reset-on-fit for a floating toolbar. The Ecommerce Editor is
+     refactored below to instantiate this rather than containing its
+     own separate copy of the same logic. Future editors instantiate
+     their own instance the same way, with their own elements -- no
+     new drag math is ever written per-editor. ============================================================ */
+  function createToolflightFloatingToolbarDrag(config){
+    config = config || {};
+    const handle = typeof config.handleEl === 'function' ? config.handleEl() : config.handleEl;
+    const bar = typeof config.barEl === 'function' ? config.barEl() : config.barEl;
+    const wrap = typeof config.viewportEl === 'function' ? config.viewportEl() : config.viewportEl;
+    if (!handle || !bar || !wrap) return null;
+    let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
 
-    // Show only this category's accordions; hide every other
-    // category's accordion entirely (not just collapse it) -- this is
-    // the actual fix for the sheet showing every feature at once.
-    // Contextual panels outside EPE_CATEGORY_ACCORDIONS (Object, Text,
-    // Shape properties) are untouched here; they're governed by
-    // current selection, independent of category.
-    const ids = EPE_CATEGORY_ACCORDIONS[cat];
-    const idSet = new Set(ids);
-    EPE_ALL_CATEGORY_ACCORDION_IDS.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.toggle('epe-category-hidden', !idSet.has(id));
-    });
-    ids.forEach((id, i) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (i === 0) el.open = true; else if (opts.collapseRest !== false) el.open = false;
-    });
-    const panelBody = document.getElementById('epeToolPanelBody');
-    if (panelBody) panelBody.scrollTop = 0;
-    const firstEl = document.getElementById(ids[0]);
-    if (firstEl && firstEl.scrollIntoView && !opts.noScroll) firstEl.scrollIntoView({ block:'start', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto' });
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
-    if (!opts.skipOpenPanel) epeOpenToolPanel();
+    function beginDrag(clientX, clientY){
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      // Switch from the centered (left:50%, transform) default to
+      // absolute pixel positioning relative to the viewport, using the
+      // bar's CURRENT on-screen position so there's no visual jump.
+      barStartLeft = barRect.left - wrapRect.left;
+      barStartTop = barRect.top - wrapRect.top;
+      bar.style.left = barStartLeft + 'px';
+      bar.style.top = barStartTop + 'px';
+      bar.style.bottom = 'auto';
+      bar.style.transform = 'none';
+      bar.classList.add(config.draggingClass || 'epe-dragging');
+      startX = clientX; startY = clientY;
+      dragging = true;
+    }
+    function moveDrag(clientX, clientY){
+      if (!dragging) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const dx = clientX - startX, dy = clientY - startY;
+      let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
+      // Never leave the visible viewport bounds.
+      newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
+      newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
+      bar.style.left = newLeft + 'px';
+      bar.style.top = newTop + 'px';
+    }
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      bar.classList.remove(config.draggingClass || 'epe-dragging');
+    }
+    function resetToDefaultPosition(){
+      bar.style.left = ''; bar.style.top = ''; bar.style.bottom = '';
+      bar.style.transform = '';
+      bar.classList.remove(config.draggingClass || 'epe-dragging');
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      beginDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault(); e.stopPropagation();
+      moveDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(); });
+    handle.addEventListener('pointercancel', (e) => { e.stopPropagation(); endDrag(); });
+
+    // Reset to the default (centered, bottom-anchored) position when any
+    // of the configured "reset trigger" elements are clicked (e.g. Fit to
+    // Screen buttons).
+    (config.resetTriggerEls || []).forEach(el => {
+      const target = typeof el === 'function' ? el() : el;
+      if (target) target.addEventListener('click', resetToDefaultPosition);
+    });
+
+    // Re-clamp on resize/orientation change so the toolbar never ends up
+    // outside the (possibly now-smaller) viewport bounds.
+    window.addEventListener('resize', () => {
+      if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const curLeft = parseFloat(bar.style.left) || 0, curTop = parseFloat(bar.style.top) || 0;
+      bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
+      bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
+    });
+
+    return { resetToDefaultPosition };
   }
-  document.querySelectorAll('[data-epe-category]').forEach(btn => btn.addEventListener('click', () => epeSelectCategory(btn.dataset.epeCategory)));
+
+  function createToolflightCategorySwitcher(config){
+    config = config || {};
+    const accordionMap = config.accordionMap || {};
+    const labelMap = config.labelMap || {};
+    const allAccordionIds = Object.values(accordionMap).flat();
+    const navButtonSelector = config.navButtonSelector || '[data-toolflight-category]';
+    const activeStateSelector = config.activeStateSelector || navButtonSelector;
+    const categoryDataAttr = config.categoryDataAttr || 'toolflightCategory';
+    let activeCategory = config.initialCategory || null;
+
+    function getPanelTitleEl(){ return typeof config.panelTitleEl === 'function' ? config.panelTitleEl() : config.panelTitleEl; }
+    function getPanelBodyEl(){ return typeof config.panelBodyEl === 'function' ? config.panelBodyEl() : config.panelBodyEl; }
+
+    function selectCategory(cat, opts){
+      opts = opts || {};
+      if (!accordionMap[cat]) return;
+      activeCategory = cat;
+      document.querySelectorAll(activeStateSelector).forEach(btn => {
+        const isActive = btn.dataset[categoryDataAttr] === cat;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+      });
+      const titleEl = getPanelTitleEl();
+      if (titleEl) titleEl.textContent = labelMap[cat] || cat;
+
+      const ids = accordionMap[cat];
+      const idSet = new Set(ids);
+      allAccordionIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle(config.hiddenClass || 'epe-category-hidden', !idSet.has(id));
+      });
+      ids.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (i === 0) el.open = true; else if (opts.collapseRest !== false) el.open = false;
+      });
+      const panelBody = getPanelBodyEl();
+      if (panelBody) panelBody.scrollTop = 0;
+      const firstEl = document.getElementById(ids[0]);
+      if (firstEl && firstEl.scrollIntoView && !opts.noScroll) firstEl.scrollIntoView({ block:'start', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto' });
+
+      if (!opts.skipOpenPanel && typeof config.onOpenPanel === 'function') config.onOpenPanel();
+    }
+    document.querySelectorAll(navButtonSelector).forEach(btn => btn.addEventListener('click', () => selectCategory(btn.dataset[categoryDataAttr])));
+
+    return { selectCategory, getActiveCategory: () => activeCategory };
+  }
+
+  const EPE_ALL_CATEGORY_ACCORDION_IDS = Object.values(EPE_CATEGORY_ACCORDIONS).flat();
+  // Ecommerce Editor's instance of the shared category switcher engine.
+  // epeSelectCategory below is a thin wrapper preserving the exact same
+  // external name/signature (called from many places, including the
+  // init call), so nothing else needed to change. Selectors and data
+  // attributes match the existing, unmodified HTML exactly -- this is
+  // purely the *mechanism* being shared, not the categories/labels
+  // themselves, which stay defined exactly where they were.
+  const epeCategorySwitcher = createToolflightCategorySwitcher({
+    accordionMap: EPE_CATEGORY_ACCORDIONS,
+    labelMap: EPE_CATEGORY_LABELS,
+    navButtonSelector: '[data-epe-category]',
+    activeStateSelector: '.epe-rail-btn, .epe-tab-btn',
+    categoryDataAttr: 'epeCategory',
+    panelTitleEl: () => document.getElementById('epeToolPanelTitle'),
+    panelBodyEl: () => document.getElementById('epeToolPanelBody'),
+    onOpenPanel: () => epeOpenToolPanel(),
+  });
+  function epeSelectCategory(cat, opts){
+    epeCategorySwitcher.selectCategory(cat, opts);
+    epeActiveCategory = epeCategorySwitcher.getActiveCategory();
+  }
 
   /* ---- Panel open/close: bottom sheet (mobile) or sidebar (desktop) ---- */
   let epeSheetState = 'closed'; // closed | half | full
@@ -16973,83 +17100,16 @@ if (document.getElementById('epeDrop')){
   // interactions within the session (not reset on re-render) since
   // it's stored in the element's own inline style, which nothing else
   // in the render pipeline touches.
-  (function setupEpeFloatingToolbarDrag(){
-    const handle = document.getElementById('epeFloatDragHandle');
-    const bar = document.getElementById('epeFloatingControls');
-    const wrap = document.getElementById('epeWorkspaceViewport'); // bar's actual positioned ancestor (see comment above)
-    if (!handle || !bar || !wrap) return;
-    let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
-
-    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-
-    function beginDrag(clientX, clientY){
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      // Switch from the centered (left:50%, transform) default to
-      // absolute pixel positioning relative to the workspace viewport,
-      // using the bar's CURRENT on-screen position so there's no visual jump.
-      barStartLeft = barRect.left - wrapRect.left;
-      barStartTop = barRect.top - wrapRect.top;
-      bar.style.left = barStartLeft + 'px';
-      bar.style.top = barStartTop + 'px';
-      bar.style.bottom = 'auto';
-      bar.style.transform = 'none';
-      bar.classList.add('epe-dragging');
-      startX = clientX; startY = clientY;
-      dragging = true;
-    }
-    function moveDrag(clientX, clientY){
-      if (!dragging) return;
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      const dx = clientX - startX, dy = clientY - startY;
-      let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
-      // Never leave the visible workspace bounds, per the explicit requirement.
-      newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
-      newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
-      bar.style.left = newLeft + 'px';
-      bar.style.top = newTop + 'px';
-    }
-    function endDrag(){
-      if (!dragging) return;
-      dragging = false;
-      bar.classList.remove('epe-dragging');
-    }
-
-    handle.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
-      beginDrag(e.clientX, e.clientY);
-    });
-    handle.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      e.preventDefault(); e.stopPropagation();
-      moveDrag(e.clientX, e.clientY);
-    });
-    handle.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(); });
-    handle.addEventListener('pointercancel', (e) => { e.stopPropagation(); endDrag(); });
-
-    // Reset to the default (centered, bottom-anchored) position when
-    // Fit to Screen is pressed, per the explicit requirement.
-    function resetToDefaultPosition(){
-      bar.style.left = ''; bar.style.top = ''; bar.style.bottom = '';
-      bar.style.transform = '';
-      bar.classList.remove('epe-dragging');
-    }
-    document.getElementById('epeFitScreenBtn') && document.getElementById('epeFitScreenBtn').addEventListener('click', resetToDefaultPosition);
-    document.getElementById('epeFloatFitBtn') && document.getElementById('epeFloatFitBtn').addEventListener('click', resetToDefaultPosition);
-
-    // Re-clamp on resize/orientation change so the toolbar never ends
-    // up outside the (possibly now-smaller) workspace bounds.
-    window.addEventListener('resize', () => {
-      if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      const curLeft = parseFloat(bar.style.left) || 0, curTop = parseFloat(bar.style.top) || 0;
-      bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
-      bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
-    });
-  })();
+  createToolflightFloatingToolbarDrag({
+    handleEl: () => document.getElementById('epeFloatDragHandle'),
+    barEl: () => document.getElementById('epeFloatingControls'),
+    viewportEl: () => document.getElementById('epeWorkspaceViewport'),
+    draggingClass: 'epe-dragging',
+    resetTriggerEls: [
+      () => document.getElementById('epeFitScreenBtn'),
+      () => document.getElementById('epeFloatFitBtn'),
+    ],
+  });
 
 
   // ---- Smooth pan (architecture phase): a dedicated pan-mode toggle,
