@@ -8969,6 +8969,70 @@ if (document.getElementById('epeDrop')){
   let epeArtboardW = 0, epeArtboardH = 0;
   let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
   let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
+  /* ============================================================
+     TOOLFLIGHT WORKSPACE ENGINE (shared architecture, Phase 1 of
+     the multi-editor migration plan). Tool-agnostic: takes viewport/
+     workspace elements as config, has no knowledge of "ecommerce"
+     specifically. This is the single, real implementation of the
+     Viewport -> Workspace GPU-transform pattern (translate + scale)
+     -- fit-to-screen math, zoom-around-a-point math, and transform
+     application all live here exactly once. The Ecommerce Editor is
+     refactored below to delegate to an instance of this engine
+     rather than containing its own separate copy of this logic.
+     Future editors (Passport, Thumbnail, etc.) instantiate their own
+     engine the same way, with their own viewport/workspace elements
+     -- no new workspace math is ever written per-editor. ============================================================ */
+  function createToolflightWorkspaceEngine(opts){
+    opts = opts || {};
+    let x = 0, y = 0, scale = 1;
+    const engine = {
+      getState(){ return { x, y, scale }; },
+      applyTransform(){
+        const ws = typeof opts.workspaceEl === 'function' ? opts.workspaceEl() : opts.workspaceEl;
+        if (ws) ws.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      },
+      // Computes a centered fit-to-screen transform for content of size
+      // contentW x contentH within the configured viewport, at the given
+      // user zoom multiplier (1 = exact fit, >1 = zoomed in beyond fit).
+      // Purely a function of the viewport's CURRENT size and the content's
+      // fixed size -- never the workspace's own previous transform -- so
+      // repeated calls never accumulate error (the root cause of an
+      // earlier, since-fixed "Fit to Screen" cumulative-shrink bug).
+      fitToScreen(contentW, contentH, userZoom){
+        const viewport = typeof opts.viewportEl === 'function' ? opts.viewportEl() : opts.viewportEl;
+        if (!viewport || !contentW || !contentH) return this.getState();
+        const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
+        const fitScale = Math.min(1, availW/contentW, availH/contentH) * (userZoom || 1);
+        scale = fitScale;
+        x = (availW - contentW*fitScale)/2;
+        y = (availH - contentH*fitScale)/2;
+        this.applyTransform();
+        return this.getState();
+      },
+      // Zoom around a specific viewport-relative point (cursor or pinch
+      // center), keeping that point visually stationary on screen.
+      zoomAroundPoint(newScale, viewportX, viewportY){
+        const oldScale = scale || 1;
+        const wsPointX = (viewportX - x) / oldScale;
+        const wsPointY = (viewportY - y) / oldScale;
+        scale = newScale;
+        x = viewportX - wsPointX*newScale;
+        y = viewportY - wsPointY*newScale;
+        this.applyTransform();
+        return this.getState();
+      },
+      // Directly set the transform state (used by pan and by external
+      // callers syncing plain-variable state back into the engine).
+      setState(newX, newY, newScale){
+        x = newX; y = newY;
+        if (newScale !== undefined) scale = newScale;
+        this.applyTransform();
+        return this.getState();
+      },
+    };
+    return engine;
+  }
+
   // ---- Workspace architecture: the canvas element itself is always
   // kept at its native pixel size (epeArtboardW x epeArtboardH in CSS
   // px too); all visual pan/zoom is expressed as a single transform on
@@ -8979,9 +9043,25 @@ if (document.getElementById('epeDrop')){
   // Measuring the fixed-size #epeWorkspaceViewport is stable regardless
   // of how many times fit/center/zoom run. ----
   let epeWorkspaceX = 0, epeWorkspaceY = 0, epeWorkspaceScale = 1;
+  // Ecommerce Editor's instance of the shared workspace engine -- this
+  // IS the workspace math for this editor now; epeApplyWorkspaceTransform/
+  // epeZoomAroundPoint/fitEpeCanvasDisplay below are thin wrappers that
+  // delegate to it and keep the pre-existing plain variables
+  // (epeWorkspaceX/Y/Scale, read directly by the pan-mode code) in sync,
+  // so nothing else in the codebase needed to change.
+  const epeWorkspaceEngine = createToolflightWorkspaceEngine({
+    viewportEl: () => document.getElementById('epeWorkspaceViewport'),
+    workspaceEl: () => document.getElementById('epeWorkspace'),
+  });
+  function epeSyncWorkspaceVarsFromEngine(){
+    const s = epeWorkspaceEngine.getState();
+    epeWorkspaceX = s.x; epeWorkspaceY = s.y; epeWorkspaceScale = s.scale;
+  }
   function epeApplyWorkspaceTransform(){
-    const ws = document.getElementById('epeWorkspace');
-    if (ws) ws.style.transform = `translate(${epeWorkspaceX}px, ${epeWorkspaceY}px) scale(${epeWorkspaceScale})`;
+    // The pan-mode code updates epeWorkspaceX/Y directly then calls this
+    // function -- push that state into the engine so it stays the source
+    // of truth, then apply.
+    epeWorkspaceEngine.setState(epeWorkspaceX, epeWorkspaceY, epeWorkspaceScale);
   }
   // Zoom around a specific viewport-relative point (cursor position or
   // pinch center), keeping that point visually stationary. newDisplayScale
@@ -8989,14 +9069,8 @@ if (document.getElementById('epeDrop')){
   // fit-to-screen baseline, matching what fitEpeCanvasDisplay would compute
   // for the same epeViewZoom).
   function epeZoomAroundPoint(newDisplayScale, viewportX, viewportY){
-    const oldScale = epeWorkspaceScale || 1;
-    // The workspace-space point currently under the cursor, before rescaling.
-    const wsPointX = (viewportX - epeWorkspaceX) / oldScale;
-    const wsPointY = (viewportY - epeWorkspaceY) / oldScale;
-    epeWorkspaceScale = newDisplayScale;
-    epeWorkspaceX = viewportX - wsPointX*newDisplayScale;
-    epeWorkspaceY = viewportY - wsPointY*newDisplayScale;
-    epeApplyWorkspaceTransform();
+    epeWorkspaceEngine.zoomAroundPoint(newDisplayScale, viewportX, viewportY);
+    epeSyncWorkspaceVarsFromEngine();
   }
   let epeHistoryStack = [], epeHistoryIndex = -1;
   let epeCropActive = false, epeCropRect = null, epeCropDragMode = null, epeCropDragStart = null, epeCropRectStart = null;
@@ -10374,15 +10448,14 @@ if (document.getElementById('epeDrop')){
     if (!epeArtboardW || !viewport) return;
     // Canvas element always at its true native pixel size; zoom is
     // handled entirely by the workspace's scale() transform below.
+    // (This sizing step is Canvas Engine territory, not Workspace Engine --
+    // the shared engine only knows about "content width/height", not
+    // canvas elements specifically.)
     epeArtboardEl.style.width = epeArtboardW+'px'; epeArtboardEl.style.height = epeArtboardH+'px';
     epeOverlayEl.style.width = epeArtboardW+'px'; epeOverlayEl.style.height = epeArtboardH+'px';
     epeOverlayEl.style.position = 'absolute'; epeOverlayEl.style.top = '0'; epeOverlayEl.style.left = '0'; epeOverlayEl.style.pointerEvents = 'none';
-    const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
-    const fitScale = Math.min(1, availW/epeArtboardW, availH/epeArtboardH) * epeViewZoom;
-    epeWorkspaceScale = fitScale;
-    epeWorkspaceX = (availW - epeArtboardW*fitScale)/2;
-    epeWorkspaceY = (availH - epeArtboardH*fitScale)/2;
-    epeApplyWorkspaceTransform();
+    epeWorkspaceEngine.fitToScreen(epeArtboardW, epeArtboardH, epeViewZoom);
+    epeSyncWorkspaceVarsFromEngine();
   }
 
   function renderEpeAll(skipFit){
