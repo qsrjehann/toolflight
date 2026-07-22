@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>Passport & Visa Photo Maker — Free Online | ToolFlight</title>
 <meta name="description" content="Free passport and visa photo maker with AI face detection, background replacement, and correct sizing for USA, UK, Canada, Schengen, and 38 more countries. Runs entirely in your browser.">
-<link rel="icon" href="assets/favicon.ico?v=20260717-0004" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260717-0004">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260717-0004">
+<link rel="icon" href="assets/favicon.ico?v=20260722-2220" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260722-2220">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260722-2220">
 <link rel="canonical" href="https://toolflight.com/passport-photo-maker.html">
 
 <meta property="og:title" content="Passport & Visa Photo Maker — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260717-0004">
+<link rel="stylesheet" href="css/style.css?v=20260722-2220">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260717-0004" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260722-2220" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -204,9 +204,17 @@
       <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
 
       <div id="ppStage" class="hidden">
-        <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
-          <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+        <div class="row" id="ppCanvasTopControls" style="flex-wrap:wrap;margin-top:14px;">
+          <button class="btn btn-secondary" id="ppViewFitBtn" type="button">Fit View to Screen</button>
+          <button class="btn btn-secondary" id="ppViewCenterBtn" type="button">Center View</button>
+        </div>
+        <div id="ppWorkspaceViewport">
+          <div id="ppWorkspace">
+            <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="cursor:default;">
+              <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
+              <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+            </div>
+          </div>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="ppIcaoToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Show ICAO compliance guides</label>
         <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
@@ -352,7 +360,7 @@
       <div id="ppPrintRoot" class="pp-print-root"></div>
   </div>
 
-  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+  <div id="toolSeoContent" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
     <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the Passport & Visa Photo Maker</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Passport & Visa Photo Maker uses real AI face detection (the same MediaPipe technology behind ToolFlight's AI Background Remover and AI Photo Enhancer) to automatically position and size your photo to a selected country's typical passport or visa specification, with manual fine-tuning, background replacement, and automated compliance checks — all running locally in your browser. Photo requirements genuinely do change and vary by application type, so always verify current requirements on your country's official passport or embassy website before submitting — see our <a href="blog/passport-photo-rules-ai-editing.html">full guide to passport photo rules and AI editing limitations</a> for more.</p>
 
@@ -392,7 +400,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260717-0004" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260722-2220" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -429,6 +437,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260717-0004"></script>
+<script defer src="js/app.js?v=20260722-2220"></script>
 </body>
 </html>
