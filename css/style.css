@@ -966,10 +966,33 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    already resized the canvas inside it, creating a feedback loop.
    width:100% and flex:1 1 auto make the wrap's size depend only on its
    parent, never on its child canvas's current size. */
-#epeCanvasStageWrap{ width:100%; max-width:100%; max-height:none; flex:1 1 auto; min-height:0; box-sizing:border-box;
-  display:flex; align-items:center; justify-content:center; position:relative;
-}
+#epeCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; }
 #epeCanvasTopControls{ margin-bottom:10px; }
+
+/* ---- Workspace architecture: Viewport (fixed, visible window,
+   overflow:hidden) -> Workspace (large virtual area, GPU transform
+   for pan/zoom) -> Canvas (epeCanvasStageWrap, always at its native
+   pixel size -- never resized for zoom, only the workspace's own
+   scale() transform makes it appear larger/smaller on screen). This
+   is why coordinate math elsewhere (getBoundingClientRect-based)
+   continues to work unmodified: the browser reports the canvas's
+   actual on-screen position/size correctly regardless of whether
+   that's due to its own CSS size or an ancestor's transform. */
+#epeWorkspaceViewport{
+  flex:1 1 auto; min-height:0; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+}
+#epeWorkspace{
+  position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform;
+}
+#epeWorkspaceViewport.epe-pan-mode{ cursor:grab; }
+#epeWorkspaceViewport.epe-pan-mode:active{ cursor:grabbing; }
 
 /* ---- Floating canvas controls ---- */
 #epeFloatingControls{
