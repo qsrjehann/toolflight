@@ -1289,3 +1289,113 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 #ppWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
 #ppWorkspaceViewport.pp-pan-mode{ cursor:grab; }
 #ppWorkspaceViewport.pp-pan-mode:active{ cursor:grabbing; }
+
+/* ============================================================
+   PASSPORT PHOTO MAKER SHELL (Phase 11). Parallel rules mirroring
+   Ecommerce's shell layout exactly (same values, new selectors) --
+   NOT selector-merged with Ecommerce's rules, after an earlier
+   selector-merge attempt nearly shipped a severe regression by
+   splitting a compound selector. .epe-rail-btn/.epe-tab-btn/
+   .pp-accordion are already confirmed generic (Phase 2/6) and reused
+   directly here, unmodified -- no new CSS needed for those. Passport's
+   floating controls are scoped to Undo/Redo/Zoom/Fit only, since it
+   has no multi-layer selection or brush-bar architecture to mirror.
+   ============================================================ */
+#ppStage{ --pp-topbar-h:52px; --pp-bottombar-h:64px; --pp-rail-w:76px; --pp-panel-w:360px; }
+#ppShellBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+#ppTopAppBar{
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  height:var(--pp-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
+  background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
+}
+#ppTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+#ppLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--pp-rail-w); flex:0 0 var(--pp-rail-w); padding:10px 6px;
+  border-right:1px solid var(--epe-shell-border); background:var(--epe-shell-surface);
+}
+
+#ppCanvasAreaShell{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+
+#ppFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#ppFloatingControls.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#ppFloatingControls.pp-dragging{ transition:none !important; }
+#ppFloatingControls button{
+  min-width:44px; min-height:44px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#ppFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#ppFloatingControls button:disabled{ opacity:0.35; cursor:not-allowed; }
+#ppFloatingControls button svg{ width:18px; height:18px; }
+#ppFloatZoomLabel{ font-size:12px; font-weight:600; color:var(--ink-soft); padding:0 4px; white-space:nowrap; }
+#ppFloatingControls .epe-float-sep{ width:1px; height:22px; background:var(--epe-shell-border); flex:0 0 auto; margin:0 2px; }
+
+#ppToolPanel{
+  display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
+  width:var(--pp-panel-w); flex:0 0 var(--pp-panel-w); max-height:100vh; position:sticky; top:0;
+  transition:width 0.2s ease; backdrop-filter:blur(6px);
+}
+#ppToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#ppToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--epe-shell-border); gap:8px; }
+#ppToolPanelTitle{ font-weight:700; font-size:14px; }
+#ppSheetDragHandle{ display:none; }
+#ppPanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#ppPanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#ppPanelResizeHandle{ display:none; }
+#ppSheetCloseBtn{ display:none; }
+#ppToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+#ppBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--pp-bottombar-h);
+  background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width: 899.98px){
+  #ppTopAppBar{ display:flex; }
+  #ppBottomToolbar{ display:flex; }
+  #ppLeftRail{ display:none; }
+  #ppCanvasAreaShell{ padding:10px; padding-bottom:10px; }
+
+  #ppToolPanel{
+    position:fixed; left:0; right:0; bottom:var(--pp-bottombar-h); top:auto;
+    width:auto; flex:none; max-height:85vh; height:45vh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--pp-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #ppToolPanel.sheet-open{ transform:translateY(0); }
+  #ppToolPanel.sheet-half{ height:45vh; }
+  #ppToolPanel.sheet-full{ height:88vh; }
+  #ppToolPanel.collapsed{ width:auto; }
+  #ppSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #ppToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #ppPanelCollapseBtn{ display:none; }
+  #ppSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  #ppSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
+  #ppSheetBackdrop.visible{ opacity:1; display:block; }
+}
+
+@media (min-width: 900px){
+  #ppTopAppBar{ display:none; }
+  #ppBottomToolbar{ display:none; }
+  #ppLeftRail{ display:flex; }
+  #ppSheetBackdrop{ display:none !important; }
+  #ppPanelResizeHandle{ display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5; }
+  #ppPanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #ppToolPanel{ position:relative; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #ppToolPanel{ transition:none !important; }
+}
