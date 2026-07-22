@@ -9481,6 +9481,194 @@ if (document.getElementById('epeDrop')){
     selectedIds: new Set(),
   };
   let dseEditingLayerId = null; // Phase 3 Part 2: the text layer currently being live-edited, if any
+  /* ============================================================
+     TOOLFLIGHT LAYER ENGINE (Phase 4 of the multi-editor migration
+     plan). Tool-agnostic: operates on a state object passed in via
+     config (the SAME dseState object the Ecommerce Editor already
+     uses -- not a copy, not a replacement), with no knowledge of
+     "ecommerce" specifically and no assumptions about layer content
+     (image/text/shape/icon/group/svg/anything future). This is the
+     single, real implementation of layer CRUD, selection, ordering,
+     and grouping -- the *mechanism*, not the 160+ existing call
+     sites that read dseState.layers/dseState.selectedIds directly,
+     which continue working completely unchanged because the
+     underlying object reference never changes.
+
+     Generic Layer Model (documented, not enforced -- existing layer
+     objects already satisfy this shape and need no migration):
+       id        string, unique
+       type      string: 'image'|'text'|'shape'|'sticker'|'icon'|
+                 'group'|'svg'(reserved for future use)|any future type
+       name      string, display label
+       visible   boolean
+       locked    boolean
+       zIndex    number, stacking order
+       x, y      number, position (transform)
+       metadata  object, editor-specific data the engine never reads
+                 or validates -- this is deliberately how future
+                 editors extend the model without changing the engine
+       children  array of child layer ids (groups only)
+
+     Designed for scale, not just the current editor: getLayerById
+     uses a Map-based index (O(1)) rather than Array.find() (O(n)),
+     which matters once an editor has thousands of layers/assets --
+     the index is built lazily and invalidated by layer-count change,
+     so it never requires existing code that pushes directly to
+     state.layers to also maintain the index manually. ============================================================ */
+  function createToolflightLayerEngine(config){
+    config = config || {};
+    const state = config.state; // same object reference as the caller's, e.g. dseState
+    const generateId = config.generateId || (() => 'layer_' + Math.random().toString(36).slice(2));
+    const listeners = {};
+
+    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[LayerEngine] listener error for', event, e); } }); }
+    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
+
+    // O(1) id -> layer index, lazily rebuilt only when the layer count
+    // changes (cheap check every call, full rebuild only when needed).
+    let idIndex = null, idIndexCount = -1;
+    function getIdIndex(){
+      if (!idIndex || idIndexCount !== state.layers.length){
+        idIndex = new Map();
+        for (const l of state.layers) idIndex.set(l.id, l);
+        idIndexCount = state.layers.length;
+      }
+      return idIndex;
+    }
+    function getLayerById(id){
+      const fromIndex = getIdIndex().get(id);
+      if (fromIndex) return fromIndex;
+      // Safety fallback for the (rare, but possible) case where a
+      // layer's id was mutated in place rather than replaced -- never
+      // silently returns nothing just because the cached index is stale.
+      return state.layers.find(l => l.id === id);
+    }
+
+    const engine = {
+      // ---- Layer Manager ----
+      getLayers(){ return state.layers; },
+      getLayerById,
+      addLayer(layer){
+        state.layers.push(layer);
+        emit('layerAdded', { layer });
+        return layer;
+      },
+      removeLayer(id){
+        const before = state.layers.length;
+        state.layers = state.layers.filter(l => l.id !== id);
+        state.selectedIds.delete(id);
+        if (state.layers.length !== before) emit('layerRemoved', { id });
+      },
+      removeLayers(ids){
+        const idSet = new Set(ids);
+        state.layers = state.layers.filter(l => !idSet.has(l.id));
+        ids.forEach(id => state.selectedIds.delete(id));
+        emit('layerRemoved', { ids });
+      },
+      updateLayer(id, patch){
+        const layer = getLayerById(id);
+        if (!layer) return null;
+        Object.assign(layer, patch);
+        emit('layerUpdated', { id, patch });
+        return layer;
+      },
+
+      // ---- Selection Manager (the only authority for selection state) ----
+      getSelectedIds(){ return state.selectedIds; },
+      getActiveLayer(){
+        if (state.selectedIds.size === 0 && state.layers.length > 0) return state.layers[state.layers.length - 1];
+        for (const id of state.selectedIds){ const l = getLayerById(id); if (l) return l; }
+        return null;
+      },
+      selectLayer(id, additive){
+        if (!additive) state.selectedIds.clear();
+        if (id) state.selectedIds.add(id);
+        emit('layerSelected', { id, additive, selectedIds: state.selectedIds });
+      },
+      deselectAll(){
+        state.selectedIds.clear();
+        emit('layerSelected', { id:null, selectedIds: state.selectedIds });
+      },
+      isSelected(id){ return state.selectedIds.has(id); },
+
+      // ---- Ordering ----
+      moveLayer(id, direction){
+        const layer = getLayerById(id);
+        if (!layer) return;
+        const sorted = [...state.layers].sort((a,b) => a.zIndex - b.zIndex);
+        const idx = sorted.indexOf(layer);
+        if (direction === 'forward' && idx < sorted.length-1){ [sorted[idx].zIndex, sorted[idx+1].zIndex] = [sorted[idx+1].zIndex, sorted[idx].zIndex]; }
+        if (direction === 'backward' && idx > 0){ [sorted[idx].zIndex, sorted[idx-1].zIndex] = [sorted[idx-1].zIndex, sorted[idx].zIndex]; }
+        if (direction === 'top') layer.zIndex = Math.max(...state.layers.map(l=>l.zIndex)) + 1;
+        if (direction === 'bottom') layer.zIndex = Math.min(...state.layers.map(l=>l.zIndex)) - 1;
+        emit('layerMoved', { id, direction });
+      },
+
+      // ---- Visibility / Lock ----
+      setVisible(id, visible){ return engine.updateLayer(id, { visible }); },
+      setLocked(id, locked){ return engine.updateLayer(id, { locked }); },
+      toggleVisible(id){ const l = getLayerById(id); if (l) return engine.setVisible(id, !l.visible); },
+      toggleLocked(id){ const l = getLayerById(id); if (l) return engine.setLocked(id, !l.locked); },
+
+      // ---- Duplication ----
+      duplicateLayer(id, opts){
+        opts = opts || {};
+        const layer = getLayerById(id);
+        if (!layer) return null;
+        const skipKeys = opts.skipKeys || [];
+        const clone = JSON.parse(JSON.stringify(layer, (k, v) => skipKeys.includes(k) ? undefined : v));
+        clone.id = generateId();
+        if (opts.offset){ clone.x = (clone.x||0) + opts.offset.x; clone.y = (clone.y||0) + opts.offset.y; }
+        clone.zIndex = state.layers.length;
+        engine.addLayer(clone);
+        return clone;
+      },
+
+      // ---- Grouping (architecture prepared now; nested groups
+      // supported via the same 'children' id-array shape recursively,
+      // even though the current UI only exposes one level) ----
+      groupLayers(ids, makeGroup){
+        // makeGroup: (childIds) => groupLayerObject -- the actual group
+        // layer *construction* (its transform/bbox math) stays editor-
+        // specific and is supplied by the caller; the engine only owns
+        // the generic "these ids now belong to a group" relationship.
+        if (typeof makeGroup !== 'function') return null;
+        const group = makeGroup(ids);
+        if (!group.children) group.children = [...ids];
+        engine.addLayer(group);
+        ids.forEach(id => { const l = getLayerById(id); if (l) l.groupId = group.id; });
+        emit('layerGrouped', { groupId: group.id, childIds: ids });
+        return group;
+      },
+      ungroupLayer(groupId){
+        const group = getLayerById(groupId);
+        if (!group || !group.children) return [];
+        const childIds = [...group.children];
+        childIds.forEach(id => { const l = getLayerById(id); if (l) delete l.groupId; });
+        engine.removeLayer(groupId);
+        emit('layerUngrouped', { groupId, childIds });
+        return childIds;
+      },
+
+      // ---- Events ----
+      on, emit,
+    };
+    return engine;
+  }
+
+
+  // Ecommerce Editor's instance of the shared Layer Engine -- points
+  // at the SAME dseState object (not a copy), so all existing code
+  // that reads dseState.layers/dseState.selectedIds directly continues
+  // to work completely unchanged. epeLayerEngine is the new, additive
+  // API surface; existing functions below are refactored to delegate
+  // their core state mutations to it while keeping their existing
+  // ecommerce-specific side effects (UI sync, re-render, history) in
+  // place exactly where they were.
+  const epeLayerEngine = createToolflightLayerEngine({
+    state: dseState,
+    generateId: dseUniqueId,
+  });
 
   // ---- Active-layer proxy: the flat variables (epeLayer, epeAdj, etc.)
   // are no longer standalone -- they are aliases updated here to always
@@ -9556,8 +9744,7 @@ if (document.getElementById('epeDrop')){
   // ---- Selection management ----
   function dseSelectLayer(id, additive){
     if (dseEditingLayerId && dseEditingLayerId !== id) dseExitTextEditMode();
-    if (!additive) dseState.selectedIds.clear();
-    if (id) dseState.selectedIds.add(id);
+    epeLayerEngine.selectLayer(id, additive);
     const active = dseActiveLayer();
     if (active) dseSyncAliasesFromLayer(active);
     dseRenderLayersPanel();
@@ -12006,8 +12193,7 @@ if (document.getElementById('epeDrop')){
 
   function dseDeleteSelectedLayers(){
     if (dseState.selectedIds.size === 0) return;
-    dseState.layers = dseState.layers.filter(l => !dseState.selectedIds.has(l.id));
-    dseState.selectedIds.clear();
+    epeLayerEngine.removeLayers([...dseState.selectedIds]);
     if (dseState.layers.length === 0){ epeSourceImg = null; document.getElementById('epeStage').classList.add('hidden'); }
     else { dseSyncAliasesFromLayer(dseActiveLayer()); }
     dseRenderLayersPanel();
@@ -12025,12 +12211,7 @@ if (document.getElementById('epeDrop')){
   // ---- Layer ordering ----
   function dseReorderLayer(dir){
     const layer = dseActiveLayer(); if (!layer) return;
-    const sorted = [...dseState.layers].sort((a,b)=>a.zIndex-b.zIndex);
-    const idx = sorted.indexOf(layer);
-    if (dir==='forward' && idx < sorted.length-1){ [sorted[idx].zIndex, sorted[idx+1].zIndex] = [sorted[idx+1].zIndex, sorted[idx].zIndex]; }
-    if (dir==='backward' && idx > 0){ [sorted[idx].zIndex, sorted[idx-1].zIndex] = [sorted[idx-1].zIndex, sorted[idx].zIndex]; }
-    if (dir==='top') layer.zIndex = Math.max(...dseState.layers.map(l=>l.zIndex)) + 1;
-    if (dir==='bottom') layer.zIndex = Math.min(...dseState.layers.map(l=>l.zIndex)) - 1;
+    epeLayerEngine.moveLayer(layer.id, dir);
     dseRenderLayersPanel(); renderEpeAll(); epePushHistory();
   }
   document.getElementById('epeLayerForwardBtn') && (document.getElementById('epeLayerForwardBtn').onclick = () => dseReorderLayer('forward'));
