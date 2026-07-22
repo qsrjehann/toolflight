@@ -1277,7 +1277,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 #ppCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; }
 #ppCanvasTopControls{ margin-bottom:10px; }
 #ppWorkspaceViewport{
-  flex:1 1 auto; min-height:400px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  flex:1 1 auto; min-height:280px; height:60vh; max-height:640px; position:relative; overflow:hidden;
   border:1.5px solid var(--card-border); border-radius:16px;
   background:
     linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
