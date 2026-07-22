@@ -7076,6 +7076,18 @@ if (document.getElementById('ppDrop')){
       overlay.style.left = '0';
       overlay.style.pointerEvents = 'none';
     }
+    // Size the viewport's height to the canvas's actual aspect ratio at
+    // the current viewport width, instead of a fixed 60vh -- fixes a
+    // real, reported bug where a fixed height reserved far more vertical
+    // space than a square (or near-square) passport photo needs on a
+    // narrow mobile screen, showing a large empty checkered area above
+    // and below the actual photo.
+    const availW = viewport.clientWidth || viewport.getBoundingClientRect().width;
+    if (availW > 0 && canvas.width > 0){
+      const idealH = availW * (canvas.height / canvas.width);
+      const minH = 280, maxH = Math.min(window.innerHeight * 0.7, 640);
+      viewport.style.height = Math.round(Math.max(minH, Math.min(maxH, idealH))) + 'px';
+    }
     ppWorkspaceEngine.fitToScreen(canvas.width, canvas.height, ppViewZoom);
   }
   document.getElementById('ppViewFitBtn').onclick = () => {
@@ -7527,6 +7539,30 @@ if (document.getElementById('ppDrop')){
       // determination is then used consistently by both the category-mask
       // path and the confidence-mask path below, so the two can never
       // disagree with each other the way the old code allowed.
+      // Center-region sampling: for a passport-style centered portrait,
+      // the pixels at the image center are virtually guaranteed to belong
+      // to the subject, regardless of which raw category index the model
+      // assigns to it. This is a direct geometric fact about passport
+      // photo framing, not a documented convention or a landmark-to-mask
+      // coordinate mapping that could itself have a bug -- so it's used
+      // both as the fallback when no face landmarks are available, and as
+      // a cross-check against the landmark-based result when they are.
+      function centerRegionPersonCategory(){
+        const cxr = Math.round(w*0.5), cyr = Math.round(h*0.45); // slightly above center -- passport framing keeps eyes/face in the upper-middle
+        const radius = Math.round(Math.min(w,h) * 0.08);
+        const votes = {};
+        for (let dy=-radius; dy<=radius; dy+=Math.max(1,Math.round(radius/4))){
+          for (let dx=-radius; dx<=radius; dx+=Math.max(1,Math.round(radius/4))){
+            const x = Math.min(w-1, Math.max(0, cxr+dx)), y = Math.min(h-1, Math.max(0, cyr+dy));
+            const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+            const v = maskData[my*mw+mx];
+            votes[v] = (votes[v]||0) + 1;
+          }
+        }
+        const sorted = Object.entries(votes).sort((a,b) => b[1]-a[1]);
+        return sorted.length ? +sorted[0][0] : null;
+      }
+
       let personCategoryValue = null; // the category mask value (0 or 1) that real evidence shows IS the person
       let calibrationSource = 'none (no face landmarks available -- see below)';
       if (ppFaceLandmarks){
@@ -7544,16 +7580,34 @@ if (document.getElementById('ppDrop')){
         if (sorted.length){
           personCategoryValue = +sorted[0][0];
           calibrationSource = `real face landmarks (${sorted[0][1]}/${sampleIdx.length} sampled points agree on category ${sorted[0][0]})`;
+          // Cross-check against center-region sampling. Landmarks are
+          // normally more precise, but if they disagree with the
+          // unambiguous "center of a passport photo is the subject" fact,
+          // that disagreement itself is a signal something's off in the
+          // landmark-to-mask mapping for this run -- trust the geometric
+          // fact over the more indirect coordinate transform.
+          const centerVote = centerRegionPersonCategory();
+          if (centerVote !== null && centerVote !== personCategoryValue){
+            personCategoryValue = centerVote;
+            calibrationSource = `center-region sampling overrode landmark vote (landmarks said category ${sorted[0][0]}, center region disagreed and was trusted instead)`;
+          }
         }
       }
       if (personCategoryValue === null){
-        // No face landmarks this run -- there is no reliable ground truth
-        // available, so this falls back to MediaPipe's documented
-        // convention as a last resort. This is disclosed, not silently
-        // assumed: without a face to check against, polarity genuinely
-        // cannot be verified this run.
-        personCategoryValue = 1;
-        calibrationSource = 'MediaPipe documented convention (UNVERIFIED this run -- no face landmarks to check against)';
+        // No face landmarks this run -- fall back to center-region
+        // sampling rather than a hardcoded assumption. This directly
+        // fixes a real, reported bug where the previous fallback
+        // (personCategoryValue = 1, MediaPipe's documented convention)
+        // was wrong on an actual device, inverting the result: the
+        // person was erased and the background was kept.
+        const centerVote = centerRegionPersonCategory();
+        if (centerVote !== null){
+          personCategoryValue = centerVote;
+          calibrationSource = `center-region sampling (no face landmarks available this run)`;
+        } else {
+          personCategoryValue = 1;
+          calibrationSource = 'MediaPipe documented convention (UNVERIFIED this run -- no face landmarks or center-region signal available)';
+        }
       }
       const isPersonCat = (catVal) => catVal === personCategoryValue;
       // personConf is always confidenceMasks[1] specifically (a fixed array
