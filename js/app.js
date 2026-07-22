@@ -6788,7 +6788,9 @@ if (document.getElementById('ppDrop')){
   });
   updateComplianceWarning();
   updateCustomSizePanelVisibility();
-  document.getElementById('ppAutoCenterBtn').onclick = () => { autoPositionFromFace(); renderPpPreview(); toast('Re-centered on detected face.'); };
+  function ppAutoCenterFace(){ autoPositionFromFace(); renderPpPreview(); toast('Re-centered on detected face.'); }
+  ppPluginEngine.register({ id: 'autoCenterFace', category: 'facePosition', name: 'Auto Center Face', kind: 'action', activate: () => ppAutoCenterFace() });
+  document.getElementById('ppAutoCenterBtn').onclick = () => ppPluginEngine.activate('autoCenterFace');
 
   /* ---------- Manual adjustment ---------- */
   document.getElementById('ppZoomSlider').addEventListener('input', (e) => { ppZoom = +e.target.value/100; renderPpPreview(); });
@@ -7226,7 +7228,20 @@ if (document.getElementById('ppDrop')){
     ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.setLineDash([]);
     ctx.strokeRect(2, 2, outW-4, outH-4);
   }
-  document.getElementById('ppIcaoToggle').addEventListener('change', () => { if (ppSourceCanvas) renderPpPreview(); });
+  ppPluginEngine.register({
+    id: 'icaoGuide', category: 'facePosition', name: 'ICAO Compliance Guide', kind: 'toggle',
+    activate: () => { if (ppSourceCanvas) renderPpPreview(); },
+    deactivate: () => { if (ppSourceCanvas) renderPpPreview(); },
+  });
+  document.getElementById('ppIcaoToggle').addEventListener('change', (e) => {
+    // Independent toggle -- not mutually exclusive with other tools
+    // (e.g. Crop can be active at the same time), so call the plugin's
+    // own lifecycle methods directly rather than through
+    // engine.activate()/deactivate(), same pattern as Ecommerce's
+    // Shadow/Reflection toggles from Phase 8.
+    const p = ppPluginEngine.getPlugin('icaoGuide');
+    if (e.target.checked) p.activate(); else p.deactivate();
+  });
 
   /* ---------- Manual Crop Tool -----------
      Draws its rectangle on the same ppIcaoOverlay canvas already used for
@@ -7286,30 +7301,33 @@ if (document.getElementById('ppDrop')){
     return null;
   }
 
-  document.getElementById('ppCropToggleBtn').onclick = () => {
-    if (!ppSourceCanvas) return;
-    ppCropActive = !ppCropActive;
-    document.getElementById('ppCropToggleBtn').classList.toggle('active', ppCropActive);
-    document.getElementById('ppCropActions').classList.toggle('hidden', !ppCropActive);
-    if (ppCropActive){
+  ppPluginEngine.register({
+    id: 'crop', category: 'edit', name: 'Crop', kind: 'toggle',
+    activate: () => {
+      ppCropActive = true;
+      document.getElementById('ppCropToggleBtn').classList.add('active');
+      document.getElementById('ppCropActions').classList.remove('hidden');
       const preset = currentPreset();
       ppCropRect = ppDefaultCropRect(mm(preset.wmm), mm(preset.hmm));
       drawPpCropOverlay(mm(preset.wmm), mm(preset.hmm));
-      // Ensure real clearance from the top of the viewport before the user
-      // tries to drag a handle -- the site's own navbar is sticky at the
-      // very top (measured 67px, z-index 50), and scrollIntoViewIfNeeded()
-      // alone doesn't reliably scroll further if it judges the canvas
-      // already "in view" even when its top edge sits right under the
-      // navbar. Explicit scroll math, verified directly, not assumed.
       const rect = ppCanvasEl.getBoundingClientRect();
       const NAVBAR_CLEARANCE = 90;
       if (rect.top < NAVBAR_CLEARANCE){
         window.scrollBy({ top: rect.top - NAVBAR_CLEARANCE, behavior: 'instant' });
       }
-    } else {
+    },
+    deactivate: () => {
+      ppCropActive = false;
+      document.getElementById('ppCropToggleBtn').classList.remove('active');
+      document.getElementById('ppCropActions').classList.add('hidden');
       ppCropRect = null;
       renderPpPreview();
-    }
+    },
+  });
+  document.getElementById('ppCropToggleBtn').onclick = () => {
+    if (!ppSourceCanvas) return;
+    if (ppCropActive) ppPluginEngine.deactivate('crop');
+    else ppPluginEngine.activate('crop');
   };
   document.getElementById('ppCropLockRatio').addEventListener('change', () => {
     if (!ppCropActive) return;
@@ -7558,7 +7576,7 @@ if (document.getElementById('ppDrop')){
     console.log('%c=== END SEGMENTATION DEBUG ===', 'font-weight:bold;font-size:14px;color:#5142D6;');
   }
 
-  document.getElementById('ppReplaceBgBtn').onclick = async () => {
+  async function ppReplaceBackgroundAI(){
     if (!ppSourceCanvas) return;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
@@ -7735,7 +7753,9 @@ if (document.getElementById('ppDrop')){
       document.getElementById('ppManualBgRow').classList.remove('hidden');
     }
     setTimeout(() => statusEl.classList.add('hidden'), 6000);
-  };
+  }
+  ppPluginEngine.register({ id: 'backgroundRemoveAI', category: 'background', name: 'Replace Background (AI)', kind: 'action', activate: () => ppReplaceBackgroundAI() });
+  document.getElementById('ppReplaceBgBtn').onclick = () => ppPluginEngine.activate('backgroundRemoveAI');
 
   /* ---------- Manual background fallback: classic flood-fill, not AI -----------
      Reuses the same color-distance/fill logic as the brush engine's mask
@@ -8198,8 +8218,10 @@ if (document.getElementById('ppDrop')){
   }
 
   /* ---------- Export ---------- */
-  document.getElementById('ppDownloadPngBtn').onclick = () => exportPp('png');
-  document.getElementById('ppDownloadJpgBtn').onclick = () => exportPp('jpeg');
+  ppPluginEngine.register({ id: 'exportPng', category: 'export', name: 'Download PNG', kind: 'action', activate: () => exportPp('png') });
+  ppPluginEngine.register({ id: 'exportJpeg', category: 'export', name: 'Download JPEG', kind: 'action', activate: () => exportPp('jpeg') });
+  document.getElementById('ppDownloadPngBtn').onclick = () => ppPluginEngine.activate('exportPng');
+  document.getElementById('ppDownloadJpgBtn').onclick = () => ppPluginEngine.activate('exportJpeg');
   function exportPp(format){
     const canvas = document.getElementById('ppPreviewCanvas');
     canvas.toBlob((blob) => {
