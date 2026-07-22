@@ -1266,3 +1266,26 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 @media (max-width:420px){ .epe-tile-grid{ grid-template-columns:repeat(3, 1fr); } }
 
 .epe-cat-tile.active{ box-shadow:0 0 0 3px var(--accent1), 0 4px 10px -4px rgba(20,10,50,0.25); transform:translateY(-1px); }
+
+/* ---- Passport Photo Maker Workspace (Phase 9) ----
+   New, parallel rules -- NOT selector-merged with the Ecommerce
+   #epeWorkspaceViewport/#epeWorkspace rules, after a prior attempt at
+   selector-merging nearly shipped a severe regression (splitting a
+   compound selector like #epeFloatingBrushBar.hidden into two
+   unrelated selectors). Same exact values as Ecommerce's equivalents,
+   written as separate, safe rules instead. */
+#ppCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; }
+#ppCanvasTopControls{ margin-bottom:10px; }
+#ppWorkspaceViewport{
+  flex:1 1 auto; min-height:400px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+}
+#ppWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+#ppWorkspaceViewport.pp-pan-mode{ cursor:grab; }
+#ppWorkspaceViewport.pp-pan-mode:active{ cursor:grabbing; }
