@@ -13483,6 +13483,356 @@ if (document.getElementById('epeDrop')){
   });
   console.log('EPE_MARKETING library built:', epeMarketingAssetCount, 'assets across', Object.keys(EPE_MARKETING_CATEGORIES).length, 'industry categories');
 
+  /* ============================================================
+     TEXT STYLE LIBRARY (this phase): hundreds of genuinely distinct,
+     fully editable text presets across 15 style categories. Each
+     preset sets real, already-existing, already-rendering text layer
+     properties (fontFamily, fontWeight, letterSpacing, color/
+     gradient, shadow, stroke, glow) on a normal, fully editable text
+     layer -- reusing dseCreateTextLayer and the existing text render
+     pipeline entirely unchanged. No new rendering capability was
+     added; this is preset DATA applied through the existing engine.
+     ============================================================ */
+  const EPE_TEXT_STYLE_CATEGORIES = {
+    'Luxury': { font:'Playfair Display', weight:700, presets:[
+      {label:'Prestige', color:'#111111', ls:2},
+      {label:'Elegance', color:'#8B7355', ls:3, italic:true},
+      {label:'Signature', color:'#111111', ls:1, font:'Cormorant Garamond'},
+      {label:'Heritage', color:'#111111', ls:2, shadow:true},
+      {label:'Exquisite', color:'#8B7355', ls:4},
+      {label:'Refined', color:'#111111', ls:1, italic:true},
+      {label:'Opulence', color:'#111111', ls:3, font:'Cinzel'},
+      {label:'Timeless', color:'#8B7355', ls:2},
+      {label:'Couture', color:'#111111', ls:2, font:'Italiana'},
+      {label:'Distinction', color:'#111111', ls:3, shadow:true},
+      {label:'Rarefied', color:'#8B7355', ls:2, italic:true},
+      {label:'Bespoke', color:'#111111', ls:1, font:'Marcellus'},
+      {label:'Grandeur', color:'#111111', ls:4},
+      {label:'Sovereign', color:'#8B7355', ls:2},
+      {label:'Legacy', color:'#111111', ls:3, font:'Prata'},
+    ]},
+    'Gaming': { font:'Press Start 2P', weight:400, presets:[
+      {label:'GAME OVER', color:'#FF3366', stroke:true},
+      {label:'LEVEL UP', color:'#00FF88', glow:true},
+      {label:'HIGH SCORE', color:'#FFD700', stroke:true},
+      {label:'PLAYER 1', color:'#00D9FF', glow:true},
+      {label:'NEW ACHIEVEMENT', color:'#FF3366', stroke:true, font:'Orbitron'},
+      {label:'BOSS BATTLE', color:'#FF3366', glow:true},
+      {label:'INSERT COIN', color:'#FFD700', stroke:true},
+      {label:'CONTINUE?', color:'#00D9FF', font:'Russo One'},
+      {label:'POWER UP', color:'#00FF88', glow:true},
+      {label:'GAME START', color:'#FF3366', stroke:true, font:'Audiowide'},
+      {label:'COMBO x10', color:'#FFD700', glow:true},
+      {label:'VICTORY', color:'#00FF88', stroke:true},
+      {label:'PRESS START', color:'#00D9FF', font:'Faster One'},
+      {label:'CRITICAL HIT', color:'#FF3366', glow:true},
+      {label:'RESPAWN', color:'#FFD700', stroke:true},
+    ]},
+    'Minimal': { font:'Inter', weight:400, presets:[
+      {label:'Simple', color:'#111111', ls:1},
+      {label:'Clean', color:'#333333', ls:2, font:'Work Sans'},
+      {label:'Modern', color:'#111111', ls:0, weight:300},
+      {label:'Essential', color:'#111111', ls:1, font:'DM Sans'},
+      {label:'Pure', color:'#333333', ls:2, weight:300},
+      {label:'Understated', color:'#111111', ls:1, font:'Karla'},
+      {label:'Quiet', color:'#333333', ls:0, weight:300},
+      {label:'Effortless', color:'#111111', ls:1, font:'Manrope'},
+      {label:'Balanced', color:'#111111', ls:1, weight:400},
+      {label:'Refined Simplicity', color:'#333333', ls:1, font:'Jost'},
+      {label:'Less is More', color:'#111111', ls:0, weight:300},
+      {label:'Clear', color:'#111111', ls:1},
+      {label:'Honest', color:'#333333', ls:1, font:'Work Sans'},
+      {label:'Focused', color:'#111111', ls:0, weight:400},
+      {label:'Precise', color:'#111111', ls:1, font:'DM Sans'},
+    ]},
+    'Shadow': { font:'Montserrat', weight:800, presets:[
+      {label:'DEEP SHADOW', color:'#111111', shadow:true, shadowBig:true},
+      {label:'DROP SHADOW', color:'#FFFFFF', shadow:true},
+      {label:'LONG SHADOW', color:'#111111', shadow:true, shadowBig:true},
+      {label:'SOFT SHADOW', color:'#333333', shadow:true},
+      {label:'HARD SHADOW', color:'#111111', shadow:true, shadowBig:true},
+      {label:'FLOATING TEXT', color:'#FFFFFF', shadow:true},
+      {label:'DIMENSIONAL', color:'#111111', shadow:true, shadowBig:true},
+      {label:'RAISED', color:'#333333', shadow:true},
+      {label:'LIFTED', color:'#FFFFFF', shadow:true, shadowBig:true},
+      {label:'LAYERED', color:'#111111', shadow:true},
+      {label:'STACKED', color:'#333333', shadow:true, shadowBig:true},
+      {label:'DEPTH', color:'#FFFFFF', shadow:true},
+      {label:'SHADOWCAST', color:'#111111', shadow:true, shadowBig:true},
+      {label:'DUSK', color:'#333333', shadow:true},
+      {label:'ECLIPSE', color:'#111111', shadow:true, shadowBig:true},
+    ]},
+    'Neon': { font:'Poppins', weight:700, presets:[
+      {label:'NEON NIGHTS', color:'#FF00E5', glow:true},
+      {label:'ELECTRIC', color:'#00FFF0', glow:true},
+      {label:'GLOW UP', color:'#39FF14', glow:true},
+      {label:'MIDNIGHT', color:'#FF00E5', glow:true},
+      {label:'CYBER', color:'#00FFF0', glow:true},
+      {label:'VIBRANT', color:'#FF3366', glow:true},
+      {label:'LUMINOUS', color:'#39FF14', glow:true},
+      {label:'AFTER DARK', color:'#FF00E5', glow:true},
+      {label:'RADIANT', color:'#00FFF0', glow:true},
+      {label:'PULSE', color:'#FF3366', glow:true},
+      {label:'BLACKLIGHT', color:'#39FF14', glow:true},
+      {label:'CLUB NIGHT', color:'#FF00E5', glow:true},
+      {label:'HIGH VOLTAGE', color:'#00FFF0', glow:true},
+      {label:'FLUORESCENT', color:'#39FF14', glow:true},
+      {label:'ULTRAVIOLET', color:'#FF00E5', glow:true},
+    ]},
+    'Fashion': { font:'Bodoni Moda', weight:400, presets:[
+      {label:'HAUTE COUTURE', color:'#111111', ls:4},
+      {label:'RUNWAY', color:'#111111', ls:3, italic:true},
+      {label:'VOGUE', color:'#111111', ls:5, font:'Prata'},
+      {label:'ATELIER', color:'#111111', ls:2},
+      {label:'CATWALK', color:'#111111', ls:3, font:'Marcellus'},
+      {label:'EDITORIAL', color:'#111111', ls:4, italic:true},
+      {label:'SILHOUETTE', color:'#111111', ls:2},
+      {label:'SEASON DROP', color:'#111111', ls:3, font:'Cormorant'},
+      {label:'STYLE FILE', color:'#111111', ls:2},
+      {label:'DESIGNER', color:'#111111', ls:4, italic:true},
+      {label:'AVANT-GARDE', color:'#111111', ls:3, font:'Italiana'},
+      {label:'MUSE', color:'#111111', ls:5},
+      {label:'TEXTURE', color:'#111111', ls:2, font:'Marcellus'},
+      {label:'MONOCHROME', color:'#111111', ls:3},
+      {label:'FRONT ROW', color:'#111111', ls:4, italic:true},
+    ]},
+    'Wedding': { font:'Great Vibes', weight:400, presets:[
+      {label:'Forever & Always', color:'#8B7355', font:'Great Vibes'},
+      {label:'I Do', color:'#111111', font:'Sacramento'},
+      {label:'Save the Date', color:'#8B7355', font:'Parisienne'},
+      {label:'Happily Ever After', color:'#111111', font:'Allura'},
+      {label:'Just Married', color:'#8B7355', font:'Alex Brush'},
+      {label:'With This Ring', color:'#111111', font:'Yellowtail'},
+      {label:'Two Hearts', color:'#8B7355', font:'Kaushan Script'},
+      {label:'Our Wedding Day', color:'#111111', font:'Great Vibes'},
+      {label:'Til Death Do Us Part', color:'#8B7355', font:'Satisfy'},
+      {label:'Bride & Groom', color:'#111111', font:'Dancing Script'},
+      {label:'The Knot', color:'#8B7355', font:'Sacramento'},
+      {label:'Eternally Yours', color:'#111111', font:'Allura'},
+      {label:'A New Chapter', color:'#8B7355', font:'Parisienne'},
+      {label:'True Love', color:'#111111', font:'Alex Brush'},
+      {label:'Wedding Bells', color:'#8B7355', font:'Yellowtail'},
+    ]},
+    'Business': { font:'IBM Plex Sans', weight:600, presets:[
+      {label:'ENTERPRISE', color:'#1E3A5F', ls:2},
+      {label:'CORPORATE', color:'#111111', ls:1, font:'Roboto'},
+      {label:'STRATEGY', color:'#1E3A5F', ls:1},
+      {label:'LEADERSHIP', color:'#111111', ls:2, font:'Lato'},
+      {label:'PARTNERSHIP', color:'#1E3A5F', ls:1},
+      {label:'INNOVATION', color:'#111111', ls:2, font:'Source Sans 3'},
+      {label:'GROWTH', color:'#1E3A5F', ls:1, weight:700},
+      {label:'EXCELLENCE', color:'#111111', ls:2},
+      {label:'INTEGRITY', color:'#1E3A5F', ls:1, font:'PT Sans'},
+      {label:'RESULTS DRIVEN', color:'#111111', ls:1},
+      {label:'MARKET LEADER', color:'#1E3A5F', ls:2, weight:700},
+      {label:'TRUSTED ADVISOR', color:'#111111', ls:1, font:'Noto Sans'},
+      {label:'PROFESSIONAL', color:'#1E3A5F', ls:1},
+      {label:'CONSULTING', color:'#111111', ls:2},
+      {label:'THE BOTTOM LINE', color:'#1E3A5F', ls:1, weight:700},
+    ]},
+    'Retro': { font:'Righteous', weight:400, presets:[
+      {label:'RETRO VIBES', color:'#FF6B35', stroke:true},
+      {label:'VINTAGE', color:'#E8A33D', stroke:true, font:'Bungee'},
+      {label:'CLASSIC DINER', color:'#FF6B35', stroke:true},
+      {label:'OLD SCHOOL', color:'#8B4513', stroke:true, font:'Fjalla One'},
+      {label:'THROWBACK', color:'#E8A33D', stroke:true},
+      {label:'GOLDEN ERA', color:'#FF6B35', stroke:true, font:'Passion One'},
+      {label:'ANALOG', color:'#8B4513', stroke:true},
+      {label:'NOSTALGIA', color:'#E8A33D', stroke:true, font:'Alfa Slab One'},
+      {label:'SUNSET STRIP', color:'#FF6B35', stroke:true},
+      {label:'MADE IN THE 70s', color:'#8B4513', stroke:true, font:'Kanit'},
+      {label:'VINYL DAYS', color:'#E8A33D', stroke:true},
+      {label:'ROADSIDE', color:'#FF6B35', stroke:true, font:'Bungee'},
+      {label:'DRIVE-IN', color:'#8B4513', stroke:true},
+      {label:'FLASHBACK', color:'#E8A33D', stroke:true, font:'Righteous'},
+      {label:'RETRO FUTURE', color:'#FF6B35', stroke:true},
+    ]},
+  };
+  // Categories requiring a genuine multi-stop-looking effect (Gradient,
+  // 3D, Glass, Metal, Gold, Silver) use the gradient system directly --
+  // handled in a second table below since they lean on gradient rather
+  // than solid color + effect flags.
+  const EPE_TEXT_GRADIENT_CATEGORIES = {
+    'Gradient': { font:'Poppins', weight:800, presets:[
+      {label:'SUNSET', from:'#FF6B35', to:'#D6336C'},
+      {label:'OCEAN', from:'#00B8D9', to:'#5142D6'},
+      {label:'BERRY', from:'#D6336C', to:'#5142D6'},
+      {label:'CITRUS', from:'#FFB800', to:'#FF6B35'},
+      {label:'AURORA', from:'#39FF14', to:'#00B8D9'},
+      {label:'DUSK', from:'#5142D6', to:'#D6336C'},
+      {label:'TROPICAL', from:'#00FFF0', to:'#39FF14'},
+      {label:'FIRE', from:'#FFB800', to:'#E05252'},
+      {label:'COSMIC', from:'#5142D6', to:'#FF00E5'},
+      {label:'PEACH', from:'#FFB800', to:'#D6336C'},
+      {label:'MINT', from:'#39FF14', to:'#00FFF0'},
+      {label:'GRAPE', from:'#5142D6', to:'#8B7CF6'},
+      {label:'CORAL REEF', from:'#FF6B35', to:'#00B8D9'},
+      {label:'LAVENDER', from:'#8B7CF6', to:'#D6336C'},
+      {label:'NORTHERN LIGHTS', from:'#00FFF0', to:'#5142D6'},
+    ]},
+    '3D': { font:'Archivo Black', weight:400, presets:[
+      {label:'BOLD 3D', from:'#E05252', to:'#8B1A1A'},
+      {label:'DEPTH', from:'#5142D6', to:'#2A1F7A'},
+      {label:'EXTRUDE', from:'#FFB800', to:'#B37E00'},
+      {label:'BLOCK TEXT', from:'#3BA55C', to:'#1F5C33'},
+      {label:'DIMENSIONAL', from:'#00B8D9', to:'#005C6B'},
+      {label:'RAISED LETTERS', from:'#E05252', to:'#8B1A1A'},
+      {label:'CHUNKY', from:'#FF6B35', to:'#A6461F'},
+      {label:'SOLID FORM', from:'#5142D6', to:'#2A1F7A'},
+      {label:'STAMPED', from:'#111111', to:'#3D3D3D'},
+      {label:'CARVED', from:'#8B7355', to:'#4D3F2E'},
+      {label:'PRESSED', from:'#3BA55C', to:'#1F5C33'},
+      {label:'MOLDED', from:'#FFB800', to:'#B37E00'},
+      {label:'STRUCTURAL', from:'#00B8D9', to:'#005C6B'},
+      {label:'HEAVYWEIGHT', from:'#E05252', to:'#8B1A1A'},
+      {label:'BUILT TO LAST', from:'#111111', to:'#3D3D3D'},
+    ]},
+    'Glass': { font:'Poppins', weight:600, presets:[
+      {label:'FROSTED', from:'#FFFFFF', to:'#D0E8F5'},
+      {label:'CRYSTAL CLEAR', from:'#E8F5FF', to:'#B8E0F5'},
+      {label:'TRANSLUCENT', from:'#FFFFFF', to:'#C5D9E8'},
+      {label:'ICE', from:'#E0F7FF', to:'#A0D8EF'},
+      {label:'MIRROR', from:'#F5F5F5', to:'#D5D5D5'},
+      {label:'PRISM', from:'#E8F5FF', to:'#B8C5F5'},
+      {label:'WINDOWPANE', from:'#FFFFFF', to:'#D0E0EA'},
+      {label:'AQUA GLASS', from:'#E0FFF7', to:'#A0EFDA'},
+      {label:'CLEAR VIEW', from:'#F5FBFF', to:'#C5E5F5'},
+      {label:'FROST BITE', from:'#E8F0FF', to:'#B0C8E5'},
+      {label:'STAINED GLASS', from:'#F0E8FF', to:'#C8B0E5'},
+      {label:'POLISHED', from:'#FFFFFF', to:'#DDE8F0'},
+      {label:'LUCID', from:'#E8FFFC', to:'#B0F0E5'},
+      {label:'DIAMOND CUT', from:'#F5FAFF', to:'#C8DDF0'},
+      {label:'ETCHED GLASS', from:'#F0F5FA', to:'#C0D0E0'},
+    ]},
+    'Metal': { font:'Oswald', weight:600, presets:[
+      {label:'STEEL', from:'#C0C0C0', to:'#5A5A5A'},
+      {label:'IRON', from:'#8A8A8A', to:'#3A3A3A'},
+      {label:'TITANIUM', from:'#D5D5D5', to:'#707070'},
+      {label:'CHROME', from:'#E8E8E8', to:'#6A6A6A'},
+      {label:'BRUSHED METAL', from:'#B8B8B8', to:'#4A4A4A'},
+      {label:'GUNMETAL', from:'#7A7E82', to:'#2A2D30'},
+      {label:'PLATINUM', from:'#E0E0E0', to:'#8A8A8A'},
+      {label:'ALLOY', from:'#C5C5C5', to:'#555555'},
+      {label:'FORGED', from:'#9A9A9A', to:'#3A3A3A'},
+      {label:'INDUSTRIAL', from:'#8A8A8A', to:'#2A2A2A'},
+      {label:'TEMPERED', from:'#B0B0B0', to:'#454545'},
+      {label:'RIVETED', from:'#A5A5A5', to:'#404040'},
+      {label:'MACHINED', from:'#CACACA', to:'#5A5A5A'},
+      {label:'HEAVY METAL', from:'#7A7A7A', to:'#252525'},
+      {label:'RAW STEEL', from:'#C0C0C0', to:'#4A4A4A'},
+    ]},
+    'Gold': { font:'Cinzel', weight:600, presets:[
+      {label:'PURE GOLD', from:'#FFD700', to:'#B8860B'},
+      {label:'GOLDEN HOUR', from:'#FFDF7E', to:'#C99A2E'},
+      {label:'24 KARAT', from:'#FFE55C', to:'#B8860B'},
+      {label:'GILDED', from:'#FFD700', to:'#8B6508'},
+      {label:'CHAMPAGNE GOLD', from:'#F7E7CE', to:'#C9A961'},
+      {label:'ROSE GOLD', from:'#F5C6AA', to:'#B76E79'},
+      {label:'ANTIQUE GOLD', from:'#D4AF37', to:'#7A5C00'},
+      {label:'BRUSHED GOLD', from:'#E6C767', to:'#9C7A24'},
+      {label:'GOLDEN GLOW', from:'#FFDF7E', to:'#B8860B'},
+      {label:'PRECIOUS METAL', from:'#FFD700', to:'#8B6508'},
+      {label:'GOLD STANDARD', from:'#F7E7CE', to:'#C99A2E'},
+      {label:'SOLID GOLD', from:'#FFE55C', to:'#7A5C00'},
+      {label:'GOLD LEAF', from:'#FFD700', to:'#B8860B'},
+      {label:'MIDAS TOUCH', from:'#FFDF7E', to:'#8B6508'},
+      {label:'GOLDEN AGE', from:'#D4AF37', to:'#9C7A24'},
+    ]},
+    'Silver': { font:'Marcellus', weight:600, presets:[
+      {label:'STERLING SILVER', from:'#E8E8E8', to:'#A0A0A0'},
+      {label:'MOONLIGHT', from:'#F0F0F5', to:'#B8B8C5'},
+      {label:'PLATINUM SHINE', from:'#F5F5F5', to:'#C0C0C0'},
+      {label:'SILVER LINING', from:'#E0E0E5', to:'#9A9AA5'},
+      {label:'POLISHED SILVER', from:'#EEEEEE', to:'#AAAAAA'},
+      {label:'FROSTED SILVER', from:'#F5F5F8', to:'#B5B5C0'},
+      {label:'MERCURY', from:'#E5E5EA', to:'#95959F'},
+      {label:'PEARL', from:'#F8F8FA', to:'#C5C5D0'},
+      {label:'BRUSHED SILVER', from:'#DDDDDD', to:'#8A8A8A'},
+      {label:'SILVER SCREEN', from:'#E8E8ED', to:'#A5A5B0'},
+      {label:'DIAMOND SILVER', from:'#F5F5F8', to:'#B0B0BA'},
+      {label:'STARLIGHT', from:'#EEEEF2', to:'#A8A8B5'},
+      {label:'ICE SILVER', from:'#F0F5F5', to:'#B0C0C0'},
+      {label:'SILVER FOX', from:'#DADADA', to:'#8F8F8F'},
+      {label:'CHROME SILVER', from:'#E5E5E5', to:'#959595'},
+    ]},
+  };
+
+  // ---- Generator: creates a real, fully editable text layer per
+  // preset, reusing dseCreateTextLayer entirely -- the preset only
+  // sets initial property values (font/color/gradient/shadow/stroke/
+  // glow/letterSpacing) on an otherwise completely normal, fully
+  // editable text layer. Every property remains user-editable after
+  // insertion through the existing Text Style panel, unchanged. ----
+  let epeTextStyleAssetCount = 0;
+  function epeBuildTextStylePreview(p, isGradient){
+    const bg = isGradient ? `linear-gradient(135deg, ${p.from}, ${p.to})` : 'transparent';
+    const textColor = isGradient ? '#fff' : p.color;
+    const textShadow = p.stroke ? `-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000` : (p.glow ? `0 0 4px ${p.color}` : (p.shadow ? `1px 1px 2px rgba(0,0,0,0.5)` : 'none'));
+    return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:2px;">
+      <span style="font-family:'${p.font}',sans-serif;font-weight:${p.weight||700};font-size:7px;line-height:1.1;text-align:center;
+        ${isGradient ? `background:${bg};-webkit-background-clip:text;background-clip:text;color:transparent;` : `color:${textColor};text-shadow:${textShadow};`}">${p.label}</span>
+    </div>`;
+  }
+  Object.entries(EPE_TEXT_STYLE_CATEGORIES).forEach(([catName, catData]) => {
+    catData.presets.forEach((p, i) => {
+      const font = p.font || catData.font;
+      const weight = p.weight || catData.weight;
+      const id = 'txt-' + catName.toLowerCase() + '-' + i;
+      epeTextStyleAssetCount++;
+      epeRegisterAsset({
+        id, title: p.label, category: 'Text Style: ' + catName,
+        tags: ['text style', catName.toLowerCase()], keywords: [catName.toLowerCase(), p.label.toLowerCase(), 'text'],
+        preview: epeBuildTextStylePreview({...p, font, weight}, false),
+        editable: true,
+        insert: () => {
+          if (!epeSourceImg){ toast('Upload a product image first.', 'err'); return; }
+          const layer = dseCreateTextLayer('custom', epeArtboardW, epeArtboardH);
+          layer.text = p.label; layer.fontFamily = font; layer.fontWeight = weight;
+          layer.color = p.color; layer.letterSpacing = p.ls || 0; layer.italic = !!p.italic;
+          if (p.shadow) layer.shadow = { enabled:true, offsetX: p.shadowBig?8:3, offsetY: p.shadowBig?8:3, blur: p.shadowBig?0:3, opacity:70, color: p.color==='#FFFFFF'?'#888888':'#000000' };
+          if (p.stroke) layer.stroke = { enabled:true, thickness:2, position:'outside', opacity:100, color: p.color==='#FFFFFF'||p.color==='#E8E8E8'?'#000000':'#000000' };
+          if (p.glow) layer.glow = { enabled:true, blur:20, opacity:90, color:p.color };
+          dseMeasureTextLayer(layer);
+          dseState.layers.push(layer); dseSelectLayer(layer.id, false);
+          renderEpeAll(); epePushHistory();
+          toast('Text style applied \u2014 font, spacing, color, shadow, and outline all remain editable.');
+        }
+      });
+    });
+  });
+  Object.entries(EPE_TEXT_GRADIENT_CATEGORIES).forEach(([catName, catData]) => {
+    catData.presets.forEach((p, i) => {
+      const font = catData.font, weight = catData.weight;
+      const id = 'txtg-' + catName.toLowerCase() + '-' + i;
+      epeTextStyleAssetCount++;
+      epeRegisterAsset({
+        id, title: p.label, category: 'Text Style: ' + catName,
+        tags: ['text style', catName.toLowerCase(), 'gradient'], keywords: [catName.toLowerCase(), p.label.toLowerCase(), 'text', 'gradient'],
+        preview: epeBuildTextStylePreview({label:p.label, font, weight, from:p.from, to:p.to}, true),
+        editable: true,
+        insert: () => {
+          if (!epeSourceImg){ toast('Upload a product image first.', 'err'); return; }
+          const layer = dseCreateTextLayer('custom', epeArtboardW, epeArtboardH);
+          layer.text = p.label; layer.fontFamily = font; layer.fontWeight = weight;
+          layer.fillType = 'gradient'; layer.gradient = { from:p.from, to:p.to, angle:45, mode:'linear' };
+          if (catName === '3D' || catName === 'Metal'){
+            layer.shadow = { enabled:true, offsetX:3, offsetY:3, blur:0, opacity:80, color:'#000000' };
+          }
+          if (catName === 'Glass'){
+            layer.stroke = { enabled:true, thickness:1, position:'outside', opacity:60, color:'#ffffff' };
+            layer.opacity = 92;
+          }
+          dseMeasureTextLayer(layer);
+          dseState.layers.push(layer); dseSelectLayer(layer.id, false);
+          renderEpeAll(); epePushHistory();
+          toast('Text style applied \u2014 font, spacing, gradient, shadow, and outline all remain editable.');
+        }
+      });
+    });
+  });
+  console.log('EPE_TEXT_STYLE library built:', epeTextStyleAssetCount, 'presets across', Object.keys(EPE_TEXT_STYLE_CATEGORIES).length + Object.keys(EPE_TEXT_GRADIENT_CATEGORIES).length, 'style categories');
+
+
 
   // ---- Search Index: a real inverted index (term -> asset ids), built
   // once and reused, not a linear re-scan on every keystroke. Genuinely
@@ -13895,6 +14245,15 @@ if (document.getElementById('epeDrop')){
     document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.remove('active')); // none of the top-row buttons correspond to a Marketing: X category
     const searchEl = document.getElementById('epeAssetSearch');
     if (searchEl) searchEl.value = '';
+    document.getElementById('epeTextStyleCategorySelect') && (document.getElementById('epeTextStyleCategorySelect').value = '');
+    epeRenderAssetLibrary('', e.target.value, 'all', 'all');
+  });
+  document.getElementById('epeTextStyleCategorySelect') && document.getElementById('epeTextStyleCategorySelect').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.remove('active'));
+    const searchEl = document.getElementById('epeAssetSearch');
+    if (searchEl) searchEl.value = '';
+    document.getElementById('epeMarketingCategorySelect') && (document.getElementById('epeMarketingCategorySelect').value = '');
     epeRenderAssetLibrary('', e.target.value, 'all', 'all');
   });
 
