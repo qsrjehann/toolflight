@@ -10065,7 +10065,14 @@ if (document.getElementById('epeDrop')){
     }
     return epeSegmenterLoadPromise;
   }
-  document.getElementById('epeRemoveBgBtn').onclick = async () => {
+  // Ecommerce Editor's instance of the shared Plugin Engine. See
+  // createToolflightPluginEngine above -- registered here, plugins
+  // wired to the exact same existing tool logic, one at a time,
+  // each individually verified rather than converting all tools in
+  // one unverified sweep.
+  const epePluginEngine = createToolflightPluginEngine({});
+
+  async function epeRemoveBackground(){
     if (!epeSourceImg) return;
     const statusEl = document.getElementById('epeBgStatus');
     const btn = document.getElementById('epeRemoveBgBtn');
@@ -10116,7 +10123,9 @@ if (document.getElementById('epeDrop')){
     } finally {
       setLoading(btn, false);
     }
-  };
+  }
+  epePluginEngine.register({ id: 'backgroundRemove', category: 'edit', name: 'Remove Background (AI)', kind: 'action', activate: () => epeRemoveBackground() });
+  document.getElementById('epeRemoveBgBtn').onclick = () => epePluginEngine.activate('backgroundRemove');
 
   /* ---------- Background replacement mode ---------- */
   document.querySelectorAll('input[name="epeBgMode"]').forEach(r => r.addEventListener('change', (e) => {
@@ -10281,13 +10290,6 @@ if (document.getElementById('epeDrop')){
 
     return engine;
   }
-
-  // Ecommerce Editor's instance of the shared Plugin Engine. See
-  // createToolflightPluginEngine above -- registered here, plugins
-  // wired to the exact same existing tool logic, one at a time,
-  // each individually verified rather than converting all tools in
-  // one unverified sweep (see the Phase 7 report for why).
-  const epePluginEngine = createToolflightPluginEngine({});
 
   function epeSetTool(tool){
     epeActiveTool = tool;
@@ -10737,7 +10739,20 @@ if (document.getElementById('epeDrop')){
   });
 
   /* ---------- Shadow / Reflection controls ---------- */
-  document.getElementById('epeShadowEnable') && document.getElementById('epeShadowEnable').addEventListener('change', (e) => { epeShadow.enabled = e.target.checked; renderEpeAll(); epePushHistory(); });
+  epePluginEngine.register({
+    id: 'shadow', category: 'effects', name: 'Shadow', kind: 'toggle',
+    activate: () => { epeShadow.enabled = true; renderEpeAll(); epePushHistory(); },
+    deactivate: () => { epeShadow.enabled = false; renderEpeAll(); epePushHistory(); },
+  });
+  document.getElementById('epeShadowEnable') && document.getElementById('epeShadowEnable').addEventListener('change', (e) => {
+    // Independent toggle -- not mutually exclusive with other tools, so
+    // call the plugin's own lifecycle methods directly rather than
+    // through engine.activate()/deactivate(), which enforce single-
+    // active-plugin exclusivity (correct for Crop vs brush modes, wrong
+    // for independent effect toggles that coexist, e.g. Shadow + Reflection).
+    const p = epePluginEngine.getPlugin('shadow');
+    if (e.target.checked) p.activate(); else p.deactivate();
+  });
   document.getElementById('epeShadowStyle') && document.getElementById('epeShadowStyle').addEventListener('change', (e) => { epeShadow.style = e.target.value; renderEpeAll(); epePushHistory(); });
   ['Opacity','Blur','Distance','Angle','Scale'].forEach(prop => {
     const id = 'epeShadow'+prop;
@@ -10745,7 +10760,15 @@ if (document.getElementById('epeDrop')){
     el.addEventListener('input', () => { epeShadow[prop.toLowerCase()] = +el.value; const v=document.getElementById(id+'Val'); if(v) v.textContent=el.value; renderEpeAll(); });
     el.addEventListener('change', epePushHistory);
   });
-  document.getElementById('epeReflectionEnable') && document.getElementById('epeReflectionEnable').addEventListener('change', (e) => { epeReflection.enabled = e.target.checked; renderEpeAll(); epePushHistory(); });
+  epePluginEngine.register({
+    id: 'reflection', category: 'effects', name: 'Reflection', kind: 'toggle',
+    activate: () => { epeReflection.enabled = true; renderEpeAll(); epePushHistory(); },
+    deactivate: () => { epeReflection.enabled = false; renderEpeAll(); epePushHistory(); },
+  });
+  document.getElementById('epeReflectionEnable') && document.getElementById('epeReflectionEnable').addEventListener('change', (e) => {
+    const p = epePluginEngine.getPlugin('reflection');
+    if (e.target.checked) p.activate(); else p.deactivate();
+  });
   document.getElementById('epeReflectionStyle') && document.getElementById('epeReflectionStyle').addEventListener('change', (e) => { epeReflection.style = e.target.value; renderEpeAll(); epePushHistory(); });
   ['Opacity','Fade','Distance'].forEach(prop => {
     const id = 'epeReflection'+prop;
@@ -10909,8 +10932,12 @@ if (document.getElementById('epeDrop')){
   });
   document.getElementById('epeRotation').addEventListener('change', epePushHistory);
 
-  document.getElementById('epeFlipHBtn').onclick = () => { epeLayer.flipH = !epeLayer.flipH; epeSyncControlsFromLayer(); renderEpeAll(); epePushHistory(); };
-  document.getElementById('epeFlipVBtn').onclick = () => { epeLayer.flipV = !epeLayer.flipV; epeSyncControlsFromLayer(); renderEpeAll(); epePushHistory(); };
+  function epeFlipH(){ epeLayer.flipH = !epeLayer.flipH; epeSyncControlsFromLayer(); renderEpeAll(); epePushHistory(); }
+  function epeFlipV(){ epeLayer.flipV = !epeLayer.flipV; epeSyncControlsFromLayer(); renderEpeAll(); epePushHistory(); }
+  epePluginEngine.register({ id: 'flipH', category: 'edit', name: 'Flip Horizontal', kind: 'action', activate: () => epeFlipH() });
+  epePluginEngine.register({ id: 'flipV', category: 'edit', name: 'Flip Vertical', kind: 'action', activate: () => epeFlipV() });
+  document.getElementById('epeFlipHBtn').onclick = () => epePluginEngine.activate('flipH');
+  document.getElementById('epeFlipVBtn').onclick = () => epePluginEngine.activate('flipV');
 
   // Rotate 90 -- rotates the ARTBOARD itself (swaps W/H, like fixing a
   // sideways photo), distinct from the free Rotation slider which rotates
@@ -11176,8 +11203,22 @@ if (document.getElementById('epeDrop')){
     renderEpeOverlay();
   });
   document.getElementById('epeGridSpacing').addEventListener('input', renderEpeOverlay);
-  document.getElementById('epeSafeArea').addEventListener('change', renderEpeOverlay);
-  document.getElementById('epeSmartGuides').addEventListener('change', renderEpeOverlay);
+  epePluginEngine.register({
+    id: 'safeArea', category: 'edit', name: 'Safe Area', kind: 'toggle',
+    activate: () => renderEpeOverlay(), deactivate: () => renderEpeOverlay(),
+  });
+  epePluginEngine.register({
+    id: 'smartGuides', category: 'edit', name: 'Smart Guides', kind: 'toggle',
+    activate: () => renderEpeOverlay(), deactivate: () => renderEpeOverlay(),
+  });
+  document.getElementById('epeSafeArea').addEventListener('change', (e) => {
+    const p = epePluginEngine.getPlugin('safeArea');
+    if (e.target.checked) p.activate(); else p.deactivate();
+  });
+  document.getElementById('epeSmartGuides').addEventListener('change', (e) => {
+    const p = epePluginEngine.getPlugin('smartGuides');
+    if (e.target.checked) p.activate(); else p.deactivate();
+  });
 
   /* ---------- Mouse wheel zoom (plain and Ctrl+wheel), pinch-zoom,
      double-tap zoom/reset -- view-only navigation, adapts the same
