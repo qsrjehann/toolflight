@@ -14607,38 +14607,223 @@ if (document.getElementById('epeDrop')){
   // rendered into the DOM at a time, with more batches appended as the
   // user scrolls near the bottom (real lazy loading + infinite scroll,
   // not a fake spinner that immediately reveals everything). ----
-  const EPE_ASSET_BATCH_SIZE = 24;
-  let epeAssetCurrentResults = [];
-  let epeAssetRenderedCount = 0;
-  let epeAssetScrollObserver = null;
+  /* ============================================================
+     TOOLFLIGHT ASSET LIBRARY ENGINE (Phase 6 of the multi-editor
+     migration plan). Tool-agnostic: owns the asset registry, search
+     index, search algorithm (word-boundary matching, concept
+     expansion, fuzzy fallback -- all pure string logic with zero
+     ecommerce dependencies, moved in directly rather than requiring
+     every future editor to reimplement search quality from scratch),
+     category/color/style filtering, and lazy-loading batch rendering.
 
-  let epeSearchDebounceTimer = null;
-  function epeRenderAssetLibrary(query, category, color, style){
-    const grid = document.getElementById('epeAssetGrid');
-    if (!grid) return;
-    epeAssetCurrentResults = epeSearchAssets(query, category, color, style);
-    epeAssetRenderedCount = 0;
-    grid.innerHTML = '';
-    const countEl = document.getElementById('epeAssetResultCount');
-    if (countEl){
-      const label = (category==='recent'?'Recent':category==='popular'?'Popular':category==='favorites'?'Favorites':epeAssetCurrentResults.length + (epeAssetCurrentResults.length===1?' asset':' assets'));
-      countEl.textContent = label;
+     Deliberately does NOT know about: canvas, layers, undo, selection,
+     or object creation. When a user clicks an asset cell, the engine
+     calls the editor-supplied onAssetSelected(asset) callback and
+     stops there -- what the editor does with that asset (insert it as
+     a layer, apply it as a style, anything else) is entirely up to
+     the editor, never the engine. This is what "the engine only
+     returns the selected asset" means concretely: the boundary is the
+     onAssetSelected callback, not a return value, since asset
+     selection here is a UI click event, but the principle is the same
+     -- the engine hands back the asset object and control, and never
+     reaches into canvas/layer state itself.
+
+     SVG handling: assets carry their SVG source (or a preview string)
+     as opaque data the engine never parses, flattens, or converts --
+     it stores and returns exactly what was registered, so an asset's
+     "editable-ness" is entirely preserved by construction, not by any
+     special-casing inside the engine. ============================================================ */
+  function createToolflightAssetLibraryEngine(config){
+    config = config || {};
+    const registry = config.initialRegistry || []; // reuse an existing, already-populated array by reference if supplied
+    let searchIndex = null;
+    const batchSize = config.batchSize || 24;
+    let currentResults = [];
+    let renderedCount = 0;
+    let scrollObserver = null;
+    let searchDebounceTimer = null;
+
+    function getEl(ref){ return typeof ref === 'function' ? ref() : ref; }
+
+    // ---- Registry ----
+    function registerAsset(entry){ registry.push(entry); return entry; }
+    function getRegistry(){ return registry; }
+
+    // ---- Search Index: real inverted index, term -> asset indices ----
+    function buildSearchIndex(){
+      const index = new Map();
+      registry.forEach((asset, i) => {
+        const terms = new Set([
+          ...(asset.title||'').toLowerCase().split(/\s+/),
+          ...(asset.tags||[]).map(t=>t.toLowerCase()),
+          ...(asset.keywords||[]).map(k=>k.toLowerCase()),
+          (asset.category||'').toLowerCase(),
+        ]);
+        terms.forEach(term => {
+          if (!term) return;
+          if (!index.has(term)) index.set(term, new Set());
+          index.get(term).add(i);
+        });
+      });
+      return index;
     }
-    epeAppendAssetBatch();
-    epeRenderSearchSuggestions(query);
-    // Real search history: debounced so it records completed queries,
-    // not every intermediate keystroke.
-    clearTimeout(epeSearchDebounceTimer);
-    if (query && query.trim().length >= 2){
-      epeSearchDebounceTimer = setTimeout(() => epeRecordRecentSearch(query), 800);
+
+    // ---- Concept expansion (generic, pluggable): editors may supply
+    // their own concept map via config.searchConcepts; falls back to
+    // an empty expansion (no-op) if none is supplied, so this never
+    // requires ecommerce-specific data to function correctly. ----
+    function expandQueryConcepts(query){
+      const rules = config.searchConcepts || [];
+      const q = query.toLowerCase();
+      const extra = new Set();
+      rules.forEach(rule => { if (rule.pattern.test(q)) rule.concepts.forEach(c => extra.add(c)); });
+      return extra;
     }
+
+    // ---- Fuzzy matching: real Levenshtein distance, generic, no
+    // external dependency. ----
+    function levenshtein(a, b){
+      if (a === b) return 0;
+      if (!a.length) return b.length;
+      if (!b.length) return a.length;
+      const prev = new Array(b.length+1); const curr = new Array(b.length+1);
+      for (let j=0;j<=b.length;j++) prev[j] = j;
+      for (let i=1;i<=a.length;i++){
+        curr[0] = i;
+        for (let j=1;j<=b.length;j++){
+          const cost = a[i-1]===b[j-1] ? 0 : 1;
+          curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost);
+        }
+        for (let j=0;j<=b.length;j++) prev[j]=curr[j];
+      }
+      return prev[b.length];
+    }
+    function fuzzyMatchTerm(term, query){
+      const maxDist = query.length <= 4 ? 1 : query.length <= 7 ? 2 : 3;
+      return levenshtein(term, query) <= maxDist;
+    }
+    function termMatchesQuery(term, aq){
+      if (aq.length <= 3) return new RegExp('(^|[^a-z0-9])' + aq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(term);
+      return term.includes(aq);
+    }
+
+    // ---- Search: category/color/style filtering + special pseudo-
+    // categories (recent/popular/favorites), delegated to
+    // config.getSpecialView so the engine never owns localStorage
+    // logic itself -- that stays editor-specific. ----
+    function search(query, category, color, style){
+      if (!searchIndex) searchIndex = buildSearchIndex();
+      if (typeof config.annotateFacets === 'function') config.annotateFacets(registry);
+
+      if (config.specialCategories && config.specialCategories.includes(category)){
+        return typeof config.getSpecialView === 'function' ? config.getSpecialView(category) : [];
+      }
+
+      const q = (query||'').toLowerCase().trim();
+      let results;
+      if (!q){
+        results = registry.slice();
+      } else {
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const conceptTerms = expandQueryConcepts(q);
+        const matchedIndices = new Set();
+        const allQueries = [q, ...tokens];
+        for (const [term, idxSet] of searchIndex){
+          if (allQueries.some(aq => termMatchesQuery(term, aq))) idxSet.forEach(i => matchedIndices.add(i));
+          if (conceptTerms.has(term)) idxSet.forEach(i => matchedIndices.add(i));
+        }
+        if (matchedIndices.size === 0){
+          for (const [term] of searchIndex){
+            if (tokens.some(t => fuzzyMatchTerm(term, t))) searchIndex.get(term).forEach(i => matchedIndices.add(i));
+          }
+        }
+        results = [...matchedIndices].map(i => registry[i]);
+      }
+      if (category && category !== 'all') results = results.filter(a => a.category === category);
+      if (color && color !== 'all') results = results.filter(a => a.color === color);
+      if (style && style !== 'all') results = results.filter(a => a.style && a.style.includes(style));
+      return results;
+    }
+
+    // ---- Lazy-loading batch rendering ----
+    function renderResults(query, category, color, style){
+      const grid = getEl(config.gridEl);
+      if (!grid) return;
+      currentResults = search(query, category, color, style);
+      renderedCount = 0;
+      grid.innerHTML = '';
+      const countEl = getEl(config.resultCountEl);
+      if (countEl && typeof config.formatResultCount === 'function') countEl.textContent = config.formatResultCount(currentResults, category);
+      appendBatch();
+      if (typeof config.onSearchRendered === 'function') config.onSearchRendered(query);
+      clearTimeout(searchDebounceTimer);
+      if (query && query.trim().length >= 2 && typeof config.recordRecentSearch === 'function'){
+        searchDebounceTimer = setTimeout(() => config.recordRecentSearch(query), 800);
+      }
+    }
+    function appendBatch(){
+      const grid = getEl(config.gridEl);
+      if (!grid) return;
+      const batch = currentResults.slice(renderedCount, renderedCount + batchSize);
+      const frag = document.createDocumentFragment();
+      batch.forEach(asset => {
+        const cell = typeof config.createCellEl === 'function' ? config.createCellEl(asset) : document.createElement('button');
+        cell.onclick = (e) => { if (typeof config.onAssetSelected === 'function') config.onAssetSelected(asset, e); };
+        frag.appendChild(cell);
+      });
+      grid.appendChild(frag);
+      renderedCount += batch.length;
+      ensureSentinel();
+    }
+    function ensureSentinel(){
+      const grid = getEl(config.gridEl);
+      const sentinelId = config.sentinelId || 'toolflightAssetScrollSentinel';
+      const old = document.getElementById(sentinelId);
+      if (old) old.remove();
+      if (renderedCount >= currentResults.length) return;
+      const sentinel = document.createElement('div');
+      sentinel.id = sentinelId;
+      sentinel.style.cssText = 'height:1px;';
+      grid.appendChild(sentinel);
+      if (!scrollObserver){
+        scrollObserver = new IntersectionObserver((entries) => {
+          entries.forEach(entry => { if (entry.isIntersecting) appendBatch(); });
+        }, { root: getEl(config.gridScrollEl), rootMargin: '200px' });
+      }
+      scrollObserver.observe(sentinel);
+    }
+
+    return {
+      registerAsset, getRegistry,
+      search, renderResults, appendBatch,
+      getCurrentResults: () => currentResults,
+    };
   }
-  function epeAppendAssetBatch(){
-    const grid = document.getElementById('epeAssetGrid');
-    if (!grid) return;
-    const batch = epeAssetCurrentResults.slice(epeAssetRenderedCount, epeAssetRenderedCount + EPE_ASSET_BATCH_SIZE);
-    const frag = document.createDocumentFragment();
-    batch.forEach(asset => {
+
+  const EPE_ASSET_BATCH_SIZE = 24;
+
+  // Ecommerce Editor's instance of the shared Asset Library Engine.
+  // initialRegistry reuses the SAME EPE_ASSET_REGISTRY array (already
+  // populated by icons/shapes/marketing/text-style registration above)
+  // by reference, not a copy -- epeRegisterAsset below still pushes to
+  // this exact array. The engine never calls asset.insert() itself;
+  // onAssetSelected is the only handoff point, preserving the "engine
+  // returns the asset, editor decides what to do with it" boundary.
+  const epeAssetEngine = createToolflightAssetLibraryEngine({
+    initialRegistry: EPE_ASSET_REGISTRY,
+    batchSize: EPE_ASSET_BATCH_SIZE,
+    gridEl: () => document.getElementById('epeAssetGrid'),
+    gridScrollEl: () => document.getElementById('epeAssetGridScroll'),
+    resultCountEl: () => document.getElementById('epeAssetResultCount'),
+    sentinelId: 'epeAssetScrollSentinel',
+    searchConcepts: EPE_SEARCH_CONCEPTS,
+    annotateFacets: () => { if (!EPE_ASSET_REGISTRY[0] || EPE_ASSET_REGISTRY[0].color === undefined) epeAnnotateAssetFacets(); },
+    specialCategories: ['recent', 'popular', 'favorites'],
+    getSpecialView: (kind) => epeGetAssetsForSpecialView(kind),
+    formatResultCount: (results, category) => (category==='recent'?'Recent':category==='popular'?'Popular':category==='favorites'?'Favorites':results.length + (results.length===1?' asset':' assets')),
+    onSearchRendered: (query) => epeRenderSearchSuggestions(query),
+    recordRecentSearch: (query) => epeRecordRecentSearch(query),
+    createCellEl: (asset) => {
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'epe-asset-cell';
@@ -14646,37 +14831,34 @@ if (document.getElementById('epeDrop')){
       cell.setAttribute('aria-label', asset.title + ', ' + asset.category);
       const isFav = epeIsFavoriteAsset(asset.id);
       cell.innerHTML = `<span class="epe-asset-preview">${asset.preview}</span><span class="epe-asset-title">${asset.title}</span><span class="epe-asset-fav${isFav?' active':''}" role="button" aria-label="Toggle favorite" title="Favorite">${isFav?'\u2605':'\u2606'}</span>`;
-      cell.onclick = (e) => {
-        if (e.target.classList.contains('epe-asset-fav')){
-          e.stopPropagation();
-          const nowFav = epeToggleFavoriteAsset(asset.id);
-          e.target.textContent = nowFav ? '\u2605' : '\u2606';
-          e.target.classList.toggle('active', nowFav);
-          return;
-        }
-        asset.insert();
-      };
-      frag.appendChild(cell);
-    });
-    grid.appendChild(frag);
-    epeAssetRenderedCount += batch.length;
-    epeAssetEnsureSentinel();
+      return cell;
+    },
+    onAssetSelected: (asset, e) => {
+      if (e.target.classList.contains('epe-asset-fav')){
+        e.stopPropagation();
+        const nowFav = epeToggleFavoriteAsset(asset.id);
+        e.target.textContent = nowFav ? '\u2605' : '\u2606';
+        e.target.classList.toggle('active', nowFav);
+        return;
+      }
+      asset.insert();
+    },
+  });
+
+  function epeSearchAssets(query, category, color, style){
+    return epeAssetEngine.search(query, category, color, style);
+  }
+  function epeRenderAssetLibrary(query, category, color, style){
+    epeAssetEngine.renderResults(query, category, color, style);
+  }
+  function epeAppendAssetBatch(){
+    epeAssetEngine.appendBatch();
   }
   function epeAssetEnsureSentinel(){
-    const grid = document.getElementById('epeAssetGrid');
-    const old = document.getElementById('epeAssetScrollSentinel');
-    if (old) old.remove();
-    if (epeAssetRenderedCount >= epeAssetCurrentResults.length) return; // fully loaded
-    const sentinel = document.createElement('div');
-    sentinel.id = 'epeAssetScrollSentinel';
-    sentinel.style.cssText = 'height:1px;';
-    grid.appendChild(sentinel);
-    if (!epeAssetScrollObserver){
-      epeAssetScrollObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => { if (entry.isIntersecting) epeAppendAssetBatch(); });
-      }, { root: document.getElementById('epeAssetGridScroll'), rootMargin: '200px' });
-    }
-    epeAssetScrollObserver.observe(sentinel);
+    // Folded into the engine's appendBatch/renderResults now; kept as a
+    // no-op wrapper only in case any external code still calls it by
+    // name (none found in this codebase, but preserving the public
+    // name costs nothing and avoids a silent breakage if that's wrong).
   }
 
   document.getElementById('epeAssetSearch') && document.getElementById('epeAssetSearch').addEventListener('input', (e) => {
