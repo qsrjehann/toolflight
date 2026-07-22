@@ -1181,3 +1181,65 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .epe-asset-fav.active{ color:#FFB800; }
 .epe-asset-cell{ position:relative; }
 #epeAssetColorFilter, #epeAssetStyleFilter{ font-size:11.5px; padding:5px 8px; border-radius:8px; border:1px solid var(--card-border); background:var(--card); color:var(--ink); }
+
+/* ---- Canva-style colorful category tiles (this phase) ---- */
+.epe-asset-section-title{ font-size:12.5px; font-weight:700; margin:16px 0 8px; color:var(--ink); }
+.epe-tile-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+.epe-tile-scroll{ display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+.epe-cat-tile{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  border:none; border-radius:16px; cursor:pointer; aspect-ratio:1/1; padding:8px 4px;
+  box-shadow:0 4px 10px -4px rgba(20,10,50,0.25); transition:transform 0.12s ease, box-shadow 0.12s ease;
+  color:#fff; position:relative; overflow:hidden;
+}
+.epe-cat-tile:hover{ transform:translateY(-2px) scale(1.02); box-shadow:0 8px 16px -4px rgba(20,10,50,0.35); }
+.epe-cat-tile:active{ transform:translateY(0) scale(0.98); }
+.epe-cat-tile-glyph{ font-size:22px; line-height:1; font-weight:800; text-shadow:0 1px 3px rgba(0,0,0,0.25); }
+.epe-cat-tile-label{ font-size:11px; font-weight:700; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.25); line-height:1.15; }
+.epe-tile-wide{ flex:0 0 84px; aspect-ratio:auto; height:84px; }
+
+/* Base category tiles -- distinct, saturated gradients per type */
+.epe-tile-icons{ background:linear-gradient(135deg,#0EA5A5,#0B7A7A); }
+.epe-tile-shapes{ background:linear-gradient(135deg,#7C3AED,#5B21B6); }
+.epe-tile-stickers{ background:linear-gradient(135deg,#F59E0B,#D97706); }
+.epe-tile-elements{ background:linear-gradient(135deg,#3B82F6,#1D4ED8); }
+.epe-tile-frames{ background:linear-gradient(135deg,#10B981,#047857); }
+.epe-tile-patterns{ background:linear-gradient(135deg,#8B5CF6,#6D28D9); }
+.epe-tile-backgrounds{ background:linear-gradient(135deg,#06B6D4,#0E7490); }
+.epe-tile-textstyles{ background:linear-gradient(135deg,#F43F5E,#BE123C); }
+
+/* Marketing industry tiles -- warm-to-cool spread across 13 industries */
+.epe-tile-sale{ background:linear-gradient(135deg,#E05252,#B32C2C); }
+.epe-tile-luxury{ background:linear-gradient(135deg,#3D3D3D,#111111); }
+.epe-tile-business{ background:linear-gradient(135deg,#1E3A5F,#0F2138); }
+.epe-tile-fashion{ background:linear-gradient(135deg,#D6336C,#9C1F52); }
+.epe-tile-restaurant{ background:linear-gradient(135deg,#E67E22,#B85C0A); }
+.epe-tile-gym{ background:linear-gradient(135deg,#3BA55C,#1F5C33); }
+.epe-tile-medical{ background:linear-gradient(135deg,#2E86C1,#1B5E85); }
+.epe-tile-technology{ background:linear-gradient(135deg,#5142D6,#2E2494); }
+.epe-tile-realestate{ background:linear-gradient(135deg,#8B7355,#5C4A34); }
+.epe-tile-travel{ background:linear-gradient(135deg,#00B8D9,#0080A0); }
+.epe-tile-education{ background:linear-gradient(135deg,#7C3AED,#4C1D95); }
+.epe-tile-kids{ background:linear-gradient(135deg,#FFB800,#E09600); }
+.epe-tile-wedding{ background:linear-gradient(135deg,#D6336C,#8B7355); }
+
+/* Text style tiles -- each reflects its own look where possible */
+.epe-tile-txt-luxury{ background:linear-gradient(135deg,#3D3D3D,#111111); }
+.epe-tile-txt-gaming{ background:linear-gradient(135deg,#FF3366,#00FFF0); }
+.epe-tile-txt-minimal{ background:linear-gradient(135deg,#9CA3AF,#4B5563); }
+.epe-tile-txt-3d{ background:linear-gradient(135deg,#E05252,#8B1A1A); }
+.epe-tile-txt-gradient{ background:linear-gradient(135deg,#FF6B35,#D6336C,#5142D6); }
+.epe-tile-txt-retro{ background:linear-gradient(135deg,#FF6B35,#8B4513); }
+.epe-tile-txt-shadow{ background:linear-gradient(135deg,#4B5563,#111111); }
+.epe-tile-txt-glass{ background:linear-gradient(135deg,#B8E0F5,#5FA8D3); }
+.epe-tile-txt-neon{ background:linear-gradient(135deg,#FF00E5,#00FFF0); }
+.epe-tile-txt-metal{ background:linear-gradient(135deg,#C0C0C0,#5A5A5A); }
+.epe-tile-txt-gold{ background:linear-gradient(135deg,#FFD700,#B8860B); }
+.epe-tile-txt-silver{ background:linear-gradient(135deg,#E8E8E8,#9A9AA5); }
+.epe-tile-txt-fashion{ background:linear-gradient(135deg,#111111,#3D3D3D); }
+.epe-tile-txt-wedding{ background:linear-gradient(135deg,#D6336C,#8B7355); }
+.epe-tile-txt-business{ background:linear-gradient(135deg,#1E3A5F,#0F2138); }
+
+@media (max-width:420px){ .epe-tile-grid{ grid-template-columns:repeat(3, 1fr); } }
+
+.epe-cat-tile.active{ box-shadow:0 0 0 3px var(--accent1), 0 4px 10px -4px rgba(20,10,50,0.25); transform:translateY(-1px); }
