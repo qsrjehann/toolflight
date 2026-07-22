@@ -7042,29 +7042,40 @@ if (document.getElementById('ppDrop')){
      reads directly and which this never touches) to fit the visible wrapper
      by default, so the editor always shows the complete, final framing.
      The ICAO overlay canvas is kept pixel-aligned with the same CSS size. */
+  // Passport's instance of the shared Workspace Engine. ppViewZoom is a
+  // NEW, separate variable from the existing ppZoom -- ppZoom controls
+  // face framing baked into the actual exported pixels (unchanged,
+  // untouched by this integration); ppViewZoom controls purely how the
+  // fixed-size canvas is displayed on screen, exactly mirroring
+  // epeViewZoom's role for the Ecommerce Editor.
+  let ppViewZoom = 1;
+  const ppWorkspaceEngine = createToolflightWorkspaceEngine({
+    viewportEl: () => document.getElementById('ppWorkspaceViewport'),
+    workspaceEl: () => document.getElementById('ppWorkspace'),
+  });
   function fitPpCanvasDisplay(){
     const canvas = document.getElementById('ppPreviewCanvas');
     const overlay = document.getElementById('ppIcaoOverlay');
-    const wrap = document.getElementById('ppCanvasStageWrap');
-    if (!canvas.width || !wrap) return;
-    // Defensive re-assertion, not just relying on the static inline style set
-    // once in HTML: explicitly re-confirms the overlay's positioning on
-    // every render. Could not reproduce a case where this was actually lost
-    // in this sandbox's testing, but this makes the positioning
-    // self-correcting on every frame regardless of cause, rather than a
-    // one-time setup that silently depends on nothing ever touching it.
+    const viewport = document.getElementById('ppWorkspaceViewport');
+    if (!canvas.width || !viewport) return;
+    canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
     if (overlay){
+      overlay.style.width = canvas.width + 'px'; overlay.style.height = canvas.height + 'px';
       overlay.style.position = 'absolute';
       overlay.style.top = '0';
       overlay.style.left = '0';
       overlay.style.pointerEvents = 'none';
     }
-    const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
-    const fitScale = Math.min(1, availW / canvas.width, availH / canvas.height);
-    const dispW = Math.round(canvas.width * fitScale), dispH = Math.round(canvas.height * fitScale);
-    canvas.style.width = dispW + 'px'; canvas.style.height = dispH + 'px';
-    if (overlay){ overlay.style.width = dispW + 'px'; overlay.style.height = dispH + 'px'; }
+    ppWorkspaceEngine.fitToScreen(canvas.width, canvas.height, ppViewZoom);
   }
+  document.getElementById('ppViewFitBtn').onclick = () => {
+    ppViewZoom = 1;
+    fitPpCanvasDisplay();
+    toast('View fit to screen.');
+  };
+  document.getElementById('ppViewCenterBtn').onclick = () => {
+    fitPpCanvasDisplay();
+  };
   document.getElementById('ppFitScreenBtn').onclick = () => {
     ppZoom = 1; ppOffsetX = 0; ppOffsetY = 0;
     document.getElementById('ppZoomSlider').value = '100';
@@ -7074,6 +7085,33 @@ if (document.getElementById('ppDrop')){
     toast('Fit to screen.');
   };
   window.addEventListener('resize', () => { if (ppSourceCanvas) fitPpCanvasDisplay(); });
+
+  // Touch pinch-zoom for the new display-level workspace was
+  // deliberately NOT added: Passport already has an established
+  // two-finger pinch gesture on ppCanvasEl bound to the existing
+  // ppZoom (face framing, content-level). Since #ppWorkspaceViewport
+  // is that canvas's parent and touch events bubble, a second pinch
+  // handler here would make the same physical gesture drive both
+  // ppZoom and the new ppViewZoom simultaneously -- a genuine, confusing
+  // UX conflict, not a safe addition. Mouse wheel-zoom (added above) has
+  // no such collision since Passport had no existing wheel behavior.
+
+  // Display-level wheel zoom (new capability -- Passport had no wheel
+  // zoom at all before this phase). Zooms the view of the fixed-size
+  // canvas around the cursor, exactly mirroring the Ecommerce Editor's
+  // wheel handler, and does not touch ppZoom/ppOffsetX/Y (the existing
+  // face-framing controls) at all.
+  document.getElementById('ppWorkspaceViewport').addEventListener('wheel', (e) => {
+    if (!ppSourceCanvas) return;
+    e.preventDefault();
+    const canvas = document.getElementById('ppPreviewCanvas');
+    ppViewZoom = Math.max(0.03, Math.min(16, ppViewZoom - Math.sign(e.deltaY)*0.1));
+    const viewport = document.getElementById('ppWorkspaceViewport');
+    const rect = viewport.getBoundingClientRect();
+    const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
+    const newScale = Math.min(1, availW/canvas.width, availH/canvas.height) * ppViewZoom;
+    ppWorkspaceEngine.zoomAroundPoint(newScale, e.clientX-rect.left, e.clientY-rect.top);
+  }, { passive:false });
 
   /* ---------- ICAO compliance overlay: real guides from the actual preset ratios ---------- */
   function drawIcaoOverlay(preset, outW, outH){
@@ -7701,9 +7739,20 @@ if (document.getElementById('ppDrop')){
     stampBrush(x, y, radius, hardness, direction);
   }
 
+  const ppCanvasEngineCache = new WeakMap();
   function canvasEventToOutputCoords(canvas, clientX, clientY){
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((clientX - rect.left) / rect.width) * canvas.width, y: ((clientY - rect.top) / rect.height) * canvas.height };
+    // Delegates to the shared Canvas Engine's screenToCanvas -- same
+    // exact math as before (verified identical prior to this change),
+    // now genuinely shared with the Ecommerce Editor's coordinate
+    // conversion rather than a second, parallel implementation.
+    // Cached per canvas element (WeakMap) since this fires on every
+    // pointermove during brush painting -- a real hot path.
+    let engine = ppCanvasEngineCache.get(canvas);
+    if (!engine){
+      engine = createToolflightCanvasEngine({ canvasEl: () => canvas, getContentSize: () => ({ w: canvas.width, h: canvas.height }) });
+      ppCanvasEngineCache.set(canvas, engine);
+    }
+    return engine.screenToCanvas(clientX, clientY);
   }
 
   let ppShapeSelectStart = null, ppLassoPoints = [], ppPolygonPoints = [];
@@ -8964,24 +9013,18 @@ if (document.getElementById('rtDrop')){
    preview and export literally the same pixel output, not just the
    same algorithm at different resolutions.
    ============================================================ */
-if (document.getElementById('epeDrop')){
-  let epeSourceImg = null;       // original uploaded image, never mutated
-  let epeArtboardW = 0, epeArtboardH = 0;
-  let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
-  let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
-  /* ============================================================
-     TOOLFLIGHT WORKSPACE ENGINE (shared architecture, Phase 1 of
-     the multi-editor migration plan). Tool-agnostic: takes viewport/
-     workspace elements as config, has no knowledge of "ecommerce"
-     specifically. This is the single, real implementation of the
-     Viewport -> Workspace GPU-transform pattern (translate + scale)
-     -- fit-to-screen math, zoom-around-a-point math, and transform
-     application all live here exactly once. The Ecommerce Editor is
-     refactored below to delegate to an instance of this engine
-     rather than containing its own separate copy of this logic.
-     Future editors (Passport, Thumbnail, etc.) instantiate their own
-     engine the same way, with their own viewport/workspace elements
-     -- no new workspace math is ever written per-editor. ============================================================ */
+/* ============================================================
+   TOOLFLIGHT SHARED ENGINES -- genuinely top-level scope (Phase 9 fix).
+   These 8 factories were previously defined INSIDE the Ecommerce-only
+   `if (document.getElementById('epeDrop'))` guard block -- meaning they
+   never actually existed on any other page, including Passport Photo
+   Maker. This was a real gap in the "shared engine" architecture from
+   Phases 1-8: the engines were generically DESIGNED but not physically
+   REACHABLE outside Ecommerce's own script guard. Moved here, before
+   any per-tool guard, so every current and future ToolFlight editor
+   that loads this shared app.js can actually call them.
+   ============================================================ */
+
   function createToolflightWorkspaceEngine(opts){
     opts = opts || {};
     let x = 0, y = 0, scale = 1;
@@ -9033,57 +9076,6 @@ if (document.getElementById('epeDrop')){
     return engine;
   }
 
-  // ---- Workspace architecture: the canvas element itself is always
-  // kept at its native pixel size (epeArtboardW x epeArtboardH in CSS
-  // px too); all visual pan/zoom is expressed as a single transform on
-  // #epeWorkspace. This replaces the old approach of directly resizing
-  // the canvas element's CSS width/height on every render, which was
-  // the root cause of an earlier "Fit to Screen" cumulative-shrink bug
-  // (repeatedly measuring a size that had itself just been changed).
-  // Measuring the fixed-size #epeWorkspaceViewport is stable regardless
-  // of how many times fit/center/zoom run. ----
-  let epeWorkspaceX = 0, epeWorkspaceY = 0, epeWorkspaceScale = 1;
-  // Ecommerce Editor's instance of the shared workspace engine -- this
-  // IS the workspace math for this editor now; epeApplyWorkspaceTransform/
-  // epeZoomAroundPoint/fitEpeCanvasDisplay below are thin wrappers that
-  // delegate to it and keep the pre-existing plain variables
-  // (epeWorkspaceX/Y/Scale, read directly by the pan-mode code) in sync,
-  // so nothing else in the codebase needed to change.
-  const epeWorkspaceEngine = createToolflightWorkspaceEngine({
-    viewportEl: () => document.getElementById('epeWorkspaceViewport'),
-    workspaceEl: () => document.getElementById('epeWorkspace'),
-  });
-  function epeSyncWorkspaceVarsFromEngine(){
-    const s = epeWorkspaceEngine.getState();
-    epeWorkspaceX = s.x; epeWorkspaceY = s.y; epeWorkspaceScale = s.scale;
-  }
-  function epeApplyWorkspaceTransform(){
-    // The pan-mode code updates epeWorkspaceX/Y directly then calls this
-    // function -- push that state into the engine so it stays the source
-    // of truth, then apply.
-    epeWorkspaceEngine.setState(epeWorkspaceX, epeWorkspaceY, epeWorkspaceScale);
-  }
-  // Zoom around a specific viewport-relative point (cursor position or
-  // pinch center), keeping that point visually stationary. newDisplayScale
-  // is the actual workspace scale to apply (already includes any
-  // fit-to-screen baseline, matching what fitEpeCanvasDisplay would compute
-  // for the same epeViewZoom).
-  function epeZoomAroundPoint(newDisplayScale, viewportX, viewportY){
-    epeWorkspaceEngine.zoomAroundPoint(newDisplayScale, viewportX, viewportY);
-    epeSyncWorkspaceVarsFromEngine();
-  }
-  /* ============================================================
-     TOOLFLIGHT HISTORY ENGINE (Phase 5 of the multi-editor migration
-     plan). Tool-agnostic: owns the undo/redo stack mechanics (push,
-     index management, size limit, clear) with zero knowledge of what
-     a "snapshot" actually contains -- that's supplied by the editor
-     via snapshotFn/restoreFn callbacks, exactly the same pattern as
-     the Canvas Engine's renderFn from Phase 3. What a snapshot
-     captures is legitimately editor-specific (ecommerce snapshots
-     layers/adjustments; a future editor snapshots its own state) --
-     forcing a generic "shape" onto that content isn't what makes this
-     shared, the STACK MECHANICS are what's genuinely identical across
-     every editor and are the single real implementation here. ============================================================ */
   function createToolflightHistoryEngine(config){
     config = config || {};
     const maxSize = config.maxSize || 60;
@@ -9147,6 +9139,690 @@ if (document.getElementById('epeDrop')){
     };
     return engine;
   }
+
+  function createToolflightLayerEngine(config){
+    config = config || {};
+    const state = config.state; // same object reference as the caller's, e.g. dseState
+    const generateId = config.generateId || (() => 'layer_' + Math.random().toString(36).slice(2));
+    const listeners = {};
+
+    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[LayerEngine] listener error for', event, e); } }); }
+    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
+
+    // O(1) id -> layer index, lazily rebuilt only when the layer count
+    // changes (cheap check every call, full rebuild only when needed).
+    let idIndex = null, idIndexCount = -1;
+    function getIdIndex(){
+      if (!idIndex || idIndexCount !== state.layers.length){
+        idIndex = new Map();
+        for (const l of state.layers) idIndex.set(l.id, l);
+        idIndexCount = state.layers.length;
+      }
+      return idIndex;
+    }
+    function getLayerById(id){
+      const fromIndex = getIdIndex().get(id);
+      if (fromIndex) return fromIndex;
+      // Safety fallback for the (rare, but possible) case where a
+      // layer's id was mutated in place rather than replaced -- never
+      // silently returns nothing just because the cached index is stale.
+      return state.layers.find(l => l.id === id);
+    }
+
+    const engine = {
+      // ---- Layer Manager ----
+      getLayers(){ return state.layers; },
+      getLayerById,
+      addLayer(layer){
+        state.layers.push(layer);
+        emit('layerAdded', { layer });
+        return layer;
+      },
+      removeLayer(id){
+        const before = state.layers.length;
+        state.layers = state.layers.filter(l => l.id !== id);
+        state.selectedIds.delete(id);
+        if (state.layers.length !== before) emit('layerRemoved', { id });
+      },
+      removeLayers(ids){
+        const idSet = new Set(ids);
+        state.layers = state.layers.filter(l => !idSet.has(l.id));
+        ids.forEach(id => state.selectedIds.delete(id));
+        emit('layerRemoved', { ids });
+      },
+      updateLayer(id, patch){
+        const layer = getLayerById(id);
+        if (!layer) return null;
+        Object.assign(layer, patch);
+        emit('layerUpdated', { id, patch });
+        return layer;
+      },
+
+      // ---- Selection Manager (the only authority for selection state) ----
+      getSelectedIds(){ return state.selectedIds; },
+      getActiveLayer(){
+        if (state.selectedIds.size === 0 && state.layers.length > 0) return state.layers[state.layers.length - 1];
+        for (const id of state.selectedIds){ const l = getLayerById(id); if (l) return l; }
+        return null;
+      },
+      selectLayer(id, additive){
+        if (!additive) state.selectedIds.clear();
+        if (id) state.selectedIds.add(id);
+        emit('layerSelected', { id, additive, selectedIds: state.selectedIds });
+      },
+      deselectAll(){
+        state.selectedIds.clear();
+        emit('layerSelected', { id:null, selectedIds: state.selectedIds });
+      },
+      isSelected(id){ return state.selectedIds.has(id); },
+
+      // ---- Ordering ----
+      moveLayer(id, direction){
+        const layer = getLayerById(id);
+        if (!layer) return;
+        const sorted = [...state.layers].sort((a,b) => a.zIndex - b.zIndex);
+        const idx = sorted.indexOf(layer);
+        if (direction === 'forward' && idx < sorted.length-1){ [sorted[idx].zIndex, sorted[idx+1].zIndex] = [sorted[idx+1].zIndex, sorted[idx].zIndex]; }
+        if (direction === 'backward' && idx > 0){ [sorted[idx].zIndex, sorted[idx-1].zIndex] = [sorted[idx-1].zIndex, sorted[idx].zIndex]; }
+        if (direction === 'top') layer.zIndex = Math.max(...state.layers.map(l=>l.zIndex)) + 1;
+        if (direction === 'bottom') layer.zIndex = Math.min(...state.layers.map(l=>l.zIndex)) - 1;
+        emit('layerMoved', { id, direction });
+      },
+
+      // ---- Visibility / Lock ----
+      setVisible(id, visible){ return engine.updateLayer(id, { visible }); },
+      setLocked(id, locked){ return engine.updateLayer(id, { locked }); },
+      toggleVisible(id){ const l = getLayerById(id); if (l) return engine.setVisible(id, !l.visible); },
+      toggleLocked(id){ const l = getLayerById(id); if (l) return engine.setLocked(id, !l.locked); },
+
+      // ---- Duplication ----
+      duplicateLayer(id, opts){
+        opts = opts || {};
+        const layer = getLayerById(id);
+        if (!layer) return null;
+        const skipKeys = opts.skipKeys || [];
+        const clone = JSON.parse(JSON.stringify(layer, (k, v) => skipKeys.includes(k) ? undefined : v));
+        clone.id = generateId();
+        if (opts.offset){ clone.x = (clone.x||0) + opts.offset.x; clone.y = (clone.y||0) + opts.offset.y; }
+        clone.zIndex = state.layers.length;
+        engine.addLayer(clone);
+        return clone;
+      },
+
+      // ---- Grouping (architecture prepared now; nested groups
+      // supported via the same 'children' id-array shape recursively,
+      // even though the current UI only exposes one level) ----
+      groupLayers(ids, makeGroup){
+        // makeGroup: (childIds) => groupLayerObject -- the actual group
+        // layer *construction* (its transform/bbox math) stays editor-
+        // specific and is supplied by the caller; the engine only owns
+        // the generic "these ids now belong to a group" relationship.
+        if (typeof makeGroup !== 'function') return null;
+        const group = makeGroup(ids);
+        if (!group.children) group.children = [...ids];
+        engine.addLayer(group);
+        ids.forEach(id => { const l = getLayerById(id); if (l) l.groupId = group.id; });
+        emit('layerGrouped', { groupId: group.id, childIds: ids });
+        return group;
+      },
+      ungroupLayer(groupId){
+        const group = getLayerById(groupId);
+        if (!group || !group.children) return [];
+        const childIds = [...group.children];
+        childIds.forEach(id => { const l = getLayerById(id); if (l) delete l.groupId; });
+        engine.removeLayer(groupId);
+        emit('layerUngrouped', { groupId, childIds });
+        return childIds;
+      },
+
+      // ---- Events ----
+      on, emit,
+    };
+    return engine;
+  }
+
+  function createToolflightPluginEngine(options){
+    options = options || {};
+    const plugins = new Map(); // id -> descriptor
+    let activeId = null;
+    const listeners = {};
+    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[PluginEngine] listener error for', event, e); } }); }
+    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
+
+    const engine = {
+      // ---- Registration / Discovery ----
+      register(descriptor){
+        if (!descriptor || !descriptor.id) throw new Error('[PluginEngine] register() requires an id');
+        const plugin = Object.assign({
+          category: descriptor.category || 'uncategorized',
+          name: descriptor.name || descriptor.id,
+          icon: descriptor.icon || null,
+          shortcut: descriptor.shortcut || null,
+          order: typeof descriptor.order === 'number' ? descriptor.order : plugins.size,
+          enabled: descriptor.enabled !== false,
+          kind: descriptor.kind || 'action', // 'action' (one-shot) | 'toggle' | 'mode'
+          init(){}, destroy(){}, enable(){}, disable(){}, activate(){}, deactivate(){},
+        }, descriptor);
+        plugins.set(plugin.id, plugin);
+        if (typeof plugin.init === 'function') plugin.init();
+        if (plugin.shortcut) registerShortcut(plugin.shortcut, plugin.id);
+        emit('pluginRegistered', { id: plugin.id });
+        return plugin;
+      },
+      unregister(id){
+        const plugin = plugins.get(id);
+        if (!plugin) return false;
+        if (typeof plugin.destroy === 'function') plugin.destroy();
+        plugins.delete(id);
+        emit('pluginUnregistered', { id });
+        return true;
+      },
+      getPlugin(id){ return plugins.get(id) || null; },
+      getPlugins(){ return [...plugins.values()].sort((a,b) => a.order - b.order); },
+      getPluginsByCategory(category){ return engine.getPlugins().filter(p => p.category === category); },
+      getCategories(){ return [...new Set(engine.getPlugins().map(p => p.category))]; },
+
+      // ---- Enable / Disable ----
+      isEnabled(id){ const p = plugins.get(id); return !!p && p.enabled; },
+      enablePlugin(id){
+        const p = plugins.get(id); if (!p) return;
+        p.enabled = true;
+        if (typeof p.enable === 'function') p.enable();
+        emit('pluginEnabled', { id });
+      },
+      disablePlugin(id){
+        const p = plugins.get(id); if (!p) return;
+        if (activeId === id) engine.deactivate();
+        p.enabled = false;
+        if (typeof p.disable === 'function') p.disable();
+        emit('pluginDisabled', { id });
+      },
+
+      // ---- Lifecycle: activate / deactivate ----
+      // For 'action' plugins (one-shot, e.g. Rotate), activate() runs
+      // the action and the engine does not track it as "the active
+      // tool" afterward. For 'toggle'/'mode' plugins, activate() enters
+      // the tool's mode and it stays active until deactivate() or
+      // another mode-kind plugin is activated (mirroring the existing
+      // epeSetTool radio-group behavior for Clone/Heal/Erase).
+      activate(id, ...args){
+        const p = plugins.get(id);
+        if (!p || !p.enabled) return false;
+        if (p.kind !== 'action' && activeId && activeId !== id) engine.deactivate();
+        const result = typeof p.activate === 'function' ? p.activate(...args) : undefined;
+        if (p.kind !== 'action') activeId = id;
+        emit('pluginActivated', { id, kind: p.kind });
+        return result;
+      },
+      deactivate(id){
+        const targetId = id || activeId;
+        if (!targetId) return false;
+        const p = plugins.get(targetId);
+        if (p && typeof p.deactivate === 'function') p.deactivate();
+        if (activeId === targetId) activeId = null;
+        emit('pluginDeactivated', { id: targetId });
+        return true;
+      },
+      getActivePlugin(){ return activeId ? plugins.get(activeId) : null; },
+      getActiveId(){ return activeId; },
+
+      // ---- Keyboard shortcuts ----
+      on, emit,
+    };
+
+    // Shortcut registration is intentionally simple and additive: it
+    // records which key activates which plugin id, and the caller wires
+    // one real keydown listener (via options.bindShortcuts, supplied by
+    // the editor, since different editors may want different modifier-
+    // key conventions or may already have their own keydown handling
+    // this needs to coexist with, exactly like the Ecommerce Editor's
+    // existing Ctrl+Z handling does).
+    const shortcuts = new Map();
+    function registerShortcut(key, id){ shortcuts.set(key.toLowerCase(), id); }
+    engine.getShortcutTarget = (key) => shortcuts.get((key||'').toLowerCase()) || null;
+
+    return engine;
+  }
+
+  function createToolflightCanvasEngine(config){
+    config = config || {};
+    function getCanvasEl(){ return typeof config.canvasEl === 'function' ? config.canvasEl() : config.canvasEl; }
+    function getOverlayEl(){ return typeof config.overlayEl === 'function' ? config.overlayEl() : config.overlayEl; }
+    function getContentSize(){ return (typeof config.getContentSize === 'function' ? config.getContentSize() : config.getContentSize) || { w:0, h:0 }; }
+
+    const engine = {
+      getCanvas(){ return getCanvasEl(); },
+      getOverlay(){ return getOverlayEl(); },
+      getContext(){ const c = getCanvasEl(); return c ? c.getContext('2d') : null; },
+      getOverlayContext(){ const c = getOverlayEl(); return c ? c.getContext('2d') : null; },
+      getSize(){ return getContentSize(); },
+      // Device pixel ratio -- exposed for future editors that want
+      // DPR-aware backing-store rendering. The Ecommerce Editor does
+      // not currently use this (its canvas backing store is set 1:1 to
+      // logical pixels, verified working and byte-identical on export
+      // throughout this project) -- calling this does not change that
+      // existing behavior; it's an available capability, not something
+      // retrofitted onto the working editor in this phase.
+      getDevicePixelRatio(){ return window.devicePixelRatio || 1; },
+
+      // ---- Coordinate System ----
+      // screenToCanvas: converts a client-space point (e.g. from a
+      // pointer event) into canvas-logical-space coordinates, using the
+      // canvas element's actual on-screen bounding rect -- correctly
+      // transform-aware regardless of any ancestor's CSS transform
+      // (this is exactly why the Workspace Engine's GPU transforms
+      // never required touching this math: getBoundingClientRect
+      // already accounts for them).
+      screenToCanvas(clientX, clientY){
+        const canvas = getCanvasEl();
+        const size = getContentSize();
+        if (!canvas) return { x:0, y:0 };
+        const rect = canvas.getBoundingClientRect();
+        return { x: (clientX-rect.left)/rect.width*size.w, y: (clientY-rect.top)/rect.height*size.h };
+      },
+      // canvasToScreen: the inverse -- converts a canvas-logical-space
+      // point back into client-space screen coordinates.
+      canvasToScreen(canvasX, canvasY){
+        const canvas = getCanvasEl();
+        const size = getContentSize();
+        if (!canvas || !size.w || !size.h) return { x:0, y:0 };
+        const rect = canvas.getBoundingClientRect();
+        return { x: rect.left + (canvasX/size.w)*rect.width, y: rect.top + (canvasY/size.h)*rect.height };
+      },
+      // viewportToCanvas / canvasToViewport: aliases for the same
+      // conversion, named to match the Workspace Engine's terminology
+      // for editors that think in terms of "viewport" rather than
+      // "screen" -- same math, since the canvas's bounding rect is
+      // already viewport-relative by definition in browser layout.
+      viewportToCanvas(viewportX, viewportY){ return engine.screenToCanvas(viewportX, viewportY); },
+      canvasToViewport(canvasX, canvasY){ return engine.canvasToScreen(canvasX, canvasY); },
+
+      // ---- Rendering ----
+      // The engine does not draw content itself -- it holds the
+      // editor-supplied render function and provides a single,
+      // consistent entry point (render/requestRender/invalidate) so
+      // editors call one API instead of reaching into multiple
+      // rendering functions directly.
+      setRenderer(fn){ config.renderFn = fn; },
+      render(...args){ if (typeof config.renderFn === 'function') config.renderFn(...args); },
+      requestRender(...args){ engine.render(...args); },
+      renderNow(...args){ engine.render(...args); },
+      invalidate(...args){ engine.render(...args); },
+      refresh(...args){ engine.render(...args); },
+    };
+    return engine;
+  }
+
+  function createToolflightAssetLibraryEngine(config){
+    config = config || {};
+    const registry = config.initialRegistry || []; // reuse an existing, already-populated array by reference if supplied
+    let searchIndex = null;
+    const batchSize = config.batchSize || 24;
+    let currentResults = [];
+    let renderedCount = 0;
+    let scrollObserver = null;
+    let searchDebounceTimer = null;
+
+    function getEl(ref){ return typeof ref === 'function' ? ref() : ref; }
+
+    // ---- Registry ----
+    function registerAsset(entry){ registry.push(entry); return entry; }
+    function getRegistry(){ return registry; }
+
+    // ---- Search Index: real inverted index, term -> asset indices ----
+    function buildSearchIndex(){
+      const index = new Map();
+      registry.forEach((asset, i) => {
+        const terms = new Set([
+          ...(asset.title||'').toLowerCase().split(/\s+/),
+          ...(asset.tags||[]).map(t=>t.toLowerCase()),
+          ...(asset.keywords||[]).map(k=>k.toLowerCase()),
+          (asset.category||'').toLowerCase(),
+        ]);
+        terms.forEach(term => {
+          if (!term) return;
+          if (!index.has(term)) index.set(term, new Set());
+          index.get(term).add(i);
+        });
+      });
+      return index;
+    }
+
+    // ---- Concept expansion (generic, pluggable): editors may supply
+    // their own concept map via config.searchConcepts; falls back to
+    // an empty expansion (no-op) if none is supplied, so this never
+    // requires ecommerce-specific data to function correctly. ----
+    function expandQueryConcepts(query){
+      const rules = config.searchConcepts || [];
+      const q = query.toLowerCase();
+      const extra = new Set();
+      rules.forEach(rule => { if (rule.pattern.test(q)) rule.concepts.forEach(c => extra.add(c)); });
+      return extra;
+    }
+
+    // ---- Fuzzy matching: real Levenshtein distance, generic, no
+    // external dependency. ----
+    function levenshtein(a, b){
+      if (a === b) return 0;
+      if (!a.length) return b.length;
+      if (!b.length) return a.length;
+      const prev = new Array(b.length+1); const curr = new Array(b.length+1);
+      for (let j=0;j<=b.length;j++) prev[j] = j;
+      for (let i=1;i<=a.length;i++){
+        curr[0] = i;
+        for (let j=1;j<=b.length;j++){
+          const cost = a[i-1]===b[j-1] ? 0 : 1;
+          curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost);
+        }
+        for (let j=0;j<=b.length;j++) prev[j]=curr[j];
+      }
+      return prev[b.length];
+    }
+    function fuzzyMatchTerm(term, query){
+      const maxDist = query.length <= 4 ? 1 : query.length <= 7 ? 2 : 3;
+      return levenshtein(term, query) <= maxDist;
+    }
+    function termMatchesQuery(term, aq){
+      if (aq.length <= 3) return new RegExp('(^|[^a-z0-9])' + aq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(term);
+      return term.includes(aq);
+    }
+
+    // ---- Search: category/color/style filtering + special pseudo-
+    // categories (recent/popular/favorites), delegated to
+    // config.getSpecialView so the engine never owns localStorage
+    // logic itself -- that stays editor-specific. ----
+    function search(query, category, color, style){
+      if (!searchIndex) searchIndex = buildSearchIndex();
+      if (typeof config.annotateFacets === 'function') config.annotateFacets(registry);
+
+      if (config.specialCategories && config.specialCategories.includes(category)){
+        return typeof config.getSpecialView === 'function' ? config.getSpecialView(category) : [];
+      }
+
+      const q = (query||'').toLowerCase().trim();
+      let results;
+      if (!q){
+        results = registry.slice();
+      } else {
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const conceptTerms = expandQueryConcepts(q);
+        const matchedIndices = new Set();
+        const allQueries = [q, ...tokens];
+        for (const [term, idxSet] of searchIndex){
+          if (allQueries.some(aq => termMatchesQuery(term, aq))) idxSet.forEach(i => matchedIndices.add(i));
+          if (conceptTerms.has(term)) idxSet.forEach(i => matchedIndices.add(i));
+        }
+        if (matchedIndices.size === 0){
+          for (const [term] of searchIndex){
+            if (tokens.some(t => fuzzyMatchTerm(term, t))) searchIndex.get(term).forEach(i => matchedIndices.add(i));
+          }
+        }
+        results = [...matchedIndices].map(i => registry[i]);
+      }
+      if (category && category !== 'all') results = results.filter(a => a.category === category);
+      if (color && color !== 'all') results = results.filter(a => a.color === color);
+      if (style && style !== 'all') results = results.filter(a => a.style && a.style.includes(style));
+      return results;
+    }
+
+    // ---- Lazy-loading batch rendering ----
+    function renderResults(query, category, color, style){
+      const grid = getEl(config.gridEl);
+      if (!grid) return;
+      currentResults = search(query, category, color, style);
+      renderedCount = 0;
+      grid.innerHTML = '';
+      const countEl = getEl(config.resultCountEl);
+      if (countEl && typeof config.formatResultCount === 'function') countEl.textContent = config.formatResultCount(currentResults, category);
+      appendBatch();
+      if (typeof config.onSearchRendered === 'function') config.onSearchRendered(query);
+      clearTimeout(searchDebounceTimer);
+      if (query && query.trim().length >= 2 && typeof config.recordRecentSearch === 'function'){
+        searchDebounceTimer = setTimeout(() => config.recordRecentSearch(query), 800);
+      }
+    }
+    function appendBatch(){
+      const grid = getEl(config.gridEl);
+      if (!grid) return;
+      const batch = currentResults.slice(renderedCount, renderedCount + batchSize);
+      const frag = document.createDocumentFragment();
+      batch.forEach(asset => {
+        const cell = typeof config.createCellEl === 'function' ? config.createCellEl(asset) : document.createElement('button');
+        cell.onclick = (e) => { if (typeof config.onAssetSelected === 'function') config.onAssetSelected(asset, e); };
+        frag.appendChild(cell);
+      });
+      grid.appendChild(frag);
+      renderedCount += batch.length;
+      ensureSentinel();
+    }
+    function ensureSentinel(){
+      const grid = getEl(config.gridEl);
+      const sentinelId = config.sentinelId || 'toolflightAssetScrollSentinel';
+      const old = document.getElementById(sentinelId);
+      if (old) old.remove();
+      if (renderedCount >= currentResults.length) return;
+      const sentinel = document.createElement('div');
+      sentinel.id = sentinelId;
+      sentinel.style.cssText = 'height:1px;';
+      grid.appendChild(sentinel);
+      if (!scrollObserver){
+        scrollObserver = new IntersectionObserver((entries) => {
+          entries.forEach(entry => { if (entry.isIntersecting) appendBatch(); });
+        }, { root: getEl(config.gridScrollEl), rootMargin: '200px' });
+      }
+      scrollObserver.observe(sentinel);
+    }
+
+    return {
+      registerAsset, getRegistry,
+      search, renderResults, appendBatch,
+      getCurrentResults: () => currentResults,
+    };
+  }
+
+  function createToolflightFloatingToolbarDrag(config){
+    config = config || {};
+    const handle = typeof config.handleEl === 'function' ? config.handleEl() : config.handleEl;
+    const bar = typeof config.barEl === 'function' ? config.barEl() : config.barEl;
+    const wrap = typeof config.viewportEl === 'function' ? config.viewportEl() : config.viewportEl;
+    if (!handle || !bar || !wrap) return null;
+    let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
+
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    function beginDrag(clientX, clientY){
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      // Switch from the centered (left:50%, transform) default to
+      // absolute pixel positioning relative to the viewport, using the
+      // bar's CURRENT on-screen position so there's no visual jump.
+      barStartLeft = barRect.left - wrapRect.left;
+      barStartTop = barRect.top - wrapRect.top;
+      bar.style.left = barStartLeft + 'px';
+      bar.style.top = barStartTop + 'px';
+      bar.style.bottom = 'auto';
+      bar.style.transform = 'none';
+      bar.classList.add(config.draggingClass || 'epe-dragging');
+      startX = clientX; startY = clientY;
+      dragging = true;
+    }
+    function moveDrag(clientX, clientY){
+      if (!dragging) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const dx = clientX - startX, dy = clientY - startY;
+      let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
+      // Never leave the visible viewport bounds.
+      newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
+      newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
+      bar.style.left = newLeft + 'px';
+      bar.style.top = newTop + 'px';
+    }
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      bar.classList.remove(config.draggingClass || 'epe-dragging');
+    }
+    function resetToDefaultPosition(){
+      bar.style.left = ''; bar.style.top = ''; bar.style.bottom = '';
+      bar.style.transform = '';
+      bar.classList.remove(config.draggingClass || 'epe-dragging');
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      beginDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault(); e.stopPropagation();
+      moveDrag(e.clientX, e.clientY);
+    });
+    handle.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(); });
+    handle.addEventListener('pointercancel', (e) => { e.stopPropagation(); endDrag(); });
+
+    // Reset to the default (centered, bottom-anchored) position when any
+    // of the configured "reset trigger" elements are clicked (e.g. Fit to
+    // Screen buttons).
+    (config.resetTriggerEls || []).forEach(el => {
+      const target = typeof el === 'function' ? el() : el;
+      if (target) target.addEventListener('click', resetToDefaultPosition);
+    });
+
+    // Re-clamp on resize/orientation change so the toolbar never ends up
+    // outside the (possibly now-smaller) viewport bounds.
+    window.addEventListener('resize', () => {
+      if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const curLeft = parseFloat(bar.style.left) || 0, curTop = parseFloat(bar.style.top) || 0;
+      bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
+      bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
+    });
+
+    return { resetToDefaultPosition };
+  }
+
+  function createToolflightCategorySwitcher(config){
+    config = config || {};
+    const accordionMap = config.accordionMap || {};
+    const labelMap = config.labelMap || {};
+    const allAccordionIds = Object.values(accordionMap).flat();
+    const navButtonSelector = config.navButtonSelector || '[data-toolflight-category]';
+    const activeStateSelector = config.activeStateSelector || navButtonSelector;
+    const categoryDataAttr = config.categoryDataAttr || 'toolflightCategory';
+    let activeCategory = config.initialCategory || null;
+
+    function getPanelTitleEl(){ return typeof config.panelTitleEl === 'function' ? config.panelTitleEl() : config.panelTitleEl; }
+    function getPanelBodyEl(){ return typeof config.panelBodyEl === 'function' ? config.panelBodyEl() : config.panelBodyEl; }
+
+    function selectCategory(cat, opts){
+      opts = opts || {};
+      if (!accordionMap[cat]) return;
+      activeCategory = cat;
+      document.querySelectorAll(activeStateSelector).forEach(btn => {
+        const isActive = btn.dataset[categoryDataAttr] === cat;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+      });
+      const titleEl = getPanelTitleEl();
+      if (titleEl) titleEl.textContent = labelMap[cat] || cat;
+
+      const ids = accordionMap[cat];
+      const idSet = new Set(ids);
+      allAccordionIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle(config.hiddenClass || 'epe-category-hidden', !idSet.has(id));
+      });
+      ids.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (i === 0) el.open = true; else if (opts.collapseRest !== false) el.open = false;
+      });
+      const panelBody = getPanelBodyEl();
+      if (panelBody) panelBody.scrollTop = 0;
+      const firstEl = document.getElementById(ids[0]);
+      if (firstEl && firstEl.scrollIntoView && !opts.noScroll) firstEl.scrollIntoView({ block:'start', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto' });
+
+      if (!opts.skipOpenPanel && typeof config.onOpenPanel === 'function') config.onOpenPanel();
+    }
+    document.querySelectorAll(navButtonSelector).forEach(btn => btn.addEventListener('click', () => selectCategory(btn.dataset[categoryDataAttr])));
+
+    return { selectCategory, getActiveCategory: () => activeCategory };
+  }
+
+if (document.getElementById('epeDrop')){
+  let epeSourceImg = null;       // original uploaded image, never mutated
+  let epeArtboardW = 0, epeArtboardH = 0;
+  let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
+  let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
+  /* ============================================================
+     TOOLFLIGHT WORKSPACE ENGINE (shared architecture, Phase 1 of
+     the multi-editor migration plan). Tool-agnostic: takes viewport/
+     workspace elements as config, has no knowledge of "ecommerce"
+     specifically. This is the single, real implementation of the
+     Viewport -> Workspace GPU-transform pattern (translate + scale)
+     -- fit-to-screen math, zoom-around-a-point math, and transform
+     application all live here exactly once. The Ecommerce Editor is
+     refactored below to delegate to an instance of this engine
+     rather than containing its own separate copy of this logic.
+     Future editors (Passport, Thumbnail, etc.) instantiate their own
+     engine the same way, with their own viewport/workspace elements
+     -- no new workspace math is ever written per-editor. ============================================================ */
+
+  // ---- Workspace architecture: the canvas element itself is always
+  // kept at its native pixel size (epeArtboardW x epeArtboardH in CSS
+  // px too); all visual pan/zoom is expressed as a single transform on
+  // #epeWorkspace. This replaces the old approach of directly resizing
+  // the canvas element's CSS width/height on every render, which was
+  // the root cause of an earlier "Fit to Screen" cumulative-shrink bug
+  // (repeatedly measuring a size that had itself just been changed).
+  // Measuring the fixed-size #epeWorkspaceViewport is stable regardless
+  // of how many times fit/center/zoom run. ----
+  let epeWorkspaceX = 0, epeWorkspaceY = 0, epeWorkspaceScale = 1;
+  // Ecommerce Editor's instance of the shared workspace engine -- this
+  // IS the workspace math for this editor now; epeApplyWorkspaceTransform/
+  // epeZoomAroundPoint/fitEpeCanvasDisplay below are thin wrappers that
+  // delegate to it and keep the pre-existing plain variables
+  // (epeWorkspaceX/Y/Scale, read directly by the pan-mode code) in sync,
+  // so nothing else in the codebase needed to change.
+  const epeWorkspaceEngine = createToolflightWorkspaceEngine({
+    viewportEl: () => document.getElementById('epeWorkspaceViewport'),
+    workspaceEl: () => document.getElementById('epeWorkspace'),
+  });
+  function epeSyncWorkspaceVarsFromEngine(){
+    const s = epeWorkspaceEngine.getState();
+    epeWorkspaceX = s.x; epeWorkspaceY = s.y; epeWorkspaceScale = s.scale;
+  }
+  function epeApplyWorkspaceTransform(){
+    // The pan-mode code updates epeWorkspaceX/Y directly then calls this
+    // function -- push that state into the engine so it stays the source
+    // of truth, then apply.
+    epeWorkspaceEngine.setState(epeWorkspaceX, epeWorkspaceY, epeWorkspaceScale);
+  }
+  // Zoom around a specific viewport-relative point (cursor position or
+  // pinch center), keeping that point visually stationary. newDisplayScale
+  // is the actual workspace scale to apply (already includes any
+  // fit-to-screen baseline, matching what fitEpeCanvasDisplay would compute
+  // for the same epeViewZoom).
+  function epeZoomAroundPoint(newDisplayScale, viewportX, viewportY){
+    epeWorkspaceEngine.zoomAroundPoint(newDisplayScale, viewportX, viewportY);
+    epeSyncWorkspaceVarsFromEngine();
+  }
+  /* ============================================================
+     TOOLFLIGHT HISTORY ENGINE (Phase 5 of the multi-editor migration
+     plan). Tool-agnostic: owns the undo/redo stack mechanics (push,
+     index management, size limit, clear) with zero knowledge of what
+     a "snapshot" actually contains -- that's supplied by the editor
+     via snapshotFn/restoreFn callbacks, exactly the same pattern as
+     the Canvas Engine's renderFn from Phase 3. What a snapshot
+     captures is legitimately editor-specific (ecommerce snapshots
+     layers/adjustments; a future editor snapshots its own state) --
+     forcing a generic "shape" onto that content isn't what makes this
+     shared, the STACK MECHANICS are what's genuinely identical across
+     every editor and are the single real implementation here. ============================================================ */
 
   let epeHistoryStack = [], epeHistoryIndex = -1;
   // Ecommerce Editor's instance of the shared History Engine. The
@@ -9592,146 +10268,6 @@ if (document.getElementById('epeDrop')){
      the index is built lazily and invalidated by layer-count change,
      so it never requires existing code that pushes directly to
      state.layers to also maintain the index manually. ============================================================ */
-  function createToolflightLayerEngine(config){
-    config = config || {};
-    const state = config.state; // same object reference as the caller's, e.g. dseState
-    const generateId = config.generateId || (() => 'layer_' + Math.random().toString(36).slice(2));
-    const listeners = {};
-
-    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[LayerEngine] listener error for', event, e); } }); }
-    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
-
-    // O(1) id -> layer index, lazily rebuilt only when the layer count
-    // changes (cheap check every call, full rebuild only when needed).
-    let idIndex = null, idIndexCount = -1;
-    function getIdIndex(){
-      if (!idIndex || idIndexCount !== state.layers.length){
-        idIndex = new Map();
-        for (const l of state.layers) idIndex.set(l.id, l);
-        idIndexCount = state.layers.length;
-      }
-      return idIndex;
-    }
-    function getLayerById(id){
-      const fromIndex = getIdIndex().get(id);
-      if (fromIndex) return fromIndex;
-      // Safety fallback for the (rare, but possible) case where a
-      // layer's id was mutated in place rather than replaced -- never
-      // silently returns nothing just because the cached index is stale.
-      return state.layers.find(l => l.id === id);
-    }
-
-    const engine = {
-      // ---- Layer Manager ----
-      getLayers(){ return state.layers; },
-      getLayerById,
-      addLayer(layer){
-        state.layers.push(layer);
-        emit('layerAdded', { layer });
-        return layer;
-      },
-      removeLayer(id){
-        const before = state.layers.length;
-        state.layers = state.layers.filter(l => l.id !== id);
-        state.selectedIds.delete(id);
-        if (state.layers.length !== before) emit('layerRemoved', { id });
-      },
-      removeLayers(ids){
-        const idSet = new Set(ids);
-        state.layers = state.layers.filter(l => !idSet.has(l.id));
-        ids.forEach(id => state.selectedIds.delete(id));
-        emit('layerRemoved', { ids });
-      },
-      updateLayer(id, patch){
-        const layer = getLayerById(id);
-        if (!layer) return null;
-        Object.assign(layer, patch);
-        emit('layerUpdated', { id, patch });
-        return layer;
-      },
-
-      // ---- Selection Manager (the only authority for selection state) ----
-      getSelectedIds(){ return state.selectedIds; },
-      getActiveLayer(){
-        if (state.selectedIds.size === 0 && state.layers.length > 0) return state.layers[state.layers.length - 1];
-        for (const id of state.selectedIds){ const l = getLayerById(id); if (l) return l; }
-        return null;
-      },
-      selectLayer(id, additive){
-        if (!additive) state.selectedIds.clear();
-        if (id) state.selectedIds.add(id);
-        emit('layerSelected', { id, additive, selectedIds: state.selectedIds });
-      },
-      deselectAll(){
-        state.selectedIds.clear();
-        emit('layerSelected', { id:null, selectedIds: state.selectedIds });
-      },
-      isSelected(id){ return state.selectedIds.has(id); },
-
-      // ---- Ordering ----
-      moveLayer(id, direction){
-        const layer = getLayerById(id);
-        if (!layer) return;
-        const sorted = [...state.layers].sort((a,b) => a.zIndex - b.zIndex);
-        const idx = sorted.indexOf(layer);
-        if (direction === 'forward' && idx < sorted.length-1){ [sorted[idx].zIndex, sorted[idx+1].zIndex] = [sorted[idx+1].zIndex, sorted[idx].zIndex]; }
-        if (direction === 'backward' && idx > 0){ [sorted[idx].zIndex, sorted[idx-1].zIndex] = [sorted[idx-1].zIndex, sorted[idx].zIndex]; }
-        if (direction === 'top') layer.zIndex = Math.max(...state.layers.map(l=>l.zIndex)) + 1;
-        if (direction === 'bottom') layer.zIndex = Math.min(...state.layers.map(l=>l.zIndex)) - 1;
-        emit('layerMoved', { id, direction });
-      },
-
-      // ---- Visibility / Lock ----
-      setVisible(id, visible){ return engine.updateLayer(id, { visible }); },
-      setLocked(id, locked){ return engine.updateLayer(id, { locked }); },
-      toggleVisible(id){ const l = getLayerById(id); if (l) return engine.setVisible(id, !l.visible); },
-      toggleLocked(id){ const l = getLayerById(id); if (l) return engine.setLocked(id, !l.locked); },
-
-      // ---- Duplication ----
-      duplicateLayer(id, opts){
-        opts = opts || {};
-        const layer = getLayerById(id);
-        if (!layer) return null;
-        const skipKeys = opts.skipKeys || [];
-        const clone = JSON.parse(JSON.stringify(layer, (k, v) => skipKeys.includes(k) ? undefined : v));
-        clone.id = generateId();
-        if (opts.offset){ clone.x = (clone.x||0) + opts.offset.x; clone.y = (clone.y||0) + opts.offset.y; }
-        clone.zIndex = state.layers.length;
-        engine.addLayer(clone);
-        return clone;
-      },
-
-      // ---- Grouping (architecture prepared now; nested groups
-      // supported via the same 'children' id-array shape recursively,
-      // even though the current UI only exposes one level) ----
-      groupLayers(ids, makeGroup){
-        // makeGroup: (childIds) => groupLayerObject -- the actual group
-        // layer *construction* (its transform/bbox math) stays editor-
-        // specific and is supplied by the caller; the engine only owns
-        // the generic "these ids now belong to a group" relationship.
-        if (typeof makeGroup !== 'function') return null;
-        const group = makeGroup(ids);
-        if (!group.children) group.children = [...ids];
-        engine.addLayer(group);
-        ids.forEach(id => { const l = getLayerById(id); if (l) l.groupId = group.id; });
-        emit('layerGrouped', { groupId: group.id, childIds: ids });
-        return group;
-      },
-      ungroupLayer(groupId){
-        const group = getLayerById(groupId);
-        if (!group || !group.children) return [];
-        const childIds = [...group.children];
-        childIds.forEach(id => { const l = getLayerById(id); if (l) delete l.groupId; });
-        engine.removeLayer(groupId);
-        emit('layerUngrouped', { groupId, childIds });
-        return childIds;
-      },
-
-      // ---- Events ----
-      on, emit,
-    };
-    return engine;
-  }
 
 
   // Ecommerce Editor's instance of the shared Layer Engine -- points
@@ -10188,108 +10724,6 @@ if (document.getElementById('epeDrop')){
      Plugin Engine's job is purely to track WHICH tools exist, WHICH
      are currently active/enabled, and to dispatch to them -- not to
      mediate what they do internally. ============================================================ */
-  function createToolflightPluginEngine(options){
-    options = options || {};
-    const plugins = new Map(); // id -> descriptor
-    let activeId = null;
-    const listeners = {};
-    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[PluginEngine] listener error for', event, e); } }); }
-    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
-
-    const engine = {
-      // ---- Registration / Discovery ----
-      register(descriptor){
-        if (!descriptor || !descriptor.id) throw new Error('[PluginEngine] register() requires an id');
-        const plugin = Object.assign({
-          category: descriptor.category || 'uncategorized',
-          name: descriptor.name || descriptor.id,
-          icon: descriptor.icon || null,
-          shortcut: descriptor.shortcut || null,
-          order: typeof descriptor.order === 'number' ? descriptor.order : plugins.size,
-          enabled: descriptor.enabled !== false,
-          kind: descriptor.kind || 'action', // 'action' (one-shot) | 'toggle' | 'mode'
-          init(){}, destroy(){}, enable(){}, disable(){}, activate(){}, deactivate(){},
-        }, descriptor);
-        plugins.set(plugin.id, plugin);
-        if (typeof plugin.init === 'function') plugin.init();
-        if (plugin.shortcut) registerShortcut(plugin.shortcut, plugin.id);
-        emit('pluginRegistered', { id: plugin.id });
-        return plugin;
-      },
-      unregister(id){
-        const plugin = plugins.get(id);
-        if (!plugin) return false;
-        if (typeof plugin.destroy === 'function') plugin.destroy();
-        plugins.delete(id);
-        emit('pluginUnregistered', { id });
-        return true;
-      },
-      getPlugin(id){ return plugins.get(id) || null; },
-      getPlugins(){ return [...plugins.values()].sort((a,b) => a.order - b.order); },
-      getPluginsByCategory(category){ return engine.getPlugins().filter(p => p.category === category); },
-      getCategories(){ return [...new Set(engine.getPlugins().map(p => p.category))]; },
-
-      // ---- Enable / Disable ----
-      isEnabled(id){ const p = plugins.get(id); return !!p && p.enabled; },
-      enablePlugin(id){
-        const p = plugins.get(id); if (!p) return;
-        p.enabled = true;
-        if (typeof p.enable === 'function') p.enable();
-        emit('pluginEnabled', { id });
-      },
-      disablePlugin(id){
-        const p = plugins.get(id); if (!p) return;
-        if (activeId === id) engine.deactivate();
-        p.enabled = false;
-        if (typeof p.disable === 'function') p.disable();
-        emit('pluginDisabled', { id });
-      },
-
-      // ---- Lifecycle: activate / deactivate ----
-      // For 'action' plugins (one-shot, e.g. Rotate), activate() runs
-      // the action and the engine does not track it as "the active
-      // tool" afterward. For 'toggle'/'mode' plugins, activate() enters
-      // the tool's mode and it stays active until deactivate() or
-      // another mode-kind plugin is activated (mirroring the existing
-      // epeSetTool radio-group behavior for Clone/Heal/Erase).
-      activate(id, ...args){
-        const p = plugins.get(id);
-        if (!p || !p.enabled) return false;
-        if (p.kind !== 'action' && activeId && activeId !== id) engine.deactivate();
-        const result = typeof p.activate === 'function' ? p.activate(...args) : undefined;
-        if (p.kind !== 'action') activeId = id;
-        emit('pluginActivated', { id, kind: p.kind });
-        return result;
-      },
-      deactivate(id){
-        const targetId = id || activeId;
-        if (!targetId) return false;
-        const p = plugins.get(targetId);
-        if (p && typeof p.deactivate === 'function') p.deactivate();
-        if (activeId === targetId) activeId = null;
-        emit('pluginDeactivated', { id: targetId });
-        return true;
-      },
-      getActivePlugin(){ return activeId ? plugins.get(activeId) : null; },
-      getActiveId(){ return activeId; },
-
-      // ---- Keyboard shortcuts ----
-      on, emit,
-    };
-
-    // Shortcut registration is intentionally simple and additive: it
-    // records which key activates which plugin id, and the caller wires
-    // one real keydown listener (via options.bindShortcuts, supplied by
-    // the editor, since different editors may want different modifier-
-    // key conventions or may already have their own keydown handling
-    // this needs to coexist with, exactly like the Ecommerce Editor's
-    // existing Ctrl+Z handling does).
-    const shortcuts = new Map();
-    function registerShortcut(key, id){ shortcuts.set(key.toLowerCase(), id); }
-    engine.getShortcutTarget = (key) => shortcuts.get((key||'').toLowerCase()) || null;
-
-    return engine;
-  }
 
   function epeSetTool(tool){
     epeActiveTool = tool;
@@ -11014,74 +11448,6 @@ if (document.getElementById('epeDrop')){
      between screen space and canvas-logical space, canvas state
      (element refs, logical size), and a render/invalidate API surface
      that editors wire to their own drawing functions. ============================================================ */
-  function createToolflightCanvasEngine(config){
-    config = config || {};
-    function getCanvasEl(){ return typeof config.canvasEl === 'function' ? config.canvasEl() : config.canvasEl; }
-    function getOverlayEl(){ return typeof config.overlayEl === 'function' ? config.overlayEl() : config.overlayEl; }
-    function getContentSize(){ return (typeof config.getContentSize === 'function' ? config.getContentSize() : config.getContentSize) || { w:0, h:0 }; }
-
-    const engine = {
-      getCanvas(){ return getCanvasEl(); },
-      getOverlay(){ return getOverlayEl(); },
-      getContext(){ const c = getCanvasEl(); return c ? c.getContext('2d') : null; },
-      getOverlayContext(){ const c = getOverlayEl(); return c ? c.getContext('2d') : null; },
-      getSize(){ return getContentSize(); },
-      // Device pixel ratio -- exposed for future editors that want
-      // DPR-aware backing-store rendering. The Ecommerce Editor does
-      // not currently use this (its canvas backing store is set 1:1 to
-      // logical pixels, verified working and byte-identical on export
-      // throughout this project) -- calling this does not change that
-      // existing behavior; it's an available capability, not something
-      // retrofitted onto the working editor in this phase.
-      getDevicePixelRatio(){ return window.devicePixelRatio || 1; },
-
-      // ---- Coordinate System ----
-      // screenToCanvas: converts a client-space point (e.g. from a
-      // pointer event) into canvas-logical-space coordinates, using the
-      // canvas element's actual on-screen bounding rect -- correctly
-      // transform-aware regardless of any ancestor's CSS transform
-      // (this is exactly why the Workspace Engine's GPU transforms
-      // never required touching this math: getBoundingClientRect
-      // already accounts for them).
-      screenToCanvas(clientX, clientY){
-        const canvas = getCanvasEl();
-        const size = getContentSize();
-        if (!canvas) return { x:0, y:0 };
-        const rect = canvas.getBoundingClientRect();
-        return { x: (clientX-rect.left)/rect.width*size.w, y: (clientY-rect.top)/rect.height*size.h };
-      },
-      // canvasToScreen: the inverse -- converts a canvas-logical-space
-      // point back into client-space screen coordinates.
-      canvasToScreen(canvasX, canvasY){
-        const canvas = getCanvasEl();
-        const size = getContentSize();
-        if (!canvas || !size.w || !size.h) return { x:0, y:0 };
-        const rect = canvas.getBoundingClientRect();
-        return { x: rect.left + (canvasX/size.w)*rect.width, y: rect.top + (canvasY/size.h)*rect.height };
-      },
-      // viewportToCanvas / canvasToViewport: aliases for the same
-      // conversion, named to match the Workspace Engine's terminology
-      // for editors that think in terms of "viewport" rather than
-      // "screen" -- same math, since the canvas's bounding rect is
-      // already viewport-relative by definition in browser layout.
-      viewportToCanvas(viewportX, viewportY){ return engine.screenToCanvas(viewportX, viewportY); },
-      canvasToViewport(canvasX, canvasY){ return engine.canvasToScreen(canvasX, canvasY); },
-
-      // ---- Rendering ----
-      // The engine does not draw content itself -- it holds the
-      // editor-supplied render function and provides a single,
-      // consistent entry point (render/requestRender/invalidate) so
-      // editors call one API instead of reaching into multiple
-      // rendering functions directly.
-      setRenderer(fn){ config.renderFn = fn; },
-      render(...args){ if (typeof config.renderFn === 'function') config.renderFn(...args); },
-      requestRender(...args){ engine.render(...args); },
-      renderNow(...args){ engine.render(...args); },
-      invalidate(...args){ engine.render(...args); },
-      refresh(...args){ engine.render(...args); },
-    };
-    return engine;
-  }
 
   const epeCanvasEngine = createToolflightCanvasEngine({
     canvasEl: () => epeArtboardEl,
@@ -14833,172 +15199,6 @@ if (document.getElementById('epeDrop')){
      it stores and returns exactly what was registered, so an asset's
      "editable-ness" is entirely preserved by construction, not by any
      special-casing inside the engine. ============================================================ */
-  function createToolflightAssetLibraryEngine(config){
-    config = config || {};
-    const registry = config.initialRegistry || []; // reuse an existing, already-populated array by reference if supplied
-    let searchIndex = null;
-    const batchSize = config.batchSize || 24;
-    let currentResults = [];
-    let renderedCount = 0;
-    let scrollObserver = null;
-    let searchDebounceTimer = null;
-
-    function getEl(ref){ return typeof ref === 'function' ? ref() : ref; }
-
-    // ---- Registry ----
-    function registerAsset(entry){ registry.push(entry); return entry; }
-    function getRegistry(){ return registry; }
-
-    // ---- Search Index: real inverted index, term -> asset indices ----
-    function buildSearchIndex(){
-      const index = new Map();
-      registry.forEach((asset, i) => {
-        const terms = new Set([
-          ...(asset.title||'').toLowerCase().split(/\s+/),
-          ...(asset.tags||[]).map(t=>t.toLowerCase()),
-          ...(asset.keywords||[]).map(k=>k.toLowerCase()),
-          (asset.category||'').toLowerCase(),
-        ]);
-        terms.forEach(term => {
-          if (!term) return;
-          if (!index.has(term)) index.set(term, new Set());
-          index.get(term).add(i);
-        });
-      });
-      return index;
-    }
-
-    // ---- Concept expansion (generic, pluggable): editors may supply
-    // their own concept map via config.searchConcepts; falls back to
-    // an empty expansion (no-op) if none is supplied, so this never
-    // requires ecommerce-specific data to function correctly. ----
-    function expandQueryConcepts(query){
-      const rules = config.searchConcepts || [];
-      const q = query.toLowerCase();
-      const extra = new Set();
-      rules.forEach(rule => { if (rule.pattern.test(q)) rule.concepts.forEach(c => extra.add(c)); });
-      return extra;
-    }
-
-    // ---- Fuzzy matching: real Levenshtein distance, generic, no
-    // external dependency. ----
-    function levenshtein(a, b){
-      if (a === b) return 0;
-      if (!a.length) return b.length;
-      if (!b.length) return a.length;
-      const prev = new Array(b.length+1); const curr = new Array(b.length+1);
-      for (let j=0;j<=b.length;j++) prev[j] = j;
-      for (let i=1;i<=a.length;i++){
-        curr[0] = i;
-        for (let j=1;j<=b.length;j++){
-          const cost = a[i-1]===b[j-1] ? 0 : 1;
-          curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost);
-        }
-        for (let j=0;j<=b.length;j++) prev[j]=curr[j];
-      }
-      return prev[b.length];
-    }
-    function fuzzyMatchTerm(term, query){
-      const maxDist = query.length <= 4 ? 1 : query.length <= 7 ? 2 : 3;
-      return levenshtein(term, query) <= maxDist;
-    }
-    function termMatchesQuery(term, aq){
-      if (aq.length <= 3) return new RegExp('(^|[^a-z0-9])' + aq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(term);
-      return term.includes(aq);
-    }
-
-    // ---- Search: category/color/style filtering + special pseudo-
-    // categories (recent/popular/favorites), delegated to
-    // config.getSpecialView so the engine never owns localStorage
-    // logic itself -- that stays editor-specific. ----
-    function search(query, category, color, style){
-      if (!searchIndex) searchIndex = buildSearchIndex();
-      if (typeof config.annotateFacets === 'function') config.annotateFacets(registry);
-
-      if (config.specialCategories && config.specialCategories.includes(category)){
-        return typeof config.getSpecialView === 'function' ? config.getSpecialView(category) : [];
-      }
-
-      const q = (query||'').toLowerCase().trim();
-      let results;
-      if (!q){
-        results = registry.slice();
-      } else {
-        const tokens = q.split(/\s+/).filter(Boolean);
-        const conceptTerms = expandQueryConcepts(q);
-        const matchedIndices = new Set();
-        const allQueries = [q, ...tokens];
-        for (const [term, idxSet] of searchIndex){
-          if (allQueries.some(aq => termMatchesQuery(term, aq))) idxSet.forEach(i => matchedIndices.add(i));
-          if (conceptTerms.has(term)) idxSet.forEach(i => matchedIndices.add(i));
-        }
-        if (matchedIndices.size === 0){
-          for (const [term] of searchIndex){
-            if (tokens.some(t => fuzzyMatchTerm(term, t))) searchIndex.get(term).forEach(i => matchedIndices.add(i));
-          }
-        }
-        results = [...matchedIndices].map(i => registry[i]);
-      }
-      if (category && category !== 'all') results = results.filter(a => a.category === category);
-      if (color && color !== 'all') results = results.filter(a => a.color === color);
-      if (style && style !== 'all') results = results.filter(a => a.style && a.style.includes(style));
-      return results;
-    }
-
-    // ---- Lazy-loading batch rendering ----
-    function renderResults(query, category, color, style){
-      const grid = getEl(config.gridEl);
-      if (!grid) return;
-      currentResults = search(query, category, color, style);
-      renderedCount = 0;
-      grid.innerHTML = '';
-      const countEl = getEl(config.resultCountEl);
-      if (countEl && typeof config.formatResultCount === 'function') countEl.textContent = config.formatResultCount(currentResults, category);
-      appendBatch();
-      if (typeof config.onSearchRendered === 'function') config.onSearchRendered(query);
-      clearTimeout(searchDebounceTimer);
-      if (query && query.trim().length >= 2 && typeof config.recordRecentSearch === 'function'){
-        searchDebounceTimer = setTimeout(() => config.recordRecentSearch(query), 800);
-      }
-    }
-    function appendBatch(){
-      const grid = getEl(config.gridEl);
-      if (!grid) return;
-      const batch = currentResults.slice(renderedCount, renderedCount + batchSize);
-      const frag = document.createDocumentFragment();
-      batch.forEach(asset => {
-        const cell = typeof config.createCellEl === 'function' ? config.createCellEl(asset) : document.createElement('button');
-        cell.onclick = (e) => { if (typeof config.onAssetSelected === 'function') config.onAssetSelected(asset, e); };
-        frag.appendChild(cell);
-      });
-      grid.appendChild(frag);
-      renderedCount += batch.length;
-      ensureSentinel();
-    }
-    function ensureSentinel(){
-      const grid = getEl(config.gridEl);
-      const sentinelId = config.sentinelId || 'toolflightAssetScrollSentinel';
-      const old = document.getElementById(sentinelId);
-      if (old) old.remove();
-      if (renderedCount >= currentResults.length) return;
-      const sentinel = document.createElement('div');
-      sentinel.id = sentinelId;
-      sentinel.style.cssText = 'height:1px;';
-      grid.appendChild(sentinel);
-      if (!scrollObserver){
-        scrollObserver = new IntersectionObserver((entries) => {
-          entries.forEach(entry => { if (entry.isIntersecting) appendBatch(); });
-        }, { root: getEl(config.gridScrollEl), rootMargin: '200px' });
-      }
-      scrollObserver.observe(sentinel);
-    }
-
-    return {
-      registerAsset, getRegistry,
-      search, renderResults, appendBatch,
-      getCurrentResults: () => currentResults,
-    };
-  }
 
   const EPE_ASSET_BATCH_SIZE = 24;
 
@@ -17260,138 +17460,7 @@ if (document.getElementById('epeDrop')){
      own separate copy of the same logic. Future editors instantiate
      their own instance the same way, with their own elements -- no
      new drag math is ever written per-editor. ============================================================ */
-  function createToolflightFloatingToolbarDrag(config){
-    config = config || {};
-    const handle = typeof config.handleEl === 'function' ? config.handleEl() : config.handleEl;
-    const bar = typeof config.barEl === 'function' ? config.barEl() : config.barEl;
-    const wrap = typeof config.viewportEl === 'function' ? config.viewportEl() : config.viewportEl;
-    if (!handle || !bar || !wrap) return null;
-    let dragging = false, startX = 0, startY = 0, barStartLeft = 0, barStartTop = 0;
 
-    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-
-    function beginDrag(clientX, clientY){
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      // Switch from the centered (left:50%, transform) default to
-      // absolute pixel positioning relative to the viewport, using the
-      // bar's CURRENT on-screen position so there's no visual jump.
-      barStartLeft = barRect.left - wrapRect.left;
-      barStartTop = barRect.top - wrapRect.top;
-      bar.style.left = barStartLeft + 'px';
-      bar.style.top = barStartTop + 'px';
-      bar.style.bottom = 'auto';
-      bar.style.transform = 'none';
-      bar.classList.add(config.draggingClass || 'epe-dragging');
-      startX = clientX; startY = clientY;
-      dragging = true;
-    }
-    function moveDrag(clientX, clientY){
-      if (!dragging) return;
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      const dx = clientX - startX, dy = clientY - startY;
-      let newLeft = barStartLeft + dx, newTop = barStartTop + dy;
-      // Never leave the visible viewport bounds.
-      newLeft = clamp(newLeft, 0, Math.max(0, wrapRect.width - barRect.width));
-      newTop = clamp(newTop, 0, Math.max(0, wrapRect.height - barRect.height));
-      bar.style.left = newLeft + 'px';
-      bar.style.top = newTop + 'px';
-    }
-    function endDrag(){
-      if (!dragging) return;
-      dragging = false;
-      bar.classList.remove(config.draggingClass || 'epe-dragging');
-    }
-    function resetToDefaultPosition(){
-      bar.style.left = ''; bar.style.top = ''; bar.style.bottom = '';
-      bar.style.transform = '';
-      bar.classList.remove(config.draggingClass || 'epe-dragging');
-    }
-
-    handle.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
-      beginDrag(e.clientX, e.clientY);
-    });
-    handle.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      e.preventDefault(); e.stopPropagation();
-      moveDrag(e.clientX, e.clientY);
-    });
-    handle.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(); });
-    handle.addEventListener('pointercancel', (e) => { e.stopPropagation(); endDrag(); });
-
-    // Reset to the default (centered, bottom-anchored) position when any
-    // of the configured "reset trigger" elements are clicked (e.g. Fit to
-    // Screen buttons).
-    (config.resetTriggerEls || []).forEach(el => {
-      const target = typeof el === 'function' ? el() : el;
-      if (target) target.addEventListener('click', resetToDefaultPosition);
-    });
-
-    // Re-clamp on resize/orientation change so the toolbar never ends up
-    // outside the (possibly now-smaller) viewport bounds.
-    window.addEventListener('resize', () => {
-      if (bar.style.left === '' || bar.style.transform === 'translateX(-50%)') return; // still at default position
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = bar.getBoundingClientRect();
-      const curLeft = parseFloat(bar.style.left) || 0, curTop = parseFloat(bar.style.top) || 0;
-      bar.style.left = clamp(curLeft, 0, Math.max(0, wrapRect.width - barRect.width)) + 'px';
-      bar.style.top = clamp(curTop, 0, Math.max(0, wrapRect.height - barRect.height)) + 'px';
-    });
-
-    return { resetToDefaultPosition };
-  }
-
-  function createToolflightCategorySwitcher(config){
-    config = config || {};
-    const accordionMap = config.accordionMap || {};
-    const labelMap = config.labelMap || {};
-    const allAccordionIds = Object.values(accordionMap).flat();
-    const navButtonSelector = config.navButtonSelector || '[data-toolflight-category]';
-    const activeStateSelector = config.activeStateSelector || navButtonSelector;
-    const categoryDataAttr = config.categoryDataAttr || 'toolflightCategory';
-    let activeCategory = config.initialCategory || null;
-
-    function getPanelTitleEl(){ return typeof config.panelTitleEl === 'function' ? config.panelTitleEl() : config.panelTitleEl; }
-    function getPanelBodyEl(){ return typeof config.panelBodyEl === 'function' ? config.panelBodyEl() : config.panelBodyEl; }
-
-    function selectCategory(cat, opts){
-      opts = opts || {};
-      if (!accordionMap[cat]) return;
-      activeCategory = cat;
-      document.querySelectorAll(activeStateSelector).forEach(btn => {
-        const isActive = btn.dataset[categoryDataAttr] === cat;
-        btn.classList.toggle('active', isActive);
-        btn.setAttribute('aria-pressed', String(isActive));
-      });
-      const titleEl = getPanelTitleEl();
-      if (titleEl) titleEl.textContent = labelMap[cat] || cat;
-
-      const ids = accordionMap[cat];
-      const idSet = new Set(ids);
-      allAccordionIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.classList.toggle(config.hiddenClass || 'epe-category-hidden', !idSet.has(id));
-      });
-      ids.forEach((id, i) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (i === 0) el.open = true; else if (opts.collapseRest !== false) el.open = false;
-      });
-      const panelBody = getPanelBodyEl();
-      if (panelBody) panelBody.scrollTop = 0;
-      const firstEl = document.getElementById(ids[0]);
-      if (firstEl && firstEl.scrollIntoView && !opts.noScroll) firstEl.scrollIntoView({ block:'start', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto' });
-
-      if (!opts.skipOpenPanel && typeof config.onOpenPanel === 'function') config.onOpenPanel();
-    }
-    document.querySelectorAll(navButtonSelector).forEach(btn => btn.addEventListener('click', () => selectCategory(btn.dataset[categoryDataAttr])));
-
-    return { selectCategory, getActiveCategory: () => activeCategory };
-  }
 
   const EPE_ALL_CATEGORY_ACCORDION_IDS = Object.values(EPE_CATEGORY_ACCORDIONS).flat();
   // Ecommerce Editor's instance of the shared category switcher engine.
