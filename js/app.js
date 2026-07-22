@@ -14234,28 +14234,23 @@ if (document.getElementById('epeDrop')){
   document.getElementById('epeAssetStyleFilter') && document.getElementById('epeAssetStyleFilter').addEventListener('change', () => epeSetAssetCategory(document.querySelector('.epe-asset-cat-btn.active')?.dataset.cat || 'all'));
   function epeSetAssetCategory(cat){
     document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+    document.querySelectorAll('.epe-cat-tile').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
     const searchEl = document.getElementById('epeAssetSearch');
     const colorEl = document.getElementById('epeAssetColorFilter');
     const styleEl = document.getElementById('epeAssetStyleFilter');
     epeRenderAssetLibrary(searchEl ? searchEl.value : '', cat, colorEl ? colorEl.value : 'all', styleEl ? styleEl.value : 'all');
   }
   document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.addEventListener('click', () => epeSetAssetCategory(b.dataset.cat)));
-  document.getElementById('epeMarketingCategorySelect') && document.getElementById('epeMarketingCategorySelect').addEventListener('change', (e) => {
-    if (!e.target.value) return;
-    document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.remove('active')); // none of the top-row buttons correspond to a Marketing: X category
+  // All colorful category tiles (base types, marketing industries, text
+  // style looks) share one class and one handler -- epeSetAssetCategory
+  // already accepts any of these category strings correctly, so this is
+  // a purely presentational change from the previous two <select>
+  // dropdowns, not new filtering logic.
+  document.querySelectorAll('.epe-cat-tile').forEach(t => t.addEventListener('click', () => {
     const searchEl = document.getElementById('epeAssetSearch');
     if (searchEl) searchEl.value = '';
-    document.getElementById('epeTextStyleCategorySelect') && (document.getElementById('epeTextStyleCategorySelect').value = '');
-    epeRenderAssetLibrary('', e.target.value, 'all', 'all');
-  });
-  document.getElementById('epeTextStyleCategorySelect') && document.getElementById('epeTextStyleCategorySelect').addEventListener('change', (e) => {
-    if (!e.target.value) return;
-    document.querySelectorAll('.epe-asset-cat-btn').forEach(b => b.classList.remove('active'));
-    const searchEl = document.getElementById('epeAssetSearch');
-    if (searchEl) searchEl.value = '';
-    document.getElementById('epeMarketingCategorySelect') && (document.getElementById('epeMarketingCategorySelect').value = '');
-    epeRenderAssetLibrary('', e.target.value, 'all', 'all');
-  });
+    epeSetAssetCategory(t.dataset.cat);
+  }));
 
   // ---- Search suggestions: real-time dropdown of matching titles +
   // recent searches, not a static/fake list. ----
