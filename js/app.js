@@ -8969,6 +8969,35 @@ if (document.getElementById('epeDrop')){
   let epeArtboardW = 0, epeArtboardH = 0;
   let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
   let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
+  // ---- Workspace architecture: the canvas element itself is always
+  // kept at its native pixel size (epeArtboardW x epeArtboardH in CSS
+  // px too); all visual pan/zoom is expressed as a single transform on
+  // #epeWorkspace. This replaces the old approach of directly resizing
+  // the canvas element's CSS width/height on every render, which was
+  // the root cause of an earlier "Fit to Screen" cumulative-shrink bug
+  // (repeatedly measuring a size that had itself just been changed).
+  // Measuring the fixed-size #epeWorkspaceViewport is stable regardless
+  // of how many times fit/center/zoom run. ----
+  let epeWorkspaceX = 0, epeWorkspaceY = 0, epeWorkspaceScale = 1;
+  function epeApplyWorkspaceTransform(){
+    const ws = document.getElementById('epeWorkspace');
+    if (ws) ws.style.transform = `translate(${epeWorkspaceX}px, ${epeWorkspaceY}px) scale(${epeWorkspaceScale})`;
+  }
+  // Zoom around a specific viewport-relative point (cursor position or
+  // pinch center), keeping that point visually stationary. newDisplayScale
+  // is the actual workspace scale to apply (already includes any
+  // fit-to-screen baseline, matching what fitEpeCanvasDisplay would compute
+  // for the same epeViewZoom).
+  function epeZoomAroundPoint(newDisplayScale, viewportX, viewportY){
+    const oldScale = epeWorkspaceScale || 1;
+    // The workspace-space point currently under the cursor, before rescaling.
+    const wsPointX = (viewportX - epeWorkspaceX) / oldScale;
+    const wsPointY = (viewportY - epeWorkspaceY) / oldScale;
+    epeWorkspaceScale = newDisplayScale;
+    epeWorkspaceX = viewportX - wsPointX*newDisplayScale;
+    epeWorkspaceY = viewportY - wsPointY*newDisplayScale;
+    epeApplyWorkspaceTransform();
+  }
   let epeHistoryStack = [], epeHistoryIndex = -1;
   let epeCropActive = false, epeCropRect = null, epeCropDragMode = null, epeCropDragStart = null, epeCropRectStart = null;
   // epeDragMode/epeDragStart/epeLayerStart removed (Phase 3 Part 4 audit) -- only used by the dead pointer functions removed above
@@ -10341,14 +10370,19 @@ if (document.getElementById('epeDrop')){
   let epeSmartGuideActive = { x:false, y:false };
 
   function fitEpeCanvasDisplay(){
-    const wrap = document.getElementById('epeCanvasStageWrap');
-    if (!epeArtboardW || !wrap) return;
-    const availW = wrap.clientWidth - 4, availH = Math.max(120, wrap.clientHeight - 4);
-    const fitScale = Math.min(1, availW/epeArtboardW, availH/epeArtboardH) * epeViewZoom;
-    const dispW = Math.round(epeArtboardW*fitScale), dispH = Math.round(epeArtboardH*fitScale);
-    epeArtboardEl.style.width = dispW+'px'; epeArtboardEl.style.height = dispH+'px';
-    epeOverlayEl.style.width = dispW+'px'; epeOverlayEl.style.height = dispH+'px';
+    const viewport = document.getElementById('epeWorkspaceViewport');
+    if (!epeArtboardW || !viewport) return;
+    // Canvas element always at its true native pixel size; zoom is
+    // handled entirely by the workspace's scale() transform below.
+    epeArtboardEl.style.width = epeArtboardW+'px'; epeArtboardEl.style.height = epeArtboardH+'px';
+    epeOverlayEl.style.width = epeArtboardW+'px'; epeOverlayEl.style.height = epeArtboardH+'px';
     epeOverlayEl.style.position = 'absolute'; epeOverlayEl.style.top = '0'; epeOverlayEl.style.left = '0'; epeOverlayEl.style.pointerEvents = 'none';
+    const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
+    const fitScale = Math.min(1, availW/epeArtboardW, availH/epeArtboardH) * epeViewZoom;
+    epeWorkspaceScale = fitScale;
+    epeWorkspaceX = (availW - epeArtboardW*fitScale)/2;
+    epeWorkspaceY = (availH - epeArtboardH*fitScale)/2;
+    epeApplyWorkspaceTransform();
   }
 
   function renderEpeAll(skipFit){
@@ -10558,13 +10592,17 @@ if (document.getElementById('epeDrop')){
   /* ---------- Mouse wheel zoom (plain and Ctrl+wheel), pinch-zoom,
      double-tap zoom/reset -- view-only navigation, adapts the same
      conceptual pattern used elsewhere in this project ---------- */
-  document.getElementById('epeCanvasStageWrap').addEventListener('wheel', (e) => {
+  document.getElementById('epeWorkspaceViewport').addEventListener('wheel', (e) => {
     if (!epeSourceImg) return;
     e.preventDefault();
-    epeViewZoom = epeClamp(epeViewZoom - Math.sign(e.deltaY)*0.1, 0.2, 4);
+    epeViewZoom = epeClamp(epeViewZoom - Math.sign(e.deltaY)*0.1, 0.03, 16);
     document.getElementById('epeZoomSlider').value = String(Math.round(epeViewZoom*100));
     document.getElementById('epeZoomVal').textContent = String(Math.round(epeViewZoom*100));
-    fitEpeCanvasDisplay();
+    const viewport = document.getElementById('epeWorkspaceViewport');
+    const rect = viewport.getBoundingClientRect();
+    const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
+    const newScale = Math.min(1, availW/epeArtboardW, availH/epeArtboardH) * epeViewZoom;
+    epeZoomAroundPoint(newScale, e.clientX-rect.left, e.clientY-rect.top);
   }, { passive:false });
 
   let epePinchStartDist=null, epePinchStartZoom=1, epeLastTapTime=0, epeLastTapPos=null;
@@ -10592,7 +10630,7 @@ if (document.getElementById('epeDrop')){
       e.preventDefault();
       const [a,b] = e.touches;
       const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-      epeViewZoom = epeClamp(epePinchStartZoom*(dist/epePinchStartDist), 0.2, 4);
+      epeViewZoom = epeClamp(epePinchStartZoom*(dist/epePinchStartDist), 0.03, 16);
       document.getElementById('epeZoomSlider').value = String(Math.round(epeViewZoom*100));
       document.getElementById('epeZoomVal').textContent = String(Math.round(epeViewZoom*100));
       fitEpeCanvasDisplay();
@@ -16944,36 +16982,37 @@ if (document.getElementById('epeDrop')){
   let epePanMode = false;
   (function setupEpePan(){
     const panBtn = document.getElementById('epeFloatPanBtn');
-    const wrap = document.getElementById('epeCanvasStageWrap');
-    if (!panBtn || !wrap) return;
-    let panning = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+    const viewport = document.getElementById('epeWorkspaceViewport');
+    if (!panBtn || !viewport) return;
+    let panning = false, startX = 0, startY = 0, startWsX = 0, startWsY = 0;
 
     function setPanMode(on){
       epePanMode = on;
       panBtn.classList.toggle('active', on);
       panBtn.setAttribute('aria-pressed', String(on));
-      wrap.classList.toggle('epe-pan-mode', on);
+      viewport.classList.toggle('epe-pan-mode', on);
     }
     panBtn.addEventListener('click', () => setPanMode(!epePanMode));
 
-    wrap.addEventListener('pointerdown', (e) => {
+    viewport.addEventListener('pointerdown', (e) => {
       if (!epePanMode) return;
-      // Only engage on the wrap/canvas background, not on a floating
+      // Only engage on the viewport/canvas background, not on a floating
       // control that happens to be a descendant.
       if (e.target.closest('#epeFloatingControls, #epeFloatingBrushBar, #epeSelectionMiniToolbar')) return;
       panning = true;
       startX = e.clientX; startY = e.clientY;
-      startScrollLeft = wrap.scrollLeft; startScrollTop = wrap.scrollTop;
-      wrap.setPointerCapture(e.pointerId);
+      startWsX = epeWorkspaceX; startWsY = epeWorkspaceY;
+      viewport.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
-    wrap.addEventListener('pointermove', (e) => {
+    viewport.addEventListener('pointermove', (e) => {
       if (!panning) return;
-      wrap.scrollLeft = startScrollLeft - (e.clientX - startX);
-      wrap.scrollTop = startScrollTop - (e.clientY - startY);
+      epeWorkspaceX = startWsX + (e.clientX - startX);
+      epeWorkspaceY = startWsY + (e.clientY - startY);
+      epeApplyWorkspaceTransform();
     });
-    wrap.addEventListener('pointerup', () => { panning = false; });
-    wrap.addEventListener('pointercancel', () => { panning = false; });
+    viewport.addEventListener('pointerup', () => { panning = false; });
+    viewport.addEventListener('pointercancel', () => { panning = false; });
   })();
 
 
