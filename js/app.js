@@ -10558,12 +10558,106 @@ if (document.getElementById('epeDrop')){
     e.target.value = ''; // reset to placeholder so re-selecting the same preset still fires 'change'
   });
 
+  // Ecommerce Editor's instance of the shared Canvas Engine -- see
+  // createToolflightCanvasEngine definition above. epeEventToArtboardCoords
+  // below is a thin wrapper delegating to it, preserving the exact same
+  // external function name/signature (6 existing call sites depend on it)
+  // and exact same math.
+  /* ============================================================
+     TOOLFLIGHT CANVAS ENGINE (Phase 3 of the multi-editor migration
+     plan). Tool-agnostic: takes canvas/overlay elements and a content-
+     size getter as config, with no knowledge of "ecommerce"
+     specifically -- no image/layer/shape drawing logic lives here,
+     since that's legitimately tool-specific business logic (an
+     ecommerce product editor draws layers; a passport tool draws a
+     face photo + ICAO guides; forcing that to be "generic" would mean
+     no actual drawing code, which isn't what this phase asks for).
+     What genuinely IS generic and shared here: coordinate conversion
+     between screen space and canvas-logical space, canvas state
+     (element refs, logical size), and a render/invalidate API surface
+     that editors wire to their own drawing functions. ============================================================ */
+  function createToolflightCanvasEngine(config){
+    config = config || {};
+    function getCanvasEl(){ return typeof config.canvasEl === 'function' ? config.canvasEl() : config.canvasEl; }
+    function getOverlayEl(){ return typeof config.overlayEl === 'function' ? config.overlayEl() : config.overlayEl; }
+    function getContentSize(){ return (typeof config.getContentSize === 'function' ? config.getContentSize() : config.getContentSize) || { w:0, h:0 }; }
+
+    const engine = {
+      getCanvas(){ return getCanvasEl(); },
+      getOverlay(){ return getOverlayEl(); },
+      getContext(){ const c = getCanvasEl(); return c ? c.getContext('2d') : null; },
+      getOverlayContext(){ const c = getOverlayEl(); return c ? c.getContext('2d') : null; },
+      getSize(){ return getContentSize(); },
+      // Device pixel ratio -- exposed for future editors that want
+      // DPR-aware backing-store rendering. The Ecommerce Editor does
+      // not currently use this (its canvas backing store is set 1:1 to
+      // logical pixels, verified working and byte-identical on export
+      // throughout this project) -- calling this does not change that
+      // existing behavior; it's an available capability, not something
+      // retrofitted onto the working editor in this phase.
+      getDevicePixelRatio(){ return window.devicePixelRatio || 1; },
+
+      // ---- Coordinate System ----
+      // screenToCanvas: converts a client-space point (e.g. from a
+      // pointer event) into canvas-logical-space coordinates, using the
+      // canvas element's actual on-screen bounding rect -- correctly
+      // transform-aware regardless of any ancestor's CSS transform
+      // (this is exactly why the Workspace Engine's GPU transforms
+      // never required touching this math: getBoundingClientRect
+      // already accounts for them).
+      screenToCanvas(clientX, clientY){
+        const canvas = getCanvasEl();
+        const size = getContentSize();
+        if (!canvas) return { x:0, y:0 };
+        const rect = canvas.getBoundingClientRect();
+        return { x: (clientX-rect.left)/rect.width*size.w, y: (clientY-rect.top)/rect.height*size.h };
+      },
+      // canvasToScreen: the inverse -- converts a canvas-logical-space
+      // point back into client-space screen coordinates.
+      canvasToScreen(canvasX, canvasY){
+        const canvas = getCanvasEl();
+        const size = getContentSize();
+        if (!canvas || !size.w || !size.h) return { x:0, y:0 };
+        const rect = canvas.getBoundingClientRect();
+        return { x: rect.left + (canvasX/size.w)*rect.width, y: rect.top + (canvasY/size.h)*rect.height };
+      },
+      // viewportToCanvas / canvasToViewport: aliases for the same
+      // conversion, named to match the Workspace Engine's terminology
+      // for editors that think in terms of "viewport" rather than
+      // "screen" -- same math, since the canvas's bounding rect is
+      // already viewport-relative by definition in browser layout.
+      viewportToCanvas(viewportX, viewportY){ return engine.screenToCanvas(viewportX, viewportY); },
+      canvasToViewport(canvasX, canvasY){ return engine.canvasToScreen(canvasX, canvasY); },
+
+      // ---- Rendering ----
+      // The engine does not draw content itself -- it holds the
+      // editor-supplied render function and provides a single,
+      // consistent entry point (render/requestRender/invalidate) so
+      // editors call one API instead of reaching into multiple
+      // rendering functions directly.
+      setRenderer(fn){ config.renderFn = fn; },
+      render(...args){ if (typeof config.renderFn === 'function') config.renderFn(...args); },
+      requestRender(...args){ engine.render(...args); },
+      renderNow(...args){ engine.render(...args); },
+      invalidate(...args){ engine.render(...args); },
+      refresh(...args){ engine.render(...args); },
+    };
+    return engine;
+  }
+
+  const epeCanvasEngine = createToolflightCanvasEngine({
+    canvasEl: () => epeArtboardEl,
+    overlayEl: () => epeOverlayEl,
+    getContentSize: () => ({ w: epeArtboardW, h: epeArtboardH }),
+    renderFn: (...args) => renderEpeAll(...args),
+  });
+
   /* ---------- Canvas coordinate mapping (CSS-scaled display -> real
      artboard pixel coordinates), same ratio-based approach used
-     elsewhere in this project so it stays correct at any zoom level. ---------- */
+     elsewhere in this project so it stays correct at any zoom level.
+     Delegates to the shared Canvas Engine's screenToCanvas(). ---------- */
   function epeEventToArtboardCoords(clientX, clientY){
-    const rect = epeArtboardEl.getBoundingClientRect();
-    return { x: (clientX-rect.left)/rect.width*epeArtboardW, y: (clientY-rect.top)/rect.height*epeArtboardH };
+    return epeCanvasEngine.screenToCanvas(clientX, clientY);
   }
 
   /* ---------- Drag-to-move the layer, with center-snapping smart guides ---------- */
