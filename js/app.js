@@ -7761,7 +7761,7 @@ if (document.getElementById('ppDrop')){
      Reuses the same color-distance/fill logic as the brush engine's mask
      writes below -- this click-to-select is one more way to set the erase
      mask, not a second separate pixel-replacement implementation. */
-  document.getElementById('ppManualBgClickBtn').onclick = () => {
+  function ppArmManualBgClick(){
     const canvas = document.getElementById('ppPreviewCanvas');
     toast('Tap or click anywhere on the background in the preview above.');
     function handler(e){
@@ -7772,7 +7772,9 @@ if (document.getElementById('ppDrop')){
       canvas.removeEventListener('click', handler);
     }
     canvas.addEventListener('click', handler, { once: true });
-  };
+  }
+  ppPluginEngine.register({ id: 'manualBgClick', category: 'background', name: 'Manual: Click Background to Replace', kind: 'action', activate: () => ppArmManualBgClick() });
+  document.getElementById('ppManualBgClickBtn').onclick = () => ppPluginEngine.activate('manualBgClick');
 
   function ppOutputToSourceCoords(outX, outY){
     const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
@@ -8010,26 +8012,32 @@ if (document.getElementById('ppDrop')){
     document.getElementById('ppSelectionActions').classList.remove('hidden');
     toast('Selection made \u2014 use Fill Selection below.');
   }
-  document.getElementById('ppFillSelectionEraseBtn').onclick = () => {
+  function ppFillSelectionErase(){
     if (!ppSelectionMask) return;
     for (let i=0;i<ppSelectionMask.length;i++) if (ppSelectionMask[i]) ppEraseMask[i] = 255;
     pushPpHistory(); renderPpPreview();
     toast('Selection erased.');
-  };
-  document.getElementById('ppFillSelectionRestoreBtn').onclick = () => {
+  }
+  function ppFillSelectionRestore(){
     if (!ppSelectionMask) return;
     for (let i=0;i<ppSelectionMask.length;i++) if (ppSelectionMask[i]) ppEraseMask[i] = 0;
     pushPpHistory(); renderPpPreview();
     toast('Selection restored.');
-  };
-  document.getElementById('ppClearSelectionBtn').onclick = () => {
+  }
+  function ppClearSelection(){
     ppSelectionMask = null;
     document.getElementById('ppSelectionActions').classList.add('hidden');
-  };
+  }
+  ppPluginEngine.register({ id: 'fillSelectionErase', category: 'edit', name: 'Erase Selection', kind: 'action', activate: () => ppFillSelectionErase() });
+  ppPluginEngine.register({ id: 'fillSelectionRestore', category: 'edit', name: 'Restore Selection', kind: 'action', activate: () => ppFillSelectionRestore() });
+  ppPluginEngine.register({ id: 'clearSelection', category: 'edit', name: 'Clear Selection', kind: 'action', activate: () => ppClearSelection() });
+  document.getElementById('ppFillSelectionEraseBtn').onclick = () => ppPluginEngine.activate('fillSelectionErase');
+  document.getElementById('ppFillSelectionRestoreBtn').onclick = () => ppPluginEngine.activate('fillSelectionRestore');
+  document.getElementById('ppClearSelectionBtn').onclick = () => ppPluginEngine.activate('clearSelection');
 
   /* ---------- Edge Cleanup / Feather: blurs the erase mask itself, reusing
      the exact grayscale box-blur already built for the Sharpness slider ---------- */
-  document.getElementById('ppFeatherBtn').onclick = () => {
+  function ppFeatherEdges(){
     if (!ppSourceCanvas || !ppEraseMask) return;
     const w = ppSourceCanvas.width, h = ppSourceCanvas.height;
     const radius = +document.getElementById('ppFeatherRadius').value;
@@ -8039,7 +8047,9 @@ if (document.getElementById('ppDrop')){
     for (let i=0;i<ppEraseMask.length;i++) ppEraseMask[i] = Math.max(0, Math.min(255, blurred[i]));
     pushPpHistory(); renderPpPreview();
     toast('Edge feathered.');
-  };
+  }
+  ppPluginEngine.register({ id: 'featherEdges', category: 'edit', name: 'Feather Edges', kind: 'action', activate: () => ppFeatherEdges() });
+  document.getElementById('ppFeatherBtn').onclick = () => ppPluginEngine.activate('featherEdges');
 
   /* ---------- Tool buttons, Undo/Redo, keyboard shortcuts ---------- */
   document.querySelectorAll('.pp-tool-btn').forEach(btn => btn.addEventListener('click', () => setPpTool(btn.dataset.tool === ppActiveTool ? 'none' : btn.dataset.tool)));
@@ -8333,7 +8343,7 @@ if (document.getElementById('ppDrop')){
     return pdfDoc.save();
   }
 
-  document.getElementById('ppDownloadSheetBtn').onclick = async () => {
+  async function ppDownloadPrintSheet(){
     const btn = document.getElementById('ppDownloadSheetBtn');
     setLoading(btn, true);
     try{
@@ -8346,8 +8356,9 @@ if (document.getElementById('ppDrop')){
     }finally{
       setLoading(btn, false, 'Download Print Sheet PDF');
     }
-
-  };
+  }
+  ppPluginEngine.register({ id: 'downloadPrintSheet', category: 'print', name: 'Download Print Sheet PDF', kind: 'action', activate: () => ppDownloadPrintSheet() });
+  document.getElementById('ppDownloadSheetBtn').onclick = () => ppPluginEngine.activate('downloadPrintSheet');
 
   /* ---------- Direct browser printing ----------
      Builds a print-only DOM matching the exact computed layout (same
@@ -8356,7 +8367,7 @@ if (document.getElementById('ppDrop')){
      engine renders it at real physical size. Verified: the CSS declares
      correct absolute dimensions; actual printed output still depends on the
      user's printer/driver, which this environment can't verify -- see report. */
-  document.getElementById('ppPrintBtn').onclick = () => {
+  function ppPrintSheetDirectly(){
     if (!ppSheetLayout) recomputeSheetLayout();
     const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, count } = ppSheetLayout;
     const ptToMm = 25.4/72;
@@ -8378,7 +8389,9 @@ if (document.getElementById('ppDrop')){
       printRoot.appendChild(img);
     }
     window.print();
-  };
+  }
+  ppPluginEngine.register({ id: 'printSheetDirectly', category: 'print', name: 'Print Sheet Directly', kind: 'action', activate: () => ppPrintSheetDirectly() });
+  document.getElementById('ppPrintBtn').onclick = () => ppPluginEngine.activate('printSheetDirectly');
 }
 
 /* ============ FAQ (index.html) ============ */
