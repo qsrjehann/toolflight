@@ -10161,6 +10161,134 @@ if (document.getElementById('epeDrop')){
   let epeBrushSize = 40, epeBrushHardness = 60, epeBrushOpacity = 100;
   let epeIsPainting = false;
 
+  /* ============================================================
+     TOOLFLIGHT PLUGIN ENGINE (Phase 7 of the multi-editor migration
+     plan). Tool-agnostic: a generic registry + lifecycle manager for
+     tools-as-plugins, with zero knowledge of "crop" or "clone stamp"
+     or "ecommerce" specifically. Every plugin is a plain descriptor
+     object the caller supplies; the engine only manages registration,
+     discovery, category grouping, enable/disable, the
+     activate/deactivate lifecycle, and keyboard shortcut dispatch.
+
+     Deliberately does NOT render (that's Toolbar/Canvas Engine's job),
+     does NOT touch layer data (Layer Engine only), does NOT store
+     history (History Engine only), and does NOT know about assets
+     (Asset Library Engine only) -- a plugin's init/activate/deactivate/
+     destroy functions are free to call into those other engines
+     themselves, exactly as the existing tool code already does; the
+     Plugin Engine's job is purely to track WHICH tools exist, WHICH
+     are currently active/enabled, and to dispatch to them -- not to
+     mediate what they do internally. ============================================================ */
+  function createToolflightPluginEngine(options){
+    options = options || {};
+    const plugins = new Map(); // id -> descriptor
+    let activeId = null;
+    const listeners = {};
+    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[PluginEngine] listener error for', event, e); } }); }
+    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
+
+    const engine = {
+      // ---- Registration / Discovery ----
+      register(descriptor){
+        if (!descriptor || !descriptor.id) throw new Error('[PluginEngine] register() requires an id');
+        const plugin = Object.assign({
+          category: descriptor.category || 'uncategorized',
+          name: descriptor.name || descriptor.id,
+          icon: descriptor.icon || null,
+          shortcut: descriptor.shortcut || null,
+          order: typeof descriptor.order === 'number' ? descriptor.order : plugins.size,
+          enabled: descriptor.enabled !== false,
+          kind: descriptor.kind || 'action', // 'action' (one-shot) | 'toggle' | 'mode'
+          init(){}, destroy(){}, enable(){}, disable(){}, activate(){}, deactivate(){},
+        }, descriptor);
+        plugins.set(plugin.id, plugin);
+        if (typeof plugin.init === 'function') plugin.init();
+        if (plugin.shortcut) registerShortcut(plugin.shortcut, plugin.id);
+        emit('pluginRegistered', { id: plugin.id });
+        return plugin;
+      },
+      unregister(id){
+        const plugin = plugins.get(id);
+        if (!plugin) return false;
+        if (typeof plugin.destroy === 'function') plugin.destroy();
+        plugins.delete(id);
+        emit('pluginUnregistered', { id });
+        return true;
+      },
+      getPlugin(id){ return plugins.get(id) || null; },
+      getPlugins(){ return [...plugins.values()].sort((a,b) => a.order - b.order); },
+      getPluginsByCategory(category){ return engine.getPlugins().filter(p => p.category === category); },
+      getCategories(){ return [...new Set(engine.getPlugins().map(p => p.category))]; },
+
+      // ---- Enable / Disable ----
+      isEnabled(id){ const p = plugins.get(id); return !!p && p.enabled; },
+      enablePlugin(id){
+        const p = plugins.get(id); if (!p) return;
+        p.enabled = true;
+        if (typeof p.enable === 'function') p.enable();
+        emit('pluginEnabled', { id });
+      },
+      disablePlugin(id){
+        const p = plugins.get(id); if (!p) return;
+        if (activeId === id) engine.deactivate();
+        p.enabled = false;
+        if (typeof p.disable === 'function') p.disable();
+        emit('pluginDisabled', { id });
+      },
+
+      // ---- Lifecycle: activate / deactivate ----
+      // For 'action' plugins (one-shot, e.g. Rotate), activate() runs
+      // the action and the engine does not track it as "the active
+      // tool" afterward. For 'toggle'/'mode' plugins, activate() enters
+      // the tool's mode and it stays active until deactivate() or
+      // another mode-kind plugin is activated (mirroring the existing
+      // epeSetTool radio-group behavior for Clone/Heal/Erase).
+      activate(id, ...args){
+        const p = plugins.get(id);
+        if (!p || !p.enabled) return false;
+        if (p.kind !== 'action' && activeId && activeId !== id) engine.deactivate();
+        const result = typeof p.activate === 'function' ? p.activate(...args) : undefined;
+        if (p.kind !== 'action') activeId = id;
+        emit('pluginActivated', { id, kind: p.kind });
+        return result;
+      },
+      deactivate(id){
+        const targetId = id || activeId;
+        if (!targetId) return false;
+        const p = plugins.get(targetId);
+        if (p && typeof p.deactivate === 'function') p.deactivate();
+        if (activeId === targetId) activeId = null;
+        emit('pluginDeactivated', { id: targetId });
+        return true;
+      },
+      getActivePlugin(){ return activeId ? plugins.get(activeId) : null; },
+      getActiveId(){ return activeId; },
+
+      // ---- Keyboard shortcuts ----
+      on, emit,
+    };
+
+    // Shortcut registration is intentionally simple and additive: it
+    // records which key activates which plugin id, and the caller wires
+    // one real keydown listener (via options.bindShortcuts, supplied by
+    // the editor, since different editors may want different modifier-
+    // key conventions or may already have their own keydown handling
+    // this needs to coexist with, exactly like the Ecommerce Editor's
+    // existing Ctrl+Z handling does).
+    const shortcuts = new Map();
+    function registerShortcut(key, id){ shortcuts.set(key.toLowerCase(), id); }
+    engine.getShortcutTarget = (key) => shortcuts.get((key||'').toLowerCase()) || null;
+
+    return engine;
+  }
+
+  // Ecommerce Editor's instance of the shared Plugin Engine. See
+  // createToolflightPluginEngine above -- registered here, plugins
+  // wired to the exact same existing tool logic, one at a time,
+  // each individually verified rather than converting all tools in
+  // one unverified sweep (see the Phase 7 report for why).
+  const epePluginEngine = createToolflightPluginEngine({});
+
   function epeSetTool(tool){
     epeActiveTool = tool;
     document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
@@ -10184,7 +10312,18 @@ if (document.getElementById('epeDrop')){
       epeCloseToolPanel();
     }
   }
-  document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(btn => btn.onclick = () => epeSetTool(btn.dataset.tool === epeActiveTool ? 'none' : btn.dataset.tool));
+  document.querySelectorAll('#epeAccordionRetouch [data-tool]').forEach(btn => {
+    const toolId = btn.dataset.tool;
+    epePluginEngine.register({
+      id: toolId, category: 'edit', name: btn.textContent.trim(), kind: 'mode',
+      activate: () => epeSetTool(toolId),
+      deactivate: () => epeSetTool('none'),
+    });
+    btn.onclick = () => {
+      if (toolId === epeActiveTool) epePluginEngine.deactivate(toolId);
+      else epePluginEngine.activate(toolId);
+    };
+  });
   document.getElementById('epeBrushSize').addEventListener('input', (e) => { epeBrushSize = +e.target.value; epeUpdateBrushCursor(); });
   document.getElementById('epeBrushHardness').addEventListener('input', (e) => { epeBrushHardness = +e.target.value; });
   document.getElementById('epeBrushOpacity').addEventListener('input', (e) => { epeBrushOpacity = +e.target.value; });
@@ -10776,7 +10915,8 @@ if (document.getElementById('epeDrop')){
   // Rotate 90 -- rotates the ARTBOARD itself (swaps W/H, like fixing a
   // sideways photo), distinct from the free Rotation slider which rotates
   // just the layer within a fixed artboard.
-  document.getElementById('epeRotate90Btn').onclick = () => {
+
+  function epeRotate90(){
     const oldW = epeArtboardW, oldH = epeArtboardH;
     epeArtboardW = oldH; epeArtboardH = oldW;
     const oldX = epeLayer.x, oldY = epeLayer.y;
@@ -10786,6 +10926,13 @@ if (document.getElementById('epeDrop')){
     epeSyncControlsFromLayer();
     renderEpeAll();
     epePushHistory();
+  }
+  epePluginEngine.register({
+    id: 'rotate90', category: 'edit', name: 'Rotate 90\u00b0', kind: 'action',
+    activate: () => epeRotate90(),
+  });
+  document.getElementById('epeRotate90Btn').onclick = () => {
+    epePluginEngine.activate('rotate90');
   };
 
   document.getElementById('epeResetTransformBtn').onclick = () => {
@@ -10955,13 +11102,25 @@ if (document.getElementById('epeDrop')){
     if (px>x && px<x+w && py>y && py<y+h) return 'move';
     return null;
   }
+  epePluginEngine.register({
+    id: 'crop', category: 'edit', name: 'Crop', kind: 'toggle',
+    activate: () => {
+      epeCropActive = true;
+      document.getElementById('epeCropToggleBtn').setAttribute('aria-pressed', 'true');
+      document.getElementById('epeCropActions').classList.remove('hidden');
+      epeCropRect = epeDefaultCropRect(); renderEpeOverlay();
+    },
+    deactivate: () => {
+      epeCropActive = false;
+      document.getElementById('epeCropToggleBtn').setAttribute('aria-pressed', 'false');
+      document.getElementById('epeCropActions').classList.add('hidden');
+      epeCropRect = null; renderEpeOverlay();
+    },
+  });
   document.getElementById('epeCropToggleBtn').onclick = () => {
     if (!epeSourceImg) return;
-    epeCropActive = !epeCropActive;
-    document.getElementById('epeCropToggleBtn').setAttribute('aria-pressed', String(epeCropActive));
-    document.getElementById('epeCropActions').classList.toggle('hidden', !epeCropActive);
-    if (epeCropActive){ epeCropRect = epeDefaultCropRect(); renderEpeOverlay(); }
-    else { epeCropRect = null; renderEpeOverlay(); }
+    if (epeCropActive) epePluginEngine.deactivate('crop');
+    else epePluginEngine.activate('crop');
   };
   document.getElementById('epeCropRatioPreset').addEventListener('change', () => {
     if (!epeCropActive) return;
