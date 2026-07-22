@@ -9072,7 +9072,97 @@ if (document.getElementById('epeDrop')){
     epeWorkspaceEngine.zoomAroundPoint(newDisplayScale, viewportX, viewportY);
     epeSyncWorkspaceVarsFromEngine();
   }
+  /* ============================================================
+     TOOLFLIGHT HISTORY ENGINE (Phase 5 of the multi-editor migration
+     plan). Tool-agnostic: owns the undo/redo stack mechanics (push,
+     index management, size limit, clear) with zero knowledge of what
+     a "snapshot" actually contains -- that's supplied by the editor
+     via snapshotFn/restoreFn callbacks, exactly the same pattern as
+     the Canvas Engine's renderFn from Phase 3. What a snapshot
+     captures is legitimately editor-specific (ecommerce snapshots
+     layers/adjustments; a future editor snapshots its own state) --
+     forcing a generic "shape" onto that content isn't what makes this
+     shared, the STACK MECHANICS are what's genuinely identical across
+     every editor and are the single real implementation here. ============================================================ */
+  function createToolflightHistoryEngine(config){
+    config = config || {};
+    const maxSize = config.maxSize || 60;
+    let stack = [], index = -1;
+    const listeners = {};
+    function emit(event, payload){ (listeners[event] || []).forEach(cb => { try { cb(payload); } catch(e){ console.error('[HistoryEngine] listener error for', event, e); } }); }
+    function on(event, cb){ (listeners[event] = listeners[event] || []).push(cb); return () => { listeners[event] = (listeners[event]||[]).filter(f => f !== cb); }; }
+
+    const engine = {
+      // ---- Snapshot Manager ----
+      createSnapshot(){
+        if (typeof config.beforeSnapshot === 'function') config.beforeSnapshot();
+        stack = stack.slice(0, index + 1);
+        const snap = typeof config.snapshotFn === 'function' ? config.snapshotFn() : null;
+        stack.push(snap);
+        if (stack.length > maxSize) stack.shift();
+        index = stack.length - 1;
+        emit('snapshotCreated', { index, size: stack.length });
+        if (typeof config.onChange === 'function') config.onChange();
+      },
+      // ---- Undo / Redo Managers ----
+      async undo(){
+        if (index <= 0) return false;
+        index--;
+        if (typeof config.restoreFn === 'function') await config.restoreFn(stack[index]);
+        emit('undoPerformed', { index, size: stack.length });
+        if (typeof config.onChange === 'function') config.onChange();
+        return true;
+      },
+      async redo(){
+        if (index >= stack.length - 1) return false;
+        index++;
+        if (typeof config.restoreFn === 'function') await config.restoreFn(stack[index]);
+        emit('redoPerformed', { index, size: stack.length });
+        if (typeof config.onChange === 'function') config.onChange();
+        return true;
+      },
+      canUndo(){ return index > 0; },
+      canRedo(){ return index < stack.length - 1; },
+      getHistorySize(){ return stack.length; },
+      getIndex(){ return index; },
+      restoreSnapshot(i){ // jump directly to a specific history index (e.g. history-list UI)
+        if (i < 0 || i >= stack.length) return false;
+        index = i;
+        if (typeof config.restoreFn === 'function') config.restoreFn(stack[index]);
+        emit('undoPerformed', { index, size: stack.length });
+        if (typeof config.onChange === 'function') config.onChange();
+        return true;
+      },
+      clearHistory(){
+        stack = []; index = -1;
+        emit('historyCleared', {});
+        if (typeof config.onChange === 'function') config.onChange();
+      },
+      // Escape hatch for callers that need direct stack access (e.g.
+      // session autosave metadata) without re-implementing history
+      // logic elsewhere -- read-only by convention, not enforced.
+      getStack(){ return stack; },
+
+      on, emit,
+    };
+    return engine;
+  }
+
   let epeHistoryStack = [], epeHistoryIndex = -1;
+  // Ecommerce Editor's instance of the shared History Engine. The
+  // engine owns stack/index/limit mechanics only; what a snapshot
+  // actually contains stays defined by epeSnapshotState/epeRestoreState
+  // below (unchanged), supplied here as callbacks. epeHistoryStack/
+  // epeHistoryIndex remain as synced plain variables so the few
+  // existing direct-reset call sites and the one autosave read site
+  // continue to work unmodified.
+  const epeHistoryEngine = createToolflightHistoryEngine({
+    maxSize: 60,
+    beforeSnapshot: () => { if (typeof dseFlushAliasesToLayer === 'function' && typeof dseActiveLayer === 'function'){ const active = dseActiveLayer(); if (active) dseFlushAliasesToLayer(active); } },
+    snapshotFn: () => epeSnapshotState(),
+    restoreFn: (snap) => epeRestoreState(snap),
+    onChange: () => { epeHistoryStack = epeHistoryEngine.getStack(); epeHistoryIndex = epeHistoryEngine.getIndex(); epeUpdateHistoryButtons(); },
+  });
   let epeCropActive = false, epeCropRect = null, epeCropDragMode = null, epeCropDragStart = null, epeCropRectStart = null;
   // epeDragMode/epeDragStart/epeLayerStart removed (Phase 3 Part 4 audit) -- only used by the dead pointer functions removed above
   let epeAutoSaveTimer = null;
@@ -9088,32 +9178,19 @@ if (document.getElementById('epeDrop')){
      by tools with actual destructive pixel edits) ---------- */
   /* Phase 2 epeSnapshotState removed -- Phase 3 DSE version below supersedes it */
   function epePushHistory(){
-    // Always flush current alias state to the active layer before
-    // snapshotting. This is the single place where this must happen --
-    // rather than at every individual edit site, which is error-prone.
-    if (typeof dseFlushAliasesToLayer === 'function' && typeof dseActiveLayer === 'function'){
-      const active = dseActiveLayer();
-      if (active) dseFlushAliasesToLayer(active);
-    }
-    epeHistoryStack = epeHistoryStack.slice(0, epeHistoryIndex+1);
-    epeHistoryStack.push(epeSnapshotState());
-    if (epeHistoryStack.length > 60) epeHistoryStack.shift();
-    epeHistoryIndex = epeHistoryStack.length - 1;
-    epeUpdateHistoryButtons();
+    epeHistoryEngine.createSnapshot();
     epeScheduleAutoSave();
   }
   function epeUpdateHistoryButtons(){
-    document.getElementById('epeUndoBtn').disabled = epeHistoryIndex <= 0;
-    document.getElementById('epeRedoBtn').disabled = epeHistoryIndex >= epeHistoryStack.length - 1;
+    document.getElementById('epeUndoBtn').disabled = !epeHistoryEngine.canUndo();
+    document.getElementById('epeRedoBtn').disabled = !epeHistoryEngine.canRedo();
   }
   /* Phase 2 epeRestoreState removed -- Phase 3 DSE version in dse_layers_panel.js supersedes it */
   document.getElementById('epeUndoBtn').onclick = async () => {
-    if (epeHistoryIndex <= 0) return;
-    epeHistoryIndex--; await epeRestoreState(epeHistoryStack[epeHistoryIndex]); epeUpdateHistoryButtons();
+    await epeHistoryEngine.undo();
   };
   document.getElementById('epeRedoBtn').onclick = async () => {
-    if (epeHistoryIndex >= epeHistoryStack.length - 1) return;
-    epeHistoryIndex++; await epeRestoreState(epeHistoryStack[epeHistoryIndex]); epeUpdateHistoryButtons();
+    await epeHistoryEngine.redo();
   };
   document.addEventListener('keydown', (e) => {
     if (!epeSourceImg) return;
@@ -11047,7 +11124,7 @@ if (document.getElementById('epeDrop')){
         epeEnterShellMode();
         if (data.fullSnapshot && typeof epeRestoreFullSnapshot === 'function'){
           // Full recovery path: layers, adjustments, masks, selection, viewport all restored
-          epeHistoryStack = []; epeHistoryIndex = -1;
+          epeHistoryEngine.clearHistory();
           const layer = dseCreateImageLayer(epeSourceImg, epeArtboardW, epeArtboardH);
           dseState.layers = [layer]; dseState.selectedIds = new Set([layer.id]);
           epePushHistory();
@@ -11056,7 +11133,7 @@ if (document.getElementById('epeDrop')){
         } else {
           // Legacy path: an older saved session without a full snapshot -- restores
           // the image and its transform only, honestly not everything.
-          epeHistoryStack = []; epeHistoryIndex = -1; epePushHistory();
+          epeHistoryEngine.clearHistory(); epePushHistory();
           epeSyncControlsFromLayer();
           renderEpeAll();
           toast('Previous session restored (image only \u2014 this was an older saved session).');
@@ -11118,7 +11195,7 @@ if (document.getElementById('epeDrop')){
     epeSyncControlsFromLayer();
     if (typeof epeSyncAdjControlsFromState === 'function') epeSyncAdjControlsFromState();
     document.getElementById('epeZoomSlider').value='100'; document.getElementById('epeZoomVal').textContent='100'; epeViewZoom=1;
-    epeHistoryStack = []; epeHistoryIndex = -1;
+    epeHistoryEngine.clearHistory();
     // DSE Phase 3: build the first layer from the loaded image
     if (typeof dseCreateImageLayer === 'function'){
       const layer = dseCreateImageLayer(epeSourceImg, epeArtboardW, epeArtboardH);
