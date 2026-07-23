@@ -6762,12 +6762,32 @@ if (document.getElementById('ppDrop')){
     const faceHeightPx = (chinY - crownY) * h;
     const preset = currentPreset();
     const targetHeadFrac = (preset.headMin + preset.headMax) / 2;
-    // Zoom so the detected face height maps to the target fraction of the crop frame
-    ppZoom = Math.max(0.3, Math.min(3, (targetHeadFrac * h) / faceHeightPx));
+    // Zoom so the detected face height maps to the target fraction of the
+    // OUTPUT frame -- must account for baseScale (the ratio between the
+    // source image's own resolution and the output frame's fixed pixel
+    // size, exactly as renderPpPreview computes it below), not just the
+    // source image's own height. Root cause of a real bug: the previous
+    // formula used the source image's height directly, which is only
+    // correct if the source photo happens to be exactly the output frame's
+    // own resolution -- for any other upload (the common case, e.g. a
+    // typical 3000x4000 phone photo against a 602x602 output), this
+    // silently produced a far larger head than intended, since a taller
+    // source image was scaled down more to fit the output frame, an
+    // effect this calculation never accounted for.
+    const outW = mm(preset.wmm), outH = mm(preset.hmm);
+    const baseScale = Math.max(outW/w, outH/h);
+    ppZoom = Math.max(0.3, Math.min(3, (targetHeadFrac * outH) / (faceHeightPx * baseScale)));
     const faceCenterX = (minX + maxX) / 2 * w;
     const faceCenterY = (crownY + chinY) / 2 * h;
-    ppOffsetX = (w/2 - faceCenterX) * ppZoom;
-    ppOffsetY = (h/2 - faceCenterY) * ppZoom - (h * (0.5 - (preset.eyeMin+preset.eyeMax)/2) * 0.4);
+    // Same baseScale correction as the zoom fix above -- these offsets are
+    // added directly to drawImage's destination x/y in renderPpPreview,
+    // which operates in OUTPUT-frame pixel space after the source image
+    // has already been scaled by baseScale*ppZoom, so the offset must be
+    // in that same scaled space, not raw source pixels. Proven
+    // mathematically: for a realistic off-center face, the previous
+    // formula was off by roughly 40% of the frame's width.
+    ppOffsetX = (w/2 - faceCenterX) * baseScale * ppZoom;
+    ppOffsetY = (h/2 - faceCenterY) * baseScale * ppZoom - (outH * (0.5 - (preset.eyeMin+preset.eyeMax)/2) * 0.4);
   }
 
   const US_AI_RESTRICTED_DOCS = ['us-passport', 'us-visa', 'dv-lottery'];
@@ -7090,7 +7110,7 @@ if (document.getElementById('ppDrop')){
     const availW = viewport.clientWidth || viewport.getBoundingClientRect().width;
     if (availW > 0 && canvas.width > 0){
       const idealH = availW * (canvas.height / canvas.width);
-      const minH = 280, maxH = Math.min(window.innerHeight * 0.7, 640);
+      const minH = 120, maxH = Math.min(window.innerHeight * 0.7, 640);
       viewport.style.height = Math.round(Math.max(minH, Math.min(maxH, idealH))) + 'px';
     }
     ppWorkspaceEngine.fitToScreen(canvas.width, canvas.height, ppViewZoom);
@@ -7649,8 +7669,16 @@ if (document.getElementById('ppDrop')){
         const votes = {};
         sampleIdx.forEach(i => {
           const lm = ppFaceLandmarks[i]; if (!lm) return;
-          const out = ppSourceToOutputCoords(sw*lm.x, sh*lm.y);
-          const ox = Math.min(w-1, Math.max(0, Math.round(out.x))), oy = Math.min(h-1, Math.max(0, Math.round(out.y)));
+          // Landmarks and the segmentation mask are BOTH already in source-
+          // image space -- use the landmark's source-pixel position
+          // directly. (Root cause of a real, persistent bug: this
+          // previously ran the landmark through ppSourceToOutputCoords,
+          // which returns OUTPUT-frame coordinates, then used that result
+          // as if it were still a source-space coordinate when indexing
+          // into the mask -- proven to land at ~12%,5.5% of the source
+          // image for a landmark actually at 60%,40%, typically sampling
+          // background instead of the face.)
+          const ox = Math.min(w-1, Math.max(0, Math.round(sw*lm.x))), oy = Math.min(h-1, Math.max(0, Math.round(sh*lm.y)));
           const mx = Math.min(mw-1, Math.round(ox*mw/w)), my = Math.min(mh-1, Math.round(oy*mh/h));
           votes[maskData[my*mw+mx]] = (votes[maskData[my*mw+mx]]||0) + 1;
         });
