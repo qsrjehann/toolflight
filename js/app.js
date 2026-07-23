@@ -1767,13 +1767,19 @@ if (document.getElementById('aiRemoveDrop')){
     try{
       aiSourceImg = await loadImgAi(f);
       document.getElementById('aiRemoveStage').classList.remove('hidden');
-      const wrap = document.getElementById('aiRemovePreview');
-      wrap.innerHTML = '';
-      const preview = document.createElement('img');
-      preview.src = aiSourceImg.src;
-      preview.style.maxWidth = '100%';
-      preview.style.display = 'block';
-      wrap.appendChild(preview);
+      // Show the uploaded image immediately in the SAME canvas that will
+      // later display the AI result -- fixes a real, reported bug where
+      // upload showed a separate <img> preview while the actual editable
+      // canvas only appeared much further down the page, past all the
+      // refine controls. There is now structurally only one canvas.
+      const MAX = 1200;
+      let w0 = aiSourceImg.naturalWidth, h0 = aiSourceImg.naturalHeight;
+      if (Math.max(w0, h0) > MAX){ const sc = MAX / Math.max(w0, h0); w0 = Math.round(w0*sc); h0 = Math.round(h0*sc); }
+      const srcCanvas0 = document.createElement('canvas');
+      srcCanvas0.width = w0; srcCanvas0.height = h0;
+      srcCanvas0.getContext('2d').drawImage(aiSourceImg, 0, 0, w0, h0);
+      aiResultCanvas = srcCanvas0;
+      initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
       // Warm up the model in the background as soon as an image is loaded.
       ensureSegmenter().catch(() => {});
