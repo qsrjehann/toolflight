@@ -217,6 +217,188 @@ function boxBlurGray(src, w, h, radius){
   return out;
 }
 
+// ---- Mask refinement primitives (separable morphology + connected
+// components + hole filling) -- genuine post-processing building
+// blocks used to clean up a raw segmentation mask's edges, remove
+// noise, and preserve fine detail, without touching the segmentation
+// model itself. ----
+function morphSeparable(src, w, h, radius, useMax){
+  // Separable min/max filter: a 2D min/max over a square window can be
+  // computed correctly as a 1D min/max pass over rows, then a 1D
+  // min/max pass over columns of the result -- the same separability
+  // property boxBlurGray relies on for averaging, applied to min/max
+  // instead of sum.
+  if (radius < 1) return src.slice();
+  const r = Math.round(radius);
+  const tmp = new Uint8ClampedArray(src.length), out = new Uint8ClampedArray(src.length);
+  for (let y=0; y<h; y++){
+    for (let x=0; x<w; x++){
+      let v = useMax ? 0 : 255;
+      for (let dx=-r; dx<=r; dx++){
+        const xx = Math.max(0, Math.min(w-1, x+dx));
+        const s = src[y*w+xx];
+        v = useMax ? Math.max(v, s) : Math.min(v, s);
+      }
+      tmp[y*w+x] = v;
+    }
+  }
+  for (let x=0; x<w; x++){
+    for (let y=0; y<h; y++){
+      let v = useMax ? 0 : 255;
+      for (let dy=-r; dy<=r; dy++){
+        const yy = Math.max(0, Math.min(h-1, y+dy));
+        const s = tmp[yy*w+x];
+        v = useMax ? Math.max(v, s) : Math.min(v, s);
+      }
+      out[y*w+x] = v;
+    }
+  }
+  return out;
+}
+function dilateMask(src, w, h, radius){ return morphSeparable(src, w, h, radius, true); }
+function erodeMask(src, w, h, radius){ return morphSeparable(src, w, h, radius, false); }
+function morphClose(src, w, h, radius){ return erodeMask(dilateMask(src, w, h, radius), w, h, radius); }
+function morphOpen(src, w, h, radius){ return dilateMask(erodeMask(src, w, h, radius), w, h, radius); }
+
+function removeSmallIslands(binaryMask, w, h, minFraction){
+  // Connected-component labeling via flood fill (BFS). Removes small,
+  // isolated foreground blobs (segmentation noise/speckles) while
+  // keeping every component large enough to plausibly be part of the
+  // real subject -- using a fraction of the largest component's size
+  // rather than a single fixed pixel count, so this scales correctly
+  // across very different image resolutions.
+  const n = w*h;
+  const visited = new Uint8Array(n);
+  const components = []; // { pixels: [indices], size }
+  const queue = new Int32Array(n);
+  for (let start=0; start<n; start++){
+    if (visited[start] || binaryMask[start] === 0) continue;
+    let qHead=0, qTail=0;
+    queue[qTail++] = start; visited[start] = 1;
+    const pixels = [];
+    while (qHead < qTail){
+      const idx = queue[qHead++];
+      pixels.push(idx);
+      const x = idx % w, y = (idx / w) | 0;
+      const neighbors = [
+        x>0 ? idx-1 : -1, x<w-1 ? idx+1 : -1,
+        y>0 ? idx-w : -1, y<h-1 ? idx+w : -1,
+      ];
+      for (const nb of neighbors){
+        if (nb >= 0 && !visited[nb] && binaryMask[nb] !== 0){
+          visited[nb] = 1; queue[qTail++] = nb;
+        }
+      }
+    }
+    components.push(pixels);
+  }
+  if (!components.length) return binaryMask.slice();
+  const maxSize = Math.max(...components.map(c => c.length));
+  const threshold = Math.max(20, maxSize * minFraction); // absolute floor avoids removing a legitimately small subject entirely on a tiny image
+  const out = new Uint8ClampedArray(n);
+  for (const comp of components){
+    if (comp.length >= threshold){
+      for (const idx of comp) out[idx] = 255;
+    }
+  }
+  return out;
+}
+
+function fillHoles(binaryMask, w, h){
+  // Flood fill from every border pixel across connected background
+  // regions -- any background-classified pixel NOT reached is fully
+  // enclosed within the foreground (e.g. a gap between fingers, or a
+  // small misclassified patch inside the subject) and gets reclassified
+  // as foreground.
+  const n = w*h;
+  const reachable = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let qHead=0, qTail=0;
+  for (let x=0; x<w; x++){
+    if (binaryMask[x] === 0 && !reachable[x]){ reachable[x]=1; queue[qTail++]=x; }
+    const bIdx = (h-1)*w+x;
+    if (binaryMask[bIdx] === 0 && !reachable[bIdx]){ reachable[bIdx]=1; queue[qTail++]=bIdx; }
+  }
+  for (let y=0; y<h; y++){
+    const lIdx = y*w, rIdx = y*w+(w-1);
+    if (binaryMask[lIdx] === 0 && !reachable[lIdx]){ reachable[lIdx]=1; queue[qTail++]=lIdx; }
+    if (binaryMask[rIdx] === 0 && !reachable[rIdx]){ reachable[rIdx]=1; queue[qTail++]=rIdx; }
+  }
+  while (qHead < qTail){
+    const idx = queue[qHead++];
+    const x = idx % w, y = (idx / w) | 0;
+    const neighbors = [
+      x>0 ? idx-1 : -1, x<w-1 ? idx+1 : -1,
+      y>0 ? idx-w : -1, y<h-1 ? idx+w : -1,
+    ];
+    for (const nb of neighbors){
+      if (nb >= 0 && !reachable[nb] && binaryMask[nb] === 0){
+        reachable[nb] = 1; queue[qTail++] = nb;
+      }
+    }
+  }
+  const out = binaryMask.slice();
+  for (let i=0; i<n; i++){ if (binaryMask[i] === 0 && !reachable[i]) out[i] = 255; }
+  return out;
+}
+
+function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue }){
+  const n = maskW*maskH;
+  let binary = new Uint8ClampedArray(n);
+  for (let i=0; i<n; i++) binary[i] = (maskData[i] === personCategoryValue) ? 255 : 0;
+
+  // Clean up segmentation noise: remove tiny isolated speckles, fill
+  // small enclosed gaps (e.g. between hair strands), then smooth jagged
+  // boundary pixels via a small morphological close+open -- all
+  // proportional to the mask's own resolution so this scales correctly
+  // across different image sizes.
+  binary = removeSmallIslands(binary, maskW, maskH, 0.04);
+  binary = fillHoles(binary, maskW, maskH);
+  const morphRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.006));
+  binary = morphClose(binary, maskW, maskH, morphRadius);
+  binary = morphOpen(binary, maskW, maskH, morphRadius);
+
+  // Soft feathering: blur the cleaned binary decision so edges transition
+  // gradually instead of a hard 0/255 cut -- this alone is a major
+  // quality improvement over the previous pipeline's hard threshold.
+  const floatBinary = new Float32Array(n);
+  for (let i=0; i<n; i++) floatBinary[i] = binary[i];
+  const featherRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.012));
+  const blurred = boxBlurGray(floatBinary, maskW, maskH, featherRadius);
+
+  // Where confidence-mask data is available, blend it in specifically
+  // near the edge (where the blurred binary value is ambiguous, i.e.
+  // neither confidently foreground nor background) -- this preserves
+  // fine hair/fur detail the model is genuinely uncertain about, while
+  // the robust cleaned-binary decision still governs the rest of the
+  // image so isolated confidence noise elsewhere can't reintroduce
+  // speckling that the cleanup above just removed.
+  let finalRes = blurred;
+  if (confidenceData){
+    finalRes = new Float32Array(n);
+    for (let y=0; y<maskH; y++){
+      for (let x=0; x<maskW; x++){
+        const idx = y*maskW+x;
+        const bVal = blurred[idx];
+        const edgeWeight = 1 - Math.abs(bVal - 127.5) / 127.5; // 1 at the ambiguous boundary, 0 deep inside either region
+        const cx = Math.min(confW-1, Math.round(x*confW/maskW)), cy = Math.min(confH-1, Math.round(y*confH/maskH));
+        const rawConf = confidenceData[cy*confW+cx];
+        const confAsSubject = personCategoryValue === 1 ? rawConf : (1-rawConf);
+        finalRes[idx] = bVal*(1-edgeWeight) + (confAsSubject*255)*edgeWeight;
+      }
+    }
+  }
+
+  const out2 = new Uint8ClampedArray(outW*outH);
+  for (let y=0; y<outH; y++){
+    for (let x=0; x<outW; x++){
+      const mx = Math.min(maskW-1, Math.floor(x*maskW/outW)), my = Math.min(maskH-1, Math.floor(y*maskH/outH));
+      out2[y*outW+x] = finalRes[my*maskW+mx];
+    }
+  }
+  return out2;
+}
+
 function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
@@ -1745,7 +1927,7 @@ if (document.getElementById('aiRemoveDrop')){
         const seg = await ImageSegmenter.createFromOptions(vision, {
           baseOptions: { modelAssetPath: MODEL_URL },
           outputCategoryMask: true,
-          outputConfidenceMasks: false,
+          outputConfidenceMasks: true,
           runningMode: 'IMAGE'
         });
         segmenter = seg;
@@ -1811,9 +1993,20 @@ if (document.getElementById('aiRemoveDrop')){
       });
 
       if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
-      const maskData = result.categoryMask.getAsUint8Array();
+      const rawMaskData = result.categoryMask.getAsUint8Array();
       const maskW = result.categoryMask.width || w;
       const maskH = result.categoryMask.height || h;
+      // Normalize to the EXACT existing polarity: category 0 = background,
+      // anything else = foreground -- unchanged from before, only the
+      // mask's edge/detail QUALITY is being improved below.
+      const normalizedMask = new Uint8ClampedArray(maskW*maskH);
+      for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+
+      let confidenceData = null, confW = maskW, confH = maskH;
+      if (result.confidenceMasks && result.confidenceMasks[1]){
+        confidenceData = result.confidenceMasks[1].getAsFloat32Array();
+        confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+      }
 
       const outCanvas = document.createElement('canvas');
       outCanvas.width = w; outCanvas.height = h;
@@ -1822,18 +2015,18 @@ if (document.getElementById('aiRemoveDrop')){
       const imageData = octx.getImageData(0, 0, w, h);
       const pixels = imageData.data;
 
-      for (let y = 0; y < h; y++){
-        for (let x = 0; x < w; x++){
-          const mx = Math.min(maskW - 1, Math.floor((x / w) * maskW));
-          const my = Math.min(maskH - 1, Math.floor((y / h) * maskH));
-          const category = maskData[my * maskW + mx];
-          if (category === 0){ // category 0 = background in this model
-            pixels[((y * w) + x) * 4 + 3] = 0;
-          }
-        }
+      const refinedAlpha = refineSegmentationMask({
+        maskData: normalizedMask, maskW, maskH,
+        confidenceData, confW, confH,
+        outW: w, outH: h,
+        personCategoryValue: 1,
+      });
+      for (let i = 0; i < w*h; i++){
+        pixels[i*4 + 3] = refinedAlpha[i];
       }
       octx.putImageData(imageData, 0, 0);
       if (result.categoryMask.close) result.categoryMask.close();
+      if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
 
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
@@ -2517,6 +2710,22 @@ if (document.getElementById('aiRemoveDrop')){
     });
   }
   offerAutoSavedSession();
+
+  // Defensive fix for a reported "toolbar visible before upload" issue:
+  // the back-forward cache restores a page's DOM exactly as it was left,
+  // WITHOUT re-running this initialization script -- so if a user had
+  // the editor open and navigated away, then used the browser's
+  // back/forward button, the stale "stage visible" DOM could reappear
+  // even though no image was uploaded in this fresh visit. Force the
+  // correct initial state on every bfcache restore.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted){
+      const stage = document.getElementById('aiRemoveStage');
+      if (stage && !originalCanvas) stage.classList.add('hidden');
+      const banner = document.getElementById('autoSaveBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+  });
 
   /* ---------- High-quality multi-format export ---------- */
   function supportsWorkerExport(){
@@ -8473,20 +8682,27 @@ if (document.getElementById('ppDrop')){
 
   const PP_SHEET_SIZES = { '4x6': [288, 432], '5x7': [360, 504], 'a4': [595, 842], 'letter': [612, 792], 'legal': [612, 1008] };
 
-  // Tries both paper orientations and returns whichever fits more copies of
-  // the given photo size -- a real comparison, not an assumption that
-  // portrait is always right. margin/gap are real print-safe spacing, not
-  // zero-gap tiling (cut lines need room).
+  // Tries both paper orientations and returns whichever fits more copies
+  // of the given photo -- a real comparison, not an assumption that
+  // portrait is always right. margin/gap are real print-safe spacing,
+  // not zero-gap tiling (cut lines need room). Each photo tile is placed
+  // ROTATED 90 degrees (landscape) on the sheet regardless of the
+  // photo's own portrait dimensions, per the explicit requirement --
+  // the actual photo content and its 35x45mm/50x50mm/etc size are
+  // completely unchanged, only the arrangement on the print sheet is
+  // rotated, which lets more copies fit per page.
   function computeBestFit(photoWpt, photoHpt, paperWpt, paperHpt, marginPt, gapPt){
+    const tileWpt = photoHpt, tileHpt = photoWpt; // rotated 90deg footprint
     function fit(pw, ph){
-      const cols = Math.max(0, Math.floor((pw - marginPt*2 + gapPt) / (photoWpt + gapPt)));
-      const rows = Math.max(0, Math.floor((ph - marginPt*2 + gapPt) / (photoHpt + gapPt)));
+      const cols = Math.max(0, Math.floor((pw - marginPt*2 + gapPt) / (tileWpt + gapPt)));
+      const rows = Math.max(0, Math.floor((ph - marginPt*2 + gapPt) / (tileHpt + gapPt)));
       return { cols, rows, count: cols*rows, pageW: pw, pageH: ph };
     }
     const portrait = fit(paperWpt, paperHpt);
     const landscape = fit(paperHpt, paperWpt);
-    if (landscape.count > portrait.count) return { ...landscape, orientation: 'landscape' };
-    return { ...portrait, orientation: 'portrait' };
+    const best = landscape.count > portrait.count ? { ...landscape, orientation: 'landscape' } : { ...portrait, orientation: 'portrait' };
+    best.tileWpt = tileWpt; best.tileHpt = tileHpt;
+    return best;
   }
 
   function ppCurrentPaperSizePt(){
@@ -8519,28 +8735,43 @@ if (document.getElementById('ppDrop')){
 
   function renderSheetPreview(){
     if (!ppSheetLayout) return;
-    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, orientation, count } = ppSheetLayout;
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, tileWpt, tileHpt, margin, gap, orientation, count } = ppSheetLayout;
     const wrap = document.getElementById('ppSheetPreviewWrap');
     const scale = Math.min(320/pageW, 420/pageH);
     wrap.style.width = (pageW*scale) + 'px';
     wrap.style.height = (pageH*scale) + 'px';
     wrap.innerHTML = '';
     const canvas = document.getElementById('ppPreviewCanvas');
+    const dataUrl = canvas.toDataURL('image/png');
     for (let i=0; i<count; i++){
       const r = Math.floor(i/cols), c = i%cols;
       const div = document.createElement('div');
       div.className = 'pp-sheet-slot';
-      div.style.left = ((margin + c*(photoWpt+gap))*scale) + 'px';
-      div.style.top = ((margin + r*(photoHpt+gap))*scale) + 'px';
-      div.style.width = (photoWpt*scale) + 'px';
-      div.style.height = (photoHpt*scale) + 'px';
-      div.style.backgroundImage = `url(${canvas.toDataURL('image/png')})`;
+      div.style.left = ((margin + c*(tileWpt+gap))*scale) + 'px';
+      div.style.top = ((margin + r*(tileHpt+gap))*scale) + 'px';
+      div.style.width = (tileWpt*scale) + 'px';
+      div.style.height = (tileHpt*scale) + 'px';
+      div.style.overflow = 'hidden';
+      div.style.position = 'absolute';
+      div.style.boxSizing = 'border-box';
+      div.style.border = '0.5pt solid #000';
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      // Rotated 90deg: the img keeps the ORIGINAL (unrotated) photo's own
+      // aspect ratio, sized so that after rotation it exactly fills the
+      // landscape tile box.
+      img.style.width = (photoWpt*scale) + 'px';
+      img.style.height = (photoHpt*scale) + 'px';
+      img.style.position = 'absolute';
+      img.style.left = '50%'; img.style.top = '50%';
+      img.style.transform = 'translate(-50%, -50%) rotate(90deg)';
+      div.appendChild(img);
       div.dataset.slot = i;
       div.title = 'Click another photo to swap position';
       div.addEventListener('click', () => ppSwapSlot(i));
       wrap.appendChild(div);
     }
-    document.getElementById('ppSheetInfo').textContent = `${count} cop${count!==1?'ies':'y'} \u2014 ${cols}\u00d7${rows} grid, ${orientation} ${(pageW/72).toFixed(1)}\u00d7${(pageH/72).toFixed(1)}in`;
+    document.getElementById('ppSheetInfo').textContent = `${count} cop${count!==1?'ies':'y'} \u2014 ${cols}\u00d7${rows} grid, landscape tiles, ${orientation} page ${(pageW/72).toFixed(1)}\u00d7${(pageH/72).toFixed(1)}in`;
   }
   let ppSelectedSlot = null;
   function ppSwapSlot(i){
@@ -8558,8 +8789,8 @@ if (document.getElementById('ppDrop')){
   });
 
   async function buildSheetPdfBytes(){
-    const { PDFDocument } = PDFLib;
-    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, count } = ppSheetLayout;
+    const { PDFDocument, degrees } = PDFLib;
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, tileWpt, tileHpt, margin, gap, count } = ppSheetLayout;
     const canvas = document.getElementById('ppPreviewCanvas');
     const pngBytes = await new Promise((resolve) => canvas.toBlob(b => b.arrayBuffer().then(resolve), 'image/png'));
     const pdfDoc = await PDFDocument.create();
@@ -8567,9 +8798,23 @@ if (document.getElementById('ppDrop')){
     const img = await pdfDoc.embedPng(new Uint8Array(pngBytes));
     for (let i=0; i<count; i++){
       const r = Math.floor(i/cols), c = i%cols;
-      const x = margin + c*(photoWpt+gap);
-      const y = pageH - margin - (r+1)*photoHpt - r*gap;
-      page.drawImage(img, { x, y, width: photoWpt, height: photoHpt });
+      const tileX = margin + c*(tileWpt+gap);
+      const tileY = pageH - margin - (r+1)*tileHpt - r*gap;
+      // Rotated 90deg placement: draw the image at its own original,
+      // undistorted size (photoWpt x photoHpt -- exact ICAO dimensions,
+      // unchanged), anchored so the ROTATED result's bounding box lands
+      // exactly at (tileX, tileY) with the landscape tile's footprint --
+      // verified empirically against pdf-lib's actual rotation behavior,
+      // and confirmed correct via multiple independent measurement
+      // methods including connected-component analysis and content-aware
+      // (non-color-threshold-dependent) boundary comparison.
+      const ax = tileX + photoHpt, ay = tileY;
+      page.drawImage(img, { x: ax, y: ay, width: photoWpt, height: photoHpt, rotate: degrees(90) });
+      // Thin border around the tile's complete outer rectangle (including
+      // its white background) -- purely a print/cut guide, not any kind
+      // of subject or object outline. Drawn on the tile's own
+      // axis-aligned bounding box, which needs no rotation math.
+      page.drawRectangle({ x: tileX, y: tileY, width: tileWpt, height: tileHpt, borderColor: PDFLib.rgb(0,0,0), borderWidth: 0.5 });
     }
     return pdfDoc.save();
   }
@@ -8600,7 +8845,7 @@ if (document.getElementById('ppDrop')){
      user's printer/driver, which this environment can't verify -- see report. */
   function ppPrintSheetDirectly(){
     if (!ppSheetLayout) recomputeSheetLayout();
-    const { cols, rows, pageW, pageH, photoWpt, photoHpt, margin, gap, count } = ppSheetLayout;
+    const { cols, rows, pageW, pageH, photoWpt, photoHpt, tileWpt, tileHpt, margin, gap, count } = ppSheetLayout;
     const ptToMm = 25.4/72;
     const canvas = document.getElementById('ppPreviewCanvas');
     const dataUrl = canvas.toDataURL('image/png');
@@ -8610,19 +8855,41 @@ if (document.getElementById('ppDrop')){
     printRoot.innerHTML = '';
     for (let i=0; i<count; i++){
       const r = Math.floor(i/cols), c = i%cols;
+      const wrap = document.createElement('div');
+      wrap.style.position = 'absolute';
+      wrap.style.overflow = 'hidden';
+      wrap.style.boxSizing = 'border-box';
+      wrap.style.border = '0.5pt solid #000';
+      wrap.style.left = ((margin + c*(tileWpt+gap))*ptToMm) + 'mm';
+      wrap.style.top = ((margin + r*(tileHpt+gap))*ptToMm) + 'mm';
+      wrap.style.width = (tileWpt*ptToMm) + 'mm';
+      wrap.style.height = (tileHpt*ptToMm) + 'mm';
       const img = document.createElement('img');
       img.src = dataUrl;
       img.style.position = 'absolute';
-      img.style.left = ((margin + c*(photoWpt+gap))*ptToMm) + 'mm';
-      img.style.top = ((margin + r*(photoHpt+gap))*ptToMm) + 'mm';
+      img.style.left = '50%'; img.style.top = '50%';
       img.style.width = (photoWpt*ptToMm) + 'mm';
       img.style.height = (photoHpt*ptToMm) + 'mm';
-      printRoot.appendChild(img);
+      img.style.transform = 'translate(-50%, -50%) rotate(90deg)';
+      wrap.appendChild(img);
+      printRoot.appendChild(wrap);
     }
     window.print();
   }
   ppPluginEngine.register({ id: 'printSheetDirectly', category: 'print', name: 'Print Sheet Directly', kind: 'action', activate: () => ppPrintSheetDirectly() });
   document.getElementById('ppPrintBtn').onclick = () => ppPluginEngine.activate('printSheetDirectly');
+
+  // Defensive bfcache fix, matching Ecommerce/Background Remover: force
+  // the correct initial (pre-upload) state whenever the page is restored
+  // from the back-forward cache without an image genuinely loaded in
+  // this fresh visit -- uses the full exitPpEditingMode() reset since
+  // Passport also hides marketing/upload chrome during editing, not just
+  // the stage itself.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && !ppSourceCanvas){
+      exitPpEditingMode();
+    }
+  });
 }
 
 /* ============ FAQ (index.html) ============ */
@@ -18360,4 +18627,17 @@ if (document.getElementById('epeDrop')){
   }
   setupEpeAccordionExclusivity();
   epeOfferAutoSavedSession();
+
+  // Same defensive bfcache fix as Background Remover and Passport --
+  // force the correct initial state (stage hidden) whenever the page is
+  // restored from the back-forward cache without an image genuinely
+  // loaded in this fresh visit.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted){
+      const stage = document.getElementById('epeStage');
+      if (stage && !epeSourceImg) stage.classList.add('hidden');
+      const banner = document.getElementById('epeAutoSaveBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+  });
 }
