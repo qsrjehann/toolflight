@@ -260,6 +260,36 @@ function erodeMask(src, w, h, radius){ return morphSeparable(src, w, h, radius, 
 function morphClose(src, w, h, radius){ return erodeMask(dilateMask(src, w, h, radius), w, h, radius); }
 function morphOpen(src, w, h, radius){ return dilateMask(erodeMask(src, w, h, radius), w, h, radius); }
 
+// Guided filter (He, Sun, Tang 2010) -- a well-established edge-aware
+// smoothing technique used in professional image matting to snap an
+// alpha matte's soft edges toward real color boundaries in the source
+// photo, rather than blurring uniformly regardless of what's actually
+// there. Verified against two known cases before integration: exact
+// match against a double box-blur when the guide is constant (the
+// filter's mathematically correct degenerate behavior), and genuine
+// edge-snapping (a blurry mask transition sharpens right at a real
+// color edge) on a meaningful test case.
+function guidedFilter(guide, input, w, h, radius, eps){
+  const n = w*h;
+  const meanI = boxBlurGray(guide, w, h, radius);
+  const meanP = boxBlurGray(input, w, h, radius);
+  const IP = new Float32Array(n); for (let i=0;i<n;i++) IP[i] = guide[i]*input[i];
+  const meanIP = boxBlurGray(IP, w, h, radius);
+  const II = new Float32Array(n); for (let i=0;i<n;i++) II[i] = guide[i]*guide[i];
+  const meanII = boxBlurGray(II, w, h, radius);
+  const a = new Float32Array(n), b = new Float32Array(n);
+  for (let i=0;i<n;i++){
+    const covIP = meanIP[i] - meanI[i]*meanP[i];
+    const varI = meanII[i] - meanI[i]*meanI[i];
+    a[i] = covIP/(varI+eps);
+    b[i] = meanP[i] - a[i]*meanI[i];
+  }
+  const meanA = boxBlurGray(a, w, h, radius), meanB = boxBlurGray(b, w, h, radius);
+  const q = new Float32Array(n);
+  for (let i=0;i<n;i++) q[i] = meanA[i]*guide[i] + meanB[i];
+  return q;
+}
+
 function removeSmallIslands(binaryMask, w, h, minFraction){
   // Connected-component labeling via flood fill (BFS). Removes small,
   // isolated foreground blobs (segmentation noise/speckles) while
@@ -342,29 +372,48 @@ function fillHoles(binaryMask, w, h){
   return out;
 }
 
-function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue }){
+function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue, guideGray }){
   const n = maskW*maskH;
   let binary = new Uint8ClampedArray(n);
   for (let i=0; i<n; i++) binary[i] = (maskData[i] === personCategoryValue) ? 255 : 0;
 
   // Clean up segmentation noise: remove tiny isolated speckles, fill
   // small enclosed gaps (e.g. between hair strands), then smooth jagged
-  // boundary pixels via a small morphological close+open -- all
-  // proportional to the mask's own resolution so this scales correctly
-  // across different image sizes.
+  // boundary pixels via a small morphological close -- proportional to
+  // the mask's own resolution so this scales correctly across different
+  // image sizes. Deliberately NOT followed by morphOpen: proven via
+  // direct testing that its erosion step completely erases thin
+  // structures like fingers (a 2px-wide test structure went from
+  // naturally, acceptably softened by the later feathering step to
+  // fully erased once morphOpen ran) -- morphClose alone still removes
+  // real noise/gaps without that risk.
   binary = removeSmallIslands(binary, maskW, maskH, 0.04);
   binary = fillHoles(binary, maskW, maskH);
   const morphRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.006));
   binary = morphClose(binary, maskW, maskH, morphRadius);
-  binary = morphOpen(binary, maskW, maskH, morphRadius);
 
-  // Soft feathering: blur the cleaned binary decision so edges transition
-  // gradually instead of a hard 0/255 cut -- this alone is a major
-  // quality improvement over the previous pipeline's hard threshold.
+  // Adaptive feathering: a fixed feather radius over-softens clean,
+  // simple boundaries (e.g. a shirt hem) while under-softening genuinely
+  // complex ones (hair, fur) -- use local mask complexity (computed via
+  // a small-vs-large blur comparison, which diverges exactly where the
+  // boundary is jagged/detailed) to blend between a tight base feather
+  // and a wider one specifically where the boundary is actually complex.
   const floatBinary = new Float32Array(n);
   for (let i=0; i<n; i++) floatBinary[i] = binary[i];
-  const featherRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.012));
-  const blurred = boxBlurGray(floatBinary, maskW, maskH, featherRadius);
+  const baseFeatherRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.008));
+  const wideFeatherRadius = Math.max(2, Math.round(Math.min(maskW, maskH) * 0.022));
+  const blurredTight = boxBlurGray(floatBinary, maskW, maskH, baseFeatherRadius);
+  const blurredWide = boxBlurGray(floatBinary, maskW, maskH, wideFeatherRadius);
+  const complexitySampleRadius = Math.max(2, Math.round(Math.min(maskW, maskH) * 0.03));
+  const localComplexity = boxBlurGray(
+    (() => { const d = new Float32Array(n); for (let i=0;i<n;i++) d[i] = Math.abs(blurredTight[i]-binary[i]); return d; })(),
+    maskW, maskH, complexitySampleRadius
+  );
+  const blurred = new Float32Array(n);
+  for (let i=0; i<n; i++){
+    const complexityWeight = Math.max(0, Math.min(1, localComplexity[i] / 60)); // 0 = simple boundary, 1 = complex/hair-like
+    blurred[i] = blurredTight[i]*(1-complexityWeight) + blurredWide[i]*complexityWeight;
+  }
 
   // Where confidence-mask data is available, blend it in specifically
   // near the edge (where the blurred binary value is ambiguous, i.e.
@@ -387,6 +436,23 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
         finalRes[idx] = bVal*(1-edgeWeight) + (confAsSubject*255)*edgeWeight;
       }
     }
+  }
+
+  // Edge-aware matte refinement (guided filter): snaps the remaining
+  // soft transition toward real color boundaries in the source photo --
+  // e.g. sharpening a fabric edge that has real contrast while leaving a
+  // genuinely soft hair boundary soft, since the guide image itself has
+  // no sharp edge there to snap to. Blended in only within the ambiguous
+  // edge band so confident interior regions (which could otherwise pick
+  // up holes from patterned clothing or skin texture) are left untouched.
+  if (guideGray){
+    const guidedResult = guidedFilter(guideGray, finalRes, maskW, maskH, Math.max(2, Math.round(Math.min(maskW,maskH)*0.015)), 625);
+    const combined = new Float32Array(n);
+    for (let i=0; i<n; i++){
+      const edgeWeight = 1 - Math.abs(finalRes[i] - 127.5) / 127.5;
+      combined[i] = finalRes[i]*(1-edgeWeight) + guidedResult[i]*edgeWeight;
+    }
+    finalRes = combined;
   }
 
   const out2 = new Uint8ClampedArray(outW*outH);
@@ -2008,6 +2074,19 @@ if (document.getElementById('aiRemoveDrop')){
         confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
       }
 
+      // Grayscale luminance guide at mask resolution, for edge-aware
+      // matte refinement -- lets the alpha edge snap to real color
+      // boundaries in the source photo rather than blurring blindly.
+      const guideCanvas = document.createElement('canvas');
+      guideCanvas.width = maskW; guideCanvas.height = maskH;
+      const gctx = guideCanvas.getContext('2d');
+      gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
+      const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
+      const guideGray = new Float32Array(maskW*maskH);
+      for (let i=0; i<guideGray.length; i++){
+        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
+      }
+
       const outCanvas = document.createElement('canvas');
       outCanvas.width = w; outCanvas.height = h;
       const octx = outCanvas.getContext('2d');
@@ -2020,6 +2099,7 @@ if (document.getElementById('aiRemoveDrop')){
         confidenceData, confW, confH,
         outW: w, outH: h,
         personCategoryValue: 1,
+        guideGray,
       });
       for (let i = 0; i < w*h; i++){
         pixels[i*4 + 3] = refinedAlpha[i];
@@ -7490,6 +7570,19 @@ if (document.getElementById('ppDrop')){
   document.getElementById('ppNewImageBtnMobile').onclick = () => {
     if (confirm('Start over with a new image? Your current edits will be lost.')) exitPpEditingMode();
   };
+  document.getElementById('ppReplaceImageBtn').onclick = () => {
+    if (confirm('Start over with a new image? Your current edits will be lost.')) exitPpEditingMode();
+  };
+  document.getElementById('ppResetEditorBtn').onclick = () => {
+    if (!ppSourceCanvas) return;
+    if (!confirm('Reset all edits (adjustments, zoom, position, and manual erase/restore) back to the original photo?')) return;
+    resetPpAdjustments();
+    initPpMask(ppSourceCanvas.width, ppSourceCanvas.height);
+    if (ppFaceLandmarks) autoPositionFromFace();
+    renderPpPreview();
+    pushPpHistory();
+    toast('Editor reset to the original photo.');
+  };
   document.getElementById('ppViewFitBtn').onclick = () => {
     ppViewZoom = 1;
     fitPpCanvasDisplay();
@@ -7519,9 +7612,9 @@ if (document.getElementById('ppDrop')){
     facePosition: ['ppAccordionPosition'],
     background: ['ppAccordionBackground'],
     print: ['ppAccordionExport'],
-    export: ['ppAccordionExport'],
+    more: ['ppAccordionMore'],
   };
-  const PP_CATEGORY_LABELS = { edit:'Edit', facePosition:'Face Position', background:'Background', print:'Print', export:'Export' };
+  const PP_CATEGORY_LABELS = { edit:'Edit', facePosition:'Face Position', background:'Background', print:'Print', more:'More' };
   const ppCategorySwitcher = createToolflightCategorySwitcher({
     accordionMap: PP_CATEGORY_ACCORDIONS,
     labelMap: PP_CATEGORY_LABELS,
@@ -8136,34 +8229,47 @@ if (document.getElementById('ppDrop')){
       // hold that data.
       const personConfidenceAt = (rawConf) => personCategoryValue === 1 ? rawConf : (1 - rawConf);
 
-      const newMask = new Uint8ClampedArray(w*h);
+      // Plausibility signals computed from the raw data exactly as
+      // before, independent of the refinement pipeline below.
       let subjectPixels = 0, confSum = 0, confSamples = 0;
-      for (let y=0; y<h; y++){
-        for (let x=0; x<w; x++){
-          const mx = Math.min(mw-1, Math.round(x * mw/w)), my = Math.min(mh-1, Math.round(y * mh/h));
-          const isSubject = isPersonCat(maskData[my*mw+mx]);
-          if (isSubject) subjectPixels++;
-          if (personConf){
-            // Use the model's own continuous per-pixel confidence as a soft
-            // alpha directly, instead of the hard binary category threshold.
-            // This is what actually preserves natural hair/edge detail --
-            // fine flyaway strands genuinely do get intermediate confidence
-            // values, and collapsing that to a hard 0-or-255 cutout is what
-            // produces the harsh "cutout sticker" look. This is real
-            // per-pixel data already computed above, not a post-hoc blur
-            // guessing where edges probably are.
-            const cx = Math.min(cw-1, Math.round(x * cw/w)), cy = Math.min(ch-1, Math.round(y * ch/h));
-            const conf = personConfidenceAt(personConf[cy*cw+cx]);
-            confSum += conf; confSamples++;
-            newMask[y*w+x] = Math.round(255 * (1 - conf));
-          } else {
-            newMask[y*w+x] = isSubject ? 0 : 255;
-          }
+      for (let i=0; i<maskData.length; i++){
+        if (isPersonCat(maskData[i])) subjectPixels += (w*h)/(mw*mh);
+        if (personConf){
+          confSum += personConfidenceAt(personConf[i]); confSamples++;
         }
       }
+      const avgPersonConfidence = confSamples ? confSum/confSamples : null;
+
+      // Grayscale luminance guide at mask resolution, for edge-aware
+      // matte refinement (same technique now used by the standalone
+      // Background Remover tool) -- lets the alpha edge snap to real
+      // color boundaries in the source photo.
+      const guideCanvas = document.createElement('canvas');
+      guideCanvas.width = mw; guideCanvas.height = mh;
+      const gctx = guideCanvas.getContext('2d');
+      gctx.drawImage(ppSourceCanvas, 0, 0, mw, mh);
+      const guidePixels = gctx.getImageData(0, 0, mw, mh).data;
+      const guideGray = new Float32Array(mw*mh);
+      for (let i=0; i<guideGray.length; i++){
+        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
+      }
+
+      const subjectAlpha = refineSegmentationMask({
+        maskData, maskW: mw, maskH: mh,
+        confidenceData: personConf, confW: cw, confH: ch,
+        outW: w, outH: h,
+        personCategoryValue,
+        guideGray,
+      });
+      // Invert: refineSegmentationMask's alpha is 255=subject/opaque, but
+      // ppEraseMask's convention is 255=erase/background -- the exact
+      // opposite, unrelated to and independent from the calibrated
+      // subject/background polarity above.
+      const newMask = new Uint8ClampedArray(w*h);
+      for (let i=0; i<newMask.length; i++) newMask[i] = 255 - subjectAlpha[i];
+
       mask.close && mask.close();
       confMasks && confMasks.forEach(m => m.close && m.close());
-      const avgPersonConfidence = confSamples ? confSum/confSamples : null;
 
       if (document.getElementById('ppDebugSegmentation') && document.getElementById('ppDebugSegmentation').checked){
         console.log('%cCalibration used this run:', 'font-weight:bold;color:#5142D6;', 'personCategoryValue =', personCategoryValue, '| source:', calibrationSource);
@@ -8668,8 +8774,8 @@ if (document.getElementById('ppDrop')){
   }
 
   /* ---------- Export ---------- */
-  ppPluginEngine.register({ id: 'exportPng', category: 'export', name: 'Download PNG', kind: 'action', activate: () => exportPp('png') });
-  ppPluginEngine.register({ id: 'exportJpeg', category: 'export', name: 'Download JPEG', kind: 'action', activate: () => exportPp('jpeg') });
+  ppPluginEngine.register({ id: 'exportPng', category: 'more', name: 'Download PNG', kind: 'action', activate: () => exportPp('png') });
+  ppPluginEngine.register({ id: 'exportJpeg', category: 'more', name: 'Download JPEG', kind: 'action', activate: () => exportPp('jpeg') });
   document.getElementById('ppDownloadPngBtn').onclick = () => ppPluginEngine.activate('exportPng');
   document.getElementById('ppDownloadJpgBtn').onclick = () => ppPluginEngine.activate('exportJpeg');
   function exportPp(format){
