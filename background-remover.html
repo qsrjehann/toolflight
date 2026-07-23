@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>AI Background Remover — Free Online | ToolFlight</title>
 <meta name="description" content="Free AI background remover. Automatic background removal powered by machine learning, plus brush, eraser, magic wand, polygon, and lasso tools for manual refinement.">
-<link rel="icon" href="assets/favicon.ico?v=20260719-1035" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260719-1035">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260719-1035">
+<link rel="icon" href="assets/favicon.ico?v=20260723-0516" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260723-0516">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260723-0516">
 <link rel="canonical" href="https://toolflight.com/background-remover.html">
 
 <meta property="og:title" content="AI Background Remover — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719-1035">
+<link rel="stylesheet" href="css/style.css?v=20260723-0516">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260719-1035" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260723-0516" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -120,8 +120,15 @@
       <div class="model-status-line" id="aiModelStatus" role="status"><span class="dot"></span><span>AI model loads on first use.</span></div>
 
       <div id="aiRemoveStage" class="hidden">
-        <div class="canvas-stage" id="aiRemovePreviewStage" style="margin-top:14px;">
-          <div id="aiRemovePreview" style="width:100%;"></div>
+        <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap" style="margin-top:14px;">
+          <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
+          <div id="compareWrap" class="hidden" style="position:relative;">
+            <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
+            <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
+              <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
+            </div>
+            <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+          </div>
         </div>
         <div class="row">
           <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
@@ -183,16 +190,6 @@
           <button class="btn btn-ghost" id="compareToggleBtn" type="button" aria-pressed="false">Before / After</button>
         </div>
 
-        <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap">
-          <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
-          <div id="compareWrap" class="hidden" style="position:relative;">
-            <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
-            <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
-              <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
-            </div>
-            <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
-          </div>
-        </div>
         <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices. Canvas drawing itself needs a pointer (mouse, touch, or stylus) — every other control here is fully keyboard operable.</p>
 
         <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--card-border);">
@@ -223,7 +220,7 @@
       </div>
   </div>
 
-  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+  <div id="toolSeoContent" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
     <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the AI Background Remover</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">AI Background Remover uses Google's MediaPipe machine learning model to detect and remove backgrounds automatically, then hands you a full manual editor — brush, eraser, magic wand, polygon, and lasso — to refine tricky edges like hair and fur.</p>
 
@@ -257,7 +254,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260719-1035" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260723-0516" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -294,6 +291,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260719-1035"></script>
+<script defer src="js/app.js?v=20260723-0516"></script>
 </body>
 </html>
