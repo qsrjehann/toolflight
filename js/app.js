@@ -2711,6 +2711,22 @@ if (document.getElementById('aiRemoveDrop')){
   }
   offerAutoSavedSession();
 
+  // Defensive fix for a reported "toolbar visible before upload" issue:
+  // the back-forward cache restores a page's DOM exactly as it was left,
+  // WITHOUT re-running this initialization script -- so if a user had
+  // the editor open and navigated away, then used the browser's
+  // back/forward button, the stale "stage visible" DOM could reappear
+  // even though no image was uploaded in this fresh visit. Force the
+  // correct initial state on every bfcache restore.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted){
+      const stage = document.getElementById('aiRemoveStage');
+      if (stage && !originalCanvas) stage.classList.add('hidden');
+      const banner = document.getElementById('autoSaveBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+  });
+
   /* ---------- High-quality multi-format export ---------- */
   function supportsWorkerExport(){
     return typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined' && typeof createImageBitmap === 'function';
@@ -8737,6 +8753,8 @@ if (document.getElementById('ppDrop')){
       div.style.height = (tileHpt*scale) + 'px';
       div.style.overflow = 'hidden';
       div.style.position = 'absolute';
+      div.style.boxSizing = 'border-box';
+      div.style.border = '0.5pt solid #000';
       const img = document.createElement('img');
       img.src = dataUrl;
       // Rotated 90deg: the img keeps the ORIGINAL (unrotated) photo's own
@@ -8792,6 +8810,11 @@ if (document.getElementById('ppDrop')){
       // (non-color-threshold-dependent) boundary comparison.
       const ax = tileX + photoHpt, ay = tileY;
       page.drawImage(img, { x: ax, y: ay, width: photoWpt, height: photoHpt, rotate: degrees(90) });
+      // Thin border around the tile's complete outer rectangle (including
+      // its white background) -- purely a print/cut guide, not any kind
+      // of subject or object outline. Drawn on the tile's own
+      // axis-aligned bounding box, which needs no rotation math.
+      page.drawRectangle({ x: tileX, y: tileY, width: tileWpt, height: tileHpt, borderColor: PDFLib.rgb(0,0,0), borderWidth: 0.5 });
     }
     return pdfDoc.save();
   }
@@ -8835,6 +8858,8 @@ if (document.getElementById('ppDrop')){
       const wrap = document.createElement('div');
       wrap.style.position = 'absolute';
       wrap.style.overflow = 'hidden';
+      wrap.style.boxSizing = 'border-box';
+      wrap.style.border = '0.5pt solid #000';
       wrap.style.left = ((margin + c*(tileWpt+gap))*ptToMm) + 'mm';
       wrap.style.top = ((margin + r*(tileHpt+gap))*ptToMm) + 'mm';
       wrap.style.width = (tileWpt*ptToMm) + 'mm';
@@ -8853,6 +8878,18 @@ if (document.getElementById('ppDrop')){
   }
   ppPluginEngine.register({ id: 'printSheetDirectly', category: 'print', name: 'Print Sheet Directly', kind: 'action', activate: () => ppPrintSheetDirectly() });
   document.getElementById('ppPrintBtn').onclick = () => ppPluginEngine.activate('printSheetDirectly');
+
+  // Defensive bfcache fix, matching Ecommerce/Background Remover: force
+  // the correct initial (pre-upload) state whenever the page is restored
+  // from the back-forward cache without an image genuinely loaded in
+  // this fresh visit -- uses the full exitPpEditingMode() reset since
+  // Passport also hides marketing/upload chrome during editing, not just
+  // the stage itself.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && !ppSourceCanvas){
+      exitPpEditingMode();
+    }
+  });
 }
 
 /* ============ FAQ (index.html) ============ */
@@ -18590,4 +18627,17 @@ if (document.getElementById('epeDrop')){
   }
   setupEpeAccordionExclusivity();
   epeOfferAutoSavedSession();
+
+  // Same defensive bfcache fix as Background Remover and Passport --
+  // force the correct initial state (stage hidden) whenever the page is
+  // restored from the back-forward cache without an image genuinely
+  // loaded in this fresh visit.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted){
+      const stage = document.getElementById('epeStage');
+      if (stage && !epeSourceImg) stage.classList.add('hidden');
+      const banner = document.getElementById('epeAutoSaveBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+  });
 }
