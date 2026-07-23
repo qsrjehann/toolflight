@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>AI Background Remover — Free Online | ToolFlight</title>
 <meta name="description" content="Free AI background remover. Automatic background removal powered by machine learning, plus brush, eraser, magic wand, polygon, and lasso tools for manual refinement.">
-<link rel="icon" href="assets/favicon.ico?v=20260723-0516" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260723-0516">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260723-0516">
+<link rel="icon" href="assets/favicon.ico?v=20260723-0932" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260723-0932">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260723-0932">
 <link rel="canonical" href="https://toolflight.com/background-remover.html">
 
 <meta property="og:title" content="AI Background Remover — Free Online | ToolFlight">
@@ -38,7 +38,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260723-0516">
+<link rel="stylesheet" href="css/style.css?v=20260723-0932">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -60,7 +60,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260723-0516" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260723-0932" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -120,81 +120,104 @@
       <div class="model-status-line" id="aiModelStatus" role="status"><span class="dot"></span><span>AI model loads on first use.</span></div>
 
       <div id="aiRemoveStage" class="hidden">
-        <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap" style="margin-top:14px;">
-          <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
-          <div id="compareWrap" class="hidden" style="position:relative;">
-            <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
-            <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
-              <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
+        <div id="aiTopAppBar">
+          <span id="aiTopAppBarTitle">Background Remover</span>
+        </div>
+        <div id="aiShellBody">
+          <nav id="aiLeftRail" aria-label="Tool categories">
+            <button class="epe-rail-btn" type="button" data-ai-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+            <button class="epe-rail-btn" type="button" data-ai-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+            <button class="epe-rail-btn" type="button" data-ai-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+          </nav>
+
+          <div id="aiCanvasAreaShell">
+            <div class="row" id="aiCanvasTopControls" style="flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="aiViewFitBtn" type="button">Fit to Screen</button>
+              <button class="btn btn-secondary" id="aiViewCenterBtn" type="button">Center View</button>
+              <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
             </div>
-            <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+            <div id="aiWorkspaceViewport">
+              <div id="aiWorkspace">
+                <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap">
+                  <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
+                  <div id="compareWrap" class="hidden" style="position:relative;">
+                    <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
+                    <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
+                      <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
+                    </div>
+                    <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+                  </div>
+                </div>
+              </div>
+                <div id="aiFloatingControls" role="toolbar" aria-label="Editing tools">
+                  <button type="button" id="aiFloatDragHandle" class="epe-drag-handle" title="Drag to move" aria-label="Drag to move toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button class="editor-tool-btn ai-tool-btn active" data-tool="brush" type="button" aria-pressed="true" title="Brush (keep)" aria-label="Brush, keep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.06M9.06 11.9L6 15l-3 6 6-3 2.94-2.94"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="eraser" type="button" aria-pressed="false" title="Eraser" aria-label="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M20 20H8l-6-6a2 2 0 0 1 0-2.8l9-9a2 2 0 0 1 2.8 0l6.2 6.2a2 2 0 0 1 0 2.8L13 18"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Edge Refine — content-aware refinement for hair and soft edges" aria-label="Edge refine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="wand" type="button" aria-pressed="false" title="Magic Wand" aria-label="Magic wand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 6.2L11 5M12.2 11.8L11 13M3 21l9-9"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="polygon" type="button" aria-pressed="false" title="Polygon / Pen" aria-label="Polygon pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 8l8-5 8 5-3 12H7z"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="lasso" type="button" aria-pressed="false" title="Lasso" aria-label="Lasso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M7 10a5 5 0 1 1 7 4.5L9 21l-2-2 3-3"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button type="button" id="undoBtn" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
+                  <button type="button" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button type="button" id="compareToggleBtn" title="Before / After" aria-label="Before and after comparison" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></button>
+                  <button type="button" id="aiFloatFitBtn" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+                </div>
+            </div>
+            <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices.</p>
           </div>
-        </div>
-        <div class="row">
-          <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
-        </div>
-        <div class="row hidden" id="aiRemoveDownloadRow">
-          <button class="btn btn-success" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
-          <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
-        </div>
-      </div>
 
-      <div id="aiEditorPanel" class="hidden" style="margin-top:22px;padding-top:20px;border-top:1px solid var(--card-border);">
-        <h3 style="font-size:15px;font-weight:800;margin-bottom:10px;">Refine selection</h3>
+          <div id="aiSheetBackdrop"></div>
+          <div id="aiToolPanel">
+            <div id="aiPanelResizeHandle"></div>
+            <div id="aiToolPanelHeader">
+              <div id="aiSheetDragHandle"></div>
+              <span id="aiToolPanelTitle">Edit</span>
+              <div class="row" style="flex:0;gap:4px;">
+                <button id="aiPanelCollapseBtn" type="button" title="Collapse panel" aria-label="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg></button>
+                <button id="aiSheetCloseBtn" type="button" title="Close" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div id="aiToolPanelBody">
 
-        <div class="editor-toolbar" role="group" aria-label="Selection tools">
-          <button class="editor-tool-btn active" data-tool="brush" type="button" aria-pressed="true">Brush (keep)</button>
-          <button class="editor-tool-btn" data-tool="eraser" type="button" aria-pressed="false">Eraser</button>
-          <button class="editor-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Content-aware refinement for hair, fur, and soft edges">Edge Refine</button>
-          <button class="editor-tool-btn" data-tool="wand" type="button" aria-pressed="false">Magic Wand</button>
-          <button class="editor-tool-btn" data-tool="polygon" type="button" aria-pressed="false">Polygon / Pen</button>
-          <button class="editor-tool-btn" data-tool="lasso" type="button" aria-pressed="false">Lasso</button>
-        </div>
-
-        <div class="unit-toggle select-mode-toggle" style="margin-top:10px;" role="group" aria-label="Selection mode">
+        <details class="pp-accordion" id="aiAccordionEdit" open>
+        <summary class="pp-accordion-summary">Brush &amp; Selection</summary>
+        <div class="unit-toggle select-mode-toggle" role="group" aria-label="Selection mode">
           <button class="active" data-mode="add" type="button" aria-pressed="true">Add to selection</button>
           <button data-mode="subtract" type="button" aria-pressed="false">Subtract</button>
         </div>
         <p class="editor-hint">Add/Subtract applies to Magic Wand, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough.</p>
-
         <div class="qr-controls" style="margin-top:10px;">
           <div class="ctrl"><label for="brushSizeSlider">Brush size: <span id="brushSizeVal">40</span>px</label><input type="range" id="brushSizeSlider" min="5" max="150" value="40"></div>
           <div class="ctrl"><label for="brushSoftSlider">Soft edge: <span id="brushSoftVal">50</span>%</label><input type="range" id="brushSoftSlider" min="0" max="100" value="50"></div>
           <div class="ctrl"><label for="wandToleranceSlider">Wand tolerance: <span id="wandToleranceVal">30</span></label><input type="range" id="wandToleranceSlider" min="1" max="100" value="30"></div>
-          <div class="ctrl">
-            <label for="zoomSelect">Zoom</label>
-            <select id="zoomSelect" aria-label="Zoom level">
-              <option value="25">25%</option>
-              <option value="50">50%</option>
-              <option value="100" selected>100%</option>
-              <option value="200">200%</option>
-              <option value="400">400%</option>
-            </select>
-          </div>
         </div>
+        </details>
 
-        <div class="qr-controls" style="margin-top:10px;">
+        <details class="pp-accordion" id="aiAccordionMore">
+        <summary class="pp-accordion-summary">More: Edge Cleanup &amp; History</summary>
+        <div class="qr-controls">
           <div class="ctrl"><label for="featherSlider">Feather edge: <span id="featherVal">0</span>px</label><input type="range" id="featherSlider" min="0" max="30" value="0" step="1"></div>
           <div class="ctrl"><label for="smoothSlider">Edge smooth: <span id="smoothVal">0</span>px</label><input type="range" id="smoothSlider" min="0" max="10" value="0" step="1"></div>
           <div class="ctrl" style="grid-column:span 2;"><label for="expandSlider">Expand / Contract: <span id="expandVal">0</span>px</label><input type="range" id="expandSlider" min="-20" max="20" value="0" step="1"></div>
         </div>
-
-        <div class="row">
-          <button class="btn btn-ghost" id="undoBtn" type="button">Undo</button>
-          <button class="btn btn-ghost" id="redoBtn" type="button">Redo</button>
+        <div class="row" style="margin-top:10px;">
           <button class="btn btn-ghost" id="invertSelBtn" type="button">Invert selection</button>
           <button class="btn btn-danger" id="resetSelBtn" type="button">Reset to AI result</button>
         </div>
         <div class="row">
           <button class="btn btn-ghost" id="overlayToggleBtn" type="button" aria-pressed="false">Selection overlay</button>
-          <button class="btn btn-ghost" id="compareToggleBtn" type="button" aria-pressed="false">Before / After</button>
         </div>
+        <div class="row hidden" id="aiRemoveDownloadRow">
+          <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
+        </div>
+        </details>
 
-        <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices. Canvas drawing itself needs a pointer (mouse, touch, or stylus) — every other control here is fully keyboard operable.</p>
-
-        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--card-border);">
-          <span class="field-label">Export</span>
-          <div class="qr-controls" style="margin-top:8px;">
+        <details class="pp-accordion" id="aiAccordionExport">
+          <summary class="pp-accordion-summary">Export</summary>
+          <div class="qr-controls">
             <div class="ctrl">
               <label for="exportFormat">Format</label>
               <select id="exportFormat" aria-label="Export format">
@@ -214,9 +237,19 @@
           </div>
           <div class="row">
             <button class="btn btn-primary" id="exportBtn" type="button" style="flex:1;">Export image</button>
+            <button class="btn btn-success" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
           </div>
           <p class="editor-hint">Exports are rebuilt at your original image's full resolution regardless of the editing preview size, using a background worker when your browser supports it so large images don't freeze the page.</p>
+        </details>
+            </div>
+          </div>
         </div>
+
+        <nav id="aiBottomToolbar" aria-label="Tool categories">
+          <button class="epe-tab-btn active" type="button" data-ai-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+          <button class="epe-tab-btn" type="button" data-ai-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+          <button class="epe-tab-btn" type="button" data-ai-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+        </nav>
       </div>
   </div>
 
@@ -254,7 +287,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260723-0516" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260723-0932" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -291,6 +324,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260723-0516"></script>
+<script defer src="js/app.js?v=20260723-0932"></script>
 </body>
 </html>
