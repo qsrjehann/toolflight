@@ -6614,6 +6614,64 @@ if (document.getElementById('ppDrop')){
   }
 
   /* ---------- Upload ---------- */
+  // ---- Editing Mode: hides the upload section and all marketing/FAQ/
+  // related-tools content once a photo is uploaded, leaving only the
+  // header, canvas, bottom toolbar, and active tool panel visible --
+  // matching the explicit requirement for a focused, Canva-like mobile
+  // editing experience with no scrolling needed to keep working. ----
+  function enterPpEditingMode(){
+    const uploadSection = document.getElementById('ppUploadSection');
+    if (uploadSection) uploadSection.classList.add('hidden');
+    const workspace = document.querySelector('.workspace');
+    const marketing = workspace ? workspace.nextElementSibling : null;
+    if (marketing) marketing.classList.add('hidden');
+    const heroSub = document.querySelector('.hero-sub');
+    if (heroSub) heroSub.classList.add('hidden');
+    const backRow = document.querySelector('.container > .row');
+    if (backRow) backRow.classList.add('hidden');
+    const footerEl = document.querySelector('footer');
+    if (footerEl) footerEl.classList.add('hidden');
+    document.body.classList.add('pp-editing-mode');
+    document.documentElement.classList.add('pp-editing-mode');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    fitPpViewportToAvailableSpace();
+  }
+  function fitPpViewportToAvailableSpace(){
+    // Robustly guarantees the editor fits on screen regardless of small
+    // CSS spacing sources (nav bar, top app bar, canvas top controls,
+    // bottom toolbar) by measuring actual available space directly,
+    // rather than a fixed 60vh guess that doesn't account for the chrome
+    // stacked above it.
+    const viewport = document.getElementById('ppWorkspaceViewport');
+    if (!viewport || document.getElementById('ppStage').classList.contains('hidden')) return;
+    const bottomToolbar = document.getElementById('ppBottomToolbar');
+    const bottomToolbarH = (window.innerWidth < 900 && bottomToolbar) ? bottomToolbar.getBoundingClientRect().height : 0;
+    const rect = viewport.getBoundingClientRect();
+    const available = window.innerHeight - rect.top - bottomToolbarH - 12;
+    viewport.style.height = Math.max(200, Math.round(available)) + 'px';
+    if (ppSourceCanvas) fitPpCanvasDisplay();
+  }
+  window.addEventListener('resize', fitPpViewportToAvailableSpace);
+  function exitPpEditingMode(){
+    const uploadSection = document.getElementById('ppUploadSection');
+    if (uploadSection) uploadSection.classList.remove('hidden');
+    const workspace = document.querySelector('.workspace');
+    const marketing = workspace ? workspace.nextElementSibling : null;
+    if (marketing) marketing.classList.remove('hidden');
+    const heroSub = document.querySelector('.hero-sub');
+    if (heroSub) heroSub.classList.remove('hidden');
+    const backRow = document.querySelector('.container > .row');
+    if (backRow) backRow.classList.remove('hidden');
+    const footerEl = document.querySelector('footer');
+    if (footerEl) footerEl.classList.remove('hidden');
+    document.body.classList.remove('pp-editing-mode');
+    document.documentElement.classList.remove('pp-editing-mode');
+    document.getElementById('ppStage').classList.add('hidden');
+    document.getElementById('ppInput').value = '';
+    ppSourceCanvas = null; ppOriginalImg = null; ppFaceLandmarks = null;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
   async function loadPpImage(f){
     if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
@@ -6630,6 +6688,7 @@ if (document.getElementById('ppDrop')){
     ppFaceLandmarks = null;
     document.getElementById('ppStage').classList.remove('hidden');
     document.getElementById('ppDownloadRow').classList.remove('hidden');
+    enterPpEditingMode();
     resetPpAdjustments();
     // Show the ENTIRE uploaded image first, before any face-based
     // auto-positioning runs -- the render pipeline's baseScale is a
@@ -7216,6 +7275,12 @@ if (document.getElementById('ppDrop')){
     }
     ppWorkspaceEngine.fitToScreen(canvas.width, canvas.height, ppViewZoom);
   }
+  document.getElementById('ppNewImageBtn').onclick = () => {
+    if (confirm('Start over with a new image? Your current edits will be lost.')) exitPpEditingMode();
+  };
+  document.getElementById('ppNewImageBtnMobile').onclick = () => {
+    if (confirm('Start over with a new image? Your current edits will be lost.')) exitPpEditingMode();
+  };
   document.getElementById('ppViewFitBtn').onclick = () => {
     ppViewZoom = 1;
     fitPpCanvasDisplay();
@@ -7746,8 +7811,45 @@ if (document.getElementById('ppDrop')){
       // coordinate mapping that could itself have a bug -- so it's used
       // both as the fallback when no face landmarks are available, and as
       // a cross-check against the landmark-based result when they are.
+      // Center-region sampling: for a passport-style centered portrait,
+      // the pixels near the subject are virtually guaranteed to belong
+      // to them, regardless of which raw category index the model
+      // assigns to it -- but this only holds if we actually sample near
+      // the subject. A real device test proved the fixed (0.5, 0.45)
+      // image-center assumption is wrong for the RAW, unpositioned
+      // source photo this function runs on (ppSourceCanvas, before any
+      // auto-crop/zoom) -- an uploaded photo can have the subject
+      // anywhere in frame, not necessarily centered. When face landmarks
+      // are available, sample around their ACTUAL detected position
+      // instead of guessing; only fall back to the fixed center
+      // assumption when no landmarks exist at all.
       function centerRegionPersonCategory(){
-        const cxr = Math.round(w*0.5), cyr = Math.round(h*0.45); // slightly above center -- passport framing keeps eyes/face in the upper-middle
+        if (ppFaceLandmarks){
+          const lm = ppFaceLandmarks[1]; // nose tip -- a reliable, central face point
+          if (lm) return sampleRegionVote(Math.round(w*lm.x), Math.round(h*lm.y));
+        }
+        // No landmarks this run -- a single fixed point proved unreliable
+        // on a real device (an uploaded photo's subject isn't always
+        // centered). Sample several plausible subject positions instead
+        // and combine with an area-based signal: the photographed subject
+        // is typically the minority-area category, since backgrounds
+        // usually cover more of the frame than the subject does.
+        const candidates = [
+          sampleRegionVote(Math.round(w*0.5), Math.round(h*0.5)),
+          sampleRegionVote(Math.round(w*0.5), Math.round(h*0.3)),
+          sampleRegionVote(Math.round(w*0.5), Math.round(h*0.7)),
+        ].filter(v => v !== null);
+        if (!candidates.length) return null;
+        const posVotes = {};
+        candidates.forEach(v => { posVotes[v] = (posVotes[v]||0) + 1; });
+        let areaCount0 = 0, areaCount1 = 0;
+        for (let i=0; i<maskData.length; i++){ if (maskData[i] > 0) areaCount1++; else areaCount0++; }
+        const minorityCategory = areaCount1 < areaCount0 ? 1 : 0;
+        posVotes[minorityCategory] = (posVotes[minorityCategory]||0) + 1; // area signal counts as one more vote
+        const sorted = Object.entries(posVotes).sort((a,b) => b[1]-a[1]);
+        return +sorted[0][0];
+      }
+      function sampleRegionVote(cxr, cyr){
         const radius = Math.round(Math.min(w,h) * 0.08);
         const votes = {};
         for (let dy=-radius; dy<=radius; dy+=Math.max(1,Math.round(radius/4))){
