@@ -216,7 +216,7 @@
             <button class="epe-rail-btn" type="button" data-pp-category="facePosition" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span>Face</span></button>
             <button class="epe-rail-btn" type="button" data-pp-category="background" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="2"/><path d="M21 15l-5-5L5 21"/></svg><span>Background</span></button>
             <button class="epe-rail-btn" type="button" data-pp-category="print" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print</span></button>
-            <button class="epe-rail-btn" type="button" data-pp-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+            <button class="epe-rail-btn" type="button" data-pp-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
           </nav>
           <div id="ppCanvasAreaShell">
         <div class="row" id="ppCanvasTopControls" style="flex-wrap:wrap;margin-top:14px;">
@@ -358,11 +358,7 @@
         <ul class="ats-result-list" id="ppValidationList" style="margin-top:10px;"></ul>
 
         <details class="pp-accordion" id="ppAccordionExport">
-        <summary class="pp-accordion-summary">Export &amp; Print</summary>
-          <div class="row hidden" id="ppDownloadRow">
-            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
-            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
-          </div>
+        <summary class="pp-accordion-summary">Print</summary>
           <div class="qr-controls" style="margin-top:10px;">
             <div class="ctrl">
               <label for="ppSheetSize">Print Sheet Size</label>
@@ -387,11 +383,26 @@
           <p class="editor-hint">Tap a photo in the sheet preview, then tap another to swap their positions.</p>
 
           <div class="row">
-            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+            <button class="btn btn-primary" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
           </div>
           <div class="row">
-            <button class="btn btn-ghost" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
+            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
           </div>
+        </details>
+
+        <details class="pp-accordion" id="ppAccordionMore">
+        <summary class="pp-accordion-summary">More</summary>
+          <div class="row hidden" id="ppDownloadRow">
+            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
+            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppResetEditorBtn" type="button" style="width:100%;">Reset Editor</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppReplaceImageBtn" type="button" style="width:100%;">Replace Image</button>
+          </div>
+          <p class="editor-hint">Reset Editor restores brightness, zoom, position, and any manual erase/restore edits to their starting values, without discarding your uploaded photo. Replace Image starts over with a different photo.</p>
         </details>
             </div>
           </div>
@@ -402,7 +413,7 @@
           <button class="epe-tab-btn" type="button" data-pp-category="facePosition" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span>Face</span></button>
           <button class="epe-tab-btn" type="button" data-pp-category="background" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="2"/><path d="M21 15l-5-5L5 21"/></svg><span>Background</span></button>
           <button class="epe-tab-btn" type="button" data-pp-category="print" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print</span></button>
-          <button class="epe-tab-btn" type="button" data-pp-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+          <button class="epe-tab-btn" type="button" data-pp-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
         </nav>
       </div>
 
