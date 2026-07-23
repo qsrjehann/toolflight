@@ -966,7 +966,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    already resized the canvas inside it, creating a feedback loop.
    width:100% and flex:1 1 auto make the wrap's size depend only on its
    parent, never on its child canvas's current size. */
-#epeCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; }
+#epeCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
 #epeCanvasTopControls{ margin-bottom:10px; }
 
 /* ---- Workspace architecture: Viewport (fixed, visible window,
@@ -1274,10 +1274,10 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    compound selector like #epeFloatingBrushBar.hidden into two
    unrelated selectors). Same exact values as Ecommerce's equivalents,
    written as separate, safe rules instead. */
-#ppCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; }
+#ppCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
 #ppCanvasTopControls{ margin-bottom:10px; }
 #ppWorkspaceViewport{
-  flex:1 1 auto; min-height:280px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  flex:0 1 auto; min-height:120px; height:60vh; max-height:640px; position:relative; overflow:hidden;
   border:1.5px solid var(--card-border); border-radius:16px;
   background:
     linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
@@ -1302,6 +1302,15 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
    has no multi-layer selection or brush-bar architecture to mirror.
    ============================================================ */
 #ppStage{ --pp-topbar-h:52px; --pp-bottombar-h:64px; --pp-rail-w:76px; --pp-panel-w:360px; }
+#ppStage.hidden{ display:none; }
+#ppStage:not(.hidden){
+  position:relative;
+  height:calc(100vh - var(--epe-navbar-h, 60px));
+  min-height:220px;
+  display:flex; flex-direction:column;
+  margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw);
+  width:100vw;
+}
 #ppShellBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
 
 #ppTopAppBar{
@@ -1398,4 +1407,115 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 
 @media (prefers-reduced-motion: reduce){
   #ppToolPanel{ transition:none !important; }
+}
+
+/* ============================================================
+   AI BACKGROUND REMOVER SHELL. Parallel rules mirroring Ecommerce's
+   shell layout exactly (same values, new selectors) -- NOT selector-
+   merged, per the established safe pattern. .epe-rail-btn/.epe-tab-btn/
+   .pp-accordion/.editor-tool-btn are already confirmed generic and
+   reused directly, unmodified.
+   ============================================================ */
+#aiRemoveStage{ --ai-topbar-h:52px; --ai-bottombar-h:64px; --ai-rail-w:76px; --ai-panel-w:360px; }
+
+#aiTopAppBar{
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  height:var(--ai-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
+  background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
+}
+#aiTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+#aiShellBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+#aiLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--ai-rail-w); flex:0 0 var(--ai-rail-w); padding:10px 6px;
+  border-right:1px solid var(--epe-shell-border); background:var(--epe-shell-surface);
+}
+
+#aiCanvasAreaShell{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+
+#aiWorkspaceViewport{
+  flex:1 1 auto; min-height:280px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+  margin-top:10px;
+}
+#aiWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+
+#aiFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#aiFloatingControls.ai-dragging{ transition:none !important; }
+#aiFloatingControls button{
+  min-width:40px; min-height:40px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#aiFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#aiFloatingControls button.active{ background:var(--accent1-solid); color:#fff; }
+#aiFloatingControls button[aria-pressed="true"]{ background:var(--accent1-solid); color:#fff; }
+
+#aiToolPanel{
+  display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
+  width:var(--ai-panel-w); flex:0 0 var(--ai-panel-w); max-height:100vh; position:sticky; top:0;
+  transition:width 0.2s ease; backdrop-filter:blur(6px);
+}
+#aiToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#aiToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--epe-shell-border); gap:8px; }
+#aiToolPanelTitle{ font-weight:700; font-size:14px; }
+#aiSheetDragHandle{ display:none; }
+#aiPanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#aiPanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#aiPanelResizeHandle{ display:none; }
+#aiSheetCloseBtn{ display:none; }
+#aiToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+#aiBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--ai-bottombar-h);
+  background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width: 899.98px){
+  #aiTopAppBar{ display:flex; }
+  #aiBottomToolbar{ display:flex; }
+  #aiLeftRail{ display:none; }
+  #aiCanvasAreaShell{ padding:10px; }
+
+  #aiToolPanel{
+    position:fixed; left:0; right:0; bottom:var(--ai-bottombar-h); top:auto;
+    width:auto; flex:none; max-height:85vh; height:45vh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--ai-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #aiToolPanel.sheet-open{ transform:translateY(0); }
+  #aiToolPanel.collapsed{ width:auto; }
+  #aiSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #aiToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #aiPanelCollapseBtn{ display:none; }
+  #aiSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  #aiSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
+  #aiSheetBackdrop.visible{ opacity:1; display:block; }
+}
+
+@media (min-width: 900px){
+  #aiTopAppBar{ display:none; }
+  #aiBottomToolbar{ display:none; }
+  #aiLeftRail{ display:flex; }
+  #aiSheetBackdrop{ display:none !important; }
+  #aiPanelResizeHandle{ display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5; }
+  #aiPanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #aiToolPanel{ position:relative; }
 }
