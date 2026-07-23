@@ -1927,8 +1927,7 @@ if (document.getElementById('aiRemoveDrop')){
     pushHistory();
     renderComposite();
 
-    document.getElementById('aiEditorPanel').classList.remove('hidden');
-    setZoom(100);
+    aiViewZoom = 1; fitAiCanvasDisplay();
     setTool('brush');
   }
 
@@ -2085,6 +2084,70 @@ if (document.getElementById('aiRemoveDrop')){
   }
 
   editCanvas = null; // real element assigned in initManualEditor; listeners below use getElementById lazily
+  // Background Remover's instance of the shared Workspace Engine --
+  // same exact architecture as Ecommerce/Passport: canvas stays at
+  // native pixel size always, the workspace's GPU transform (translate
+  // + scale) handles all display scaling, never resizing the canvas
+  // element's own CSS width/height directly.
+  let aiViewZoom = 1;
+  const aiWorkspaceEngine = createToolflightWorkspaceEngine({
+    viewportEl: () => document.getElementById('aiWorkspaceViewport'),
+    workspaceEl: () => document.getElementById('aiWorkspace'),
+  });
+  function fitAiCanvasDisplay(){
+    const canvas = document.getElementById('aiEditCanvas');
+    if (!canvas || !canvas.width) return;
+    canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+    aiWorkspaceEngine.fitToScreen(canvas.width, canvas.height, aiViewZoom);
+  }
+  document.getElementById('aiViewFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
+  document.getElementById('aiViewCenterBtn').onclick = () => { fitAiCanvasDisplay(); };
+  document.getElementById('aiFloatFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
+  window.addEventListener('resize', () => { if (document.getElementById('aiEditCanvas').width) fitAiCanvasDisplay(); });
+
+  const AI_CATEGORY_ACCORDIONS = {
+    edit: ['aiAccordionEdit'],
+    more: ['aiAccordionMore'],
+    export: ['aiAccordionExport'],
+  };
+  const AI_CATEGORY_LABELS = { edit:'Edit', more:'More', export:'Export' };
+  const aiCategorySwitcher = createToolflightCategorySwitcher({
+    accordionMap: AI_CATEGORY_ACCORDIONS,
+    labelMap: AI_CATEGORY_LABELS,
+    navButtonSelector: '[data-ai-category]',
+    activeStateSelector: '.epe-rail-btn[data-ai-category], .epe-tab-btn[data-ai-category]',
+    categoryDataAttr: 'aiCategory',
+    panelTitleEl: () => document.getElementById('aiToolPanelTitle'),
+    panelBodyEl: () => document.getElementById('aiToolPanelBody'),
+    onOpenPanel: () => {
+      if (window.innerWidth < 900){
+        document.getElementById('aiToolPanel').classList.add('sheet-open');
+        document.getElementById('aiSheetBackdrop').classList.add('visible');
+      }
+    },
+  });
+  document.querySelectorAll('[data-ai-category]').forEach(btn => btn.addEventListener('click', () => aiCategorySwitcher.selectCategory(btn.dataset.aiCategory)));
+  aiCategorySwitcher.selectCategory('edit', { skipOpenPanel: true, noScroll: true });
+  document.getElementById('aiSheetBackdrop') && document.getElementById('aiSheetBackdrop').addEventListener('click', () => {
+    document.getElementById('aiToolPanel').classList.remove('sheet-open');
+    document.getElementById('aiSheetBackdrop').classList.remove('visible');
+  });
+  document.getElementById('aiSheetCloseBtn') && document.getElementById('aiSheetCloseBtn').addEventListener('click', () => {
+    document.getElementById('aiToolPanel').classList.remove('sheet-open');
+    document.getElementById('aiSheetBackdrop').classList.remove('visible');
+  });
+  document.getElementById('aiPanelCollapseBtn') && document.getElementById('aiPanelCollapseBtn').addEventListener('click', () => {
+    document.getElementById('aiToolPanel').classList.toggle('collapsed');
+  });
+
+  createToolflightFloatingToolbarDrag({
+    handleEl: () => document.getElementById('aiFloatDragHandle'),
+    barEl: () => document.getElementById('aiFloatingControls'),
+    viewportEl: () => document.getElementById('aiWorkspaceViewport'),
+    draggingClass: 'ai-dragging',
+    resetTriggerEls: [ () => document.getElementById('aiViewFitBtn') ],
+  });
+
   const editStageWrap = document.getElementById('aiEditStageWrap');
 
   editStageWrap.addEventListener('pointerdown', (e) => {
@@ -2151,28 +2214,45 @@ if (document.getElementById('aiRemoveDrop')){
     }
   });
 
-  // Zoom controls
-  function setZoom(pct){
-    const canvas = document.getElementById('aiEditCanvas');
-    if (!canvas || !canvas.width) return;
-    canvas.style.width = Math.round(canvas.width * (pct/100)) + 'px';
-    canvas.style.height = Math.round(canvas.height * (pct/100)) + 'px';
-    const sel = document.getElementById('zoomSelect');
-    if (sel) sel.value = String(pct);
-  }
-  const zoomSelect = document.getElementById('zoomSelect');
-  if (zoomSelect) zoomSelect.onchange = (e) => setZoom(+e.target.value);
-  editStageWrap.addEventListener('wheel', (e) => {
+  document.getElementById('aiWorkspaceViewport').addEventListener('wheel', (e) => {
     if (!maskCanvas) return;
     e.preventDefault();
-    const current = zoomSelect ? +zoomSelect.value : 100;
-    const next = Math.max(25, Math.min(400, current + (e.deltaY < 0 ? 15 : -15)));
-    setZoom(next);
+    const canvas = document.getElementById('aiEditCanvas');
+    aiViewZoom = Math.max(0.03, Math.min(16, aiViewZoom - Math.sign(e.deltaY)*0.1));
+    const viewport = document.getElementById('aiWorkspaceViewport');
+    const rect = viewport.getBoundingClientRect();
+    const availW = viewport.clientWidth, availH = Math.max(120, viewport.clientHeight);
+    const newScale = Math.min(1, availW/canvas.width, availH/canvas.height) * aiViewZoom;
+    aiWorkspaceEngine.zoomAroundPoint(newScale, e.clientX-rect.left, e.clientY-rect.top);
   }, { passive: false });
 
-  // Space = pan (native scroll does the actual panning; this just changes cursor/behavior)
+  // Space = pan, implemented via the Workspace Engine's transform state
+  // (pointerdown/move/up updating workspace x/y directly) -- mirrors
+  // Ecommerce's exact pan-mode pattern. Replaces the old approach of
+  // relying on native overflow:auto scrolling, which no longer applies
+  // now that the viewport is overflow:hidden (GPU-transform workspace).
+  (function setupAiSpacePan(){
+    const viewport = document.getElementById('aiWorkspaceViewport');
+    let panning = false, startX = 0, startY = 0, startWsX = 0, startWsY = 0;
+    viewport.addEventListener('pointerdown', (e) => {
+      if (!spacePan) return;
+      if (e.target.closest('#aiFloatingControls')) return;
+      panning = true;
+      startX = e.clientX; startY = e.clientY;
+      const s = aiWorkspaceEngine.getState();
+      startWsX = s.x; startWsY = s.y;
+      viewport.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    viewport.addEventListener('pointermove', (e) => {
+      if (!panning) return;
+      aiWorkspaceEngine.setState(startWsX + (e.clientX - startX), startWsY + (e.clientY - startY));
+    });
+    viewport.addEventListener('pointerup', () => { panning = false; });
+    viewport.addEventListener('pointercancel', () => { panning = false; });
+  })();
   document.addEventListener('keydown', (e) => {
-    const panel = document.getElementById('aiEditorPanel');
+    const panel = document.getElementById('aiRemoveStage');
     if (!panel || panel.classList.contains('hidden')) return;
     if (e.code === 'Space' && !spacePan){
       spacePan = true;
@@ -2414,9 +2494,8 @@ if (document.getElementById('aiRemoveDrop')){
         historyStack = []; historyIndex = -1; pushHistory();
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
-        document.getElementById('aiEditorPanel').classList.remove('hidden');
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
-        setZoom(100); setTool('brush');
+        aiViewZoom = 1; fitAiCanvasDisplay(); setTool('brush');
         banner.classList.add('hidden');
         toast('Previous session restored.');
       }catch(err){
@@ -2575,16 +2654,15 @@ if (document.getElementById('aiRemoveDrop')){
     }
   };
 
-  /* ---------- Mobile: two-finger pinch zoom + two-finger pan ---------- */
-  let pinchStartDist = null, pinchStartZoom = 100, pinchStartMid = null, pinchStartScroll = null;
+  /* ---------- Mobile: two-finger pinch zoom ---------- */
+  let pinchStartDist = null, pinchStartZoom = 1, pinchStartMid = null;
   editStageWrap.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2){
       e.preventDefault();
       const [a, b] = e.touches;
       pinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-      pinchStartZoom = zoomSelect ? +zoomSelect.value : 100;
+      pinchStartZoom = aiViewZoom;
       pinchStartMid = { x: (a.clientX+b.clientX)/2, y: (a.clientY+b.clientY)/2 };
-      pinchStartScroll = { left: editStageWrap.scrollLeft, top: editStageWrap.scrollTop };
     }
   }, { passive: false });
   editStageWrap.addEventListener('touchmove', (e) => {
@@ -2592,10 +2670,8 @@ if (document.getElementById('aiRemoveDrop')){
       e.preventDefault();
       const [a, b] = e.touches;
       const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-      setZoom(Math.max(25, Math.min(400, Math.round(pinchStartZoom * (dist/pinchStartDist)))));
-      const mid = { x: (a.clientX+b.clientX)/2, y: (a.clientY+b.clientY)/2 };
-      editStageWrap.scrollLeft = pinchStartScroll.left - (mid.x - pinchStartMid.x);
-      editStageWrap.scrollTop = pinchStartScroll.top - (mid.y - pinchStartMid.y);
+      aiViewZoom = Math.max(0.03, Math.min(16, pinchStartZoom * (dist/pinchStartDist)));
+      fitAiCanvasDisplay();
     }
   }, { passive: false });
   editStageWrap.addEventListener('touchend', (e) => {
