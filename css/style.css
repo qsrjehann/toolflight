@@ -430,6 +430,7 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 .legal-box p{font-size:13.5px;color:var(--ink-soft);line-height:1.7;}
 .legal-close{float:right;background:none;border:none;font-size:18px;cursor:pointer;color:var(--ink-soft);}
 .hidden{display:none !important;}
+html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; }
 
 /* ============ MULTI-PAGE ADDITIONS ============ */
 .nav-links a.active{color:var(--accent1);}
@@ -1370,6 +1371,10 @@ footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20
 
 @media (max-width: 899.98px){
   #ppTopAppBar{ display:flex; }
+  #ppTopAppBarTitle{ flex:1; }
+  #ppNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  #ppNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+  #ppCanvasTopControls{ display:none; }
   #ppBottomToolbar{ display:flex; }
   #ppLeftRail{ display:none; }
   #ppCanvasAreaShell{ padding:10px; padding-bottom:10px; }
