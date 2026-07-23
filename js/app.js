@@ -6549,6 +6549,25 @@ if (document.getElementById('ppDrop')){
     document.getElementById('ppStage').classList.remove('hidden');
     document.getElementById('ppDownloadRow').classList.remove('hidden');
     resetPpAdjustments();
+    // Show the ENTIRE uploaded image first, before any face-based
+    // auto-positioning runs -- the render pipeline's baseScale is a
+    // "cover" fit (fills the output frame, cropping whatever doesn't
+    // fit), so even the default ppZoom=1 crops a typical photo
+    // immediately (proven: only ~75% of a 3000x4000 portrait's height
+    // visible at zoom=1). Setting zoom to the "contain" ratio here makes
+    // the very first thing the user sees the full, uncropped photo;
+    // Auto Position (below) then correctly switches to the ICAO-cropped
+    // framing once a face is found, or leaves this full-image view as a
+    // sensible fallback if no face is detected.
+    {
+      const preset = currentPreset();
+      const outW0 = mm(preset.wmm), outH0 = mm(preset.hmm);
+      const sw0 = ppSourceCanvas.width, sh0 = ppSourceCanvas.height;
+      const baseScale0 = Math.max(outW0/sw0, outH0/sh0);
+      const containScale0 = Math.min(outW0/sw0, outH0/sh0);
+      ppZoom = Math.max(0.3, Math.min(3, containScale0/baseScale0));
+    }
+    renderPpPreview();
     await runFaceDetectAndAutoPosition();
     renderPpPreview();
     toast('Image loaded.');
