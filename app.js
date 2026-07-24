@@ -918,6 +918,117 @@ if (document.getElementById('bmiCalcBtn')){
   };
 }
 
+/* ============ QR CODE GENERATOR (qr-code-generator.html) ============ */
+if (document.getElementById('qrGenBtn')){
+  const qrSizeInput = document.getElementById('qrSize');
+  const qrSizeVal = document.getElementById('qrSizeVal');
+  let qrLastCanvas = null, qrLastSvgString = null;
+
+  qrSizeInput.addEventListener('input', () => { qrSizeVal.textContent = qrSizeInput.value; });
+
+  function buildQrModules(text){
+    // typeNumber 0 = auto-detect the smallest QR version that fits the data;
+    // 'M' = medium error correction, a reasonable default balancing density and scan reliability.
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    const count = qr.getModuleCount();
+    const modules = [];
+    for (let r = 0; r < count; r++){
+      const row = [];
+      for (let c = 0; c < count; c++) row.push(qr.isDark(r, c));
+      modules.push(row);
+    }
+    return modules;
+  }
+
+  function renderQrToCanvas(modules, size, fg, bg){
+    const count = modules.length;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const cell = size / count;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = fg;
+    for (let r = 0; r < count; r++){
+      for (let c = 0; c < count; c++){
+        if (modules[r][c]){
+          // Round outward by half a pixel on each edge so adjacent modules
+          // don't leave hairline gaps from sub-pixel rounding at common sizes.
+          const x = Math.floor(c*cell), y = Math.floor(r*cell);
+          const w = Math.ceil((c+1)*cell) - x, h = Math.ceil((r+1)*cell) - y;
+          ctx.fillRect(x, y, w, h);
+        }
+      }
+    }
+    return canvas;
+  }
+
+  function buildQrSvgString(modules, size, fg, bg){
+    const count = modules.length;
+    const cell = size / count;
+    let rects = '';
+    for (let r = 0; r < count; r++){
+      for (let c = 0; c < count; c++){
+        if (modules[r][c]) rects += `<rect x="${(c*cell).toFixed(2)}" y="${(r*cell).toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" fill="${fg}"/>`;
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="${bg}"/>${rects}</svg>`;
+  }
+
+  document.getElementById('qrGenBtn').onclick = () => {
+    const text = document.getElementById('qrInput').value.trim();
+    const viewfinder = document.getElementById('qrViewfinder');
+    if (!text){
+      toast('Enter a link or text to encode first.', 'err');
+      return;
+    }
+    const fg = document.getElementById('qrFg').value;
+    const bg = document.getElementById('qrBg').value;
+    const size = +qrSizeInput.value;
+    try {
+      const modules = buildQrModules(text);
+      const canvas = renderQrToCanvas(modules, size, fg, bg);
+      qrLastCanvas = canvas;
+      qrLastSvgString = buildQrSvgString(modules, size, fg, bg);
+      viewfinder.innerHTML = '';
+      canvas.style.maxWidth = '100%';
+      canvas.style.height = 'auto';
+      viewfinder.appendChild(canvas);
+      document.getElementById('qrDownloadRow').classList.remove('hidden');
+    } catch(err){
+      toast('Could not generate a QR code for that input: ' + err.message, 'err');
+    }
+  };
+
+  document.getElementById('qrClearBtn').onclick = () => {
+    document.getElementById('qrInput').value = '';
+    document.getElementById('qrViewfinder').innerHTML = '<span class="placeholder-text">Your QR code will appear here</span>';
+    document.getElementById('qrDownloadRow').classList.add('hidden');
+    qrLastCanvas = null; qrLastSvgString = null;
+  };
+
+  document.getElementById('qrDownloadPngBtn').onclick = () => {
+    if (!qrLastCanvas) return;
+    const a = document.createElement('a');
+    a.download = 'qrcode.png';
+    a.href = qrLastCanvas.toDataURL('image/png');
+    a.click();
+  };
+
+  document.getElementById('qrDownloadSvgBtn').onclick = () => {
+    if (!qrLastSvgString) return;
+    const blob = new Blob([qrLastSvgString], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.download = 'qrcode.svg';
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
 /* ============ ROBOTS.TXT GENERATOR (seo-tools.html) ============ */
 if (document.getElementById('robotsPreview')){
   let robotsRules = [{ path: '/private/', type: 'Disallow' }];
