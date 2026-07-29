@@ -333,7 +333,7 @@ pdf_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-PDF_MERGE_FORM = """<div class="view-title"><h2>Merge PDF</h2><span class="badge" id="mergePageBadge">0 files</span></div>
+PDF_MERGE_FORM = """<div class="view-title"><h2>Upload Your PDFs</h2><span class="badge" id="mergePageBadge">0 files</span></div>
       <span class="field-label">Add PDF files — drag items below to reorder</span>
       <div class="drop-zone" id="mergeDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -347,7 +347,7 @@ PDF_MERGE_FORM = """<div class="view-title"><h2>Merge PDF</h2><span class="badge
         <button class="btn btn-danger" id="mergeClearBtn">Clear all</button>
       </div>"""
 
-PDF_SPLIT_FORM = """<div class="view-title"><h2>Split PDF</h2><span class="badge hidden" id="splitPageBadge">0 pages</span></div>
+PDF_SPLIT_FORM = """<div class="view-title"><h2>Upload Your PDF</h2><span class="badge hidden" id="splitPageBadge">0 pages</span></div>
       <span class="field-label">Choose one PDF</span>
       <div class="drop-zone" id="splitDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -369,7 +369,7 @@ PDF_SPLIT_FORM = """<div class="view-title"><h2>Split PDF</h2><span class="badge
         <button class="btn btn-danger" id="splitClearBtn">Clear</button>
       </div>"""
 
-ITP_FORM = """<div class="view-title"><h2>Image to PDF</h2><span class="badge" id="itpCountBadge">0 images</span></div>
+ITP_FORM = """<div class="view-title"><h2>Upload Your Images</h2><span class="badge" id="itpCountBadge">0 images</span></div>
       <span class="field-label">Add images — drag items below to reorder</span>
       <div class="drop-zone" id="itpDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -410,7 +410,7 @@ ITP_FORM = """<div class="view-title"><h2>Image to PDF</h2><span class="badge" i
         <button class="btn btn-danger" id="itpClearBtn" type="button">Clear all</button>
       </div>"""
 
-PTI_FORM = """<div class="view-title"><h2>PDF to Image</h2></div>
+PTI_FORM = """<div class="view-title"><h2>Upload Your PDF</h2></div>
       <span class="field-label">Choose a PDF</span>
       <div class="drop-zone" id="ptiDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -460,7 +460,7 @@ PTI_FORM = """<div class="view-title"><h2>PDF to Image</h2></div>
         </div>
       </div>"""
 
-PDFC_FORM = """<div class="view-title"><h2>PDF Compress</h2></div>
+PDFC_FORM = """<div class="view-title"><h2>Upload Your PDF</h2></div>
       <span class="field-label">Choose a PDF</span>
       <div class="drop-zone" id="pdfcDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -560,7 +560,7 @@ def _resume_repeat_section(key, title, add_label):
         <div id="rbList_{key}"></div>
       </div>"""
 
-RESUME_FORM = """<div class="view-title"><h2>Resume Builder &amp; ATS Checker</h2></div>
+RESUME_FORM = """<div class="view-title"><h2>Build Your Resume</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Build a resume and check it against common ATS (Applicant Tracking System) patterns \u2014 everything runs locally in your browser, nothing is uploaded. The ATS check is rule-based analysis, not AI \u2014 see its FAQ below for exactly what that means.</p>
 
       <div class="editor-toolbar" role="tablist" aria-label="Resume tool">
@@ -683,7 +683,7 @@ PDF_TOOLS = [
      "subtitle":"Combine multiple PDF files into one, in any order you choose — free, private, instant.",
      "meta":"Free online PDF merge tool. Combine multiple PDF files into one in any order, right in your browser. No upload, no signup.",
      "category":"BusinessApplication","form":PDF_MERGE_FORM,
-     "intro":"Whether you're combining scanned receipts, assembling a report from separate chapters, or stitching signed pages back into one contract, Merge PDF combines any number of PDF files into a single document — reordered exactly how you want, processed entirely in your browser.",
+     "intro":"Whether you're combining scanned receipts, assembling a report from separate chapters, or stitching signed pages back into one contract, Merge PDF combines any number of PDF files into a single document — reordered exactly how you want, processed entirely in your browser. See our full <a href=\"blog/how-to-merge-pdf-files-online.html\">guide to merging PDFs online</a> for a step-by-step walkthrough.",
      "features":["Drag and drop multiple PDF files at once","Reorder files before merging by dragging them into place","Live file count and total page count","One-click merge and download"],
      "benefits":["Files are never uploaded — merging happens locally in your browser","No file size limits imposed by a server, no daily quota","Works identically on desktop and mobile"],
      "how_to":"Drag in all the PDF files you want combined, or tap to browse. Drag the files into the order you want the final document to read in, then tap Merge &amp; download.",
@@ -893,7 +893,6 @@ image_body = f"""<div class="hero-sub">
     {category_hub_card("ai-image-upscaler.html", ICON_UPSCALER, "AI Image Upscaler", "Upscale images 2x or 4x with real AI, using a browser-optimized model.", cta="Open tool")}
     {category_hub_card("magic-eraser.html", ICON_MAGIC_ERASER, "Magic Eraser (AI Object Remover)", "Brush over unwanted objects and remove them with real AI inpainting.", cta="Open tool")}
     {category_hub_card("image-watermark.html", ICON_WATERMARK, "Image Watermark Tool", "Add draggable text or logo watermarks with adjustable opacity.", cta="Open tool")}
-    {category_hub_card("ecommerce-product-editor.html", ICON_CROP, "Ecommerce Product Editor", "Position, scale, rotate, and crop product photos on a real artboard.", cta="Open tool")}
   </div>
 </div>
 """
@@ -902,7 +901,7 @@ image_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
+COMPRESS_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
       <div class="drop-zone" id="compressDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -917,8 +916,8 @@ COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
         <div class="progress-label" id="compressProgressLabel">Reading image…</div>
       </div>
       <div class="compare hidden" id="compareBox">
-        <div class="box"><span class="tag">Original</span><img id="origPreview" loading="lazy"><div class="size" id="origSize"></div></div>
-        <div class="box"><span class="tag">Compressed</span><img id="compPreview" loading="lazy"><div class="size" id="compSize"></div></div>
+        <div class="box"><span class="tag">Original</span><img id="origPreview" alt="Original uploaded image preview" loading="lazy"><div class="size" id="origSize"></div></div>
+        <div class="box"><span class="tag">Compressed</span><img id="compPreview" alt="Compressed image preview" loading="lazy"><div class="size" id="compSize"></div></div>
       </div>
       <div id="savedRow" class="hidden" style="text-align:center;"><span class="saved-badge" id="savedBadge"></span></div>
       <div class="row">
@@ -926,7 +925,7 @@ COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
         <button class="btn btn-success hidden" id="compressDownloadBtn">Download result</button>
       </div>"""
 
-CROP_FORM = """<div class="view-title"><h2>Image Crop Tool</h2></div>
+CROP_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="cropDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -967,7 +966,7 @@ CROP_FORM = """<div class="view-title"><h2>Image Crop Tool</h2></div>
         </div>
       </div>"""
 
-WATERMARK_FORM = """<div class="view-title"><h2>Image Watermark Tool</h2></div>
+WATERMARK_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="wmDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -1024,7 +1023,7 @@ WATERMARK_FORM = """<div class="view-title"><h2>Image Watermark Tool</h2></div>
         </div>
       </div>"""
 
-ROTATE_FLIP_FORM = """<div class="view-title"><h2>Rotate &amp; Flip Tool</h2></div>
+ROTATE_FLIP_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="rfDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -1208,7 +1207,7 @@ BG_REMOVER_FORM = """
       </div>
   """
 
-BG_CHANGER_FORM = """<div class="view-title"><h2>Background Changer</h2></div>
+BG_CHANGER_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Upload a transparent PNG/WEBP (e.g. from the AI Background Remover) and place it on a solid color, gradient, or custom background image.</p>
       <span class="field-label">Choose a transparent image</span>
       <div class="drop-zone" id="bgChangerDrop">
@@ -1263,7 +1262,7 @@ BG_CHANGER_FORM = """<div class="view-title"><h2>Background Changer</h2></div>
         </div>
       </div>"""
 
-ME_FORM = """<div class="view-title"><h2>Magic Eraser (AI Object Remover)</h2></div>
+ME_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Powered by LaMa, an open-source AI inpainting model, running entirely in your browser via WebAssembly \u2014 no file is ever uploaded anywhere. The first use downloads the AI model (~200MB, one-time, cached by your browser afterward).</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1328,7 +1327,7 @@ ME_FORM = """<div class="view-title"><h2>Magic Eraser (AI Object Remover)</h2></
         </div>
       </div>"""
 
-APE_FORM = """<div class="view-title"><h2>AI Photo Enhancer</h2></div>
+APE_FORM = """<div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Natural photo enhancement \u2014 not a beauty filter. Face Enhancement uses a real AI model (MediaPipe Face Landmarker) purely to detect where your face is, so smoothing and clarity are applied precisely and naturally. It never changes your face shape, identity, or adds makeup.</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1421,7 +1420,7 @@ APE_FORM = """<div class="view-title"><h2>AI Photo Enhancer</h2></div>
         </div>
       </div>"""
 
-UPS_FORM = """<div class="view-title"><h2>AI Image Upscaler</h2></div>
+UPS_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real AI super-resolution (ESRGAN via UpscalerJS / TensorFlow.js), not a simple resize \u2014 runs entirely in your browser. The AI model downloads only when you tap AI Upscale (one-time, cached after). Images larger than 1600px on their longest side aren't accepted, to avoid crashing your browser tab.</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1501,7 +1500,7 @@ UPS_FORM = """<div class="view-title"><h2>AI Image Upscaler</h2></div>
         </div>
       </div>"""
 
-OCR_FORM = """<div class="view-title"><h2>AI OCR \u2014 Image &amp; PDF to Text</h2></div>
+OCR_FORM = """<div class="view-title"><h2>Upload Your File</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real OCR (Tesseract.js), running entirely in your browser \u2014 nothing is uploaded. For PDFs, each page is rendered as an image first, then read with the same OCR engine (Tesseract.js itself doesn't read PDF files directly \u2014 see the FAQ).</p>
 
       <span class="field-label">Language(s)</span>
@@ -1855,212 +1854,9 @@ PP_FORM = f"""
       </div>
 
       <div id="ppPrintRoot" class="pp-print-root"></div>
-  """ + PP_COUNTRY_OPTIONS + """
-      </select>
+  """
 
-      <div class="hidden" id="ppCustomSizePanel" style="margin-bottom:12px;padding:12px 14px;border:1.5px solid var(--card-border);border-radius:12px;background:var(--card);">
-        <div class="resume-form-grid">
-          <div class="resume-field-group"><label for="ppCustomWidthVal">Width</label><input type="number" id="ppCustomWidthVal" value="35" min="0.1" step="0.1"></div>
-          <div class="resume-field-group"><label for="ppCustomHeightVal">Height</label><input type="number" id="ppCustomHeightVal" value="45" min="0.1" step="0.1"></div>
-          <div class="resume-field-group"><label for="ppCustomUnit">Unit</label><select id="ppCustomUnit"><option value="mm" selected>Millimeters</option><option value="cm">Centimeters</option><option value="in">Inches</option><option value="px">Pixels</option></select></div>
-          <div class="resume-field-group"><label for="ppCustomDpi">DPI</label><input type="number" id="ppCustomDpi" value="300" min="72" max="1200" step="1"></div>
-        </div>
-        <p id="ppCustomValidation" style="font-size:12.5px;font-weight:600;margin:10px 0 0;"></p>
-        <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.8;">
-          <div>Width: <strong id="ppDimW">\u2014</strong> &middot; Height: <strong id="ppDimH">\u2014</strong> &middot; DPI: <strong id="ppDimDpi">\u2014</strong></div>
-          <div>Pixels: <strong id="ppDimPx">\u2014</strong> &middot; Aspect ratio: <strong id="ppDimRatio">\u2014</strong></div>
-          <div>Physical size: <strong id="ppDimPhysical">\u2014</strong></div>
-        </div>
-        <p class="editor-hint">Custom sizes use standard ICAO-convention head/eye guides since no official rule exists for an arbitrary size \u2014 not a substitute for your destination's actual requirements.</p>
-      </div>
-
-      <p class="hidden" id="ppUsWarning" role="alert" style="font-size:12px;line-height:1.5;color:var(--err-solid);margin:0 0 12px;">
-        \u26a0 US passport/visa photos: avoid AI background replacement and enhancement sliders \u2014 see the full notice in the FAQ below.
-      </p>
-
-      <div class="drop-zone" id="ppDrop">
-        <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
-        <div class="drop-title">Drop a photo here, tap to browse, or paste from clipboard</div>
-        <div class="drop-sub">JPG, PNG, or WEBP \u2014 up to 30MB</div>
-        <input type="file" id="ppInput" accept="image/jpeg, image/png, image/webp">
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button class="btn btn-ghost" id="ppOpenCameraBtn" type="button">Use Camera</button>
-        <input type="file" id="ppCameraFallbackInput" accept="image/*" capture="user" style="display:none;" aria-hidden="true">
-      </div>
-
-      <div class="hidden pp-camera-debug" id="ppCameraDebugPanel">
-        <div style="font-weight:800;font-size:12.5px;margin-bottom:6px;">Camera Debug Panel</div>
-        <div id="ppCameraDebugLog" style="font-size:11px;line-height:1.7;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
-      </div>
-
-      <div class="legal-modal hidden" id="ppCameraModal" role="dialog" aria-modal="true" aria-label="Camera capture">
-        <div class="legal-box" style="max-width:480px;padding:20px;">
-          <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">\u2715</button>
-          <h3 style="margin-top:0;">Position your face in the oval</h3>
-          <div id="ppCameraStageDebugBorder" style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;border:3px solid transparent;">
-            <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;border:3px solid transparent;"></video>
-            <svg viewBox="0 0 300 400" id="ppCameraOverlaySvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;border:3px solid transparent;" aria-hidden="true">
-              <ellipse cx="150" cy="190" rx="95" ry="130" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8" opacity="0.85"/>
-            </svg>
-          </div>
-          <p class="editor-hint" style="margin-top:6px;">Debug mode: red border = stage wrapper, green border = &lt;video&gt; element, blue border = face-guide overlay. If you see only some of these colors, that tells us which layer is actually rendering.</p>
-          <div class="row">
-            <button class="btn btn-primary" id="ppCameraCaptureBtn" type="button" style="flex:1;">Capture Photo</button>
-          </div>
-        </div>
-      </div>
-      <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
-
-      <div id="ppStage" class="hidden">
-        <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
-          <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="ppIcaoToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Show ICAO compliance guides</label>
-        <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
-
-        <details class="pp-accordion" id="ppAccordionManual">
-        <summary class="pp-accordion-summary">Manual Editing (optional)</summary>
-        <p class="editor-hint">Erase, restore, and refine edges by hand \u2014 useful when AI background replacement isn't quite clean, or unavailable. Hold Space and drag to pan; scroll to zoom toward your cursor.</p>
-        <div class="editor-toolbar" role="toolbar" aria-label="Manual editing tools" style="flex-wrap:wrap;">
-          <button class="editor-tool-btn pp-tool-btn" data-tool="erase" type="button" aria-label="Magic Eraser brush">Magic Eraser</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="restore" type="button" aria-label="Restore brush">Restore</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="hair" type="button" aria-label="Hair refinement brush, a finer mode of the same brush">Hair Refine</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="rect" type="button" aria-label="Rectangle selection">Rectangle</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="circle" type="button" aria-label="Circle selection">Circle</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="lasso" type="button" aria-label="Freehand lasso selection">Lasso</button>
-          <button class="editor-tool-btn pp-tool-btn" data-tool="polygon" type="button" aria-label="Polygon selection, click to place points and click near the start to close">Polygon</button>
-        </div>
-        <p class="editor-hint">Brush and selection tools are drawn by mouse, finger, or stylus \u2014 there isn't a practical fully keyboard-driven equivalent for freehand drawing, though every button above is keyboard-reachable and operable.</p>
-
-        <div class="resume-form-grid">
-          <div class="resume-field-group"><label for="ppBrushSize">Brush Size: <span id="ppBrushSizeVal">40</span>px</label><input type="range" id="ppBrushSize" min="4" max="200" value="40"></div>
-          <div class="resume-field-group"><label for="ppBrushHardness">Edge Hardness: <span id="ppBrushHardnessVal">60</span></label><input type="range" id="ppBrushHardness" min="0" max="100" value="60"></div>
-        </div>
-
-        <div class="row hidden" id="ppSelectionActions">
-          <button class="btn btn-secondary" id="ppFillSelectionEraseBtn" type="button">Erase Selection</button>
-          <button class="btn btn-secondary" id="ppFillSelectionRestoreBtn" type="button">Restore Selection</button>
-          <button class="btn btn-ghost" id="ppClearSelectionBtn" type="button">Clear Selection</button>
-        </div>
-
-        <div class="row">
-          <input type="range" id="ppFeatherRadius" min="1" max="20" value="4" aria-label="Feather radius" style="flex:1;">
-          <button class="btn btn-secondary" id="ppFeatherBtn" type="button">Feather Edges</button>
-        </div>
-
-        <div class="row">
-          <button class="btn btn-ghost" id="ppUndoBtn" type="button" aria-label="Undo" disabled>Undo (Ctrl+Z)</button>
-          <button class="btn btn-ghost" id="ppRedoBtn" type="button" aria-label="Redo" disabled>Redo (Ctrl+Y)</button>
-        </div>
-        </details>
-
-        <details class="pp-accordion" id="ppAccordionPosition" open>
-        <summary class="pp-accordion-summary">Position &amp; Size</summary>
-        <div class="resume-form-grid">
-          <div class="resume-field-group"><label for="ppZoomSlider">Zoom</label><input type="range" id="ppZoomSlider" min="30" max="300" value="100"></div>
-          <div class="resume-field-group"><label for="ppMoveX">Move Horizontal</label><input type="range" id="ppMoveX" min="-200" max="200" value="0"></div>
-          <div class="resume-field-group"><label for="ppMoveY">Move Vertical</label><input type="range" id="ppMoveY" min="-200" max="200" value="0"></div>
-        </div>
-        <div class="row">
-          <button class="btn btn-secondary" id="ppAutoCenterBtn" type="button">Auto Center Face</button>
-          <button class="btn btn-secondary" id="ppFitScreenBtn" type="button">Fit to Screen</button>
-          <button class="btn btn-ghost" id="ppRotateBtn" type="button">Rotate 90\u00b0</button>
-          <button class="btn btn-ghost" id="ppFlipBtn" type="button">Flip</button>
-          <button class="btn btn-danger" id="ppResetBtn" type="button">Reset</button>
-        </div>
-        <div class="row">
-          <button class="btn btn-secondary" id="ppCropToggleBtn" type="button" aria-pressed="false">Crop</button>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="ppCropLockRatio" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Lock to passport ratio</label>
-        </div>
-        <div class="row hidden" id="ppCropActions">
-          <button class="btn btn-primary" id="ppCropApplyBtn" type="button">Apply Crop</button>
-          <button class="btn btn-ghost" id="ppCropResetBtn" type="button">Reset Crop</button>
-          <button class="btn btn-ghost" id="ppCropCancelBtn" type="button">Cancel</button>
-        </div>
-        </details>
-
-        <details class="pp-accordion" id="ppAccordionBackground" open>
-        <summary class="pp-accordion-summary">Background</summary>
-        <div class="row" style="margin-top:6px;">
-          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="preset" checked style="margin-right:6px;accent-color:var(--accent1);">Country Default</label>
-          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="white" style="margin-right:6px;accent-color:var(--accent1);">Pure White</label>
-          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="gray" style="margin-right:6px;accent-color:var(--accent1);">Light Gray</label>
-          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="blue" style="margin-right:6px;accent-color:var(--accent1);">Blue</label>
-          <label class="btn btn-ghost" style="cursor:pointer;"><input type="radio" name="ppBg" value="custom" style="margin-right:6px;accent-color:var(--accent1);">Custom<input type="color" id="ppCustomBgColor" value="#ffffff" style="margin-left:6px;vertical-align:middle;"></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-secondary" id="ppReplaceBgBtn" type="button">Replace Background (AI)</button>
-        </div>
-        <p class="editor-hint">Choosing a background color sets the target for AI background replacement below \u2014 tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
-        <div class="row hidden" id="ppManualBgRow">
-          <button class="btn btn-ghost" id="ppManualBgClickBtn" type="button">Manual: Click Background to Replace</button>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:10px;cursor:pointer;color:var(--ink-soft);"><input type="checkbox" id="ppDebugSegmentation" style="width:15px;height:15px;accent-color:var(--accent1);"> Debug Segmentation Mode (developer)</label>
-        <p class="editor-hint">When enabled, tapping Replace Background (AI) additionally logs detailed pixel-level data to the browser console and shows every intermediate stage below \u2014 for diagnosing background-replacement issues, not for normal use.</p>
-        <div class="hidden pp-debug-panel" id="ppDebugPanel"></div>
-        </details>
-
-        <details class="pp-accordion" id="ppAccordionAdjustments">
-        <summary class="pp-accordion-summary">Adjustments</summary>
-        <div class="resume-form-grid">
-          <div class="resume-field-group"><label for="ppBrightness">Brightness: <span id="ppBrightnessVal">0</span></label><input type="range" id="ppBrightness" min="-100" max="100" value="0"></div>
-          <div class="resume-field-group"><label for="ppContrast">Contrast: <span id="ppContrastVal">0</span></label><input type="range" id="ppContrast" min="-100" max="100" value="0"></div>
-          <div class="resume-field-group"><label for="ppSaturation">Saturation: <span id="ppSaturationVal">0</span></label><input type="range" id="ppSaturation" min="-100" max="100" value="0"></div>
-          <div class="resume-field-group"><label for="ppSharpness">Sharpness: <span id="ppSharpnessVal">0</span></label><input type="range" id="ppSharpness" min="0" max="100" value="0"></div>
-          <div class="resume-field-group"><label for="ppTemperature">Temperature: <span id="ppTemperatureVal">0</span></label><input type="range" id="ppTemperature" min="-100" max="100" value="0"></div>
-        </div>
-        </details>
-
-        <span class="field-label" style="margin-top:14px;">Automated Suitability Score</span>
-        <div class="ats-score-wrap">
-          <div class="ats-score-num" id="ppScoreNum">\u2014</div>
-          <div><div style="font-weight:700;font-size:13px;">Automated checks (not an official validator)</div><div class="ats-score-label" id="ppScoreLabel"></div></div>
-        </div>
-        <ul class="ats-result-list" id="ppValidationList" style="margin-top:10px;"></ul>
-
-        <details class="pp-accordion" id="ppAccordionExport">
-        <summary class="pp-accordion-summary">Export &amp; Print</summary>
-          <div class="row hidden" id="ppDownloadRow">
-            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
-            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
-          </div>
-          <div class="qr-controls" style="margin-top:10px;">
-            <div class="ctrl">
-              <label for="ppSheetSize">Print Sheet Size</label>
-              <select id="ppSheetSize"><option value="4x6">4x6 inch</option><option value="5x7">5x7 inch</option><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option><option value="custom">Custom</option></select>
-            </div>
-            <div class="ctrl">
-              <label for="ppSheetMargin">Margin (pt)</label>
-              <input type="range" id="ppSheetMargin" min="6" max="40" value="18">
-            </div>
-            <div class="ctrl">
-              <label for="ppSheetGap">Spacing (pt)</label>
-              <input type="range" id="ppSheetGap" min="0" max="20" value="6">
-            </div>
-          </div>
-          <div class="resume-form-grid hidden" id="ppCustomPaperRow">
-            <div class="resume-field-group"><label for="ppCustomPaperW">Custom Width (in)</label><input type="number" id="ppCustomPaperW" value="4" min="1" max="20" step="0.1"></div>
-            <div class="resume-field-group"><label for="ppCustomPaperH">Custom Height (in)</label><input type="number" id="ppCustomPaperH" value="6" min="1" max="20" step="0.1"></div>
-          </div>
-
-          <div id="ppSheetInfo" style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;"></div>
-          <div id="ppSheetPreviewWrap" class="pp-sheet-preview-wrap"></div>
-          <p class="editor-hint">Tap a photo in the sheet preview, then tap another to swap their positions.</p>
-
-          <div class="row">
-            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
-          </div>
-          <div class="row">
-            <button class="btn btn-ghost" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
-          </div>
-        </details>
-      </div>
-
-      <div id="ppPrintRoot" class="pp-print-root"></div>"""
-
-RT_FORM = """<div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h2></div>
+RT_FORM = """<div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional portrait retouch editor \\u2014 skin smoothing, background blur, and a full set of Lightroom-style tone and color adjustments, running entirely in your browser at full resolution. Nothing you upload ever leaves your device.</p>
 
       <div class="drop-zone" id="rtDrop">
@@ -3480,7 +3276,7 @@ IMAGE_TOOLS = [
      "subtitle":"Shrink JPG, PNG, and WEBP file size with a live before &amp; after preview — free, private, instant.",
      "meta":"Free online image compressor. Shrink JPG, PNG, and WEBP file size with a live before/after preview, right in your browser.",
      "category":"MultimediaApplication","form":COMPRESS_FORM,
-     "intro":"Large photos slow down websites, fill up phone storage, and bounce out of email attachments. Compress Image shrinks JPG, PNG, and WEBP files right in your browser — no upload, no signup, no waiting on a server.",
+     "intro":"Large photos slow down websites, fill up phone storage, and bounce out of email attachments. Compress Image shrinks JPG, PNG, and WEBP files right in your browser — no upload, no signup, no waiting on a server. See our <a href=\"blog/how-to-compress-images-without-losing-quality.html\">full guide to compressing images without losing quality</a> for tips on getting the best results.",
      "features":["Live before/after preview with exact file sizes","Adjustable quality slider for fine control","Automatic resize for oversized images (2000px cap) to keep exports fast","Works with JPG, PNG, and WEBP up to 50MB"],
      "benefits":["Faster-loading web pages and lighter email attachments","Your image never leaves your device — nothing is uploaded anywhere","No account, no watermark, no daily limits"],
      "how_to":"Drop in an image, adjust the quality slider, and compare the before/after file sizes live. Download once you're happy with the tradeoff between size and quality.",
@@ -3550,7 +3346,7 @@ IMAGE_TOOLS = [
      "how_to":"Upload a photo, then tap Remove background (AI). The first use downloads a small AI model (a few MB, cached afterward), then the background is removed automatically using machine learning. Use the Refine tools below to fix any rough edges before exporting.",
      "faq":[("Is my photo uploaded anywhere?","No — the AI model runs entirely inside your browser using WebAssembly. Your image is never sent to a server."),
             ("What does this work best on?","People, animals, vehicles, furniture, and other common photo subjects. Very fine detail like flyaway hair may not be as precise as a specialized paid tool — that's exactly what the manual refine tools are for.")],
-     "related":["background-changer","magic-eraser","ecommerce-product-editor"]},
+     "related":["background-changer","magic-eraser","ecommerce-product-editor","ai-photo-retouch"]},
 
     {"slug":"background-changer","name":"Background Changer","desc":"Solid colors, gradients, or a custom background image.",
      "subtitle":"Place any transparent image on a solid color, gradient, or custom background.",
@@ -3576,7 +3372,7 @@ IMAGE_TOOLS = [
             ("Will this change how I look?","No \u2014 this tool never warps face shape, never changes identity, and never adds makeup. It only adjusts lighting, color, and smooths skin texture using your own real pixels \u2014 nothing is generated or replaced."),
             ("Why does skin smoothing sometimes look uneven without Face Enhancement on?","Without Face Enhancement, smoothing applies evenly across the whole image, including backgrounds and clothing. Turning it on limits smoothing to detected skin specifically, which usually looks more natural on portraits."),
             ("Is my photo uploaded anywhere?","No \u2014 both the AI face detection and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
-     "related":["magic-eraser","ai-image-upscaler"]},
+     "related":["magic-eraser","ai-image-upscaler","ai-photo-retouch"]},
 
     {"slug":"ai-image-upscaler","name":"AI Image Upscaler","desc":"Upscale images 2x or 4x with real AI \u2014 a browser-optimized model, not the largest available.",
      "subtitle":"Upscale images 2x or 4x with real AI super-resolution \u2014 a browser-optimized model chosen deliberately over the largest available option.",
@@ -3729,7 +3525,7 @@ calc_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-AGE_FORM = """<div class="view-title"><h2>Age Calculator</h2></div>
+AGE_FORM = """<div class="view-title"><h2>Enter Your Birth Date</h2></div>
       <span class="field-label">Date of birth</span>
       <input type="date" id="ageDobInput">
       <span class="field-label" style="margin-top:14px;">Calculate age as of</span>
@@ -3745,7 +3541,7 @@ AGE_FORM = """<div class="view-title"><h2>Age Calculator</h2></div>
       </div>
       <p id="ageTotalDaysLine" class="hidden" style="font-size:12.5px;color:var(--ink-soft);margin-top:12px;">Total days lived: <strong id="ageTotalDays">0</strong></p>"""
 
-BMI_FORM = """<div class="view-title"><h2>BMI Calculator</h2></div>
+BMI_FORM = """<div class="view-title"><h2>Enter Your Details</h2></div>
       <div class="unit-toggle bmi-unit-toggle">
         <button class="active" data-unit="metric" type="button">Metric (cm/kg)</button>
         <button data-unit="imperial" type="button">Imperial (ft/lb)</button>
@@ -3778,7 +3574,7 @@ BMI_FORM = """<div class="view-title"><h2>BMI Calculator</h2></div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin-top:12px;">BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition. It isn't a diagnosis.</p>
       </div>"""
 
-PERCENTAGE_FORM = """<div class="view-title"><h2>Percentage Calculator</h2></div>
+PERCENTAGE_FORM = """<div class="view-title"><h2>Enter Your Values</h2></div>
       <div class="unit-toggle pct-mode-toggle">
         <button class="active" data-mode="of" type="button">X% of Y</button>
         <button data-mode="percentOf" type="button">X is what % of Y</button>
@@ -3799,7 +3595,7 @@ PERCENTAGE_FORM = """<div class="view-title"><h2>Percentage Calculator</h2></div
         <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;" id="pctFormula"></p>
       </div>"""
 
-DISCOUNT_FORM = """<div class="view-title"><h2>Discount Calculator</h2></div>
+DISCOUNT_FORM = """<div class="view-title"><h2>Enter Your Values</h2></div>
       <span class="field-label">Original price</span>
       <input type="number" id="discOriginal" placeholder="e.g. 100" min="0" step="0.01">
       <span class="field-label" style="margin-top:14px;">Discount %</span>
@@ -3809,7 +3605,7 @@ DISCOUNT_FORM = """<div class="view-title"><h2>Discount Calculator</h2></div>
         <div class="result-stat"><div class="num" id="discSaved">0.00</div><div class="label">Amount Saved</div></div>
       </div>"""
 
-EMI_FORM = """<div class="view-title"><h2>EMI / Loan Calculator</h2></div>
+EMI_FORM = """<div class="view-title"><h2>Enter Loan Details</h2></div>
       <span class="field-label">Loan amount</span>
       <input type="number" id="emiAmount" placeholder="e.g. 20000" min="0" step="0.01">
       <span class="field-label" style="margin-top:14px;">Interest rate (annual %)</span>
@@ -3832,7 +3628,7 @@ EMI_FORM = """<div class="view-title"><h2>EMI / Loan Calculator</h2></div>
         <div class="result-stat"><div class="num" id="emiTotal">0.00</div><div class="label">Total Payment</div></div>
       </div>"""
 
-GST_FORM = """<div class="view-title"><h2>GST / VAT Calculator</h2></div>
+GST_FORM = """<div class="view-title"><h2>Enter Amount</h2></div>
       <div class="unit-toggle gst-mode-toggle">
         <button class="active" data-mode="add" type="button">Add GST/VAT</button>
         <button data-mode="remove" type="button">Remove GST/VAT</button>
@@ -3850,7 +3646,7 @@ GST_FORM = """<div class="view-title"><h2>GST / VAT Calculator</h2></div>
         <div class="result-stat"><div class="num" id="gstFinalAmount">0.00</div><div class="label">Final Amount</div></div>
       </div>"""
 
-SCIENTIFIC_FORM = """<div class="view-title"><h2>Scientific Calculator</h2></div>
+SCIENTIFIC_FORM = """<div class="view-title"><h2>Keypad</h2></div>
       <div class="sci-display" id="sciDisplay">0</div>
       <div class="unit-toggle" id="sciAngleToggle" style="margin-top:10px;">
         <button class="active" data-angle="deg" type="button">DEG</button>
@@ -3901,7 +3697,7 @@ SCIENTIFIC_FORM = """<div class="view-title"><h2>Scientific Calculator</h2></div
         <button class="sci-btn sci-equals" data-action="equals" type="button" style="grid-column:span 3;">=</button>
       </div>"""
 
-UNIT_FORM = """<div class="view-title"><h2>Unit Converter</h2></div>
+UNIT_FORM = """<div class="view-title"><h2>Convert Units</h2></div>
       <span class="field-label">Category</span>
       <select id="unitCategory">
         <option value="length" selected>Length</option>
@@ -3929,7 +3725,7 @@ UNIT_FORM = """<div class="view-title"><h2>Unit Converter</h2></div>
         <div class="result-stat"><div class="num" id="unitToValue">—</div><div class="label" id="unitToLabel">Result</div></div>
       </div>"""
 
-CURRENCY_FORM = """<div class="view-title"><h2>Currency Converter</h2></div>
+CURRENCY_FORM = """<div class="view-title"><h2>Convert Currency</h2></div>
       <span class="field-label">Amount</span>
       <input type="number" id="curAmount" placeholder="e.g. 100" value="1" min="0" step="0.01">
 
@@ -3951,6 +3747,7 @@ CALCULATORS = [
      "subtitle":"Find your exact age in years, months, and days — free, private, instant.",
      "meta":"Free online age calculator. Find your exact age in years, months, and days, or calculate your age as of any date.",
      "category":"UtilitiesApplication","form":AGE_FORM,
+     "intro":"This calculator finds the exact time between two dates — typically your date of birth and today — broken down into full years, full months, and remaining days, rather than a single decimal figure. It's useful for anything that requires a precise age on a specific date: eligibility checks, legal or medical forms, or just satisfying curiosity about exactly how old you are down to the day. It also works for any two dates, not just birthdays, so you can use it to find your age as of a past or future date.",
      "how_to":"Enter your date of birth, and optionally change \"Calculate age as of\" to any other date, then tap Calculate age to see your exact age broken down into years, months, and days, plus total days lived.",
      "faq":[("How is my age calculated?","We count full years, then full months, then the remaining days between your date of birth and the \"as of\" date — the same method used by most official age calculators."),
             ("Can I find my age on a specific past or future date?","Yes — change the \"Calculate age as of\" field to any date to see your age at that point in time.")],
@@ -3960,6 +3757,7 @@ CALCULATORS = [
      "subtitle":"Calculate your Body Mass Index from height and weight — metric or imperial.",
      "meta":"Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.",
      "category":"HealthApplication","form":BMI_FORM,
+     "intro":"Body Mass Index (BMI) is a simple screening measure calculated from your height and weight, using the standard formula weight (kg) ÷ height (m)². It's widely used by health organizations as a quick, population-level indicator of whether someone's weight falls into a typical range for their height — not as an individual diagnosis. This calculator accepts either metric (kg/cm) or imperial (lb/ft-in) units and instantly shows both your BMI number and which standard WHO category it falls into.",
      "how_to":"Choose Metric or Imperial units, enter your height and weight, then tap Calculate BMI to see your Body Mass Index and its standard category.",
      "faq":[("What do the BMI categories mean?","Under 18.5 is Underweight, 18.5–24.9 is Normal weight, 25–29.9 is Overweight, and 30+ is Obesity, using the standard WHO ranges."),
             ("Is BMI accurate for everyone?","BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition — it isn't a diagnosis.")],
@@ -3969,6 +3767,7 @@ CALCULATORS = [
      "subtitle":"X% of Y, percent of a total, increase, decrease, and difference — all in one tool.",
      "meta":"Free online percentage calculator. Calculate X% of Y, what percent X is of Y, percentage increase, decrease, and difference.",
      "category":"UtilitiesApplication","form":PERCENTAGE_FORM,
+     "intro":"Percentage problems come in several genuinely different shapes — finding what X% of a number is, working out what percent one number is of another, or measuring how much something has grown or shrunk — and each needs a different calculation. Rather than making you remember which formula applies, this tool offers five explicit modes (X% of Y, X is what % of Y, % Increase, % Decrease, and % Difference), shows the formula it used, and gives the result instantly as you type.",
      "how_to":"Choose a mode — X% of Y, X is what % of Y, % Increase, % Decrease, or % Difference — enter your two values, then tap Calculate to see the formula and result.",
      "faq":[("What's the difference between % Increase and % Difference?","% Increase/Decrease measures change relative to the original value; % Difference measures the gap relative to the average of both values, useful when there's no clear \"original\"."),
             ("Can I use negative numbers?","Yes, though results in Increase/Decrease mode are most meaningful when the original value isn't zero.")],
@@ -3978,6 +3777,7 @@ CALCULATORS = [
      "subtitle":"Final price and amount saved, calculated instantly as you type.",
      "meta":"Free online discount calculator. Enter the original price and discount percentage to instantly see the final price and amount saved.",
      "category":"UtilitiesApplication","form":DISCOUNT_FORM,
+     "intro":"A quick way to see exactly what you'll pay and exactly what you'll save on a discounted item, without doing the percentage math by hand. Enter the original price and the discount percentage, and both the final price and the amount saved update live as you type — useful for comparing sale prices while shopping, or checking a discount was applied correctly at checkout.",
      "how_to":"Enter the original price and the discount percentage — the final price and amount saved update instantly as you type, no button needed.",
      "faq":[("Does this work for stacked or multiple discounts?","This calculates a single discount pass; for stacked discounts, use this calculator's Final Price as the Original Price for the next discount."),
             ("Can I calculate the discount percentage from two prices instead?","This tool goes from percentage to price; for the reverse, use the Percentage Calculator's \"X is what % of Y\" mode with the amount saved and original price.")],
@@ -3987,6 +3787,7 @@ CALCULATORS = [
      "subtitle":"Monthly EMI, total interest, and total payment for any loan amount and term.",
      "meta":"Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.",
      "category":"FinanceApplication","form":EMI_FORM,
+     "intro":"An EMI (Equated Monthly Installment) is the fixed monthly payment you make on a loan, combining both principal and interest, calculated using the standard reducing-balance method banks use — meaning the interest portion shrinks and the principal portion grows with each payment, even though the total monthly amount stays the same. This calculator takes your loan amount, interest rate, and term, and shows your monthly payment alongside the total interest and total amount you'll pay over the life of the loan, so you can compare loan offers or terms before committing.",
      "how_to":"Enter the loan amount, annual interest rate, and loan term in months or years, then tap Calculate EMI to see your monthly payment, total interest, and total amount payable over the life of the loan.",
      "faq":[("How is EMI calculated?","Using the standard reducing-balance formula: EMI = P × r × (1+r)^n / ((1+r)^n − 1), where P is the principal, r is the monthly interest rate, and n is the number of monthly installments."),
             ("Does this include fees or insurance?","No — this calculates principal and interest only. Add any separate fees or insurance premiums manually.")],
@@ -3996,6 +3797,7 @@ CALCULATORS = [
      "subtitle":"Add or remove GST/VAT from any amount instantly.",
      "meta":"Free online GST and VAT calculator. Add or remove tax from any amount instantly, for any country's tax rate.",
      "category":"FinanceApplication","form":GST_FORM,
+     "intro":"Whether you need to add tax to a pre-tax price or work backward to find the pre-tax price from a tax-inclusive total, this calculator handles both directions with a single tax-rate input. It works for GST, VAT, sales tax, or any percentage-based consumption tax regardless of what your country calls it or what rate applies — the underlying math is the same everywhere, only the label differs.",
      "how_to":"Enter the amount and tax percentage, choose whether to add or remove tax, then tap Calculate.",
      "faq":[("What's the difference between adding and removing tax?","\"Add\" treats your amount as the pre-tax price and calculates the tax-inclusive total. \"Remove\" treats your amount as already including tax and extracts the original pre-tax price."),
             ("Does this work for any country's tax rate?","Yes — enter whatever percentage applies in your region; the math is the same regardless of what the tax is called locally.")],
@@ -4005,6 +3807,7 @@ CALCULATORS = [
      "subtitle":"Trig, logs, powers, memory functions, and full keyboard support.",
      "meta":"Free online scientific calculator with trigonometry, logarithms, powers, memory functions, and full keyboard support.",
      "category":"UtilitiesApplication","form":SCIENTIFIC_FORM,
+     "intro":"A full scientific calculator covering the functions a basic calculator leaves out: trigonometry (sin, cos, tan and their inverses), logarithms (natural and base-10), powers and roots, and memory functions (M+, M-, MR, MC) for multi-step calculations. It supports both mouse/touch input via on-screen buttons and direct keyboard typing, so it works equally well for quick lookups or longer calculation sessions.",
      "how_to":"Tap the number and operator buttons to build an expression, or type directly using your keyboard. Use the DEG/RAD toggle to control how sin, cos, and tan interpret angles, then press = to evaluate.",
      "faq":[("Does this support keyboard input?","Yes — digits, + − * /, parentheses, Enter (=), Backspace, and Escape (clear) all work from your keyboard."),
             ("Degrees or radians?","Use the DEG/RAD toggle above the display — it defaults to degrees.")],
@@ -4014,6 +3817,7 @@ CALCULATORS = [
      "subtitle":"Length, weight, temperature, area, volume, speed, time, and data storage — 8 categories.",
      "meta":"Free online unit converter for length, weight, temperature, area, volume, speed, time, and data storage, with instant conversion.",
      "category":"UtilitiesApplication","form":UNIT_FORM,
+     "intro":"Converts between units across eight everyday categories — length, weight, temperature, area, volume, speed, time, and digital storage — using standard, accurate conversion factors for each. Temperature is handled with the correct Celsius/Fahrenheit/Kelvin formulas rather than a simple multiplier, since temperature scales don't share a common zero point the way most other unit pairs do.",
      "how_to":"Pick a category, choose your From and To units, then type a value — the result updates instantly as you type.",
      "faq":[("How many categories are supported?","Eight: Length, Weight, Temperature, Area, Volume, Speed, Time, and Data Storage."),
             ("Are the conversions accurate?","Yes, using standard conversion factors; temperature uses the correct Celsius/Fahrenheit/Kelvin formulas rather than a simple multiplier.")],
@@ -4023,6 +3827,7 @@ CALCULATORS = [
      "subtitle":"Live exchange rates for 25+ currencies, updated daily via the free Frankfurter API.",
      "meta":"Free online currency converter with live daily exchange rates for 25+ currencies. No signup, no API key required.",
      "category":"FinanceApplication","form":CURRENCY_FORM,
+     "intro":"Converts between 25+ world currencies using daily reference exchange rates from the Frankfurter API, an open data source built on European Central Bank rates. Rates refresh once per working day, matching how most banks and official sources publish reference rates — this is a reliable daily figure for budgeting, travel planning, or comparing prices across currencies, not a live trading feed for time-sensitive transactions.",
      "how_to":"Enter an amount, choose your From and To currencies, and the converted amount updates automatically using current exchange rates.",
      "faq":[("Where do the exchange rates come from?","From the free, open Frankfurter API, which publishes daily reference rates sourced from the European Central Bank."),
             ("How often do rates update?","Once per working day — this is a reliable daily reference rate, not real-time tick-by-tick trading data.")],
@@ -4059,6 +3864,10 @@ def build_calculator_page(calc):
             {"@type": "ListItem", "position": 3, "name": calc["name"], "item": f'https://toolflight.com/{calc["slug"]}.html'},
         ]
     }
+    webpage_schema = {
+        "@context": "https://schema.org", "@type": "WebPage",
+        "name": calc["name"], "description": calc["meta"], "url": f'https://toolflight.com/{calc["slug"]}.html'
+    }
     software_schema = {
         "@context": "https://schema.org", "@type": "SoftwareApplication",
         "name": calc["name"], "applicationCategory": calc["category"], "operatingSystem": "Any",
@@ -4082,7 +3891,9 @@ def build_calculator_page(calc):
   </div>
 
   <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">How to use the {calc["name"]}</h2>
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the {calc["name"]}</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{calc["intro"]}</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to use the {calc["name"]}</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{calc["how_to"]}</p>
     <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
 {faq_html}    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Calculators</h2>
@@ -4092,6 +3903,7 @@ def build_calculator_page(calc):
 </div>
 
 <script type="application/ld+json">{_json.dumps(breadcrumb_schema)}</script>
+<script type="application/ld+json">{_json.dumps(webpage_schema)}</script>
 <script type="application/ld+json">{_json.dumps(software_schema)}</script>
 <script type="application/ld+json">{_json.dumps(faqpage_schema)}</script>
 """
@@ -4145,7 +3957,7 @@ ai_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-QR_FORM = """<div class="view-title"><h2>QR Generator</h2></div>
+QR_FORM = """<div class="view-title"><h2>Generate Your Code</h2></div>
       <span class="field-label">Link or text to encode</span>
       <input type="text" id="qrInput" placeholder="https://example.com or any text">
       <div class="qr-controls">
@@ -4166,7 +3978,7 @@ QR_FORM = """<div class="view-title"><h2>QR Generator</h2></div>
         <button class="btn btn-success" id="qrDownloadSvgBtn">Download SVG</button>
       </div>"""
 
-ROBOTS_FORM = """<div class="view-title"><h2>Robots.txt Generator</h2></div>
+ROBOTS_FORM = """<div class="view-title"><h2>Generate robots.txt</h2></div>
       <span class="field-label">Website URL</span>
       <input type="text" id="robotsWebsiteUrl" placeholder="https://example.com">
       <span class="field-label" style="margin-top:14px;">Sitemap URL</span>
@@ -4185,7 +3997,7 @@ ROBOTS_FORM = """<div class="view-title"><h2>Robots.txt Generator</h2></div>
         <button class="btn btn-success" id="robotsDownloadBtn">Download robots.txt</button>
       </div>"""
 
-META_FORM = """<div class="view-title"><h2>Meta Tag Generator</h2></div>
+META_FORM = """<div class="view-title"><h2>Generate Meta Tags</h2></div>
       <span class="field-label">Title</span>
       <input type="text" id="metaTitle" placeholder="Page title">
       <span class="field-label" style="margin-top:14px;">Description</span>
@@ -4224,7 +4036,7 @@ META_FORM = """<div class="view-title"><h2>Meta Tag Generator</h2></div>
         <button class="btn btn-success" id="metaDownloadBtn">Download HTML</button>
       </div>"""
 
-GKW_FORM = """<div class="view-title"><h2>AI Keyword Generator</h2></div>
+GKW_FORM = """<div class="view-title"><h2>Enter Your Topic</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Generates keyword ideas using template-based expansion, entirely in your browser. Metrics (volume, CPC, competition, difficulty) are <strong>AI-estimated for ideation</strong>, not live data from any paid keyword-research platform — there's no backend or API on this site to pull real numbers from. Use this to brainstorm broadly, then verify final picks in your search console or preferred keyword tool.</p>
 
       <form id="gkwForm">
@@ -4388,7 +4200,7 @@ GKW_FORM = """<div class="view-title"><h2>AI Keyword Generator</h2></div>
         <div id="gkwResultsBody" style="margin-top:14px;max-height:600px;overflow-y:auto;"></div>
       </div>"""
 
-AEW_FORM = """<div class="view-title"><h2>AI Email Writer</h2></div>
+AEW_FORM = """<div class="view-title"><h2>Compose Your Email</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A real, working email-writing interface with a genuine provider abstraction \u2014 not a fake AI demo. This static, backend-free site can't safely hold a real API key, so no provider is currently connected. See the FAQ below for exactly what that means and why.</p>
 
       <form id="aewForm">
@@ -4508,7 +4320,7 @@ SEO_TOOLS = [
      "faq":[("Is this real keyword-planner data?","No \u2014 this site has no backend or API connection to any paid keyword-research platform (such as Google Keyword Planner), so any tool claiming to show that without one would be misrepresenting its numbers. Instead, this generates keyword ideas through structured template-based expansion and attaches consistent, estimated metrics for ideation and prioritization \u2014 a legitimate, widely-used approach for the free tier of many keyword tools, but always verify final keyword choices with your own search console or a dedicated keyword-data tool before relying on the numbers."),
             ("Why does the same keyword always get the same estimated volume?","The estimates are deterministically generated from the keyword text itself, not randomized \u2014 so your results are consistent and comparable across sessions instead of changing every time you regenerate."),
             ("Can I use this for YouTube or local SEO?","Yes \u2014 dedicated YouTube Keywords and Local Keywords sections are included alongside the main keyword-research categories.")],
-     "related":["meta-tag-generator","robots-txt-generator"]},
+     "related":["meta-tag-generator","robots-txt-generator","ai-email-writer"]},
 ]
 SEO_TOOL_BY_SLUG = {t["slug"]: t for t in SEO_TOOLS}
 
@@ -4525,7 +4337,7 @@ AI_TOOLS = [
             ("What would it take to make this fully functional?","A small secure backend (even a single serverless function) to hold the API key and forward requests to a real provider — the entire interface, prompt construction, and provider abstraction here are already built and ready for that; only the key management piece is missing, deliberately."),
             ("Which providers does the architecture support?","The code includes real, correctly-structured request builders for OpenAI, Claude (Anthropic), Gemini, Groq, and OpenRouter. Any one of them can be activated by supplying a key through a secure backend, without changing this page's interface."),
             ("Is my draft data sent anywhere right now?","No \u2014 with no provider connected, nothing leaves your browser. If a provider is connected in the future, only the fields you fill in would be sent to generate the draft, and that will be disclosed clearly at that time.")],
-     "related":[]},
+     "related":["ai-keyword-generator","meta-tag-generator"]},
 ]
 AI_TOOL_BY_SLUG = {t["slug"]: t for t in AI_TOOLS}
 
@@ -4549,8 +4361,17 @@ def build_seo_tool_page(tool):
 
     related_html = ""
     for rslug in tool["related"]:
-        rt = SEO_TOOL_BY_SLUG[rslug]
-        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">SEO Tool</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
+        # Some related tools are genuinely cross-category (e.g. an SEO tool
+        # legitimately related to an AI tool) -- fall back across category
+        # lookups rather than assuming same-category, and label the badge
+        # accurately for whichever category the related tool actually is.
+        if rslug in SEO_TOOL_BY_SLUG:
+            rt = SEO_TOOL_BY_SLUG[rslug]; rtag = "SEO Tool"
+        elif rslug in AI_TOOL_BY_SLUG:
+            rt = AI_TOOL_BY_SLUG[rslug]; rtag = "AI Tool"
+        else:
+            raise KeyError(f"related slug '{rslug}' not found in SEO_TOOLS or AI_TOOLS")
+        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">{rtag}</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
 
     breadcrumb_schema = {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
@@ -4633,8 +4454,13 @@ def build_ai_tool_page(tool):
 
     related_html = ""
     for rslug in tool["related"]:
-        rt = AI_TOOL_BY_SLUG[rslug]
-        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">AI Tool</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
+        if rslug in AI_TOOL_BY_SLUG:
+            rt = AI_TOOL_BY_SLUG[rslug]; rtag = "AI Tool"
+        elif rslug in SEO_TOOL_BY_SLUG:
+            rt = SEO_TOOL_BY_SLUG[rslug]; rtag = "SEO Tool"
+        else:
+            raise KeyError(f"related slug '{rslug}' not found in AI_TOOLS or SEO_TOOLS")
+        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">{rtag}</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
 
     breadcrumb_schema = {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
@@ -4847,7 +4673,7 @@ PAGE_DEFS = [
     ("pdf-tools.html", "Free Online PDF Tools — Merge, Split, Compress, Resume Builder & More | ToolFlight", "8 free online PDF tools: merge, split, compress, image to PDF, PDF to image, PDF to Word, Word to PDF, and a resume builder with ATS checker. Each with its own dedicated page. No upload, no signup.", pdf_body),
     ("image-tools.html", "Free Online Image Tools — Passport Photo Maker, AI OCR, Upscaler & More | ToolFlight", "11 free online image tools: compress, crop, watermark, rotate/flip, AI background remover, background changer, AI object remover, AI photo enhancer, AI image upscaler, AI OCR, and a passport photo maker. Each with its own dedicated page.", image_body),
     ("calculators.html", "Free Online Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight", "9 free online calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter. Each with its own dedicated page.", calc_body),
-    ("finance-tools.html", "Finance Tools — Currency & Loan Calculators | ToolFlight", "Free finance tools including currency converter and loan calculator.", finance_body),
+    ("finance-tools.html", "Finance Tools (Coming Soon) | ToolFlight", "ToolFlight's dedicated finance tools category is in development. For loan and currency calculations available now, see the EMI/Loan Calculator and Currency Converter on our Calculators page.", finance_body),
     ("seo-tools.html", "Free Online SEO Tools — Keyword Generator, QR Code, Robots.txt & Meta Tags | ToolFlight", "4 free online SEO tools: AI keyword generator, QR code generator, robots.txt generator, and meta tag generator. Each with its own dedicated page.", seo_body),
     ("ai-tools.html", "Free AI Tools — AI Email Writer & More | ToolFlight", "Free AI-assisted tools for ToolFlight, starting with the AI Email Writer. Honest about what's currently connected and what isn't.", ai_body),
 ]
@@ -4919,6 +4745,7 @@ ARTICLES = [
     {
         "slug": "passport-photo-rules-ai-editing",
         "title": "Passport Photo Rules Explained: Requirements, Backgrounds, and Why AI Editing Can Get You Rejected",
+        "seo_title": "Passport Photo Rules: Why AI Editing Gets You Rejected",
         "meta": "A complete guide to passport photo requirements, background rules, and AI editing limitations — plus why some countries reject digitally altered photos, and how to verify your photo before submitting.",
         "tag": "Passport Photos",
         "reading_time": 8,
@@ -5009,7 +4836,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>You don't need to install anything to put this into practice — ToolFlight's Image Compressor runs entirely in your browser, resizes large images automatically, and shows a live before/after so you can judge the quality tradeoff yourself.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -5058,7 +4885,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>ToolFlight's Merge PDF tool works exactly this way: drag your files in, reorder them, and download — all processed locally in your browser.</p>
-<a class="inline-cta" href="../pdf-tools.html">Open the free PDF Merger →</a>
+<a class="inline-cta" href="../pdf-merge.html">Open the free PDF Merger →</a>
 """),
         ],
         "faq": [
@@ -5109,7 +4936,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>Not sure which format your image should be? Compress it with ToolFlight and compare the resulting file size directly against the original.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -5192,7 +5019,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>ToolFlight's Image Compressor automatically resizes any image over 2000px on its longest side as part of compression, so oversized photos are handled for you without an extra step.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -5227,8 +5054,10 @@ def render_article(article):
         "@type": "Article",
         "headline": article["title"],
         "description": article["meta"],
+        "image": "https://toolflight.com/assets/apple-touch-icon.png",
         "author": {"@type": "Organization", "name": "ToolFlight"},
-        "publisher": {"@type": "Organization", "name": "ToolFlight"},
+        "publisher": {"@type": "Organization", "name": "ToolFlight", "logo": {"@type": "ImageObject", "url": "https://toolflight.com/assets/logo.svg"}},
+        "mainEntityOfPage": {"@type": "WebPage", "@id": f'https://toolflight.com/blog/{article["slug"]}.html'},
     }
     import json as _json
     faq_page_schema = {
@@ -5312,7 +5141,7 @@ for article in ARTICLES:
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{head_for_blog(article["title"] + " | ToolFlight Blog", article["meta"], "blog/" + filename)}
+{head_for_blog(article.get("seo_title", article["title"]) + " | ToolFlight Blog", article["meta"], "blog/" + filename)}
 </head>
 <body>
 {navbar_for_blog(filename)}
