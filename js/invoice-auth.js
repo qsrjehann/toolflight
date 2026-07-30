@@ -133,6 +133,17 @@ function closeAuthModal() {
 /* ---------- Account state bar (shown only once Firebase confirms a
    real session -- never assumed on page load) ---------- */
 function renderSignedIn(user) {
+  if (!user.emailVerified) {
+    // Never show dashboard access for an unverified user, regardless of
+    // which path got them here (fresh signup, page reload restoring a
+    // cached session, or signing in to an account that was never
+    // verified) -- they stay on the Verify Email screen until it's true.
+    hide("invAccountBar");
+    hide("invModeSelect");
+    $("invVerifyEmailAddress").textContent = user.email;
+    openAuthModal("invAuthPanelVerify");
+    return;
+  }
   hide("invModeSelect");
   show("invAccountBar");
   $("invAccountEmail").textContent = "Signed in as " + user.email;
@@ -228,6 +239,29 @@ async function handleResendVerification() {
   }
 }
 
+async function handleVerifyContinue() {
+  const btn = $("invVerifyContinueBtn");
+  if (!auth || !auth.currentUser) { setError("invVerifyError", NOT_CONFIGURED_MESSAGE); return; }
+  setError("invVerifyError", ""); setSuccess("invVerifySuccess", "");
+  setLoading(btn, true, "Checking…", "Continue");
+  try {
+    // The cached user object's emailVerified field only reflects what was
+    // true at sign-in/sign-up time -- reload() re-fetches it from Firebase
+    // so a link clicked in another tab/the email itself is actually seen.
+    await auth.currentUser.reload();
+    if (auth.currentUser.emailVerified) {
+      closeAuthModal();
+      renderSignedIn(auth.currentUser);
+    } else {
+      setError("invVerifyError", "Please verify your email before continuing.");
+    }
+  } catch (err) {
+    setError("invVerifyError", friendlyAuthError(err));
+  } finally {
+    setLoading(btn, false, "Checking…", "Continue");
+  }
+}
+
 async function handleSignOut() {
   if (!auth) { renderSignedOut(); return; }
   try {
@@ -255,7 +289,7 @@ function initAuthUI() {
   $("invSignInSubmitBtn").addEventListener("click", handleSignIn);
   $("invForgotSubmitBtn").addEventListener("click", handleForgotPassword);
   $("invResendVerifyBtn").addEventListener("click", handleResendVerification);
-  $("invVerifyContinueBtn").addEventListener("click", closeAuthModal);
+  $("invVerifyContinueBtn").addEventListener("click", handleVerifyContinue);
   $("invSignOutBtn").addEventListener("click", handleSignOut);
 
   // Enter key submits the focused panel's form without needing a <form> element.
