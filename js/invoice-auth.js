@@ -134,6 +134,8 @@ function friendlyAuthError(err) {
     "auth/invalid-credential": "Email or password is incorrect.",
     "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
     "auth/network-request-failed": "Network error. Check your connection and try again.",
+    "auth/popup-closed-by-user": "The Google sign-in window was closed before finishing. Please try again.",
+    "auth/cancelled-popup-request": "The Google sign-in window was closed before finishing. Please try again.",
   };
   return map[code] || "Something went wrong. Please try again.";
 }
@@ -198,7 +200,6 @@ function renderSignedOut() {
 const POPUP_UNSUPPORTED_CODES = new Set([
   "auth/popup-blocked",
   "auth/operation-not-supported-in-this-environment",
-  "auth/popup-closed-by-user", // treated the same as "try redirect instead" rather than a hard error, since a closed popup is often the browser's own blocking behavior, not a deliberate cancel
 ]);
 
 async function handleGoogleSignIn() {

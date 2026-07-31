@@ -21,6 +21,7 @@
    for exactly what could and could not be verified. */
 
 import { onAuthChange, getDb } from "./invoice-auth.js?v=20260729-0934";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260729-0934";
 
 let currentUser = null;
 let members = [];
@@ -126,6 +127,50 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/* ==================================================================
+   Invitation email (EmailJS) -- sent after the Firestore invite
+   document is already created. This is a best-effort notification,
+   not a requirement for the invite itself to work: the invite exists
+   and is fully functional (shows in Pending Invites, can be accepted
+   by signing in with a matching email) whether or not this email
+   actually sends. See js/emailjs-config.js for setup instructions.
+   ================================================================== */
+
+let emailjsInitialized = false;
+function ensureEmailjsInit() {
+  if (emailjsInitialized || typeof emailjs === "undefined") return;
+  emailjs.init({ publicKey: emailjsConfig.publicKey });
+  emailjsInitialized = true;
+}
+
+async function sendInvitationEmail(email, roleLabel) {
+  if (!isEmailjsConfigured()) {
+    console.warn("[invoice-team] EmailJS not configured yet -- invite was saved, but no notification email was sent. See js/emailjs-config.js.");
+    return;
+  }
+  if (typeof emailjs === "undefined") {
+    console.error("[invoice-team] EmailJS SDK failed to load -- invite was saved, but no notification email was sent.");
+    return;
+  }
+  ensureEmailjsInit();
+  const profile = window.toolflightInvoiceBusiness.getBusinessProfile();
+  const templateParams = {
+    to_email: email,
+    business_name: (profile && profile.name) || "a ToolFlight business",
+    inviter_email: currentUser ? currentUser.email : "",
+    role: roleLabel,
+    invoice_maker_url: window.location.origin + window.location.pathname,
+  };
+  try {
+    await emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, templateParams);
+  } catch (err) {
+    // Genuinely non-blocking: the invite itself already succeeded and
+    // is fully usable. A failed notification email is a real limitation
+    // worth logging, but not a reason to tell the user the invite failed.
+    console.error("[invoice-team] sending invitation email failed:", err);
+  }
+}
+
 async function handleSendInvite() {
   const btn = $("invTeamModalSaveBtn");
   const businessId = window.toolflightInvoiceBusiness.getBusinessId();
@@ -175,6 +220,7 @@ async function handleSendInvite() {
     });
     $("invTeamModal").classList.remove("show");
     if (typeof toast === "function") toast("Invite sent.", "ok");
+    sendInvitationEmail(email, roleLabel); // best-effort, deliberately not awaited into this function's own error handling
     await refreshTeam(businessId);
   } catch (err) {
     console.error("[invoice-team] send invite failed:", err);
