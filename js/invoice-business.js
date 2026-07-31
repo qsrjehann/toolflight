@@ -58,7 +58,7 @@ async function findBusinessForUser(uid) {
   // filtered to this uid -- matches the multi-tenant model in
   // INVOICE_ARCHITECTURE.md exactly (businessMembers is never a
   // top-level collection).
-  const q = fns.query(fns.collectionGroup(db, "businessMembers"), fns.where(fns.documentId(), "==", uid));
+  const q = fns.query(fns.collectionGroup(db, "businessMembers"), fns.where("uid", "==", uid));
   const snap = await fns.getDocs(q);
   if (snap.empty) return null;
   // Phase 3 supports "one user -> multiple businesses" in the data model,
@@ -81,11 +81,14 @@ async function createBusinessForUser(uid, profileData) {
   const db = getDb();
   const fns = await loadFirestoreFns();
   const businessRef = fns.doc(fns.collection(db, "businesses"));
-  const batch = fns.writeBatch(db);
-  batch.set(businessRef, { ...profileData, ownerUid: uid, createdAt: fns.serverTimestamp() });
+  // Sequential, awaited writes rather than a single batch: guarantees
+  // the business document is fully committed (and unambiguously
+  // readable by the businessMembers bootstrap rule's get() check) before
+  // the membership write is even attempted, rather than depending on
+  // same-batch cross-document read visibility for the rule evaluation.
+  await fns.setDoc(businessRef, { ...profileData, ownerUid: uid, createdAt: fns.serverTimestamp() });
   const memberRef = fns.doc(db, "businesses", businessRef.id, "businessMembers", uid);
-  batch.set(memberRef, { role: "owner", email: currentUser ? currentUser.email : (profileData.email || ""), joinedAt: fns.serverTimestamp() });
-  await batch.commit();
+  await fns.setDoc(memberRef, { uid, role: "owner", email: currentUser ? currentUser.email : (profileData.email || ""), joinedAt: fns.serverTimestamp() });
   return businessRef.id;
 }
 

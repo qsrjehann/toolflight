@@ -318,7 +318,7 @@ async function acceptPendingInvitesForUser(user) {
       const businessId = inviteDoc.ref.parent.parent.id;
       const batch = fns.writeBatch(db);
       const memberRef = fns.doc(db, "businesses", businessId, "businessMembers", user.uid);
-      batch.set(memberRef, { role: invite.role, permissions: invite.permissions, email: user.email, joinedAt: fns.serverTimestamp() });
+      batch.set(memberRef, { uid: user.uid, role: invite.role, permissions: invite.permissions, email: user.email, joinedAt: fns.serverTimestamp() });
       batch.update(inviteDoc.ref, { status: "accepted" });
       await batch.commit();
     }
