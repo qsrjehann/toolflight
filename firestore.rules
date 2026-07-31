@@ -32,6 +32,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Invite documents and queries are always keyed/filtered by a
+    // lowercased email (see js/invoice-team.js: email.trim().toLowerCase()
+    // at every write and read site) -- but the raw request.auth.token.email
+    // claim from the ID token is not guaranteed to be lowercase. Without
+    // normalizing here too, any user whose real email has uppercase
+    // characters would fail every invite-related check: the get()-by-path
+    // lookups below would resolve to a different, non-existent document
+    // ID, and the equality checks would never match, even though the
+    // client-side query (which lowercases both sides) had already found
+    // the right document. myEmail() below is the normalized accessor.
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
     function isMember(businessId) {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/businesses/$(businessId)/businessMembers/$(request.auth.uid));
@@ -107,10 +121,10 @@ service cloud.firestore {
             // invites create rule below too, so this is defense in depth).
             (request.auth.uid == memberUid &&
              request.resource.data.role != 'owner' &&
-             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(request.auth.token.email)).data.status == 'pending' &&
-             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(request.auth.token.email)).data.expiresAtMs > request.time.toMillis() &&
-             request.resource.data.role == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(request.auth.token.email)).data.role &&
-             request.resource.data.permissions == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(request.auth.token.email)).data.permissions)
+             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.status == 'pending' &&
+             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.expiresAtMs > request.time.toMillis() &&
+             request.resource.data.role == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.role &&
+             request.resource.data.permissions == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.permissions)
           );
         // Phase 6 fixes, found via audit of the Phase 1-5 rule:
         //  - Self-elevation: a member (even one with team.manage) can
@@ -141,7 +155,7 @@ service cloud.firestore {
       // above -- an invite alone grants no direct data access).
       match /invites/{inviteId} {
         allow read: if hasPermission(businessId, 'team', 'manage') ||
-          (isSignedIn() && resource.data.email == request.auth.token.email);
+          (isSignedIn() && resource.data.email == myEmail());
         allow create: if hasPermission(businessId, 'team', 'manage') && request.resource.data.role != 'owner';
         // Only two legitimate transitions: an owner/manager revoking a
         // still-pending invite, or the invited person themselves
@@ -149,7 +163,7 @@ service cloud.firestore {
         // else about the invite -- role/permissions on an invite are
         // fixed at creation time by whoever sent it).
         allow update: if (hasPermission(businessId, 'team', 'manage') && request.resource.data.status == 'revoked') ||
-          (isSignedIn() && resource.data.email == request.auth.token.email &&
+          (isSignedIn() && resource.data.email == myEmail() &&
            resource.data.status == 'pending' && resource.data.expiresAtMs > request.time.toMillis() &&
            request.resource.data.status == 'accepted' &&
            request.resource.data.role == resource.data.role);
