@@ -23,7 +23,7 @@ if (document.getElementById('invModeSelect')) {
   let invoiceState = {
     business: { name: '', email: '', address: '', phone: '' },
     customer: { name: '', email: '', address: '' },
-    meta: { number: '', date: '', dueDate: '', currency: 'USD' },
+    meta: { number: '', date: '', dueDate: '', currency: 'USD', currencySymbol: null },
     items: [ { description: '', qty: 1, price: 0, productId: null } ],
     tax: { enabled: false, rate: 0 },
     discount: { type: 'percent', value: 0 },
@@ -57,7 +57,13 @@ if (document.getElementById('invModeSelect')) {
   }
 
   function formatMoney(amount, currencyCode) {
-    const symbol = CURRENCIES[currencyCode] || '';
+    // Custom currency symbol only applies when this call is genuinely
+    // about the current invoice's own currency (not, say, a saved
+    // product's unrelated currency shown in a dropdown option) --
+    // scoped this precisely rather than a blanket override.
+    const symbol = (currencyCode === invoiceState.meta.currency && invoiceState.meta.currencySymbol)
+      ? invoiceState.meta.currencySymbol
+      : (CURRENCIES[currencyCode] || (currencyCode ? currencyCode + ' ' : ''));
     const rounded = Math.round((amount + Number.EPSILON) * 100) / 100;
     return symbol + rounded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -183,6 +189,31 @@ if (document.getElementById('invModeSelect')) {
     bindField('invDate', 'meta.date');
     bindField('invDueDate', 'meta.dueDate');
     bindField('invCurrency', 'meta.currency');
+    document.getElementById('invCurrency').addEventListener('change', (e) => {
+      const isCustom = e.target.value === 'CUSTOM';
+      document.getElementById('invCustomCurrencyWrap').style.display = isCustom ? '' : 'none';
+      if (isCustom) {
+        // meta.currency was just set to the literal string "CUSTOM" by
+        // bindField above -- replace it with whatever code the user has
+        // already typed (or leave blank for them to fill in), and use
+        // the code field as the actual state going forward.
+        invoiceState.meta.currency = document.getElementById('invCustomCurrencyCode').value.trim().toUpperCase() || '';
+      } else {
+        // Switching back to a standard currency -- clear any leftover
+        // custom symbol so it can't accidentally linger and get applied
+        // to a currency code that coincidentally matches later.
+        invoiceState.meta.currencySymbol = null;
+      }
+      renderAll();
+    });
+    document.getElementById('invCustomCurrencyCode').addEventListener('input', (e) => {
+      invoiceState.meta.currency = e.target.value.trim().toUpperCase();
+      renderAll();
+    });
+    document.getElementById('invCustomCurrencySymbol').addEventListener('input', (e) => {
+      invoiceState.meta.currencySymbol = e.target.value;
+      renderAll();
+    });
     bindField('invDiscountType', 'discount.type');
     bindField('invDiscountValue', 'discount.value');
     bindField('invNotes', 'notes');
@@ -427,7 +458,19 @@ if (document.getElementById('invModeSelect')) {
       document.getElementById('invNumber').value = invoiceState.meta.number || '';
       document.getElementById('invDate').value = invoiceState.meta.date || '';
       document.getElementById('invDueDate').value = invoiceState.meta.dueDate || '';
-      document.getElementById('invCurrency').value = invoiceState.meta.currency || 'USD';
+      if (invoiceState.meta.currencySymbol) {
+        // A custom currency was used on this saved invoice -- the
+        // dropdown has no option matching an arbitrary code, so select
+        // "Custom Currency" and repopulate the two fields that actually
+        // hold the real values.
+        document.getElementById('invCurrency').value = 'CUSTOM';
+        document.getElementById('invCustomCurrencyWrap').style.display = '';
+        document.getElementById('invCustomCurrencyCode').value = invoiceState.meta.currency || '';
+        document.getElementById('invCustomCurrencySymbol').value = invoiceState.meta.currencySymbol;
+      } else {
+        document.getElementById('invCurrency').value = invoiceState.meta.currency || 'USD';
+        document.getElementById('invCustomCurrencyWrap').style.display = 'none';
+      }
       document.getElementById('invDiscountType').value = invoiceState.discount.type || 'percent';
       document.getElementById('invDiscountValue').value = invoiceState.discount.value || 0;
       document.getElementById('invNotes').value = invoiceState.notes || '';

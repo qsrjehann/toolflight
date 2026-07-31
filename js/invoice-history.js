@@ -440,6 +440,7 @@ function startNewInvoice() {
       date: today,
       dueDate: '',
       currency: (profile && profile.defaultCurrency) || 'USD',
+      currencySymbol: null,
     },
     items: [ { description: '', qty: 1, price: 0 } ],
     tax: { enabled: !!(profile && profile.taxSettings && profile.taxSettings.enabled), rate: (profile && profile.taxSettings && profile.taxSettings.defaultRate) || 0 },

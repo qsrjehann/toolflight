@@ -50,6 +50,17 @@ export function onAuthChange(callback) {
 export function getAuthInstance() { return auth; }
 export function getDb() { return db; }
 
+let googleProvider = null;
+// Set when a Google sign-in attempt discovers the email already belongs
+// to a password account (auth/account-exists-with-different-credential).
+// Holds the pending Google credential and the email it's for, so that
+// once the user signs in with their existing password, handleSignIn()
+// can link the two providers together onto the SAME account -- never
+// creating a second Firebase user (and therefore never a second,
+// duplicate businessMembers/{uid} record) for the same person.
+let pendingLinkCredential = null;
+let pendingLinkEmail = null;
+
 async function loadFirebase() {
   if (!FIREBASE_READY) return;
   try {
@@ -62,10 +73,28 @@ async function loadFirebase() {
     const app = initializeApp(firebaseConfig);
     auth = authModule.getAuth(app);
     db = firestoreModule.getFirestore(app);
+    googleProvider = new authModule.GoogleAuthProvider();
+
     firebaseAuthFns.onAuthStateChanged(auth, (user) => {
       if (user) renderSignedIn(user); else renderSignedOut();
       authChangeListeners.forEach(cb => cb(user));
     });
+
+    // Completes the signInWithRedirect() fallback path: if the browser
+    // just came back from Google's redirect flow, this resolves the
+    // pending result. A no-op (resolves to null) on every normal page
+    // load that isn't a redirect return, so it's safe to always call.
+    try {
+      await firebaseAuthFns.getRedirectResult(auth);
+    } catch (err) {
+      if (err && err.code === "auth/account-exists-with-different-credential") {
+        handleAccountExistsError(err);
+      } else {
+        console.error("[invoice-auth] redirect sign-in result failed:", err);
+      }
+    }
+
+    startVerificationWatcher();
   } catch (err) {
     // Real network/CDN failure loading the SDK itself -- not the same
     // as "not configured yet". Logged for diagnosis; the UI still
@@ -153,7 +182,64 @@ function renderSignedOut() {
   show("invModeSelect");
 }
 
-/* ---------- Auth actions ---------- */
+/* ---------- Google Sign-In + account-linking ---------- */
+
+// Codes where popup-based sign-in genuinely can't work in this browser/
+// context (blocked popups, in-app browsers, some mobile webviews) --
+// falls back to a full-page redirect rather than just failing.
+const POPUP_UNSUPPORTED_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/popup-closed-by-user", // treated the same as "try redirect instead" rather than a hard error, since a closed popup is often the browser's own blocking behavior, not a deliberate cancel
+]);
+
+async function handleGoogleSignIn() {
+  if (!FIREBASE_READY || !auth || !googleProvider) {
+    setError("invSignInError", NOT_CONFIGURED_MESSAGE);
+    setError("invCreateError", NOT_CONFIGURED_MESSAGE);
+    return;
+  }
+  try {
+    await firebaseAuthFns.signInWithPopup(auth, googleProvider);
+    closeAuthModal();
+    // renderSignedIn() runs from onAuthStateChanged, same pattern as
+    // every other sign-in path here -- never assume the UI state
+    // before Firebase itself confirms it.
+  } catch (err) {
+    if (err && err.code === "auth/account-exists-with-different-credential") {
+      handleAccountExistsError(err);
+      return;
+    }
+    if (err && POPUP_UNSUPPORTED_CODES.has(err.code)) {
+      try {
+        await firebaseAuthFns.signInWithRedirect(auth, googleProvider);
+        // Browser navigates away here; execution resumes (if at all)
+        // after the redirect back, handled by getRedirectResult() in
+        // loadFirebase() above.
+      } catch (redirectErr) {
+        setError("invSignInError", friendlyAuthError(redirectErr));
+      }
+      return;
+    }
+    setError("invSignInError", friendlyAuthError(err));
+  }
+}
+
+// The core "never lose existing data" fix: when Google sign-in reveals
+// the email already belongs to a password account, this does NOT create
+// a second Firebase user. It captures the pending Google credential and
+// routes the person to sign in with their existing password -- once
+// that succeeds, handleSignIn() below links the two providers onto that
+// SAME account, so its uid (and every businessMembers/customers/
+// products/invoices document keyed by that uid) is completely untouched.
+function handleAccountExistsError(err) {
+  pendingLinkCredential = firebaseAuthFns.GoogleAuthProvider.credentialFromError(err);
+  pendingLinkEmail = (err.customData && err.customData.email) || "";
+  showAuthPanel("invAuthPanelSignIn");
+  $("invSignInEmail").value = pendingLinkEmail;
+  setError("invSignInError", "An account already exists with this email. Sign in with your password to link your Google account.");
+  $("invAuthModal").classList.add("show");
+}
 async function handleCreateAccount() {
   const email = $("invCreateEmail").value.trim();
   const password = $("invCreatePassword").value;
@@ -167,7 +253,7 @@ async function handleCreateAccount() {
   setLoading(btn, true, "Creating account…", "Create Free Account");
   try {
     const cred = await firebaseAuthFns.createUserWithEmailAndPassword(auth, email, password);
-    await firebaseAuthFns.sendEmailVerification(cred.user);
+    await firebaseAuthFns.sendEmailVerification(cred.user, verificationActionCodeSettings());
     $("invVerifyEmailAddress").textContent = email;
     showAuthPanel("invAuthPanelVerify");
   } catch (err) {
@@ -189,7 +275,20 @@ async function handleSignIn() {
   setError("invSignInError", "");
   setLoading(btn, true, "Signing in…", "Sign In");
   try {
-    await firebaseAuthFns.signInWithEmailAndPassword(auth, email, password);
+    const cred = await firebaseAuthFns.signInWithEmailAndPassword(auth, email, password);
+    if (pendingLinkCredential && pendingLinkEmail && pendingLinkEmail.toLowerCase() === email.toLowerCase()) {
+      try {
+        await firebaseAuthFns.linkWithCredential(cred.user, pendingLinkCredential);
+      } catch (linkErr) {
+        // Signing in succeeded regardless -- the person still gets into
+        // their existing account and all their existing data either
+        // way. Only the "also use Google next time" convenience failed,
+        // so this is logged, not surfaced as a blocking error.
+        console.error("[invoice-auth] linking Google credential failed:", linkErr);
+      }
+      pendingLinkCredential = null;
+      pendingLinkEmail = null;
+    }
     closeAuthModal();
     // renderSignedIn() runs from the onAuthStateChanged observer below,
     // not here -- that's the "observe state, don't assume it" pattern
@@ -230,7 +329,7 @@ async function handleResendVerification() {
   setError("invVerifyError", "");
   setLoading(btn, true, "Sending…", "Resend Verification Email");
   try {
-    await firebaseAuthFns.sendEmailVerification(auth.currentUser);
+    await firebaseAuthFns.sendEmailVerification(auth.currentUser, verificationActionCodeSettings());
     setSuccess("invVerifySuccess", "Verification email sent.");
   } catch (err) {
     setError("invVerifyError", friendlyAuthError(err));
@@ -239,27 +338,39 @@ async function handleResendVerification() {
   }
 }
 
-async function handleVerifyContinue() {
-  const btn = $("invVerifyContinueBtn");
-  if (!auth || !auth.currentUser) { setError("invVerifyError", NOT_CONFIGURED_MESSAGE); return; }
-  setError("invVerifyError", ""); setSuccess("invVerifySuccess", "");
-  setLoading(btn, true, "Checking…", "Continue");
-  try {
-    // The cached user object's emailVerified field only reflects what was
-    // true at sign-in/sign-up time -- reload() re-fetches it from Firebase
-    // so a link clicked in another tab/the email itself is actually seen.
-    await auth.currentUser.reload();
+function verificationActionCodeSettings() {
+  return { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
+}
+
+/* No Continue button: verification is detected automatically. Re-checks
+   whenever the tab regains focus (the realistic moment someone returns
+   after clicking the email link, whether that link redirected back into
+   THIS tab or the person verified in a separate tab and switched back),
+   plus a periodic poll as a fallback for the case where neither a
+   redirect nor a tab switch happens (e.g. the link opens a new tab that
+   stays open, and the ToolFlight tab is just left sitting on-screen). */
+let verificationWatcherStarted = false;
+function startVerificationWatcher() {
+  if (verificationWatcherStarted) return;
+  verificationWatcherStarted = true;
+
+  async function checkNow() {
+    if (!auth || !auth.currentUser || auth.currentUser.emailVerified) return;
+    try {
+      await auth.currentUser.reload();
+    } catch (err) {
+      return; // transient network hiccup -- next tick/focus will retry
+    }
     if (auth.currentUser.emailVerified) {
       closeAuthModal();
       renderSignedIn(auth.currentUser);
-    } else {
-      setError("invVerifyError", "Please verify your email before continuing.");
     }
-  } catch (err) {
-    setError("invVerifyError", friendlyAuthError(err));
-  } finally {
-    setLoading(btn, false, "Checking…", "Continue");
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkNow();
+  });
+  setInterval(checkNow, 5000);
 }
 
 async function handleSignOut() {
@@ -289,8 +400,9 @@ function initAuthUI() {
   $("invSignInSubmitBtn").addEventListener("click", handleSignIn);
   $("invForgotSubmitBtn").addEventListener("click", handleForgotPassword);
   $("invResendVerifyBtn").addEventListener("click", handleResendVerification);
-  $("invVerifyContinueBtn").addEventListener("click", handleVerifyContinue);
   $("invSignOutBtn").addEventListener("click", handleSignOut);
+  $("invGoogleSignInBtn1").addEventListener("click", handleGoogleSignIn);
+  $("invGoogleSignInBtn2").addEventListener("click", handleGoogleSignIn);
 
   // Enter key submits the focused panel's form without needing a <form> element.
   ["invSignInEmail", "invSignInPassword"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") handleSignIn(); }));
