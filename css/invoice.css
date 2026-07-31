@@ -145,3 +145,8 @@
 }
 @media (max-width:480px){ .inv-perm-grid{ grid-template-columns:1fr; } }
 .inv-perm-grid label{ display:flex; align-items:center; gap:6px; }
+.inv-verify-checklist{ list-style:none; padding:0; margin:14px 0; }
+.inv-verify-checklist li{ font-size:13.5px; color:var(--ink); padding:4px 0; }
+.inv-google-btn{ display:flex; align-items:center; justify-content:center; }
+.inv-auth-divider{ display:flex; align-items:center; gap:10px; margin:16px 0; color:var(--ink-soft); font-size:12px; }
+.inv-auth-divider::before, .inv-auth-divider::after{ content:''; flex:1; height:1px; background:var(--card-border); }
