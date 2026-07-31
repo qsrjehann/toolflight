@@ -64,13 +64,21 @@ let pendingLinkEmail = null;
 async function loadFirebase() {
   if (!FIREBASE_READY) return;
   try {
-    const [{ initializeApp }, authModule, firestoreModule] = await Promise.all([
+    const [{ initializeApp, getApps, getApp }, authModule, firestoreModule] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js"),
       import("https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js"),
     ]);
     firebaseAuthFns = authModule;
-    const app = initializeApp(firebaseConfig);
+    // Defense in depth: even with every reference to this module now
+    // resolving to the same URL (fixing the root cause -- see the git
+    // history for this file), never call initializeApp() a second time
+    // if an app somehow already exists. Two disconnected Firebase App
+    // instances on one page is what caused signInWithPopup's round trip
+    // through Firebase's hosted handler to fail with "invalid action" --
+    // this guard makes that entire bug class structurally impossible
+    // going forward, not just fixed for today's specific cause.
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     auth = authModule.getAuth(app);
     db = firestoreModule.getFirestore(app);
     googleProvider = new authModule.GoogleAuthProvider();
