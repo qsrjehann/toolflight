@@ -757,6 +757,7 @@ function initBusinessUI() {
     }
     try {
       const businessId = await findBusinessForUser(user.uid);
+       console.log("Business found:", businessId);
       if (businessId) {
         currentBusinessId = businessId;
         businessProfile = await loadBusinessProfile(businessId);
