@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0245";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0350";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -53,11 +53,22 @@ function isValidQty(val) { const n = Number(val); return !Number.isNaN(n) && Num
 async function findBusinessForUser(uid) {
   const db = getDb();
   const fns = await loadFirestoreFns();
-  // Primary path: a direct, single-document read at a known path --
-  // the same reliable pattern as loadBusinessProfile(), which has never
-  // failed once in this codebase's entire testing history. No query,
-  // no collectionGroup, nothing for Firestore to verify beyond "does
-  // this exact document belong to this exact signed-in user."
+  // A single, direct document read at a known path -- the same
+  // reliable pattern as loadBusinessProfile(), which has never failed
+  // once in this codebase's entire testing history. No query, no
+  // collectionGroup, nothing for Firestore to verify beyond "does this
+  // exact document belong to this exact signed-in user."
+  //
+  // No fallback query here on purpose: a missing primaryBusinessId
+  // means exactly one thing -- this account has no business yet, which
+  // is the normal, correct state for every fresh signup. An earlier
+  // version of this function fell back to a collectionGroup query in
+  // that case, intended only for pre-existing "legacy" accounts -- but
+  // it fired for every brand-new user too (since they don't have
+  // primaryBusinessId set either, having never created a business at
+  // all), turning a correct "no business yet" into a false permission
+  // error. Accounts whose business predates this fix are handled with
+  // a one-time manual backfill in Firestore Console instead.
   const userRef = fns.doc(db, "users", uid);
   let userSnap;
   try {
@@ -69,36 +80,7 @@ async function findBusinessForUser(uid) {
   if (userSnap.exists() && userSnap.data().primaryBusinessId) {
     return userSnap.data().primaryBusinessId;
   }
-
-  // Migration fallback: an account whose business/membership was created
-  // before this fix won't have primaryBusinessId set yet. Fall back to
-  // the collectionGroup lookup exactly once, then self-heal by writing
-  // the result to users/{uid} so this fallback is never needed again
-  // for that account.
-  const q = fns.query(fns.collectionGroup(db, "businessMembers"), fns.where("uid", "==", uid));
-  let snap;
-  try {
-    snap = await fns.getDocs(q);
-  } catch (err) {
-    err.diagnosticStep = "querying businessMembers by uid field (migration fallback, uid=" + uid + ")";
-    throw err;
-  }
-  if (snap.empty) return null;
-  // Phase 3 supports "one user -> multiple businesses" in the data model,
-  // but the UI only surfaces the first one -- picking/switching between
-  // multiple businesses is explicitly out of scope until a later phase.
-  const memberDoc = snap.docs[0];
-  const businessRef = memberDoc.ref.parent.parent; // businessMembers/{uid} -> businesses/{businessId}
-  const businessId = businessRef.id;
-  try {
-    await fns.setDoc(userRef, { primaryBusinessId: businessId }, { merge: true });
-  } catch (err) {
-    // Self-heal write failing isn't fatal -- the lookup itself already
-    // succeeded via the fallback, so the business was still found this
-    // time. It just means the next sign-in will need the fallback again.
-    console.error("[invoice-business] self-heal write to users/" + uid + " failed:", err);
-  }
-  return businessId;
+  return null;
 }
 
 async function loadBusinessProfile(businessId) {
