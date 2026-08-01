@@ -42,9 +42,9 @@
    key belongs anywhere in this file or this frontend. */
 
 export const emailjsConfig = {
-  serviceId: "service_igq663u",
-  templateId: "template_t6mp0hq",
-  publicKey: "mximSHjvpSzhlBQF_",
+  serviceId: "REPLACE_WITH_REAL_EMAILJS_SERVICE_ID",
+  templateId: "REPLACE_WITH_REAL_EMAILJS_TEMPLATE_ID",
+  publicKey: "REPLACE_WITH_REAL_EMAILJS_PUBLIC_KEY",
 };
 
 export function isEmailjsConfigured() {

@@ -20,8 +20,8 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260729-0934";
-import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260729-0934";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1830";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-1830";
 
 let currentUser = null;
 let members = [];
@@ -212,9 +212,12 @@ async function handleSendInvite() {
     }
 
     const now = Date.now();
+    const businessProfile = window.toolflightInvoiceBusiness.getBusinessProfile();
     await fns.setDoc(inviteRef, {
       email, role: roleLabel, permissions, status: "pending",
+      businessName: (businessProfile && businessProfile.name) || "this business",
       invitedByUid: currentUser ? currentUser.uid : null,
+      invitedByEmail: currentUser ? currentUser.email : null,
       createdAt: fns.serverTimestamp(),
       expiresAtMs: now + 7 * 24 * 60 * 60 * 1000, // 7 days -- plain number, not a Timestamp, so rules can compare it directly against request.time.toMillis()
     });
@@ -351,7 +354,16 @@ async function handleRevokeInvite(inviteId) {
    UI (the data model supports more later, per INVOICE_ARCHITECTURE.md).
    ================================================================== */
 
-async function acceptPendingInvitesForUser(user) {
+let pendingInvitesForCurrentUser = [];
+
+/* Detects pending invites for the signed-in user -- READ ONLY, never
+   writes anything. Runs on every sign-in via onAuthChange below. If any
+   are found, shows an explicit, impossible-to-miss screen naming the
+   business and role -- replacing the old fully-silent auto-accept,
+   which gave the invited person no indication anything had happened
+   beyond a small toast, and which they could easily never see at all
+   if they weren't looking at the screen at that exact moment. */
+async function detectPendingInvitesForUser(user) {
   if (!user || !user.email) return;
   const db = getDb();
   if (!db) return;
@@ -359,20 +371,70 @@ async function acceptPendingInvitesForUser(user) {
     const fns = await loadFirestoreFns();
     const q = fns.query(fns.collectionGroup(db, "invites"), fns.where("email", "==", user.email.toLowerCase()), fns.where("status", "==", "pending"));
     const snap = await fns.getDocs(q);
-    for (const inviteDoc of snap.docs) {
-      const invite = inviteDoc.data();
-      const businessId = inviteDoc.ref.parent.parent.id;
-      const batch = fns.writeBatch(db);
-      const memberRef = fns.doc(db, "businesses", businessId, "businessMembers", user.uid);
-      batch.set(memberRef, { uid: user.uid, role: invite.role, permissions: invite.permissions, email: user.email, joinedAt: fns.serverTimestamp() });
-      batch.update(inviteDoc.ref, { status: "accepted" });
-      await batch.commit();
-    }
-    if (snap.docs.length > 0 && typeof toast === "function") {
-      toast("You've joined a business team.", "ok");
+    pendingInvitesForCurrentUser = snap.docs
+      .map(d => ({ id: d.id, businessId: d.ref.parent.parent.id, ...d.data() }))
+      .filter(inv => !inv.expiresAtMs || inv.expiresAtMs > Date.now());
+    if (pendingInvitesForCurrentUser.length > 0) {
+      renderInviteAcceptScreen();
     }
   } catch (err) {
-    console.error("[invoice-team] accepting pending invites failed:", err);
+    console.error("[invoice-team] checking for pending invites failed:", err);
+  }
+}
+
+function renderInviteAcceptScreen() {
+  const invite = pendingInvitesForCurrentUser[0]; // one at a time -- if more than one exists, the next shows after this one is resolved
+  $("invAcceptBusinessName").textContent = invite.businessName || "a business";
+  $("invAcceptRole").textContent = invite.role;
+  $("invAcceptInviterEmail").textContent = invite.invitedByEmail || "";
+  setError("invAcceptError", "");
+  $("invAcceptScreen").classList.remove("hidden");
+  hide("invModeSelect"); hide("invGuestBuilder"); hide("invBusinessArea"); hide("invSetupPrompt");
+}
+
+async function handleAcceptInvite() {
+  const btn = $("invAcceptBtn");
+  const invite = pendingInvitesForCurrentUser[0];
+  if (!invite || !currentUser) return;
+  setError("invAcceptError", "");
+  btn.disabled = true; btn.textContent = "Joining…";
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    const inviteRef = fns.doc(db, "businesses", invite.businessId, "invites", invite.id);
+    const memberRef = fns.doc(db, "businesses", invite.businessId, "businessMembers", currentUser.uid);
+    const batch = fns.writeBatch(db);
+    batch.set(memberRef, { uid: currentUser.uid, role: invite.role, permissions: invite.permissions, email: currentUser.email, joinedAt: fns.serverTimestamp() });
+    batch.update(inviteRef, { status: "accepted" });
+    await batch.commit();
+
+    pendingInvitesForCurrentUser.shift();
+    $("invAcceptScreen").classList.add("hidden");
+    if (typeof toast === "function") toast("You've joined " + (invite.businessName || "the business") + ".", "ok");
+
+    if (pendingInvitesForCurrentUser.length > 0) {
+      renderInviteAcceptScreen(); // another pending invite exists -- show it next
+    } else if (window.toolflightInvoiceBusiness && typeof window.toolflightInvoiceBusiness.refreshAfterJoiningBusiness === "function") {
+      await window.toolflightInvoiceBusiness.refreshAfterJoiningBusiness(invite.businessId);
+    }
+  } catch (err) {
+    // The exact failure reason is shown directly in the UI, not just
+    // logged -- if this fails in a real deployment, this text is what
+    // actually tells you why, instead of requiring DevTools to see it.
+    console.error("[invoice-team] accepting invite failed:", err);
+    setError("invAcceptError", "Couldn't join: " + (err && err.message ? err.message : "unknown error") + ". Please try again, or ask the business owner to resend the invite.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Accept Invitation";
+  }
+}
+
+function handleDeclineInvite() {
+  const invite = pendingInvitesForCurrentUser.shift();
+  $("invAcceptScreen").classList.add("hidden");
+  if (pendingInvitesForCurrentUser.length > 0) {
+    renderInviteAcceptScreen();
+  } else {
+    show("invModeSelect");
   }
 }
 
@@ -404,10 +466,13 @@ function initTeamUI() {
   const teamTabBtn = document.querySelector('.inv-business-tab[data-tab="team"]');
   if (teamTabBtn) teamTabBtn.addEventListener("click", () => refreshTeam(window.toolflightInvoiceBusiness.getBusinessId()));
 
+  $("invAcceptBtn").addEventListener("click", handleAcceptInvite);
+  $("invDeclineBtn").addEventListener("click", handleDeclineInvite);
+
   onAuthChange((user) => {
     currentUser = user;
-    if (user) acceptPendingInvitesForUser(user);
-    else { members = []; invites = []; }
+    if (user) detectPendingInvitesForUser(user);
+    else { members = []; invites = []; pendingInvitesForCurrentUser = []; }
   });
 }
 
