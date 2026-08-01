@@ -16,7 +16,7 @@
    exists and this sandbox blocks the Firebase CDN outright. See the
    Phase 4 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1905";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2010";
 
 let currentUser = null;
 let invoices = []; // cached list for the currently loaded business
