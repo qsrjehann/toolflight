@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1830";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1905";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -59,12 +59,29 @@ async function findBusinessForUser(uid) {
   // INVOICE_ARCHITECTURE.md exactly (businessMembers is never a
   // top-level collection).
   const q = fns.query(fns.collectionGroup(db, "businessMembers"), fns.where("uid", "==", uid));
-  const snap = await fns.getDocs(q);
+  let snap;
+  try {
+    snap = await fns.getDocs(q);
+  } catch (err) {
+    err.diagnosticStep = "querying businessMembers by uid field (uid=" + uid + ")";
+    throw err;
+  }
   if (snap.empty) return null;
   // Phase 3 supports "one user -> multiple businesses" in the data model,
   // but the UI only surfaces the first one -- picking/switching between
   // multiple businesses is explicitly out of scope until a later phase.
   const memberDoc = snap.docs[0];
+  // Diagnostic: the document's own path segment (the actual doc ID it's
+  // stored at) must equal the uid we searched for, by construction of
+  // every legitimate write path in this codebase. If it doesn't, that's
+  // a real, concrete data inconsistency worth surfacing precisely rather
+  // than letting it manifest as a generic downstream permission error.
+  const pathUid = memberDoc.id;
+  if (pathUid !== uid) {
+    const err = new Error("Data inconsistency: found businessMembers document with uid field '" + uid + "' but its actual document ID is '" + pathUid + "' -- these must match. This document needs to be fixed or deleted directly in Firestore Console.");
+    err.diagnosticStep = "verifying businessMembers document consistency";
+    throw err;
+  }
   const businessRef = memberDoc.ref.parent.parent; // businessMembers/{uid} -> businesses/{businessId}
   return businessRef.id;
 }
@@ -763,8 +780,18 @@ function initBusinessUI() {
       const businessId = await findBusinessForUser(user.uid);
       if (businessId) {
         currentBusinessId = businessId;
-        businessProfile = await loadBusinessProfile(businessId);
-        await refreshCustomersAndProducts();
+        try {
+          businessProfile = await loadBusinessProfile(businessId);
+        } catch (err) {
+          err.diagnosticStep = "loading the business profile document (businessId=" + businessId + ")";
+          throw err;
+        }
+        try {
+          await refreshCustomersAndProducts();
+        } catch (err) {
+          err.diagnosticStep = "loading customers/products for this business";
+          throw err;
+        }
       } else {
         currentBusinessId = null; businessProfile = null;
         // Proactively invite a fresh account holder to set up their
@@ -786,7 +813,8 @@ function initBusinessUI() {
       // and a real way to retry, not a silent console-only failure.
       console.error("[invoice-business] loading business for signed-in user failed:", err);
       hide("invModeSelect"); hide("invGuestBuilder"); hide("invSetupPrompt"); hide("invBusinessArea");
-      $("invBusinessLookupErrorText").textContent = "Error: " + (err && err.message ? err.message : "unknown error");
+      const stepText = err && err.diagnosticStep ? " (during: " + err.diagnosticStep + ")" : "";
+      $("invBusinessLookupErrorText").textContent = "Error: " + (err && err.message ? err.message : "unknown error") + stepText;
       show("invBusinessLookupError");
     }
   }

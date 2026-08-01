@@ -20,8 +20,8 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1830";
-import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-1830";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-1905";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-1905";
 
 let currentUser = null;
 let members = [];
