@@ -20,8 +20,8 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2320";
-import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-2320";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0245";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260802-0245";
 
 let currentUser = null;
 let members = [];
@@ -480,7 +480,10 @@ function initTeamUI() {
   onAuthChange((user) => {
     currentUser = user;
     if (user) detectPendingInvitesForUser(user);
-    else { members = []; invites = []; pendingInvitesForCurrentUser = []; }
+    else {
+      members = []; invites = []; pendingInvitesForCurrentUser = [];
+      hide("invAcceptScreen");
+    }
   });
 }
 

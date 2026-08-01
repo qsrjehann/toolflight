@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2320";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0245";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -119,9 +119,9 @@ async function createBusinessForUser(uid, profileData) {
   // the membership write is even attempted, rather than depending on
   // same-batch cross-document read visibility for the rule evaluation.
   await fns.setDoc(businessRef, { ...profileData, ownerUid: uid, createdAt: fns.serverTimestamp() });
+  await fns.setDoc(fns.doc(db, "users", uid), { primaryBusinessId: businessRef.id }, { merge: true });
   const memberRef = fns.doc(db, "businesses", businessRef.id, "businessMembers", uid);
   await fns.setDoc(memberRef, { uid, role: "owner", email: currentUser ? currentUser.email : (profileData.email || ""), joinedAt: fns.serverTimestamp() });
-  await fns.setDoc(fns.doc(db, "users", uid), { primaryBusinessId: businessRef.id }, { merge: true });
   return businessRef.id;
 }
 
@@ -847,6 +847,19 @@ function initBusinessUI() {
     if (!user) {
       lastProcessedUid = null;
       currentBusinessId = null; businessProfile = null; customers = []; products = [];
+      // Sign-out bug fix: clearing the in-memory state above was never
+      // enough on its own -- if the person was inside My Business (or
+      // any protected screen) at the moment they signed out, the DOM
+      // itself stayed exactly as it was, showing stale business data to
+      // whoever uses the browser next. Every protected screen is hidden
+      // explicitly here, and the app returns to the exact same guest
+      // state (invModeSelect) a brand-new visitor sees -- immediately,
+      // with no refresh required.
+      hide("invBusinessArea");
+      hide("invSetupPrompt");
+      hide("invBusinessLookupError");
+      hide("invGuestBuilder");
+      show("invModeSelect");
       return;
     }
     if (isSameUserReFire) {
