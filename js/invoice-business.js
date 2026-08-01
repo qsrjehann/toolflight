@@ -749,12 +749,27 @@ function initBusinessUI() {
   $("invStockAdjustAmount").addEventListener("input", updateStockAdjustPreview);
   $("invStockAdjustSaveBtn").addEventListener("click", handleSaveStockAdjustment);
 
+  let lastProcessedUid = null;
   onAuthChange(async (user) => {
+    const isSameUserReFire = user && lastProcessedUid === user.uid && currentBusinessId;
     currentUser = user;
     if (!user) {
+      lastProcessedUid = null;
       currentBusinessId = null; businessProfile = null; customers = []; products = [];
       return;
     }
+    if (isSameUserReFire) {
+      // onAuthStateChanged can fire again for the SAME signed-in user
+      // (token refresh, re-authentication) without any real sign-in/out
+      // having happened. Re-deriving currentBusinessId from a fresh
+      // Firestore lookup on every one of these re-fires is fragile --
+      // any transient failure there would silently overwrite an
+      // already-correct value, making the UI think no business exists
+      // and the next save create a duplicate. A business already
+      // resolved for this exact user in this session is trusted as-is.
+      return;
+    }
+    lastProcessedUid = user.uid;
     try {
       const businessId = await findBusinessForUser(user.uid);
       if (businessId) {
