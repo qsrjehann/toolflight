@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2200";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2320";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -831,7 +831,8 @@ function initBusinessUI() {
       console.error("[invoice-business] loading business for signed-in user failed:", err);
       hide("invModeSelect"); hide("invGuestBuilder"); hide("invSetupPrompt"); hide("invBusinessArea");
       const stepText = err && err.diagnosticStep ? " (during: " + err.diagnosticStep + ")" : "";
-      $("invBusinessLookupErrorText").textContent = "Error: " + (err && err.message ? err.message : "unknown error") + stepText;
+      const uidText = user && user.uid ? " [Signed in UID: " + user.uid + "]" : "";
+      $("invBusinessLookupErrorText").textContent = "Error: " + (err && err.message ? err.message : "unknown error") + stepText + uidText;
       show("invBusinessLookupError");
     }
   }
