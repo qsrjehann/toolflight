@@ -20,8 +20,8 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2010";
-import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-2010";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2200";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260801-2200";
 
 let currentUser = null;
 let members = [];
@@ -407,6 +407,14 @@ async function handleAcceptInvite() {
     batch.set(memberRef, { uid: currentUser.uid, role: invite.role, permissions: invite.permissions, email: currentUser.email, joinedAt: fns.serverTimestamp() });
     batch.update(inviteRef, { status: "accepted" });
     await batch.commit();
+    try {
+      await fns.setDoc(fns.doc(db, "users", currentUser.uid), { primaryBusinessId: invite.businessId }, { merge: true });
+    } catch (err) {
+      // Non-fatal: membership was already granted successfully above.
+      // Worst case, this account falls back to the migration lookup on
+      // its next sign-in instead of the fast path.
+      console.error("[invoice-team] writing primaryBusinessId after accepting invite failed:", err);
+    }
 
     pendingInvitesForCurrentUser.shift();
     $("invAcceptScreen").classList.add("hidden");

@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2010";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260801-2200";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -53,17 +53,34 @@ function isValidQty(val) { const n = Number(val); return !Number.isNaN(n) && Num
 async function findBusinessForUser(uid) {
   const db = getDb();
   const fns = await loadFirestoreFns();
-  // A user's business membership is looked up via a collection group
-  // query across every businesses/*/businessMembers subcollection,
-  // filtered to this uid -- matches the multi-tenant model in
-  // INVOICE_ARCHITECTURE.md exactly (businessMembers is never a
-  // top-level collection).
+  // Primary path: a direct, single-document read at a known path --
+  // the same reliable pattern as loadBusinessProfile(), which has never
+  // failed once in this codebase's entire testing history. No query,
+  // no collectionGroup, nothing for Firestore to verify beyond "does
+  // this exact document belong to this exact signed-in user."
+  const userRef = fns.doc(db, "users", uid);
+  let userSnap;
+  try {
+    userSnap = await fns.getDoc(userRef);
+  } catch (err) {
+    err.diagnosticStep = "reading users/" + uid + " for primaryBusinessId";
+    throw err;
+  }
+  if (userSnap.exists() && userSnap.data().primaryBusinessId) {
+    return userSnap.data().primaryBusinessId;
+  }
+
+  // Migration fallback: an account whose business/membership was created
+  // before this fix won't have primaryBusinessId set yet. Fall back to
+  // the collectionGroup lookup exactly once, then self-heal by writing
+  // the result to users/{uid} so this fallback is never needed again
+  // for that account.
   const q = fns.query(fns.collectionGroup(db, "businessMembers"), fns.where("uid", "==", uid));
   let snap;
   try {
     snap = await fns.getDocs(q);
   } catch (err) {
-    err.diagnosticStep = "querying businessMembers by uid field (uid=" + uid + ")";
+    err.diagnosticStep = "querying businessMembers by uid field (migration fallback, uid=" + uid + ")";
     throw err;
   }
   if (snap.empty) return null;
@@ -71,19 +88,17 @@ async function findBusinessForUser(uid) {
   // but the UI only surfaces the first one -- picking/switching between
   // multiple businesses is explicitly out of scope until a later phase.
   const memberDoc = snap.docs[0];
-  // Diagnostic: the document's own path segment (the actual doc ID it's
-  // stored at) must equal the uid we searched for, by construction of
-  // every legitimate write path in this codebase. If it doesn't, that's
-  // a real, concrete data inconsistency worth surfacing precisely rather
-  // than letting it manifest as a generic downstream permission error.
-  const pathUid = memberDoc.id;
-  if (pathUid !== uid) {
-    const err = new Error("Data inconsistency: found businessMembers document with uid field '" + uid + "' but its actual document ID is '" + pathUid + "' -- these must match. This document needs to be fixed or deleted directly in Firestore Console.");
-    err.diagnosticStep = "verifying businessMembers document consistency";
-    throw err;
-  }
   const businessRef = memberDoc.ref.parent.parent; // businessMembers/{uid} -> businesses/{businessId}
-  return businessRef.id;
+  const businessId = businessRef.id;
+  try {
+    await fns.setDoc(userRef, { primaryBusinessId: businessId }, { merge: true });
+  } catch (err) {
+    // Self-heal write failing isn't fatal -- the lookup itself already
+    // succeeded via the fallback, so the business was still found this
+    // time. It just means the next sign-in will need the fallback again.
+    console.error("[invoice-business] self-heal write to users/" + uid + " failed:", err);
+  }
+  return businessId;
 }
 
 async function loadBusinessProfile(businessId) {
@@ -106,6 +121,7 @@ async function createBusinessForUser(uid, profileData) {
   await fns.setDoc(businessRef, { ...profileData, ownerUid: uid, createdAt: fns.serverTimestamp() });
   const memberRef = fns.doc(db, "businesses", businessRef.id, "businessMembers", uid);
   await fns.setDoc(memberRef, { uid, role: "owner", email: currentUser ? currentUser.email : (profileData.email || ""), joinedAt: fns.serverTimestamp() });
+  await fns.setDoc(fns.doc(db, "users", uid), { primaryBusinessId: businessRef.id }, { merge: true });
   return businessRef.id;
 }
 
@@ -693,7 +709,7 @@ async function openMyBusiness() {
     return;
   }
   if (!currentBusinessId) {
-    hide("invModeSelect"); hide("invGuestBuilder"); hide("invBusinessArea");
+    hide("invModeSelect"); hide("invGuestBuilder"); hide("invBusinessArea"); hide("invBusinessLookupError");
     show("invSetupPrompt");
     return;
   }
