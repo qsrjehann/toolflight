@@ -209,6 +209,28 @@
     </div>
   </div>
 
+  <div id="invBusinessLookupError" class="hidden">
+    <div class="inv-mode-card" style="max-width:480px;margin:24px auto;text-align:center;">
+      <div class="inv-mode-icon">⚠️</div>
+      <h2>Couldn't Check Your Business</h2>
+      <p class="inv-mode-desc">We ran into a problem checking whether you already have a business set up. This is different from not having one yet -- please don't create a new business until this is resolved, to avoid creating a duplicate.</p>
+      <p class="inv-auth-error" id="invBusinessLookupErrorText"></p>
+      <button class="btn btn-primary" id="invBusinessLookupRetryBtn" type="button" style="width:100%;">Try Again</button>
+    </div>
+  </div>
+
+  <div id="invAcceptScreen" class="hidden">
+    <div class="inv-mode-card" style="max-width:480px;margin:24px auto;text-align:center;">
+      <div class="inv-mode-icon">🤝</div>
+      <h2>You've Been Invited</h2>
+      <p class="inv-mode-desc">You've been invited to join <strong id="invAcceptBusinessName"></strong> as a <strong id="invAcceptRole"></strong>.</p>
+      <p class="inv-mode-desc" style="font-size:12.5px;">Invited by <span id="invAcceptInviterEmail"></span></p>
+      <p class="inv-auth-error" id="invAcceptError"></p>
+      <button class="btn btn-primary" id="invAcceptBtn" type="button" style="width:100%;">Accept Invitation</button>
+      <p class="inv-mode-signin-link"><a href="#" id="invDeclineBtn">Decline</a></p>
+    </div>
+  </div>
+
   <!-- ===================== MY BUSINESS (Setup + Customers + Products) ===================== -->
   <div id="invBusinessArea" class="hidden">
     <div class="row" style="margin-bottom:16px;align-items:center;">
