@@ -642,6 +642,13 @@ window.toolflightInvoiceBusiness = {
   getProducts: () => products.slice(),
   getBusinessProfile: () => businessProfile,
   getBusinessId: () => currentBusinessId,
+  refreshAfterJoiningBusiness: async (businessId) => {
+    currentBusinessId = businessId;
+    businessProfile = await loadBusinessProfile(businessId);
+    await refreshCustomersAndProducts();
+    showBusinessArea();
+    switchBusinessTab("profile");
+  },
 };
 
 /* ==================================================================
@@ -750,6 +757,44 @@ function initBusinessUI() {
   $("invStockAdjustSaveBtn").addEventListener("click", handleSaveStockAdjustment);
 
   let lastProcessedUid = null;
+
+  async function resolveBusinessForUser(user) {
+    try {
+      const businessId = await findBusinessForUser(user.uid);
+      if (businessId) {
+        currentBusinessId = businessId;
+        businessProfile = await loadBusinessProfile(businessId);
+        await refreshCustomersAndProducts();
+      } else {
+        currentBusinessId = null; businessProfile = null;
+        // Proactively invite a fresh account holder to set up their
+        // business -- but only if they're not already mid-way through
+        // the guest invoice builder, so signing in never interrupts
+        // someone actively typing an invoice.
+        const guestBuilderActive = !$("invGuestBuilder").classList.contains("hidden");
+        if (!guestBuilderActive) {
+          hide("invModeSelect");
+          show("invSetupPrompt");
+        }
+      }
+    } catch (err) {
+      // Issue 2 fix: a failed lookup must never look identical to
+      // "confirmed no business exists" -- that ambiguity is exactly
+      // what let a real device/browser-switch lookup failure silently
+      // masquerade as a fresh account, risking a duplicate business.
+      // This is a distinct, honest error state with the exact reason
+      // and a real way to retry, not a silent console-only failure.
+      console.error("[invoice-business] loading business for signed-in user failed:", err);
+      hide("invModeSelect"); hide("invGuestBuilder"); hide("invSetupPrompt"); hide("invBusinessArea");
+      $("invBusinessLookupErrorText").textContent = "Error: " + (err && err.message ? err.message : "unknown error");
+      show("invBusinessLookupError");
+    }
+  }
+
+  $("invBusinessLookupRetryBtn").addEventListener("click", () => {
+    if (currentUser) resolveBusinessForUser(currentUser);
+  });
+
   onAuthChange(async (user) => {
     const isSameUserReFire = user && lastProcessedUid === user.uid && currentBusinessId;
     currentUser = user;
@@ -770,27 +815,7 @@ function initBusinessUI() {
       return;
     }
     lastProcessedUid = user.uid;
-    try {
-      const businessId = await findBusinessForUser(user.uid);
-      if (businessId) {
-        currentBusinessId = businessId;
-        businessProfile = await loadBusinessProfile(businessId);
-        await refreshCustomersAndProducts();
-      } else {
-        currentBusinessId = null; businessProfile = null;
-        // Proactively invite a fresh account holder to set up their
-        // business -- but only if they're not already mid-way through
-        // the guest invoice builder, so signing in never interrupts
-        // someone actively typing an invoice.
-        const guestBuilderActive = !$("invGuestBuilder").classList.contains("hidden");
-        if (!guestBuilderActive) {
-          hide("invModeSelect");
-          show("invSetupPrompt");
-        }
-      }
-    } catch (err) {
-      console.error("[invoice-business] loading business for signed-in user failed:", err);
-    }
+    await resolveBusinessForUser(user);
   });
 }
 

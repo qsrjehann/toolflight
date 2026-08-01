@@ -266,7 +266,13 @@ async function handleCreateAccount() {
     $("invVerifyEmailAddress").textContent = email;
     showAuthPanel("invAuthPanelVerify");
   } catch (err) {
-    setError("invCreateError", friendlyAuthError(err));
+    if (err && err.code === "auth/email-already-in-use") {
+      showAuthPanel("invAuthPanelSignIn");
+      $("invSignInEmail").value = email;
+      setError("invSignInError", "This email address is already registered. Please sign in instead.");
+    } else {
+      setError("invCreateError", friendlyAuthError(err));
+    }
   } finally {
     setLoading(btn, false, "Creating account…", "Create Free Account");
   }
