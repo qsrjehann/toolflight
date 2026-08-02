@@ -20,8 +20,8 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0430";
-import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260802-0430";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0530";
+import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260802-0530";
 
 let currentUser = null;
 let members = [];
@@ -143,7 +143,7 @@ function ensureEmailjsInit() {
   emailjsInitialized = true;
 }
 
-async function sendInvitationEmail(email, roleLabel) {
+async function sendInvitationEmail(email, roleLabel, businessId) {
   if (!isEmailjsConfigured()) {
     console.warn("[invoice-team] EmailJS not configured yet -- invite was saved, but no notification email was sent. See js/emailjs-config.js.");
     return;
@@ -159,7 +159,7 @@ async function sendInvitationEmail(email, roleLabel) {
     business_name: (profile && profile.name) || "a ToolFlight business",
     inviter_email: currentUser ? currentUser.email : "",
     role: roleLabel,
-    invoice_maker_url: window.location.origin + window.location.pathname,
+    invoice_maker_url: window.location.origin + window.location.pathname + "?invite=" + encodeURIComponent(email) + "&biz=" + encodeURIComponent(businessId),
   };
   try {
     await emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, templateParams);
@@ -223,7 +223,7 @@ async function handleSendInvite() {
     });
     $("invTeamModal").classList.remove("show");
     if (typeof toast === "function") toast("Invite sent.", "ok");
-    sendInvitationEmail(email, roleLabel); // best-effort, deliberately not awaited into this function's own error handling
+    sendInvitationEmail(email, roleLabel, businessId); // best-effort, deliberately not awaited into this function's own error handling
     await refreshTeam(businessId);
   } catch (err) {
     console.error("[invoice-team] send invite failed:", err);
@@ -356,6 +356,23 @@ async function handleRevokeInvite(inviteId) {
 
 let pendingInvitesForCurrentUser = [];
 
+// Parsed once, at module load, directly from the URL -- this is what
+// makes the invitation survive Login/Signup: opening the auth modal to
+// sign in or create an account never touches window.location, so this
+// value is still here after the person finishes authenticating, exactly
+// as it was when they first clicked the email link.
+const urlParams = new URLSearchParams(window.location.search);
+const linkedInvite = urlParams.has("invite") && urlParams.has("biz")
+  ? { inviteId: urlParams.get("invite"), businessId: urlParams.get("biz") }
+  : null;
+
+function showInvalidInviteScreen(title, message) {
+  $("invInvalidInviteTitle").textContent = title;
+  $("invInvalidInviteMessage").textContent = message;
+  hide("invModeSelect"); hide("invGuestBuilder"); hide("invBusinessArea"); hide("invSetupPrompt"); hide("invAcceptScreen");
+  show("invInvalidInviteScreen");
+}
+
 /* Detects pending invites for the signed-in user -- READ ONLY, never
    writes anything. Runs on every sign-in via onAuthChange below. If any
    are found, shows an explicit, impossible-to-miss screen naming the
@@ -369,6 +386,54 @@ async function detectPendingInvitesForUser(user) {
   if (!db) return;
   try {
     const fns = await loadFirestoreFns();
+
+    if (linkedInvite) {
+      // A specific invite was identified by the link itself -- look it
+      // up directly by path (a single-document read, not a query), and
+      // give a precise, honest reason if it can't be used.
+      const inviteRef = fns.doc(db, "businesses", linkedInvite.businessId, "invites", linkedInvite.inviteId);
+      let snap;
+      try {
+        snap = await fns.getDoc(inviteRef);
+      } catch (err) {
+        console.error("[invoice-team] looking up linked invite failed:", err);
+        showInvalidInviteScreen("Couldn't Check Invitation", "Error: " + (err && err.message ? err.message : "unknown error"));
+        return;
+      }
+      if (!snap.exists()) {
+        showInvalidInviteScreen("Invitation Not Found", "This invitation link doesn't match any invitation we have on record. It may have been removed, or the link may be incomplete.");
+        return;
+      }
+      const invite = snap.data();
+      if (invite.email !== user.email.toLowerCase()) {
+        showInvalidInviteScreen("Invitation Not For This Account", "This invitation was sent to a different email address. Please sign in with the email address the invitation was sent to.");
+        return;
+      }
+      if (invite.status === "accepted") {
+        showInvalidInviteScreen("Invitation Already Accepted", "This invitation has already been accepted. If you already have access, use My Business to continue.");
+        return;
+      }
+      if (invite.status === "declined") {
+        showInvalidInviteScreen("Invitation Declined", "This invitation was previously declined. Ask the business owner to send a new invitation if you'd like to join.");
+        return;
+      }
+      if (invite.status === "revoked") {
+        showInvalidInviteScreen("Invitation Cancelled", "This invitation has been cancelled by the business owner.");
+        return;
+      }
+      if (invite.expiresAtMs && invite.expiresAtMs <= Date.now()) {
+        showInvalidInviteScreen("Invitation Expired", "This invitation has expired. Ask the business owner to send a new invitation.");
+        return;
+      }
+      // Genuinely valid -- show the real accept/decline screen.
+      pendingInvitesForCurrentUser = [{ id: linkedInvite.inviteId, businessId: linkedInvite.businessId, ...invite }];
+      renderInviteAcceptScreen();
+      return;
+    }
+
+    // No specific invite identified by the URL -- fall back to the
+    // original broad scan for ANY pending invite matching this email,
+    // exactly as before this change.
     const q = fns.query(fns.collectionGroup(db, "invites"), fns.where("email", "==", user.email.toLowerCase()), fns.where("status", "==", "pending"));
     const snap = await fns.getDocs(q);
     pendingInvitesForCurrentUser = snap.docs
@@ -436,9 +501,22 @@ async function handleAcceptInvite() {
   }
 }
 
-function handleDeclineInvite() {
-  const invite = pendingInvitesForCurrentUser.shift();
+async function handleDeclineInvite() {
+  const btn = $("invDeclineBtn");
+  const invite = pendingInvitesForCurrentUser[0];
+  if (!invite) return;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    await fns.updateDoc(fns.doc(db, "businesses", invite.businessId, "invites", invite.id), { status: "declined" });
+  } catch (err) {
+    console.error("[invoice-team] declining invite failed:", err);
+    setError("invAcceptError", "Couldn't decline: " + (err && err.message ? err.message : "unknown error") + ". Please try again.");
+    return;
+  }
+  pendingInvitesForCurrentUser.shift();
   $("invAcceptScreen").classList.add("hidden");
+  if (typeof toast === "function") toast("Invitation declined.", "ok");
   if (pendingInvitesForCurrentUser.length > 0) {
     renderInviteAcceptScreen();
   } else {
@@ -476,6 +554,10 @@ function initTeamUI() {
 
   $("invAcceptBtn").addEventListener("click", handleAcceptInvite);
   $("invDeclineBtn").addEventListener("click", handleDeclineInvite);
+  $("invInvalidInviteContinueBtn").addEventListener("click", () => {
+    hide("invInvalidInviteScreen");
+    show("invModeSelect");
+  });
 
   onAuthChange((user) => {
     currentUser = user;
