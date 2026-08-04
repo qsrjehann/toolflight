@@ -6,9 +6,12 @@
 <meta name="color-scheme" content="light dark">
 <title>AI Photo Retouch & Beauty Editor — Free Online | ToolFlight</title>
 <meta name="description" content="Free AI photo retouch and beauty editor: skin smoothing, face brightening, background blur, exposure, contrast, saturation, clarity, and more \u2014 all in your browser, full resolution, nothing uploaded.">
-<link rel="icon" href="assets/favicon.ico?v=20260719-1035" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260719-1035">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260719-1035">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#6D5EF5">
+<meta name="author" content="ToolFlight">
+<link rel="icon" href="assets/favicon.ico?v=20260805-1900" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260805-1900">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260805-1900">
 <link rel="canonical" href="https://toolflight.com/ai-photo-retouch.html">
 
 <meta property="og:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
@@ -16,10 +19,14 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://toolflight.com/ai-photo-retouch.html">
+<meta property="og:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
 <meta name="twitter:description" content="Free AI photo retouch and beauty editor: skin smoothing, face brightening, background blur, exposure, contrast, saturation, clarity, and more \u2014 all in your browser, full resolution, nothing uploaded.">
+<meta name="twitter:image" content="https://toolflight.com/assets/apple-touch-icon.png">
 
 <script>
 /* Runs synchronously, before CSS or body paint -- the only way to avoid a
@@ -37,8 +44,10 @@
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719-1035">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="css/style.css?v=20260805-1900">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -54,13 +63,16 @@
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }
+</script>
 
 </head>
 <body>
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260719-1035" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260805-1900" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -99,7 +111,7 @@
   </div>
 
   <div class="workspace">
-      <div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h2></div>
+      <div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional portrait retouch editor \u2014 skin smoothing, background blur, and a full set of Lightroom-style tone and color adjustments, running entirely in your browser at full resolution. Nothing you upload ever leaves your device.</p>
 
       <div class="drop-zone" id="rtDrop">
@@ -111,19 +123,97 @@
 
       <div class="model-status-line hidden" id="rtModelStatus" role="status"><span class="dot"></span><span></span></div>
 
-      <div id="rtStage" class="hidden">
-        <div class="row" style="margin-top:8px;">
-          <button class="btn btn-secondary" id="rtFitScreenBtn" type="button">Fit to Screen</button>
-          <button class="btn btn-ghost" id="rtCompareBtn" type="button" aria-pressed="false">Hold to Compare Original</button>
-          <button class="btn btn-danger" id="rtResetBtn" type="button">Reset All</button>
+      <div id="rtStage" class="hidden rt-shell">
+        <div class="rt-topbar" id="rtTopBar">
+          <div class="rt-mode-toggle" id="rtModeToggle" role="tablist" aria-label="Editor mode">
+            <button type="button" class="rt-mode-toggle-btn active" data-mode="beauty" role="tab" aria-selected="true">Beauty</button>
+            <button type="button" class="rt-mode-toggle-btn" data-mode="advanced" role="tab" aria-selected="false">Advanced</button>
+          </div>
+          <span class="rt-tb-sep"></span>
+          <button class="rt-tb-icon-btn" id="rtUndoBtn" type="button" title="Undo" aria-label="Undo" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h10a5 5 0 0 1 0 10H7M3 10l5-5M3 10l5 5"/></svg>
+          </button>
+          <button class="rt-tb-icon-btn" id="rtRedoBtn" type="button" title="Redo" aria-label="Redo" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10H11a5 5 0 0 0 0 10h6M21 10l-5-5M21 10l-5 5"/></svg>
+          </button>
+          <span class="rt-tb-sep"></span>
+          <button class="rt-tb-text-btn" id="rtFitScreenBtn" type="button">Fit</button>
+          <button class="rt-tb-text-btn" id="rtCompareBtn" type="button" aria-pressed="false">Hold to Compare</button>
+          <button class="rt-tb-text-btn rt-tb-danger" id="rtResetBtn" type="button">Reset</button>
         </div>
-        <div class="editor-stage-wrap" id="rtCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="rtPreviewCanvas" role="img" aria-label="Photo retouch preview"></canvas>
+
+        <div class="rt-canvas-area">
+          <div class="editor-stage-wrap" id="rtCanvasStageWrap" style="cursor:default;">
+            <canvas id="rtPreviewCanvas" role="img" aria-label="Photo retouch preview"></canvas>
+            <div id="rtCropOverlay" class="rt-crop-overlay hidden" aria-hidden="true"></div>
+          </div>
+          <div class="rt-zoom-row" id="rtZoomRow">
+            <label style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="rtZoomVal">100</span>%</label>
+            <input type="range" id="rtZoomSlider" min="30" max="400" value="100" style="flex:1;">
+          </div>
+          <div class="rt-canvas-bg-row" id="rtCanvasBgRow" title="Viewing aid only — never included in your exported photo.">
+            <label style="font-size:12px;color:var(--ink-soft);white-space:nowrap;">Canvas:</label>
+            <button type="button" class="rt-canvas-bg-swatch rt-canvas-bg-swatch-checker active" data-bg="checker" title="Checkerboard (shows transparency)" aria-label="Checkerboard canvas background"></button>
+            <button type="button" class="rt-canvas-bg-swatch rt-canvas-bg-swatch-white" data-bg="white" title="White" aria-label="White canvas background"></button>
+            <button type="button" class="rt-canvas-bg-swatch rt-canvas-bg-swatch-gray" data-bg="gray" title="Gray" aria-label="Gray canvas background"></button>
+            <button type="button" class="rt-canvas-bg-swatch rt-canvas-bg-swatch-black" data-bg="black" title="Black" aria-label="Black canvas background"></button>
+            <input type="color" id="rtCanvasBgCustomColor" class="rt-canvas-bg-swatch-custom" value="#5142d6" title="Custom canvas background color" aria-label="Custom canvas background color">
+          </div>
         </div>
-        <div class="row" style="margin-top:8px;align-items:center;">
-          <label style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="rtZoomVal">100</span>%</label>
-          <input type="range" id="rtZoomSlider" min="30" max="400" value="100" style="flex:1;">
-        </div>
+
+        <div class="rt-panel-sheet" id="rtPanelSheet">
+        <details class="pp-accordion" id="rtAccordionAiMagic">
+          <summary class="pp-accordion-summary">\u2728 AI Magic</summary>
+          <p class="editor-hint">One tap: reads what's actually in your photo (hair condition, background complexity, lighting) and decides real adjustment amounts \u2014 never a fixed preset, never applied where it isn't needed. Everything it does remains fully undoable.</p>
+          <button type="button" class="btn btn-primary" id="rtAiMagicBtn" style="width:100%;">Run AI Magic</button>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionCrop">
+          <summary class="pp-accordion-summary">Crop &amp; Rotate</summary>
+          <p class="editor-hint">Crop applies to the whole photo (all layers together) and stays adjustable \u2014 nothing is destroyed until you export.</p>
+
+          <div class="rt-crop-ratios" id="rtCropRatios">
+            <button type="button" class="rt-crop-ratio-btn active" data-ratio="free">Free</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="1:1">1:1</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="4:5">4:5</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="16:9">16:9</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="9:16">9:16</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="a4">A4</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="passport">Passport Photo</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="square">Square</button>
+            <button type="button" class="rt-crop-ratio-btn" data-ratio="original">Original Ratio</button>
+          </div>
+
+          <div class="rt-mask-row" style="margin-top:12px;">
+            <label style="min-width:70px;">Straighten</label>
+            <input type="range" id="rtStraightenSlider" min="-45" max="45" value="0" step="0.1" style="flex:1;">
+            <span id="rtStraightenVal" style="font-size:12px;color:var(--ink-soft);width:38px;text-align:right;">0\u00b0</span>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button type="button" class="btn btn-ghost" id="rtRotateMinus90" style="flex:1;">\u21b6 -90\u00b0</button>
+            <button type="button" class="btn btn-ghost" id="rtRotatePlus90" style="flex:1;">\u21b7 +90\u00b0</button>
+            <button type="button" class="btn btn-ghost" id="rtRotateResetBtn" style="flex:1;">Reset Rotation</button>
+          </div>
+
+          <div class="rt-mask-row" style="margin-top:12px;">
+            <label style="min-width:70px;">Grid</label>
+            <select id="rtCropGridSelect" class="rt-layer-blend-select">
+              <option value="none">None</option>
+              <option value="thirds" selected>Rule of Thirds</option>
+              <option value="golden">Golden Ratio</option>
+              <option value="center">Center Grid</option>
+            </select>
+          </div>
+
+          <div class="row" style="margin-top:14px;">
+            <button type="button" class="btn btn-secondary" id="rtCropEditBtn" style="flex:1;">Edit Crop</button>
+            <button type="button" class="btn btn-primary" id="rtCropApplyBtn" style="flex:1;display:none;">Apply Crop</button>
+            <button type="button" class="btn btn-ghost" id="rtCropCancelBtn" style="flex:1;display:none;">Cancel</button>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <button type="button" class="btn btn-danger" id="rtCropRemoveBtn" style="flex:1;display:none;">Remove Crop</button>
+          </div>
+        </details>
 
         <details class="pp-accordion" id="rtAccordionFace" open>
           <summary class="pp-accordion-summary">Skin &amp; Face</summary>
@@ -133,6 +223,9 @@
             <div class="ctrl"><label for="rtSkinSmooth">Skin Smoothing: <span id="rtSkinSmoothVal">0</span></label><input type="range" id="rtSkinSmooth" min="0" max="100" value="0"></div>
             <div class="ctrl"><label for="rtFaceBrighten">Face Brightening: <span id="rtFaceBrightenVal">0</span></label><input type="range" id="rtFaceBrighten" min="0" max="100" value="0"></div>
             <div class="ctrl"><label for="rtSkinTone">Skin Tone Warmth: <span id="rtSkinToneVal">0</span></label><input type="range" id="rtSkinTone" min="-50" max="50" value="0"></div>
+            <div class="ctrl"><label for="rtEyeEnhance">Eye Enhance: <span id="rtEyeEnhanceVal">0</span></label><input type="range" id="rtEyeEnhance" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtTeethWhiten">Teeth Whitening: <span id="rtTeethWhitenVal">0</span></label><input type="range" id="rtTeethWhiten" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtLipEnhance">Lip Enhance: <span id="rtLipEnhanceVal">0</span></label><input type="range" id="rtLipEnhance" min="0" max="100" value="0"></div>
           </div>
         </details>
 
@@ -177,6 +270,40 @@
           <div class="qr-controls">
             <div class="ctrl"><label for="rtBgBlur">Background Blur: <span id="rtBgBlurVal">0</span></label><input type="range" id="rtBgBlur" min="0" max="100" value="0"></div>
           </div>
+
+          <div class="rt-advanced-only-section" style="margin-top:12px;">
+            <div class="rt-mask-box">
+              <div class="rt-mask-title" style="margin-bottom:6px;">Background Intelligence (analysis only)</div>
+              <p class="editor-hint" style="margin-top:0;">Analyzes the same AI segmentation already used for Background Blur \u2014 background complexity, edge quality, subject separation and how much blur the current edges can safely support before haloing appears.</p>
+              <button type="button" class="btn btn-secondary" id="rtBackgroundAnalyzeBtn" style="width:100%;">Analyze Background</button>
+              <div id="rtBackgroundAnalysisResults" style="margin-top:10px;font-size:12.5px;color:var(--ink);display:none;"></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionHair">
+          <summary class="pp-accordion-summary">Hair</summary>
+          <p class="editor-hint">Uses its own AI hair detection (a separate model from Face and Background) so these adjustments only ever affect hair pixels \u2014 never skin, ears, eyes, background, or clothes. First use downloads a small AI model (a few MB, cached after).</p>
+          <div class="qr-controls">
+            <div class="ctrl"><label for="rtHairSmooth">Hair Smooth: <span id="rtHairSmoothVal">0</span></label><input type="range" id="rtHairSmooth" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtHairShine">Hair Shine: <span id="rtHairShineVal">0</span></label><input type="range" id="rtHairShine" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtHairHealth">Hair Repair: <span id="rtHairHealthVal">0</span></label><input type="range" id="rtHairHealth" min="0" max="100" value="0"></div>
+            <div class="ctrl"><label for="rtHairFlyaway">Flyaway Cleanup: <span id="rtHairFlyawayVal">0</span></label><input type="range" id="rtHairFlyaway" min="0" max="100" value="0"></div>
+          </div>
+
+          <div class="rt-advanced-only-section" style="margin-top:12px;">
+            <div class="rt-mask-box">
+              <div class="rt-mask-title" style="margin-bottom:6px;">Texture Enhancement</div>
+              <p class="editor-hint" style="margin-top:0;">Adapts to your hair's own measured Texture Score \u2014 already-detailed hair gets a gentler touch, smoother hair gets more, so strand definition looks natural instead of oversharpened.</p>
+              <div class="ctrl"><label for="rtHairTexture">Hair Texture: <span id="rtHairTextureVal">0</span></label><input type="range" id="rtHairTexture" min="0" max="100" value="0"></div>
+            </div>
+            <div class="rt-mask-box">
+              <div class="rt-mask-title" style="margin-bottom:6px;">Hair Intelligence (analysis only)</div>
+              <p class="editor-hint" style="margin-top:0;">Runs the Hair Intelligence Engine and shows what it measured \u2014 shine, texture, volume, frizz and flyaway detection all come from real pixel analysis. Curl-pattern and thickness classifications are only shown when confidence is high enough; otherwise this honestly says \u201cUnknown\u201d instead of guessing.</p>
+              <button type="button" class="btn btn-secondary" id="rtHairAnalyzeBtn" style="width:100%;">Analyze Hair</button>
+              <div id="rtHairAnalysisResults" style="margin-top:10px;font-size:12.5px;color:var(--ink);display:none;"></div>
+            </div>
+          </div>
         </details>
 
         <details class="pp-accordion" id="rtAccordionFilters">
@@ -190,6 +317,87 @@
           </div>
         </details>
 
+        <details class="pp-accordion" id="rtAccordionLayers">
+          <summary class="pp-accordion-summary">Layers</summary>
+          <p class="editor-hint">Every layer keeps its own independent Skin &amp; Face / Light / Color / Detail / Background adjustments \u2014 select a layer here, then edit it from the other panels.</p>
+          <div class="row" style="margin-bottom:10px;">
+            <button class="btn btn-secondary" id="rtLayerAddBtn" type="button" style="flex:1;">+ New Layer</button>
+            <button class="btn btn-ghost" id="rtLayerDuplicateBtn" type="button" style="flex:1;">Duplicate</button>
+            <button class="btn btn-danger" id="rtLayerDeleteBtn" type="button" style="flex:0;min-width:auto;">Delete</button>
+          </div>
+
+          <div class="rt-mask-box" style="margin-bottom:12px;">
+            <div class="rt-mask-title" style="margin-bottom:8px;">Background Layer</div>
+            <div class="rt-mask-row">
+              <label style="min-width:70px;">Fill Color</label>
+              <input type="color" id="rtBgFillColor" value="#ffffff" style="width:40px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);padding:2px;">
+              <button type="button" class="btn btn-ghost" id="rtAddColorLayerBtn" style="flex:1;">+ Color Layer</button>
+            </div>
+            <div class="rt-mask-row">
+              <label style="min-width:70px;">Gradient</label>
+              <input type="color" id="rtGradientColor1" value="#5142d6" style="width:34px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);padding:2px;">
+              <input type="color" id="rtGradientColor2" value="#ffffff" style="width:34px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);padding:2px;">
+              <button type="button" class="btn btn-ghost" id="rtAddGradientLayerBtn" style="flex:1;">+ Gradient Layer</button>
+            </div>
+            <div class="rt-mask-row">
+              <button type="button" class="btn btn-ghost" id="rtMakeTransparentBtn" style="flex:1;">Make Selected Layer Transparent</button>
+            </div>
+            <p class="editor-hint" style="margin-top:6px;">Tip: use the reorder arrows below to move a color or gradient layer to the bottom of the stack to use it as your background.</p>
+          </div>
+
+          <div class="rt-mask-box" style="margin-bottom:12px;">
+            <div class="rt-mask-title" style="margin-bottom:6px;">Object Isolation</div>
+            <button type="button" class="btn btn-ghost" id="rtAiSubjectSelectBtn" disabled title="AI-powered subject/background separation is coming in Phase 3 \u2014 this workspace's layer and mask architecture is already built to support it." style="width:100%;">AI Subject Select \u2014 Coming in Phase 3</button>
+            <p class="editor-hint" style="margin-top:6px;">Foundation only: every layer already has a reserved slot for an AI-generated subject mask, ready for Phase 3's AI Background Remove, Sky Replace, Bokeh, Relight and Shadow tools to plug into \u2014 using the exact same mask system already powering manual masking today.</p>
+          </div>
+
+          <div id="rtMaskPanel"></div>
+          <div id="rtLayersList" role="list" aria-label="Layers"></div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionHistory">
+          <summary class="pp-accordion-summary">History</summary>
+          <p class="editor-hint">Every adjustment and layer change is recorded here \u2014 tap any step to jump straight to it.</p>
+          <div id="rtHistoryList" role="list" aria-label="History steps"></div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionHeal">
+          <summary class="pp-accordion-summary">Healing &amp; Clone</summary>
+          <p class="editor-hint">These paint onto their own layer of edits, sampling from the layer's original pixels \u2014 the source photo is never touched, so you can clear or undo any heal stroke anytime.</p>
+
+          <div class="rt-mask-segmented" id="rtHealToolSeg" style="width:100%;display:flex;">
+            <button type="button" data-tool="clone" class="active" style="flex:1;">Clone Stamp</button>
+            <button type="button" data-tool="healingBrush" style="flex:1;">Healing Brush</button>
+            <button type="button" data-tool="spotHeal" style="flex:1;">Spot Healing</button>
+          </div>
+
+          <div class="rt-mask-row" style="margin-top:12px;">
+            <label style="min-width:70px;">Brush Size</label>
+            <input type="range" id="rtHealBrushSizeSlider" min="10" max="200" value="40" style="flex:1;">
+            <span id="rtHealBrushSizeVal" style="font-size:12px;color:var(--ink-soft);width:38px;text-align:right;">40px</span>
+          </div>
+
+          <p class="editor-hint" id="rtHealSourceHint">Clone Stamp / Healing Brush: tap once on the area you want to copy from (sets the source), then paint over the area you want to fix.</p>
+
+          <div class="row" style="margin-top:8px;">
+            <button type="button" class="btn btn-secondary" id="rtHealEditBtn" style="flex:1;">Start Healing</button>
+            <button type="button" class="btn btn-danger" id="rtHealClearBtn" style="flex:1;">Clear Heal Edits</button>
+          </div>
+          <div id="rtHealProgress" class="hidden" style="margin-top:10px;">
+            <div style="font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Reconstructing\u2026</div>
+            <div style="height:6px;border-radius:3px;background:var(--card-border);overflow:hidden;">
+              <div id="rtHealProgressBar" style="height:100%;width:0%;background:var(--accent1-solid, var(--accent1));"></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="pp-accordion" id="rtAccordionPortrait">
+          <summary class="pp-accordion-summary">Portrait AI</summary>
+          <p class="editor-hint">Runs the Portrait AI Coordinator \u2014 combines Face AI, Hair AI and Background AI (never re-detecting or re-analyzing any of them) into one report, including an Overall Score built from whichever real signals were actually measurable. Fields that would require a model this project doesn't have (eye contact, expression, pose, lighting direction) honestly show \u201cUnknown\u201d instead of guessing.</p>
+          <button type="button" class="btn btn-secondary" id="rtPortraitAnalyzeBtn" style="width:100%;">Analyze Portrait</button>
+          <div id="rtPortraitAnalysisResults" style="margin-top:10px;font-size:12.5px;color:var(--ink);display:none;"></div>
+        </details>
+
         <details class="pp-accordion" id="rtAccordionExport">
           <summary class="pp-accordion-summary">Export</summary>
           <div class="row">
@@ -200,6 +408,66 @@
           </div>
           <div id="rtOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;"></div>
         </details>
+        </div>
+
+        <div class="rt-bottom-toolbar" id="rtBottomToolbar" role="tablist" aria-label="Editing categories">
+          <button class="rt-bt-item" type="button" data-target="rtAccordionAiMagic" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
+            <span>AI Magic</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionCrop" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+            <span>Crop</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionFace" role="tab" aria-selected="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5"/></svg>
+            <span>Face</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionLight" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span>Light</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionColor" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18 4 4 0 0 0 0-8 2 2 0 1 1 0-4 4 4 0 0 0 0-6z"/></svg>
+            <span>Color</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionDetail" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            <span>Detail</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionBackground" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span>Background</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionHair" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4 0-7 3-7 7 0 3 1 4 1 6 0 2-1 3-1 3h3s1-2 1-4c0-1 1-2 1-2s1 4 3 4 3-4 3-4 1 1 1 2c0 2 1 4 1 4h3s-1-1-1-3c0-2 1-3 1-6 0-4-3-7-7-7z"/></svg>
+            <span>Hair</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionFilters" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4l-6 7v5l-4 2v-7L4 8V4z"/></svg>
+            <span>Filters</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionLayers" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>
+            <span>Layers</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionHistory" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>
+            <span>History</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionHeal" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2v6M11 22v-6M2 11h6M22 11h-6M5.5 5.5l3 3M16.5 16.5l-3-3M5.5 16.5l3-3M16.5 5.5l-3 3"/></svg>
+            <span>Heal</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionPortrait" data-advanced="true" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7 18c0-2.5 2-4 5-4s5 1.5 5 4"/></svg>
+            <span>Portrait</span>
+          </button>
+          <button class="rt-bt-item" type="button" data-target="rtAccordionExport" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+            <span>Export</span>
+          </button>
+        </div>
       </div>
   </div>
 
@@ -239,7 +507,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260719-1035" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260805-1900" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -255,7 +523,7 @@
         <h4>Company</h4>
         <a href="index.html#about-section">About</a>
         <a href="index.html#faq">FAQ</a>
-        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+        <a href="contact.html">Contact</a>
       </div>
       <div>
         <h4>Legal</h4>
@@ -276,6 +544,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260719-1035"></script>
+<script defer src="js/app.js?v=20260805-1900"></script>
 </body>
 </html>

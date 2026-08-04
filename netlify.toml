@@ -1,0 +1,25 @@
+# ToolFlight -- Netlify deployment configuration.
+#
+# This site is pre-built static output: build.py is run locally/offline
+# to generate every HTML page before deploying, so Netlify needs no build
+# command here -- just tell it which directory to publish. Replace
+# "toolflight-main" below with whatever directory actually contains the
+# generated site (index.html, css/, js/, etc.) in your deploy setup.
+
+[build]
+  publish = "."
+
+# Baseline security headers, worth having now that this site handles
+# real authentication and business data (Invoice Maker), not just
+# stateless client-side tools. These are defense-in-depth on top of --
+# not a substitute for -- firestore.rules, which remains the actual
+# authorization boundary for all Firestore data.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+    # camera=(self) is required for Passport Photo Maker's camera-capture
+    # feature; everything else stays default-denied.

@@ -6,9 +6,12 @@
 <meta name="color-scheme" content="light dark">
 <title>EMI / Loan Calculator — Free Online | ToolFlight</title>
 <meta name="description" content="Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.">
-<link rel="icon" href="assets/favicon.ico?v=20260715-1952" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260715-1952">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260715-1952">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#6D5EF5">
+<meta name="author" content="ToolFlight">
+<link rel="icon" href="assets/favicon.ico?v=20260801-2348" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260801-2348">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260801-2348">
 <link rel="canonical" href="https://toolflight.com/emi-calculator.html">
 
 <meta property="og:title" content="EMI / Loan Calculator — Free Online | ToolFlight">
@@ -16,10 +19,14 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://toolflight.com/emi-calculator.html">
+<meta property="og:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="EMI / Loan Calculator — Free Online | ToolFlight">
 <meta name="twitter:description" content="Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.">
+<meta name="twitter:image" content="https://toolflight.com/assets/apple-touch-icon.png">
 
 <script>
 /* Runs synchronously, before CSS or body paint -- the only way to avoid a
@@ -37,8 +44,10 @@
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260715-1952">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="css/style.css?v=20260801-2348">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -54,13 +63,16 @@
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }
+</script>
 
 </head>
 <body>
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260715-1952" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -70,6 +82,7 @@
       <a href="calculators.html" data-page="calculators.html">Calculators</a>
       <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
       <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="ai-tools.html" data-page="ai-tools.html">AI Tools</a>
       <a href="blog.html" data-page="blog.html">Blog</a>
       
     </div>
@@ -98,7 +111,7 @@
   </div>
 
   <div class="workspace">
-      <div class="view-title"><h2>EMI / Loan Calculator</h2></div>
+      <div class="view-title"><h2>Enter Loan Details</h2></div>
       <span class="field-label">Loan amount</span>
       <input type="number" id="emiAmount" placeholder="e.g. 20000" min="0" step="0.01">
       <span class="field-label" style="margin-top:14px;">Interest rate (annual %)</span>
@@ -123,7 +136,9 @@
   </div>
 
   <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">How to use the EMI / Loan Calculator</h2>
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the EMI / Loan Calculator</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">An EMI (Equated Monthly Installment) is the fixed monthly payment you make on a loan, combining both principal and interest, calculated using the standard reducing-balance method banks use — meaning the interest portion shrinks and the principal portion grows with each payment, even though the total monthly amount stays the same. This calculator takes your loan amount, interest rate, and term, and shows your monthly payment alongside the total interest and total amount you'll pay over the life of the loan, so you can compare loan offers or terms before committing.</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to use the EMI / Loan Calculator</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Enter the loan amount, annual interest rate, and loan term in months or years, then tap Calculate EMI to see your monthly payment, total interest, and total amount payable over the life of the loan.</p>
     <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>How is EMI calculated?</strong><br>Using the standard reducing-balance formula: EMI = P × r × (1+r)^n / ((1+r)^n − 1), where P is the principal, r is the monthly interest rate, and n is the number of monthly installments.</p>
@@ -138,6 +153,7 @@
 </div>
 
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Calculators", "item": "https://toolflight.com/calculators.html"}, {"@type": "ListItem", "position": 3, "name": "EMI / Loan Calculator", "item": "https://toolflight.com/emi-calculator.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "EMI / Loan Calculator", "description": "Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.", "url": "https://toolflight.com/emi-calculator.html"}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "EMI / Loan Calculator", "applicationCategory": "FinanceApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How is EMI calculated?", "acceptedAnswer": {"@type": "Answer", "text": "Using the standard reducing-balance formula: EMI = P \u00d7 r \u00d7 (1+r)^n / ((1+r)^n \u2212 1), where P is the principal, r is the monthly interest rate, and n is the number of monthly installments."}}, {"@type": "Question", "name": "Does this include fees or insurance?", "acceptedAnswer": {"@type": "Answer", "text": "No \u2014 this calculates principal and interest only. Add any separate fees or insurance premiums manually."}}]}</script>
 
@@ -145,7 +161,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260715-1952" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -155,12 +171,13 @@
         <a href="calculators.html">Calculators</a>
         <a href="finance-tools.html">Finance Tools</a>
         <a href="seo-tools.html">SEO Tools</a>
+        <a href="ai-tools.html">AI Tools</a>
       </div>
       <div>
         <h4>Company</h4>
         <a href="index.html#about-section">About</a>
         <a href="index.html#faq">FAQ</a>
-        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+        <a href="contact.html">Contact</a>
       </div>
       <div>
         <h4>Legal</h4>
@@ -181,6 +198,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260715-1952"></script>
+<script defer src="js/app.js?v=20260801-2348"></script>
 </body>
 </html>

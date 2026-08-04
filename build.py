@@ -35,6 +35,9 @@ def head(title, description, og_path):
 <meta name="color-scheme" content="light dark">
 <title>{title}</title>
 <meta name="description" content="{description}">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#6D5EF5">
+<meta name="author" content="ToolFlight">
 <link rel="icon" href="assets/favicon.ico?v={BUILD_VERSION}" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v={BUILD_VERSION}">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v={BUILD_VERSION}">
@@ -45,10 +48,14 @@ def head(title, description, og_path):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ToolFlight">
 <meta property="og:url" content="https://toolflight.com/{og_path}">
+<meta property="og:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{title}">
 <meta name="twitter:description" content="{description}">
+<meta name="twitter:image" content="https://toolflight.com/assets/apple-touch-icon.png">
 
 <script>
 /* Runs synchronously, before CSS or body paint -- the only way to avoid a
@@ -66,7 +73,9 @@ def head(title, description, og_path):
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="css/style.css?v={BUILD_VERSION}">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -82,6 +91,9 @@ def head(title, description, og_path):
   "description": "{description}",
   "offers": {{ "@type": "Offer", "price": "0", "priceCurrency": "USD" }}
 }}
+</script>
+<script type="application/ld+json">
+{{ "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }}
 </script>
 """
 
@@ -127,7 +139,7 @@ def footer():
         <h4>Company</h4>
         <a href="index.html#about-section">About</a>
         <a href="index.html#faq">FAQ</a>
-        <a href="#" onclick="openLegal('contact');return false;">Contact</a>
+        <a href="contact.html">Contact</a>
       </div>
       <div>
         <h4>Legal</h4>
@@ -321,7 +333,7 @@ pdf_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-PDF_MERGE_FORM = """<div class="view-title"><h2>Merge PDF</h2><span class="badge" id="mergePageBadge">0 files</span></div>
+PDF_MERGE_FORM = """<div class="view-title"><h2>Upload Your PDFs</h2><span class="badge" id="mergePageBadge">0 files</span></div>
       <span class="field-label">Add PDF files — drag items below to reorder</span>
       <div class="drop-zone" id="mergeDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -335,7 +347,7 @@ PDF_MERGE_FORM = """<div class="view-title"><h2>Merge PDF</h2><span class="badge
         <button class="btn btn-danger" id="mergeClearBtn">Clear all</button>
       </div>"""
 
-PDF_SPLIT_FORM = """<div class="view-title"><h2>Split PDF</h2><span class="badge hidden" id="splitPageBadge">0 pages</span></div>
+PDF_SPLIT_FORM = """<div class="view-title"><h2>Upload Your PDF</h2><span class="badge hidden" id="splitPageBadge">0 pages</span></div>
       <span class="field-label">Choose one PDF</span>
       <div class="drop-zone" id="splitDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -357,7 +369,7 @@ PDF_SPLIT_FORM = """<div class="view-title"><h2>Split PDF</h2><span class="badge
         <button class="btn btn-danger" id="splitClearBtn">Clear</button>
       </div>"""
 
-ITP_FORM = """<div class="view-title"><h2>Image to PDF</h2><span class="badge" id="itpCountBadge">0 images</span></div>
+ITP_FORM = """<div class="view-title"><h2>Upload Your Images</h2><span class="badge" id="itpCountBadge">0 images</span></div>
       <span class="field-label">Add images — drag items below to reorder</span>
       <div class="drop-zone" id="itpDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -398,7 +410,7 @@ ITP_FORM = """<div class="view-title"><h2>Image to PDF</h2><span class="badge" i
         <button class="btn btn-danger" id="itpClearBtn" type="button">Clear all</button>
       </div>"""
 
-PTI_FORM = """<div class="view-title"><h2>PDF to Image</h2></div>
+PTI_FORM = """<div class="view-title"><h2>Upload Your PDF</h2></div>
       <span class="field-label">Choose a PDF</span>
       <div class="drop-zone" id="ptiDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -448,7 +460,7 @@ PTI_FORM = """<div class="view-title"><h2>PDF to Image</h2></div>
         </div>
       </div>"""
 
-PDFC_FORM = """<div class="view-title"><h2>PDF Compress</h2></div>
+PDFC_FORM = """<div class="view-title"><h2>Upload Your PDF</h2></div>
       <span class="field-label">Choose a PDF</span>
       <div class="drop-zone" id="pdfcDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -548,7 +560,7 @@ def _resume_repeat_section(key, title, add_label):
         <div id="rbList_{key}"></div>
       </div>"""
 
-RESUME_FORM = """<div class="view-title"><h2>Resume Builder &amp; ATS Checker</h2></div>
+RESUME_FORM = """<div class="view-title"><h2>Build Your Resume</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Build a resume and check it against common ATS (Applicant Tracking System) patterns \u2014 everything runs locally in your browser, nothing is uploaded. The ATS check is rule-based analysis, not AI \u2014 see its FAQ below for exactly what that means.</p>
 
       <div class="editor-toolbar" role="tablist" aria-label="Resume tool">
@@ -671,7 +683,7 @@ PDF_TOOLS = [
      "subtitle":"Combine multiple PDF files into one, in any order you choose — free, private, instant.",
      "meta":"Free online PDF merge tool. Combine multiple PDF files into one in any order, right in your browser. No upload, no signup.",
      "category":"BusinessApplication","form":PDF_MERGE_FORM,
-     "intro":"Whether you're combining scanned receipts, assembling a report from separate chapters, or stitching signed pages back into one contract, Merge PDF combines any number of PDF files into a single document — reordered exactly how you want, processed entirely in your browser.",
+     "intro":"Whether you're combining scanned receipts, assembling a report from separate chapters, or stitching signed pages back into one contract, Merge PDF combines any number of PDF files into a single document — reordered exactly how you want, processed entirely in your browser. See our full <a href=\"blog/how-to-merge-pdf-files-online.html\">guide to merging PDFs online</a> for a step-by-step walkthrough.",
      "features":["Drag and drop multiple PDF files at once","Reorder files before merging by dragging them into place","Live file count and total page count","One-click merge and download"],
      "benefits":["Files are never uploaded — merging happens locally in your browser","No file size limits imposed by a server, no daily quota","Works identically on desktop and mobile"],
      "how_to":"Drag in all the PDF files you want combined, or tap to browse. Drag the files into the order you want the final document to read in, then tap Merge &amp; download.",
@@ -881,7 +893,6 @@ image_body = f"""<div class="hero-sub">
     {category_hub_card("ai-image-upscaler.html", ICON_UPSCALER, "AI Image Upscaler", "Upscale images 2x or 4x with real AI, using a browser-optimized model.", cta="Open tool")}
     {category_hub_card("magic-eraser.html", ICON_MAGIC_ERASER, "Magic Eraser (AI Object Remover)", "Brush over unwanted objects and remove them with real AI inpainting.", cta="Open tool")}
     {category_hub_card("image-watermark.html", ICON_WATERMARK, "Image Watermark Tool", "Add draggable text or logo watermarks with adjustable opacity.", cta="Open tool")}
-    {category_hub_card("ecommerce-product-editor.html", ICON_CROP, "Ecommerce Product Editor", "Position, scale, rotate, and crop product photos on a real artboard.", cta="Open tool")}
   </div>
 </div>
 """
@@ -890,7 +901,7 @@ image_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
+COMPRESS_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
       <div class="drop-zone" id="compressDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -905,8 +916,8 @@ COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
         <div class="progress-label" id="compressProgressLabel">Reading image…</div>
       </div>
       <div class="compare hidden" id="compareBox">
-        <div class="box"><span class="tag">Original</span><img id="origPreview" loading="lazy"><div class="size" id="origSize"></div></div>
-        <div class="box"><span class="tag">Compressed</span><img id="compPreview" loading="lazy"><div class="size" id="compSize"></div></div>
+        <div class="box"><span class="tag">Original</span><img id="origPreview" alt="Original uploaded image preview" loading="lazy"><div class="size" id="origSize"></div></div>
+        <div class="box"><span class="tag">Compressed</span><img id="compPreview" alt="Compressed image preview" loading="lazy"><div class="size" id="compSize"></div></div>
       </div>
       <div id="savedRow" class="hidden" style="text-align:center;"><span class="saved-badge" id="savedBadge"></span></div>
       <div class="row">
@@ -914,7 +925,7 @@ COMPRESS_FORM = """<div class="view-title"><h2>Compress Image</h2></div>
         <button class="btn btn-success hidden" id="compressDownloadBtn">Download result</button>
       </div>"""
 
-CROP_FORM = """<div class="view-title"><h2>Image Crop Tool</h2></div>
+CROP_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="cropDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -955,7 +966,7 @@ CROP_FORM = """<div class="view-title"><h2>Image Crop Tool</h2></div>
         </div>
       </div>"""
 
-WATERMARK_FORM = """<div class="view-title"><h2>Image Watermark Tool</h2></div>
+WATERMARK_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="wmDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -1012,7 +1023,7 @@ WATERMARK_FORM = """<div class="view-title"><h2>Image Watermark Tool</h2></div>
         </div>
       </div>"""
 
-ROTATE_FLIP_FORM = """<div class="view-title"><h2>Rotate &amp; Flip Tool</h2></div>
+ROTATE_FLIP_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <span class="field-label">Choose an image</span>
       <div class="drop-zone" id="rfDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -1041,7 +1052,8 @@ ROTATE_FLIP_FORM = """<div class="view-title"><h2>Rotate &amp; Flip Tool</h2></d
         </div>
       </div>"""
 
-BG_REMOVER_FORM = """<div class="view-title"><h2>AI Background Remover</h2></div>
+BG_REMOVER_FORM = """
+      <div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Powered by Google's MediaPipe AI model, running entirely in your browser — no file is ever uploaded anywhere. Works best on photos of people, animals, vehicles, and everyday objects.</p>
 
       <div id="autoSaveBanner" class="hidden" style="background:color-mix(in srgb, var(--accent1) 8%, var(--card));border:1px solid var(--card-border);border-radius:12px;padding:12px 14px;margin-bottom:14px;" role="status">
@@ -1062,84 +1074,104 @@ BG_REMOVER_FORM = """<div class="view-title"><h2>AI Background Remover</h2></div
       <div class="model-status-line" id="aiModelStatus" role="status"><span class="dot"></span><span>AI model loads on first use.</span></div>
 
       <div id="aiRemoveStage" class="hidden">
-        <div class="canvas-stage" id="aiRemovePreviewStage" style="margin-top:14px;">
-          <div id="aiRemovePreview" style="width:100%;"></div>
+        <div id="aiTopAppBar">
+          <span id="aiTopAppBarTitle">Background Remover</span>
         </div>
-        <div class="row">
-          <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
-        </div>
-        <div class="row hidden" id="aiRemoveDownloadRow">
-          <button class="btn btn-success" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
-          <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
-        </div>
-      </div>
+        <div id="aiShellBody">
+          <nav id="aiLeftRail" aria-label="Tool categories">
+            <button class="epe-rail-btn" type="button" data-ai-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+            <button class="epe-rail-btn" type="button" data-ai-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+            <button class="epe-rail-btn" type="button" data-ai-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+          </nav>
 
-      <div id="aiEditorPanel" class="hidden" style="margin-top:22px;padding-top:20px;border-top:1px solid var(--card-border);">
-        <h3 style="font-size:15px;font-weight:800;margin-bottom:10px;">Refine selection</h3>
+          <div id="aiCanvasAreaShell">
+            <div class="row" id="aiCanvasTopControls" style="flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="aiViewFitBtn" type="button">Fit to Screen</button>
+              <button class="btn btn-secondary" id="aiViewCenterBtn" type="button">Center View</button>
+              <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
+            </div>
+            <div id="aiWorkspaceViewport">
+              <div id="aiWorkspace">
+                <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap">
+                  <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
+                  <div id="compareWrap" class="hidden" style="position:relative;">
+                    <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
+                    <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
+                      <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
+                    </div>
+                    <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+                  </div>
+                </div>
+              </div>
+                <div id="aiFloatingControls" role="toolbar" aria-label="Editing tools">
+                  <button type="button" id="aiFloatDragHandle" class="epe-drag-handle" title="Drag to move" aria-label="Drag to move toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button class="editor-tool-btn ai-tool-btn active" data-tool="brush" type="button" aria-pressed="true" title="Brush (keep)" aria-label="Brush, keep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.06M9.06 11.9L6 15l-3 6 6-3 2.94-2.94"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="eraser" type="button" aria-pressed="false" title="Eraser" aria-label="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M20 20H8l-6-6a2 2 0 0 1 0-2.8l9-9a2 2 0 0 1 2.8 0l6.2 6.2a2 2 0 0 1 0 2.8L13 18"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Edge Refine — content-aware refinement for hair and soft edges" aria-label="Edge refine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="wand" type="button" aria-pressed="false" title="Magic Wand" aria-label="Magic wand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 6.2L11 5M12.2 11.8L11 13M3 21l9-9"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="polygon" type="button" aria-pressed="false" title="Polygon / Pen" aria-label="Polygon pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 8l8-5 8 5-3 12H7z"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="lasso" type="button" aria-pressed="false" title="Lasso" aria-label="Lasso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M7 10a5 5 0 1 1 7 4.5L9 21l-2-2 3-3"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button type="button" id="undoBtn" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
+                  <button type="button" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
+                  <div class="epe-float-sep"></div>
+                  <button type="button" id="compareToggleBtn" title="Before / After" aria-label="Before and after comparison" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></button>
+                  <button type="button" id="aiFloatFitBtn" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+                </div>
+            </div>
+            <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices.</p>
+          </div>
 
-        <div class="editor-toolbar" role="group" aria-label="Selection tools">
-          <button class="editor-tool-btn active" data-tool="brush" type="button" aria-pressed="true">Brush (keep)</button>
-          <button class="editor-tool-btn" data-tool="eraser" type="button" aria-pressed="false">Eraser</button>
-          <button class="editor-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Content-aware refinement for hair, fur, and soft edges">Edge Refine</button>
-          <button class="editor-tool-btn" data-tool="wand" type="button" aria-pressed="false">Magic Wand</button>
-          <button class="editor-tool-btn" data-tool="polygon" type="button" aria-pressed="false">Polygon / Pen</button>
-          <button class="editor-tool-btn" data-tool="lasso" type="button" aria-pressed="false">Lasso</button>
-        </div>
+          <div id="aiSheetBackdrop"></div>
+          <div id="aiToolPanel">
+            <div id="aiPanelResizeHandle"></div>
+            <div id="aiToolPanelHeader">
+              <div id="aiSheetDragHandle"></div>
+              <span id="aiToolPanelTitle">Edit</span>
+              <div class="row" style="flex:0;gap:4px;">
+                <button id="aiPanelCollapseBtn" type="button" title="Collapse panel" aria-label="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg></button>
+                <button id="aiSheetCloseBtn" type="button" title="Close" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div id="aiToolPanelBody">
 
-        <div class="unit-toggle select-mode-toggle" style="margin-top:10px;" role="group" aria-label="Selection mode">
+        <details class="pp-accordion" id="aiAccordionEdit" open>
+        <summary class="pp-accordion-summary">Brush &amp; Selection</summary>
+        <div class="unit-toggle select-mode-toggle" role="group" aria-label="Selection mode">
           <button class="active" data-mode="add" type="button" aria-pressed="true">Add to selection</button>
           <button data-mode="subtract" type="button" aria-pressed="false">Subtract</button>
         </div>
         <p class="editor-hint">Add/Subtract applies to Magic Wand, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough.</p>
-
         <div class="qr-controls" style="margin-top:10px;">
           <div class="ctrl"><label for="brushSizeSlider">Brush size: <span id="brushSizeVal">40</span>px</label><input type="range" id="brushSizeSlider" min="5" max="150" value="40"></div>
           <div class="ctrl"><label for="brushSoftSlider">Soft edge: <span id="brushSoftVal">50</span>%</label><input type="range" id="brushSoftSlider" min="0" max="100" value="50"></div>
           <div class="ctrl"><label for="wandToleranceSlider">Wand tolerance: <span id="wandToleranceVal">30</span></label><input type="range" id="wandToleranceSlider" min="1" max="100" value="30"></div>
-          <div class="ctrl">
-            <label for="zoomSelect">Zoom</label>
-            <select id="zoomSelect" aria-label="Zoom level">
-              <option value="25">25%</option>
-              <option value="50">50%</option>
-              <option value="100" selected>100%</option>
-              <option value="200">200%</option>
-              <option value="400">400%</option>
-            </select>
-          </div>
         </div>
+        </details>
 
-        <div class="qr-controls" style="margin-top:10px;">
+        <details class="pp-accordion" id="aiAccordionMore">
+        <summary class="pp-accordion-summary">More: Edge Cleanup &amp; History</summary>
+        <div class="qr-controls">
           <div class="ctrl"><label for="featherSlider">Feather edge: <span id="featherVal">0</span>px</label><input type="range" id="featherSlider" min="0" max="30" value="0" step="1"></div>
           <div class="ctrl"><label for="smoothSlider">Edge smooth: <span id="smoothVal">0</span>px</label><input type="range" id="smoothSlider" min="0" max="10" value="0" step="1"></div>
           <div class="ctrl" style="grid-column:span 2;"><label for="expandSlider">Expand / Contract: <span id="expandVal">0</span>px</label><input type="range" id="expandSlider" min="-20" max="20" value="0" step="1"></div>
         </div>
-
-        <div class="row">
-          <button class="btn btn-ghost" id="undoBtn" type="button">Undo</button>
-          <button class="btn btn-ghost" id="redoBtn" type="button">Redo</button>
+        <div class="row" style="margin-top:10px;">
           <button class="btn btn-ghost" id="invertSelBtn" type="button">Invert selection</button>
           <button class="btn btn-danger" id="resetSelBtn" type="button">Reset to AI result</button>
         </div>
         <div class="row">
           <button class="btn btn-ghost" id="overlayToggleBtn" type="button" aria-pressed="false">Selection overlay</button>
-          <button class="btn btn-ghost" id="compareToggleBtn" type="button" aria-pressed="false">Before / After</button>
         </div>
-
-        <div class="editor-stage-wrap tool-brush" id="aiEditStageWrap">
-          <canvas id="aiEditCanvas" role="img" aria-label="Editable image selection canvas — use mouse, touch, or stylus to draw"></canvas>
-          <div id="compareWrap" class="hidden" style="position:relative;">
-            <img id="compareBefore" alt="Original image" style="display:block;width:100%;">
-            <div id="compareAfterWrap" style="position:absolute;top:0;left:0;height:100%;overflow:hidden;width:50%;">
-              <img id="compareAfter" alt="Background removed, shown on white" style="display:block;height:100%;width:auto;max-width:none;">
-            </div>
-            <div id="compareHandle" role="slider" aria-label="Before/after comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0" style="position:absolute;top:0;left:50%;width:36px;height:36px;margin-left:-18px;top:calc(50% - 18px);border-radius:50%;background:#fff;border:2px solid var(--accent1);cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
-          </div>
+        <div class="row hidden" id="aiRemoveDownloadRow">
+          <button class="btn btn-ghost hidden" id="sendToAiChangerBtn" type="button">Send to Background Changer →</button>
         </div>
-        <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices. Canvas drawing itself needs a pointer (mouse, touch, or stylus) — every other control here is fully keyboard operable.</p>
+        </details>
 
-        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--card-border);">
-          <span class="field-label">Export</span>
-          <div class="qr-controls" style="margin-top:8px;">
+        <details class="pp-accordion" id="aiAccordionExport">
+          <summary class="pp-accordion-summary">Export</summary>
+          <div class="qr-controls">
             <div class="ctrl">
               <label for="exportFormat">Format</label>
               <select id="exportFormat" aria-label="Export format">
@@ -1159,12 +1191,23 @@ BG_REMOVER_FORM = """<div class="view-title"><h2>AI Background Remover</h2></div
           </div>
           <div class="row">
             <button class="btn btn-primary" id="exportBtn" type="button" style="flex:1;">Export image</button>
+            <button class="btn btn-success" id="aiRemoveDownloadBtn" type="button">Download PNG</button>
           </div>
           <p class="editor-hint">Exports are rebuilt at your original image's full resolution regardless of the editing preview size, using a background worker when your browser supports it so large images don't freeze the page.</p>
+        </details>
+            </div>
+          </div>
         </div>
-      </div>"""
 
-BG_CHANGER_FORM = """<div class="view-title"><h2>Background Changer</h2></div>
+        <nav id="aiBottomToolbar" aria-label="Tool categories">
+          <button class="epe-tab-btn active" type="button" data-ai-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+          <button class="epe-tab-btn" type="button" data-ai-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+          <button class="epe-tab-btn" type="button" data-ai-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+        </nav>
+      </div>
+  """
+
+BG_CHANGER_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Upload a transparent PNG/WEBP (e.g. from the AI Background Remover) and place it on a solid color, gradient, or custom background image.</p>
       <span class="field-label">Choose a transparent image</span>
       <div class="drop-zone" id="bgChangerDrop">
@@ -1219,7 +1262,7 @@ BG_CHANGER_FORM = """<div class="view-title"><h2>Background Changer</h2></div>
         </div>
       </div>"""
 
-ME_FORM = """<div class="view-title"><h2>Magic Eraser (AI Object Remover)</h2></div>
+ME_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Powered by LaMa, an open-source AI inpainting model, running entirely in your browser via WebAssembly \u2014 no file is ever uploaded anywhere. The first use downloads the AI model (~200MB, one-time, cached by your browser afterward).</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1284,7 +1327,7 @@ ME_FORM = """<div class="view-title"><h2>Magic Eraser (AI Object Remover)</h2></
         </div>
       </div>"""
 
-APE_FORM = """<div class="view-title"><h2>AI Photo Enhancer</h2></div>
+APE_FORM = """<div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Natural photo enhancement \u2014 not a beauty filter. Face Enhancement uses a real AI model (MediaPipe Face Landmarker) purely to detect where your face is, so smoothing and clarity are applied precisely and naturally. It never changes your face shape, identity, or adds makeup.</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1377,7 +1420,7 @@ APE_FORM = """<div class="view-title"><h2>AI Photo Enhancer</h2></div>
         </div>
       </div>"""
 
-UPS_FORM = """<div class="view-title"><h2>AI Image Upscaler</h2></div>
+UPS_FORM = """<div class="view-title"><h2>Upload Your Image</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real AI super-resolution (ESRGAN via UpscalerJS / TensorFlow.js), not a simple resize \u2014 runs entirely in your browser. The AI model downloads only when you tap AI Upscale (one-time, cached after). Images larger than 1600px on their longest side aren't accepted, to avoid crashing your browser tab.</p>
 
       <span class="field-label">Choose an image (JPG, PNG, or WEBP)</span>
@@ -1457,7 +1500,7 @@ UPS_FORM = """<div class="view-title"><h2>AI Image Upscaler</h2></div>
         </div>
       </div>"""
 
-OCR_FORM = """<div class="view-title"><h2>AI OCR \u2014 Image &amp; PDF to Text</h2></div>
+OCR_FORM = """<div class="view-title"><h2>Upload Your File</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Real OCR (Tesseract.js), running entirely in your browser \u2014 nothing is uploaded. For PDFs, each page is rendered as an image first, then read with the same OCR engine (Tesseract.js itself doesn't read PDF files directly \u2014 see the FAQ).</p>
 
       <span class="field-label">Language(s)</span>
@@ -1531,15 +1574,17 @@ PP_COUNTRIES = [
     ("np-passport","Nepal Passport"), ("tr-passport","Turkey Passport"), ("schengen-visa","Schengen Visa"),
     ("custom","Custom Size\u2026"),
 ]
-PP_COUNTRY_OPTIONS = "\n".join(f'              <option value="{slug}"{" selected" if slug=="us-passport" else ""}>{label}</option>' for slug, label in PP_COUNTRIES)
+PP_COUNTRY_OPTIONS = "\n".join(f'              <option value="{slug}"{" selected" if slug=="uk-passport" else ""}>{label}</option>' for slug, label in PP_COUNTRIES)
 
-PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></div>
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser. Specifications are not a legal guarantee \u2014 see the FAQ below for full details and always verify with your country's official source.</p>
+PP_FORM = f"""
+      <div id="ppUploadSection">
+      <div class="view-title"><h2>Upload Your Photo</h2></div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Automatic face detection and cropping for passport and visa photos across 42 presets, entirely in your browser. Specifications are not a legal guarantee — see the FAQ below for full details and always verify with your country's official source.</p>
 
       <span class="field-label">Country / Document</span>
       <select id="ppCountry" style="margin-bottom:8px;">
-""" + PP_COUNTRY_OPTIONS + """
-      </select>
+{PP_COUNTRY_OPTIONS}
+            </select>
 
       <div class="hidden" id="ppCustomSizePanel" style="margin-bottom:12px;padding:12px 14px;border:1.5px solid var(--card-border);border-radius:12px;background:var(--card);">
         <div class="resume-form-grid">
@@ -1550,21 +1595,21 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
         </div>
         <p id="ppCustomValidation" style="font-size:12.5px;font-weight:600;margin:10px 0 0;"></p>
         <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.8;">
-          <div>Width: <strong id="ppDimW">\u2014</strong> &middot; Height: <strong id="ppDimH">\u2014</strong> &middot; DPI: <strong id="ppDimDpi">\u2014</strong></div>
-          <div>Pixels: <strong id="ppDimPx">\u2014</strong> &middot; Aspect ratio: <strong id="ppDimRatio">\u2014</strong></div>
-          <div>Physical size: <strong id="ppDimPhysical">\u2014</strong></div>
+          <div>Width: <strong id="ppDimW">—</strong> &middot; Height: <strong id="ppDimH">—</strong> &middot; DPI: <strong id="ppDimDpi">—</strong></div>
+          <div>Pixels: <strong id="ppDimPx">—</strong> &middot; Aspect ratio: <strong id="ppDimRatio">—</strong></div>
+          <div>Physical size: <strong id="ppDimPhysical">—</strong></div>
         </div>
-        <p class="editor-hint">Custom sizes use standard ICAO-convention head/eye guides since no official rule exists for an arbitrary size \u2014 not a substitute for your destination's actual requirements.</p>
+        <p class="editor-hint">Custom sizes use standard ICAO-convention head/eye guides since no official rule exists for an arbitrary size — not a substitute for your destination's actual requirements.</p>
       </div>
 
       <p class="hidden" id="ppUsWarning" role="alert" style="font-size:12px;line-height:1.5;color:var(--err-solid);margin:0 0 12px;">
-        \u26a0 US passport/visa photos: avoid AI background replacement and enhancement sliders \u2014 see the full notice in the FAQ below.
+        ⚠ US passport/visa photos: avoid AI background replacement and enhancement sliders — see the full notice in the FAQ below.
       </p>
 
       <div class="drop-zone" id="ppDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
         <div class="drop-title">Drop a photo here, tap to browse, or paste from clipboard</div>
-        <div class="drop-sub">JPG, PNG, or WEBP \u2014 up to 30MB</div>
+        <div class="drop-sub">JPG, PNG, or WEBP — up to 30MB</div>
         <input type="file" id="ppInput" accept="image/jpeg, image/png, image/webp">
       </div>
       <div class="row" style="margin-top:8px;">
@@ -1579,7 +1624,7 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
 
       <div class="legal-modal hidden" id="ppCameraModal" role="dialog" aria-modal="true" aria-label="Camera capture">
         <div class="legal-box" style="max-width:480px;padding:20px;">
-          <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">\u2715</button>
+          <button class="legal-close" id="ppCameraCloseBtn" type="button" aria-label="Close camera">✕</button>
           <h3 style="margin-top:0;">Position your face in the oval</h3>
           <div id="ppCameraStageDebugBorder" style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;border:3px solid transparent;">
             <video id="ppCameraVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block;border:3px solid transparent;"></video>
@@ -1594,18 +1639,63 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
         </div>
       </div>
       <div class="model-status-line hidden" id="ppModelStatus" role="status"><span class="dot"></span><span></span></div>
+      </div>
 
       <div id="ppStage" class="hidden">
-        <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
-          <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+        <div id="ppTopAppBar">
+          <span id="ppTopAppBarTitle">Passport Photo Maker</span>
+          <button id="ppNewImageBtnMobile" type="button" title="New Image" aria-label="Start over with a new image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 12a8 8 0 0 1 14.9-4M20 12a8 8 0 0 1-14.9 4M4 4v5h5M20 20v-5h-5"/></svg></button>
+        </div>
+        <div id="ppShellBody">
+          <nav id="ppLeftRail" aria-label="Tool categories">
+            <button class="epe-rail-btn" type="button" data-pp-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+            <button class="epe-rail-btn" type="button" data-pp-category="facePosition" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span>Face</span></button>
+            <button class="epe-rail-btn" type="button" data-pp-category="background" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="2"/><path d="M21 15l-5-5L5 21"/></svg><span>Background</span></button>
+            <button class="epe-rail-btn" type="button" data-pp-category="print" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print</span></button>
+            <button class="epe-rail-btn" type="button" data-pp-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+          </nav>
+          <div id="ppCanvasAreaShell">
+        <div class="row" id="ppCanvasTopControls" style="flex-wrap:wrap;margin-top:14px;">
+          <button class="btn btn-secondary" id="ppViewFitBtn" type="button">Fit View to Screen</button>
+          <button class="btn btn-secondary" id="ppViewCenterBtn" type="button">Center View</button>
+          <button class="btn btn-ghost" id="ppNewImageBtn" type="button" style="margin-left:auto;">New Image</button>
+        </div>
+        <div id="ppWorkspaceViewport">
+          <div id="ppWorkspace">
+            <div class="editor-stage-wrap" id="ppCanvasStageWrap" style="cursor:default;">
+              <canvas id="ppPreviewCanvas" role="img" aria-label="Passport photo preview"></canvas>
+              <canvas id="ppIcaoOverlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+            </div>
+          </div>
+          <div id="ppFloatingControls" role="toolbar" aria-label="Canvas controls">
+            <button type="button" id="ppFloatDragHandle" class="epe-drag-handle" title="Drag to move" aria-label="Drag to move toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></svg></button>
+            <div class="epe-float-sep"></div>
+            <button type="button" id="ppFloatUndoBtn" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
+            <button type="button" id="ppFloatRedoBtn" disabled title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
+            <div class="epe-float-sep"></div>
+            <button type="button" id="ppFloatFitBtn" title="Fit view to screen" aria-label="Fit view to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+          </div>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:6px;cursor:pointer;"><input type="checkbox" id="ppIcaoToggle" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Show ICAO compliance guides</label>
         <div id="ppOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+          </div>
+
+          <div id="ppSheetBackdrop"></div>
+          <div id="ppToolPanel">
+            <div id="ppPanelResizeHandle"></div>
+            <div id="ppToolPanelHeader">
+              <div id="ppSheetDragHandle"></div>
+              <span id="ppToolPanelTitle">Edit</span>
+              <div class="row" style="flex:0;gap:4px;">
+                <button id="ppPanelCollapseBtn" type="button" title="Collapse panel" aria-label="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg></button>
+                <button id="ppSheetCloseBtn" type="button" title="Close" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div id="ppToolPanelBody">
 
         <details class="pp-accordion" id="ppAccordionManual">
         <summary class="pp-accordion-summary">Manual Editing (optional)</summary>
-        <p class="editor-hint">Erase, restore, and refine edges by hand \u2014 useful when AI background replacement isn't quite clean, or unavailable. Hold Space and drag to pan; scroll to zoom toward your cursor.</p>
+        <p class="editor-hint">Erase, restore, and refine edges by hand — useful when AI background replacement isn't quite clean, or unavailable. Hold Space and drag to pan; scroll to zoom toward your cursor.</p>
         <div class="editor-toolbar" role="toolbar" aria-label="Manual editing tools" style="flex-wrap:wrap;">
           <button class="editor-tool-btn pp-tool-btn" data-tool="erase" type="button" aria-label="Magic Eraser brush">Magic Eraser</button>
           <button class="editor-tool-btn pp-tool-btn" data-tool="restore" type="button" aria-label="Restore brush">Restore</button>
@@ -1615,7 +1705,7 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
           <button class="editor-tool-btn pp-tool-btn" data-tool="lasso" type="button" aria-label="Freehand lasso selection">Lasso</button>
           <button class="editor-tool-btn pp-tool-btn" data-tool="polygon" type="button" aria-label="Polygon selection, click to place points and click near the start to close">Polygon</button>
         </div>
-        <p class="editor-hint">Brush and selection tools are drawn by mouse, finger, or stylus \u2014 there isn't a practical fully keyboard-driven equivalent for freehand drawing, though every button above is keyboard-reachable and operable.</p>
+        <p class="editor-hint">Brush and selection tools are drawn by mouse, finger, or stylus — there isn't a practical fully keyboard-driven equivalent for freehand drawing, though every button above is keyboard-reachable and operable.</p>
 
         <div class="resume-form-grid">
           <div class="resume-field-group"><label for="ppBrushSize">Brush Size: <span id="ppBrushSizeVal">40</span>px</label><input type="range" id="ppBrushSize" min="4" max="200" value="40"></div>
@@ -1649,7 +1739,7 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
         <div class="row">
           <button class="btn btn-secondary" id="ppAutoCenterBtn" type="button">Auto Center Face</button>
           <button class="btn btn-secondary" id="ppFitScreenBtn" type="button">Fit to Screen</button>
-          <button class="btn btn-ghost" id="ppRotateBtn" type="button">Rotate 90\u00b0</button>
+          <button class="btn btn-ghost" id="ppRotateBtn" type="button">Rotate 90°</button>
           <button class="btn btn-ghost" id="ppFlipBtn" type="button">Flip</button>
           <button class="btn btn-danger" id="ppResetBtn" type="button">Reset</button>
         </div>
@@ -1676,12 +1766,12 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
         <div class="row">
           <button class="btn btn-secondary" id="ppReplaceBgBtn" type="button">Replace Background (AI)</button>
         </div>
-        <p class="editor-hint">Choosing a background color sets the target for AI background replacement below \u2014 tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
+        <p class="editor-hint">Choosing a background color sets the target for AI background replacement below — tap <strong>Replace Background (AI)</strong> to actually apply it. It won't change anything on its own if your photo already fills the frame edge-to-edge.</p>
         <div class="row hidden" id="ppManualBgRow">
           <button class="btn btn-ghost" id="ppManualBgClickBtn" type="button">Manual: Click Background to Replace</button>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:10px;cursor:pointer;color:var(--ink-soft);"><input type="checkbox" id="ppDebugSegmentation" style="width:15px;height:15px;accent-color:var(--accent1);"> Debug Segmentation Mode (developer)</label>
-        <p class="editor-hint">When enabled, tapping Replace Background (AI) additionally logs detailed pixel-level data to the browser console and shows every intermediate stage below \u2014 for diagnosing background-replacement issues, not for normal use.</p>
+        <p class="editor-hint">When enabled, tapping Replace Background (AI) additionally logs detailed pixel-level data to the browser console and shows every intermediate stage below — for diagnosing background-replacement issues, not for normal use.</p>
         <div class="hidden pp-debug-panel" id="ppDebugPanel"></div>
         </details>
 
@@ -1698,17 +1788,13 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
 
         <span class="field-label" style="margin-top:14px;">Automated Suitability Score</span>
         <div class="ats-score-wrap">
-          <div class="ats-score-num" id="ppScoreNum">\u2014</div>
+          <div class="ats-score-num" id="ppScoreNum">—</div>
           <div><div style="font-weight:700;font-size:13px;">Automated checks (not an official validator)</div><div class="ats-score-label" id="ppScoreLabel"></div></div>
         </div>
         <ul class="ats-result-list" id="ppValidationList" style="margin-top:10px;"></ul>
 
         <details class="pp-accordion" id="ppAccordionExport">
-        <summary class="pp-accordion-summary">Export &amp; Print</summary>
-          <div class="row hidden" id="ppDownloadRow">
-            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
-            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
-          </div>
+        <summary class="pp-accordion-summary">Print</summary>
           <div class="qr-controls" style="margin-top:10px;">
             <div class="ctrl">
               <label for="ppSheetSize">Print Sheet Size</label>
@@ -1733,17 +1819,44 @@ PP_FORM = """<div class="view-title"><h2>Passport &amp; Visa Photo Maker</h2></d
           <p class="editor-hint">Tap a photo in the sheet preview, then tap another to swap their positions.</p>
 
           <div class="row">
-            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
+            <button class="btn btn-primary" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
           </div>
           <div class="row">
-            <button class="btn btn-ghost" id="ppPrintBtn" type="button" style="width:100%;">Print Sheet Directly</button>
+            <button class="btn btn-secondary" id="ppDownloadSheetBtn" type="button" style="width:100%;">Download Print Sheet PDF</button>
           </div>
         </details>
+
+        <details class="pp-accordion" id="ppAccordionMore">
+        <summary class="pp-accordion-summary">More</summary>
+          <div class="row hidden" id="ppDownloadRow">
+            <button class="btn btn-success" id="ppDownloadPngBtn" type="button">Download PNG</button>
+            <button class="btn btn-success" id="ppDownloadJpgBtn" type="button">Download JPEG</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppResetEditorBtn" type="button" style="width:100%;">Reset Editor</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost" id="ppReplaceImageBtn" type="button" style="width:100%;">Replace Image</button>
+          </div>
+          <p class="editor-hint">Reset Editor restores brightness, zoom, position, and any manual erase/restore edits to their starting values, without discarding your uploaded photo. Replace Image starts over with a different photo.</p>
+        </details>
+            </div>
+          </div>
+        </div>
+
+        <nav id="ppBottomToolbar" aria-label="Tool categories">
+          <button class="epe-tab-btn active" type="button" data-pp-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+          <button class="epe-tab-btn" type="button" data-pp-category="facePosition" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span>Face</span></button>
+          <button class="epe-tab-btn" type="button" data-pp-category="background" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="2"/><path d="M21 15l-5-5L5 21"/></svg><span>Background</span></button>
+          <button class="epe-tab-btn" type="button" data-pp-category="print" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print</span></button>
+          <button class="epe-tab-btn" type="button" data-pp-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+        </nav>
       </div>
 
-      <div id="ppPrintRoot" class="pp-print-root"></div>"""
+      <div id="ppPrintRoot" class="pp-print-root"></div>
+  """
 
-RT_FORM = """<div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h2></div>
+RT_FORM = """<div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional portrait retouch editor \\u2014 skin smoothing, background blur, and a full set of Lightroom-style tone and color adjustments, running entirely in your browser at full resolution. Nothing you upload ever leaves your device.</p>
 
       <div class="drop-zone" id="rtDrop">
@@ -1846,13 +1959,14 @@ RT_FORM = """<div class="view-title"><h2>AI Photo Retouch &amp; Beauty Editor</h
         </details>
       </div>"""
 
-EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional product image editor \\u2014 position, scale, rotate, and crop your product photo on a real artboard, entirely in your browser. Free, no sign-up, no watermark.</p>
+EPE_FORM = """
+      <div class="view-title" id="epeViewTitle"><h2>Upload Your Product Photo</h2></div>
+      <p id="epeViewSubtitle" style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional product design studio \u2014 layers, typography, shapes, marketplace presets, and professional retouching, entirely in your browser. Free, no sign-up, no watermark.</p>
 
       <div class="drop-zone" id="epeDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
         <div class="drop-title">Drop a product photo here, tap to browse, or paste from clipboard</div>
-        <div class="drop-sub">PNG, JPG, WEBP, or AVIF \\u2014 up to 30MB</div>
+        <div class="drop-sub">PNG, JPG, WEBP, or AVIF \u2014 up to 30MB</div>
         <input type="file" id="epeInput" accept="image/png, image/jpeg, image/webp, image/avif">
       </div>
 
@@ -1865,30 +1979,115 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
       </div>
 
       <div id="epeStage" class="hidden">
-        <div class="row" style="margin-top:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" id="epeFitScreenBtn" type="button">Fit to Screen</button>
-          <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
-          <button class="btn btn-ghost" id="epeUndoBtn" type="button" disabled>Undo</button>
-          <button class="btn btn-ghost" id="epeRedoBtn" type="button" disabled>Redo</button>
-          <button class="btn btn-ghost" id="epeReplaceBtn" type="button">Replace Image</button>
-          <button class="btn btn-danger" id="epeResetBtn" type="button">Reset</button>
-        </div>
-        <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="margin-top:14px;cursor:default;">
-          <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
-          <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
-          <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
-        </div>
-        <div class="row" style="margin-top:8px;align-items:center;">
-          <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
-          <input type="range" id="epeZoomSlider" min="10" max="400" value="100" style="flex:1;">
-          <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
-            <option value="">Presets\u2026</option>
-            <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
-            <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
-            <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
-          </select>
+        <div id="epeTopAppBar">
+          <span id="epeTopAppBarTitle">Product Editor</span>
+          <div class="row">
+            <button id="epeReplaceBtn" type="button" title="Replace Image" aria-label="Replace Image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 12a8 8 0 0 1 14.9-4M20 12a8 8 0 0 1-14.9 4M4 4v5h5M20 20v-5h-5"/></svg></button>
+            <button id="epeResetBtn" type="button" title="Reset" aria-label="Reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+          </div>
         </div>
 
+        <div id="epeShellBody">
+          <nav id="epeLeftRail" aria-label="Tool categories">
+            <button class="epe-rail-btn" type="button" data-epe-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="effects" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3"/><circle cx="4" cy="13" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/></svg><span>Effects</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="text" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg><span>Text</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="elements" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="4"/><path d="M14 4h6v6h-6zM4 16h16v4H4z"/></svg><span>Elements</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="layers" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg><span>Layers</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="templates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Templates</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+            <button class="epe-rail-btn" type="button" data-epe-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+          </nav>
+
+          <div id="epeCanvasArea">
+            <div class="row" id="epeCanvasTopControls" style="flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="epeFitScreenBtn" type="button">Fit to Screen</button>
+              <button class="btn btn-secondary" id="epeCenterBtn" type="button">Center Image</button>
+            </div>
+            <div id="epeWorkspaceViewport">
+              <div id="epeWorkspace">
+                <div class="editor-stage-wrap" id="epeCanvasStageWrap" style="cursor:default;">
+                  <div id="epeCanvasInner" style="position:relative;line-height:0;">
+                  <canvas id="epeArtboardCanvas" role="img" aria-label="Product editor artboard"></canvas>
+                  <canvas id="epeOverlayCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+                  </div>
+                </div>
+              </div>
+              <div id="epeSelectionMiniToolbar" class="hidden" role="toolbar" aria-label="Selected object actions">
+                <button type="button" id="epeMiniDuplicateBtn" title="Duplicate" aria-label="Duplicate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                <button type="button" id="epeMiniDeleteBtn" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeMiniForwardBtn" title="Bring Forward" aria-label="Bring forward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+                <button type="button" id="epeMiniBackwardBtn" title="Send Backward" aria-label="Send backward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeMiniLockBtn" title="Lock" aria-label="Lock layer" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeMiniOpacity">Opacity</label>
+                  <input type="range" id="epeMiniOpacity" min="0" max="100" value="100" aria-label="Object opacity">
+                </div>
+              </div>
+              <div id="epeBrushCursor" class="hidden" style="position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,0.5);transform:translate(-50%,-50%);z-index:50;"></div>
+              <div id="epeFloatingControls" role="toolbar" aria-label="Canvas controls">
+                <button type="button" id="epeFloatDragHandle" class="epe-drag-handle" title="Drag to move" aria-label="Drag to move toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeUndoBtn" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
+                <button type="button" id="epeRedoBtn" disabled title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeFloatZoomOutBtn" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35M8 11h6"/></svg></button>
+                <span id="epeFloatZoomLabel">100%</span>
+                <button type="button" id="epeFloatZoomInBtn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/></svg></button>
+                <button type="button" id="epeFloatFitBtn" title="Fit to screen" aria-label="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+                <div class="epe-float-sep"></div>
+                <button type="button" id="epeFloatBeforeAfterBtn" title="Before / After" aria-label="Before and after comparison"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></button>
+                <button type="button" id="epeFloatPanBtn" title="Pan (drag to move view)" aria-label="Toggle pan mode" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M6 14v-2a2 2 0 0 0-4 0c0 4 2 8 6 9h4c4-1 6-4 6-8v-1a2 2 0 0 0-4 0"/></svg></button>
+              </div>
+              <div id="epeFloatingBrushBar" class="hidden" role="toolbar" aria-label="Brush controls">
+                <button type="button" id="epeSelectSourceBtn" class="hidden" aria-pressed="false">Select Source</button>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushSize">Size</label>
+                  <input type="range" id="epeFloatBrushSize" min="4" max="200" value="40" aria-label="Brush size">
+                </div>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushHardness">Hardness</label>
+                  <input type="range" id="epeFloatBrushHardness" min="0" max="100" value="60" aria-label="Brush hardness">
+                </div>
+                <div class="epe-float-brush-ctrl">
+                  <label for="epeFloatBrushOpacity">Opacity</label>
+                  <input type="range" id="epeFloatBrushOpacity" min="1" max="100" value="100" aria-label="Brush opacity">
+                </div>
+              </div>
+            </div>
+            <div class="row" style="margin-top:8px;align-items:center;">
+              <label for="epeZoomSlider" style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Zoom: <span id="epeZoomVal">100</span>%</label>
+              <input type="range" id="epeZoomSlider" min="3" max="1600" value="100" style="flex:1;">
+              <select id="epeZoomPreset" aria-label="Zoom preset" style="width:auto;">
+                <option value="">Presets…</option>
+                <option value="25">25%</option><option value="50">50%</option><option value="75">75%</option>
+                <option value="100">100% (Actual Size)</option><option value="125">125%</option><option value="150">150%</option>
+                <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
+              </select>
+            </div>
+            <div id="epeStatusBar" role="status" aria-label="Canvas status">
+              <span id="epeStatusDims">—</span>
+              <span class="epe-status-sep">·</span>
+              <span id="epeStatusZoom">100%</span>
+              <span class="epe-status-sep">·</span>
+              <span id="epeStatusLayers">1 layer</span>
+            </div>
+          </div>
+
+          <div id="epeSheetBackdrop"></div>
+          <div id="epeToolPanel">
+            <div id="epePanelResizeHandle"></div>
+            <div id="epeToolPanelHeader">
+              <div id="epeSheetDragHandle"></div>
+              <span id="epeToolPanelTitle">Transform</span>
+              <div class="row" style="flex:0;gap:4px;">
+                <button id="epePanelCollapseBtn" type="button" title="Collapse panel" aria-label="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 6l6 6-6 6"/></svg></button>
+                <button id="epeSheetCloseBtn" type="button" title="Close" aria-label="Close panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+            <div id="epeToolPanelBody">
         <details class="pp-accordion" id="epeAccordionTransform" open>
           <summary class="pp-accordion-summary">Transform</summary>
           <div class="qr-controls">
@@ -1927,7 +2126,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           <div class="row" style="margin-top:8px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeSmartGuides" checked style="width:15px;height:15px;accent-color:var(--accent1);"> Smart guides (snap to center)</label>
           </div>
-          <p class="editor-hint">Safe area guides moved to their own \u201cSafe Area &amp; Margins\u201d section below, with editable margin and object warnings.</p>
+          <p class="editor-hint">Safe area guides moved to their own “Safe Area &amp; Margins” section below, with editable margin and object warnings.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionAdjustments">
@@ -1954,7 +2153,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <div class="ctrl"><label for="epeNoiseReduction">Product Retouch (noise reduction): <span id="epeNoiseReductionVal">0</span></label><input type="range" id="epeNoiseReduction" min="0" max="100" value="0"></div>
             <div class="ctrl"><label for="epeSurfaceEnhance">Surface Enhancement: <span id="epeSurfaceEnhanceVal">0</span></label><input type="range" id="epeSurfaceEnhance" min="0" max="100" value="0"></div>
           </div>
-          <p class="editor-hint">Surface Enhancement is a general local-contrast boost useful for shiny or textured products (plastic, metal, glass, fabric) \u2014 it is not material-specific AI; it applies the same enhancement regardless of what the product is made of.</p>
+          <p class="editor-hint">Surface Enhancement is a general local-contrast boost useful for shiny or textured products (plastic, metal, glass, fabric) — it is not material-specific AI; it applies the same enhancement regardless of what the product is made of.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionBackground">
@@ -2055,10 +2254,10 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
         <details class="pp-accordion" id="epeAccordionUpscaleCompress">
           <summary class="pp-accordion-summary">Upscale &amp; Compression</summary>
           <div class="row">
-            <button class="btn btn-secondary" id="epeUpscale2xBtn" type="button">Upscale 2\u00d7</button>
-            <button class="btn btn-secondary" id="epeUpscale4xBtn" type="button">Upscale 4\u00d7</button>
+            <button class="btn btn-secondary" id="epeUpscale2xBtn" type="button">Upscale 2×</button>
+            <button class="btn btn-secondary" id="epeUpscale4xBtn" type="button">Upscale 4×</button>
           </div>
-          <p class="editor-hint">Browser-based resampling with a sharpening pass \u2014 not neural AI super-resolution. Best for modest size increases.</p>
+          <p class="editor-hint">Browser-based resampling with a sharpening pass — not neural AI super-resolution. Best for modest size increases.</p>
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Estimated export size</p>
           <div id="epeCompressionPreview" style="font-size:12.5px;color:var(--ink-soft);">Open this section to estimate.</div>
         </details>
@@ -2079,8 +2278,11 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
         <details class="pp-accordion" id="epeAccordionLayers">
           <summary class="pp-accordion-summary">Layers</summary>
           <p class="editor-hint">Click a row to select it, Shift-click to select multiple. Click the eye to hide/show, the lock icon to prevent edits, and double-click the name to rename. Drag rows to reorder.</p>
-          <input type="text" id="epeLayerSearch" placeholder="Search layers\u2026" style="width:100%;margin-top:8px;" aria-label="Search layers">
+          <input type="text" id="epeLayerSearch" placeholder="Search layers…" style="width:100%;margin-top:8px;" aria-label="Search layers">
           <div id="epeLayersPanel" role="listbox" aria-label="Layers" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;min-height:40px;"></div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn btn-secondary" id="epeNewLayerBtn" type="button">New Layer</button>
+          </div>
           <div class="row" style="margin-top:10px;">
             <button class="btn btn-secondary" id="epeGroupBtn" type="button">Group Selected</button>
             <button class="btn btn-ghost" id="epeUngroupBtn" type="button" disabled>Ungroup</button>
@@ -2089,7 +2291,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
         <details class="pp-accordion hidden" id="epeAccordionObject">
           <summary class="pp-accordion-summary">Object</summary>
-          <p class="editor-hint">These controls work identically for any selected layer \u2014 image, text, shape, icon, sticker, badge, price tag, or group.</p>
+          <p class="editor-hint">These controls work identically for any selected layer — image, text, shape, icon, sticker, badge, price tag, or group.</p>
           <div class="qr-controls">
             <div class="ctrl"><label for="epeObjectOpacity">Opacity: <span id="epeObjectOpacityVal">100</span></label><input type="range" id="epeObjectOpacity" min="0" max="100" value="100"></div>
           </div>
@@ -2135,7 +2337,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Font</p>
           <div class="row">
-            <input type="text" id="epeFontFamilySearch" placeholder="Search 140+ fonts\u2026" style="flex:1;" aria-label="Search fonts">
+            <input type="text" id="epeFontFamilySearch" placeholder="Search 140+ fonts…" style="flex:1;" aria-label="Search fonts">
             <select id="epeFontCategoryFilter" aria-label="Font category"><option value="all">All categories</option>
               <option>Sans Serif</option><option>Serif</option><option>Display</option><option>Script</option><option>Handwriting</option><option>Signature</option><option>Modern</option><option>Minimal</option><option>Luxury</option><option>Elegant</option><option>Gaming</option><option>Kids</option><option>Business</option><option>Technology</option><option>Food</option><option>Beauty</option><option>Fashion</option><option>Arabic Friendly</option><option>Urdu Friendly</option>
             </select>
@@ -2224,6 +2426,85 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           </div>
         </details>
 
+        <details class="pp-accordion" id="epeAccordionAssetLibrary">
+          <summary class="pp-accordion-summary">Asset Library <span id="epeAssetResultCount" style="font-weight:400;font-size:11px;color:var(--ink-soft);margin-left:4px;"></span></summary>
+          <div class="row" style="margin-top:4px;position:relative;">
+            <input type="search" id="epeAssetSearch" placeholder="Try &quot;50% off&quot;, &quot;luxury badge&quot;, &quot;sale ribbon&quot;…" aria-label="Search asset library" style="flex:1;" autocomplete="off">
+            <div id="epeAssetSuggestions" class="hidden" role="listbox" aria-label="Search suggestions"></div>
+          </div>
+          <div class="row" style="flex-wrap:wrap;margin-top:10px;gap:6px;">
+            <button type="button" class="epe-asset-cat-btn" data-cat="recent" title="Your recent searches, this device">🕑 Recent</button>
+            <button type="button" class="epe-asset-cat-btn" data-cat="popular" title="Assets you use most, this device">📈 Popular</button>
+            <button type="button" class="epe-asset-cat-btn" data-cat="favorites" title="Your starred assets">★ Favorites</button>
+            <button type="button" class="epe-asset-cat-btn active" data-cat="all" style="margin-left:auto;">All Assets</button>
+          </div>
+
+          <p class="epe-asset-section-title">Browse categories</p>
+          <div class="epe-tile-grid" id="epeAssetCategoryRow">
+            <button type="button" class="epe-cat-tile epe-tile-icons" data-cat="Icons"><span class="epe-cat-tile-glyph">☆</span><span class="epe-cat-tile-label">Icons</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-shapes" data-cat="Shapes"><span class="epe-cat-tile-glyph">▲</span><span class="epe-cat-tile-label">Shapes</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-stickers" data-cat="Stickers"><span class="epe-cat-tile-glyph">🏷</span><span class="epe-cat-tile-label">Stickers</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-elements" data-cat="Elements"><span class="epe-cat-tile-glyph">✦</span><span class="epe-cat-tile-label">Elements</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-frames" data-cat="Frames"><span class="epe-cat-tile-glyph">⬚</span><span class="epe-cat-tile-label">Frames</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-patterns" data-cat="Patterns"><span class="epe-cat-tile-glyph">∷</span><span class="epe-cat-tile-label">Patterns</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-backgrounds" data-cat="Backgrounds"><span class="epe-cat-tile-glyph">▣</span><span class="epe-cat-tile-label">Backgrounds</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-textstyles" data-cat="Text Styles"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Text Styles</span></button>
+          </div>
+
+          <p class="epe-asset-section-title">Marketing by industry</p>
+          <div class="epe-tile-scroll">
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-sale" data-cat="Marketing: Sale"><span class="epe-cat-tile-glyph">%</span><span class="epe-cat-tile-label">Sale</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-luxury" data-cat="Marketing: Luxury"><span class="epe-cat-tile-glyph">♕</span><span class="epe-cat-tile-label">Luxury</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-business" data-cat="Marketing: Business"><span class="epe-cat-tile-glyph">💼</span><span class="epe-cat-tile-label">Business</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-fashion" data-cat="Marketing: Fashion"><span class="epe-cat-tile-glyph">👗</span><span class="epe-cat-tile-label">Fashion</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-restaurant" data-cat="Marketing: Restaurant"><span class="epe-cat-tile-glyph">☕</span><span class="epe-cat-tile-label">Restaurant</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-gym" data-cat="Marketing: Gym"><span class="epe-cat-tile-glyph">🏋</span><span class="epe-cat-tile-label">Gym</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-medical" data-cat="Marketing: Medical"><span class="epe-cat-tile-glyph">⚕</span><span class="epe-cat-tile-label">Medical</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-technology" data-cat="Marketing: Technology"><span class="epe-cat-tile-glyph">💻</span><span class="epe-cat-tile-label">Technology</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-realestate" data-cat="Marketing: Real Estate"><span class="epe-cat-tile-glyph">🏢</span><span class="epe-cat-tile-label">Real Estate</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-travel" data-cat="Marketing: Travel"><span class="epe-cat-tile-glyph">✈</span><span class="epe-cat-tile-label">Travel</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-education" data-cat="Marketing: Education"><span class="epe-cat-tile-glyph">📚</span><span class="epe-cat-tile-label">Education</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-kids" data-cat="Marketing: Kids"><span class="epe-cat-tile-glyph">🍼</span><span class="epe-cat-tile-label">Kids</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-wedding" data-cat="Marketing: Wedding"><span class="epe-cat-tile-glyph">💍</span><span class="epe-cat-tile-label">Wedding</span></button>
+          </div>
+
+          <p class="epe-asset-section-title">Text style looks</p>
+          <div class="epe-tile-scroll">
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-luxury" data-cat="Text Style: Luxury"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Luxury</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gaming" data-cat="Text Style: Gaming"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gaming</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-minimal" data-cat="Text Style: Minimal"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Minimal</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-3d" data-cat="Text Style: 3D"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">3D</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gradient" data-cat="Text Style: Gradient"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gradient</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-retro" data-cat="Text Style: Retro"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Retro</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-shadow" data-cat="Text Style: Shadow"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Shadow</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-glass" data-cat="Text Style: Glass"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Glass</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-neon" data-cat="Text Style: Neon"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Neon</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-metal" data-cat="Text Style: Metal"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Metal</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-gold" data-cat="Text Style: Gold"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Gold</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-silver" data-cat="Text Style: Silver"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Silver</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-fashion" data-cat="Text Style: Fashion"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Fashion</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-wedding" data-cat="Text Style: Wedding"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Wedding</span></button>
+            <button type="button" class="epe-cat-tile epe-tile-wide epe-tile-txt-business" data-cat="Text Style: Business"><span class="epe-cat-tile-glyph">Aa</span><span class="epe-cat-tile-label">Business</span></button>
+          </div>
+          <div class="row" style="margin-top:8px;gap:8px;">
+            <select id="epeAssetColorFilter" aria-label="Filter by color" style="flex:1;">
+              <option value="all">Any color</option>
+              <option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option>
+              <option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option>
+              <option value="black">Black</option><option value="white">White</option><option value="gray">Gray</option>
+            </select>
+            <select id="epeAssetStyleFilter" aria-label="Filter by style" style="flex:1;">
+              <option value="all">Any style</option>
+              <option value="luxury">Luxury</option><option value="bold">Bold</option>
+              <option value="fresh">Fresh</option><option value="minimal">Minimal</option>
+            </select>
+          </div>
+          <div id="epeAssetGridScroll">
+            <div id="epeAssetGrid" role="list" aria-label="Asset results"></div>
+          </div>
+          <p class="editor-hint">Photos and stock Graphics aren’t included — they require a licensed external content source this environment doesn’t have access to. Everything shown here is real, working content, not placeholders. Recent/Popular/Trending are tracked on this device only — there’s no backend, so nothing is shared across users.</p>
+        </details>
+
         <details class="pp-accordion" id="epeAccordionShapesIcons">
           <summary class="pp-accordion-summary">Shapes &amp; Icons</summary>
           <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Shapes</p>
@@ -2244,11 +2525,11 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <button class="btn btn-ghost" data-shape-type="line" type="button">Line</button>
             <button class="btn btn-ghost" data-shape-type="dashed-line" type="button">Dashed Line</button>
           </div>
-          <p class="editor-hint">Ribbon, Banner, and Custom Border are composite graphic presets rather than simple shapes and aren't included in this phase \u2014 combine a rectangle with text for a similar effect.</p>
+          <p class="editor-hint">Ribbon, Banner, and Custom Border are composite graphic presets rather than simple shapes and aren't included in this phase — combine a rectangle with text for a similar effect.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Icons</p>
           <div class="row">
-            <input type="text" id="epeIconSearch" placeholder="Search icons\u2026" style="flex:1;" aria-label="Search icons">
+            <input type="text" id="epeIconSearch" placeholder="Search icons…" style="flex:1;" aria-label="Search icons">
             <select id="epeIconCategoryFilter" aria-label="Icon category"><option value="all">All categories</option></select>
           </div>
           <div id="epeIconResultsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;max-height:160px;overflow-y:auto;margin-top:8px;border:1px solid var(--card-border);border-radius:8px;padding:6px;"></div>
@@ -2279,16 +2560,66 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           </div>
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Price Tag</p>
           <button class="btn btn-secondary" id="epeAddPriceTagBtn" type="button">Add Price Tag</button>
-          <p class="editor-hint">Every element in a sticker, badge, or price tag stays fully editable \u2014 ungroup it to restyle individual pieces.</p>
+          <p class="editor-hint">Every element in a sticker, badge, or price tag stays fully editable — ungroup it to restyle individual pieces.</p>
         </details>
 
         <details class="pp-accordion hidden" id="epeAccordionShapePanel">
           <summary class="pp-accordion-summary">Shape / Icon Style</summary>
-          <div class="row"><input type="color" id="epeShapeColorInput" value="#5142D6"></div>
-          <div class="row" id="epeShapeBorderRow" style="margin-top:8px;">
+          <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Fill</p>
+          <div class="row" style="flex-wrap:wrap;gap:8px;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="epeShapeFillType" value="solid" checked> Solid</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="epeShapeFillType" value="gradient"> Gradient</label>
+          </div>
+          <div class="row" id="epeShapeSolidRow" style="margin-top:8px;">
+            <input type="color" id="epeShapeColorInput" value="#5142D6">
+            <button class="btn btn-ghost" id="epeShapeReplaceColorBtn" type="button" title="Replace this color everywhere it's used across the whole design">Replace Color Everywhere</button>
+          </div>
+          <div class="row hidden" id="epeShapeGradientRow" style="margin-top:8px;flex-wrap:wrap;gap:8px;">
+            <input type="color" id="epeShapeGradientFrom" value="#5142D6" aria-label="Gradient start color">
+            <input type="color" id="epeShapeGradientTo" value="#8B7CF6" aria-label="Gradient end color">
+            <select id="epeShapeGradientMode" aria-label="Gradient shape"><option value="linear">Linear</option><option value="radial">Radial</option></select>
+            <input type="range" id="epeShapeGradientAngle" min="0" max="360" value="45" aria-label="Gradient angle" style="flex:1;min-width:80px;">
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Corner Radius</p>
+          <div class="row" id="epeShapeCornerRadiusRow">
+            <input type="range" id="epeShapeCornerRadius" min="0" max="50" value="0" style="flex:1;">
+            <span id="epeShapeCornerRadiusVal" style="font-size:12px;color:var(--ink-soft);min-width:32px;">0%</span>
+          </div>
+
+          <div class="row" id="epeShapeBorderRow" style="margin-top:14px;flex-wrap:wrap;gap:8px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" id="epeShapeBorderEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Border</label>
+            <input type="color" id="epeShapeBorderColor" value="#111111">
+            <input type="range" id="epeShapeBorderWidth" min="1" max="20" value="2" aria-label="Border width" style="flex:1;min-width:70px;">
+            <select id="epeShapeBorderStyle" aria-label="Border style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Shadow</p>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="epeShapeShadowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable shadow</label>
+          <div class="qr-controls" id="epeShapeShadowControls">
+            <div class="ctrl"><label for="epeShapeShadowColor">Color</label><input type="color" id="epeShapeShadowColor" value="#000000"></div>
+            <div class="ctrl"><label for="epeShapeShadowBlur">Blur</label><input type="range" id="epeShapeShadowBlur" min="0" max="40" value="4"></div>
+            <div class="ctrl"><label for="epeShapeShadowOffsetX">Offset X</label><input type="range" id="epeShapeShadowOffsetX" min="-30" max="30" value="2"></div>
+            <div class="ctrl"><label for="epeShapeShadowOffsetY">Offset Y</label><input type="range" id="epeShapeShadowOffsetY" min="-30" max="30" value="2"></div>
+            <div class="ctrl"><label for="epeShapeShadowOpacity">Opacity</label><input type="range" id="epeShapeShadowOpacity" min="0" max="100" value="40"></div>
+          </div>
+
+          <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Glow</p>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="epeShapeGlowEnable" style="width:15px;height:15px;accent-color:var(--accent1);"> Enable glow</label>
+          <div class="qr-controls" id="epeShapeGlowControls">
+            <div class="ctrl"><label for="epeShapeGlowColor">Color</label><input type="color" id="epeShapeGlowColor" value="#5142D6"></div>
+            <div class="ctrl"><label for="epeShapeGlowBlur">Blur</label><input type="range" id="epeShapeGlowBlur" min="0" max="40" value="12"></div>
+            <div class="ctrl"><label for="epeShapeGlowOpacity">Opacity</label><input type="range" id="epeShapeGlowOpacity" min="0" max="100" value="70"></div>
+          </div>
+
+          <div id="epeIconSwapSection" class="hidden">
+            <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Edit Icon</p>
+            <input type="search" id="epeIconSwapSearch" placeholder="Search to replace this icon…" aria-label="Search replacement icon" style="width:100%;margin-bottom:8px;">
+            <div id="epeIconSwapGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(36px, 1fr));gap:6px;max-height:160px;overflow-y:auto;"></div>
+            <p class="editor-hint">Choosing a new icon keeps this layer’s position, size, color, gradient, shadow, and glow — only the shape changes.</p>
           </div>
         </details>
+
 
         <details class="pp-accordion" id="epeAccordionArrangeAlign">
           <summary class="pp-accordion-summary">Arrange &amp; Align</summary>
@@ -2322,42 +2653,45 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           <summary class="pp-accordion-summary">Marketplace Studio</summary>
           <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Marketplace Preset</p>
           <select id="epeMarketplacePreset">
-            <option value="">Choose a size\u2026</option>
+            <option value="">Choose a size…</option>
             <optgroup label="Marketplaces">
-            <option value="amazon-main">Amazon Main Image (2000\u00d72000)</option>
-            <option value="amazon-gallery">Amazon Gallery (2000\u00d72000)</option>
-            <option value="daraz">Daraz Product Image (1500\u00d71500)</option>
-            <option value="shopify">Shopify Product (2048\u00d72048)</option>
-            <option value="facebook-marketplace">Facebook Marketplace (1080\u00d71080)</option>
-            <option value="instagram-square">Instagram Square (1080\u00d71080)</option>
-            <option value="instagram-portrait">Instagram Portrait (1080\u00d71350)</option>
-            <option value="instagram-story">Instagram Story (1080\u00d71920)</option>
-            <option value="tiktok-shop">TikTok Shop (1080\u00d71920)</option>
-            <option value="pinterest-pin">Pinterest Pin (1000\u00d71500)</option>
+            <option value="amazon-main">Amazon Main Image (2000×2000)</option>
+            <option value="amazon-gallery">Amazon Gallery (2000×2000)</option>
+            <option value="ebay">eBay Listing Photo (1600×1600)</option>
+            <option value="etsy">Etsy Listing Photo (2000×2000)</option>
+            <option value="daraz">Daraz Product Image (1500×1500)</option>
+            <option value="shopify">Shopify Product (2048×2048)</option>
+            <option value="facebook-marketplace">Facebook Marketplace (1080×1080)</option>
+            <option value="instagram-square">Instagram Square (1080×1080)</option>
+            <option value="instagram-portrait">Instagram Portrait (1080×1350)</option>
+            <option value="instagram-story">Instagram Story (1080×1920)</option>
+            <option value="tiktok-shop">TikTok Shop (1080×1920)</option>
+            <option value="pinterest-pin">Pinterest Pin (1000×1500)</option>
+            <option value="linkedin-square">LinkedIn Square Post (1080×1080)</option>
             </optgroup>
             <optgroup label="Marketing &amp; Social">
-            <option value="facebook-post">Facebook Post (1080\u00d71080)</option>
-            <option value="facebook-cover">Facebook Cover (820\u00d7360)</option>
-            <option value="facebook-story">Facebook Story (1080\u00d71920)</option>
-            <option value="instagram-reel-cover">Instagram Reel Cover (1080\u00d71920)</option>
-            <option value="tiktok-cover">TikTok Cover (1080\u00d71920)</option>
-            <option value="tiktok-story">TikTok Story (1080\u00d71920)</option>
-            <option value="pinterest-idea-pin">Pinterest Idea Pin (1080\u00d71920)</option>
-            <option value="youtube-thumbnail">YouTube Thumbnail (1280\u00d7720)</option>
-            <option value="youtube-community">YouTube Community Post (1200\u00d71200)</option>
-            <option value="whatsapp-status">WhatsApp Status (1080\u00d71920)</option>
-            <option value="google-display-banner">Google Display Banner (300\u00d7250)</option>
-            <option value="email-banner">Email Banner (600\u00d7200)</option>
-            <option value="website-hero-banner">Website Hero Banner (1920\u00d71080)</option>
-            <option value="popup-banner">Popup Banner (600\u00d7400)</option>
-            <option value="landing-page-banner">Landing Page Banner (1200\u00d7628)</option>
+            <option value="facebook-post">Facebook Post (1080×1080)</option>
+            <option value="facebook-cover">Facebook Cover (820×360)</option>
+            <option value="facebook-story">Facebook Story (1080×1920)</option>
+            <option value="instagram-reel-cover">Instagram Reel Cover (1080×1920)</option>
+            <option value="tiktok-cover">TikTok Cover (1080×1920)</option>
+            <option value="tiktok-story">TikTok Story (1080×1920)</option>
+            <option value="pinterest-idea-pin">Pinterest Idea Pin (1080×1920)</option>
+            <option value="youtube-thumbnail">YouTube Thumbnail (1280×720)</option>
+            <option value="youtube-community">YouTube Community Post (1200×1200)</option>
+            <option value="whatsapp-status">WhatsApp Status (1080×1920)</option>
+            <option value="google-display-banner">Google Display Banner (300×250)</option>
+            <option value="email-banner">Email Banner (600×200)</option>
+            <option value="website-hero-banner">Website Hero Banner (1920×1080)</option>
+            <option value="popup-banner">Popup Banner (600×400)</option>
+            <option value="landing-page-banner">Landing Page Banner (1200×628)</option>
             </optgroup>
           </select>
           <p id="epeMarketplaceNote" style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;"></p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Canvas Ratio</p>
           <select id="epeCanvasRatioPreset">
-            <option value="">Choose a ratio\u2026</option>
+            <option value="">Choose a ratio…</option>
             <option value="1:1">1:1 Square</option><option value="4:5">4:5 Portrait</option>
             <option value="16:9">16:9 Landscape</option><option value="9:16">9:16 Vertical</option>
             <option value="3:4">3:4 Portrait</option><option value="4:3">4:3 Landscape</option>
@@ -2381,7 +2715,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <input type="color" id="epeCanvasBgGradientTo" value="#e0e0e0">
             <input type="range" id="epeCanvasBgGradientAngle" min="0" max="360" value="180" style="flex:1;" aria-label="Gradient angle">
           </div>
-          <p class="editor-hint">This fills the entire exported canvas \u2014 independent of any per-layer background removal in the Background panel.</p>
+          <p class="editor-hint">This fills the entire exported canvas — independent of any per-layer background removal in the Background panel.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Product Scale Assistant</p>
           <div class="row" style="flex-wrap:wrap;">
@@ -2409,7 +2743,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           <p class="editor-hint"><span style="color:#3ba55c;">Green</span> = recommended safe area for important content. <span style="color:#e05252;">Red</span> = danger zone near the true edge. Any object crossing the safe area is outlined in red as a warning.</p>
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Platform Safe Zone</p>
           <select id="epePlatformSafeZone">
-            <option value="">Choose a platform\u2026</option>
+            <option value="">Choose a platform…</option>
             <option value="instagram">Instagram</option>
             <option value="tiktok">TikTok</option>
             <option value="facebook">Facebook</option>
@@ -2496,9 +2830,19 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <button class="btn btn-ghost" data-offer="bundle-offer" type="button">Bundle Offer</button>
             <button class="btn btn-ghost" data-offer="limited-stock" type="button">Limited Stock</button>
             <button class="btn btn-ghost" data-offer="flash-deal" type="button">Flash Deal</button>
+            <button class="btn btn-ghost" data-offer="50-off" type="button">50% Off</button>
+            <button class="btn btn-ghost" data-offer="70-off" type="button">70% Off</button>
+            <button class="btn btn-ghost" data-offer="clearance" type="button">Clearance</button>
+            <button class="btn btn-ghost" data-offer="hot-deal" type="button">Hot Deal</button>
+            <button class="btn btn-ghost" data-offer="special-offer" type="button">Special Offer</button>
+            <button class="btn btn-ghost" data-offer="black-friday" type="button">Black Friday</button>
+            <button class="btn btn-ghost" data-offer="cyber-monday" type="button">Cyber Monday</button>
+            <button class="btn btn-ghost" data-offer="summer-sale" type="button">Summer Sale</button>
+            <button class="btn btn-ghost" data-offer="winter-sale" type="button">Winter Sale</button>
+            <button class="btn btn-ghost" data-offer="new-arrival" type="button">New Arrival</button>
           </div>
           <button class="btn btn-secondary" id="epeAddCountdownPlaceholderBtn" type="button" style="margin-top:8px;">Add Countdown Placeholder</button>
-          <p class="editor-hint">The countdown is a static, editable placeholder (00:00:00) \u2014 not a live timer. Live countdowns aren\u2019t implemented in this phase.</p>
+          <p class="editor-hint">The countdown is a static, editable placeholder (00:00:00) — not a live timer. Live countdowns aren’t implemented in this phase.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Trust Elements</p>
           <div class="row" id="epeTrustRow" style="flex-wrap:wrap;">
@@ -2533,26 +2877,26 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <button class="btn btn-secondary" id="epeAddSpecTableBtn" type="button">Add Specification Table</button>
             <button class="btn btn-secondary" id="epeAddReviewCardBtn" type="button">Add Review Card</button>
           </div>
-          <p class="editor-hint">All content is static and fully editable \u2014 there is no backend or live data. Ungroup any table to edit individual cells, rows, or icons.</p>
+          <p class="editor-hint">All content is static and fully editable — there is no backend or live data. Ungroup any table to edit individual cells, rows, or icons.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionLogoCode">
           <summary class="pp-accordion-summary">Logo, QR &amp; Barcode</summary>
           <p style="font-size:12px;font-weight:700;margin:0 0 6px;">Logo / Watermark / Certification</p>
           <label class="btn btn-secondary" style="display:inline-block;cursor:pointer;">Upload Logo Image<input type="file" id="epeLogoUploadInput" accept="image/png, image/jpeg, image/webp" class="hidden"></label>
-          <p class="editor-hint">Works for brand logos, watermarks, certification badges, payment icons, or shipping logos \u2014 added as a new layer you can position and resize.</p>
+          <p class="editor-hint">Works for brand logos, watermarks, certification badges, payment icons, or shipping logos — added as a new layer you can position and resize.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">QR Code &amp; Barcode</p>
           <div class="row">
             <button class="btn btn-ghost" id="epeAddQrPlaceholderBtn" type="button">Add QR Placeholder</button>
             <button class="btn btn-ghost" id="epeAddBarcodePlaceholderBtn" type="button">Add Barcode Placeholder</button>
           </div>
-          <p class="editor-hint">These are visual placeholders only \u2014 not scannable codes. Real QR/barcode generation is prepared architecturally but not implemented in this phase.</p>
+          <p class="editor-hint">These are visual placeholders only — not scannable codes. Real QR/barcode generation is prepared architecturally but not implemented in this phase.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionBrandDefaults">
           <summary class="pp-accordion-summary">Brand Consistency</summary>
-          <p class="editor-hint">Saved locally in this browser only \u2014 no cloud storage. Reuses your saved Brand Colors and Recent Fonts from earlier panels, plus default shadow/border below.</p>
+          <p class="editor-hint">Saved locally in this browser only — no cloud storage. Reuses your saved Brand Colors and Recent Fonts from earlier panels, plus default shadow/border below.</p>
           <div class="row" style="flex-wrap:wrap;margin-top:8px;">
             <button class="btn btn-ghost" id="epeSaveDefaultShadowBtn" type="button">Save Selected as Default Shadow</button>
             <button class="btn btn-ghost" id="epeApplyDefaultShadowBtn" type="button">Apply Default Shadow</button>
@@ -2571,10 +2915,13 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <button class="btn btn-ghost" data-selmode="ellipse" type="button">Ellipse</button>
             <button class="btn btn-ghost" data-selmode="lasso" type="button">Freehand Lasso</button>
             <button class="btn btn-ghost" data-selmode="polygon" type="button">Polygon Lasso</button>
-            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Magic Wand (soon)</button>
-            <button class="btn btn-ghost" type="button" disabled title="Foundation only -- not implemented this phase">Quick Select (soon)</button>
+            <button class="btn btn-ghost" data-selmode="wand" type="button">Magic Wand</button>
+            <button class="btn btn-ghost" data-selmode="quickselect" type="button">Quick Select</button>
           </div>
-          <p class="editor-hint">Polygon Lasso: click to add each point, double-click to close the shape. Drag to draw Rectangle/Ellipse/Freehand Lasso.</p>
+          <div class="qr-controls" style="margin-top:8px;">
+            <div class="ctrl"><label for="epeWandTolerance">Color Tolerance</label><input type="range" id="epeWandTolerance" min="4" max="120" value="32"></div>
+          </div>
+          <p class="editor-hint">Polygon Lasso: click to add each point, double-click to close the shape. Drag to draw Rectangle/Ellipse/Freehand Lasso. Magic Wand: click once to select a connected area of similar color. Quick Select: drag like a brush to select similar-colored areas as you go — a real but simplified technique, not full edge-aware segmentation.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Repair Mask</p>
           <div class="row" style="flex-wrap:wrap;">
@@ -2590,7 +2937,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <option value="high">High Quality</option>
             <option value="maximum">Maximum Quality</option>
           </select>
-          <p class="editor-hint">Higher quality uses a larger patch size, more search iterations, and more pyramid levels \u2014 better results, slower processing.</p>
+          <p class="editor-hint">Higher quality uses a larger patch size, more search iterations, and more pyramid levels — better results, slower processing.</p>
 
           <div class="row hidden" id="epeSelectionActions" style="margin-top:8px;flex-wrap:wrap;">
             <button class="btn btn-ghost" id="epeSelectionInvertBtn" type="button">Invert</button>
@@ -2610,11 +2957,11 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
               <button class="btn btn-ghost" id="epeReconstructCancelBtn" type="button">Cancel</button>
             </div>
           </div>
-          <p class="editor-hint">Object removal now uses a real local PatchMatch-style reconstruction engine (randomized nearest-neighbor search with propagation, run entirely in your browser via a background worker) \u2014 not a simple average, and not cloud/AI-based.</p>
+          <p class="editor-hint">Object removal now uses a real local PatchMatch-style reconstruction engine (randomized nearest-neighbor search with propagation, run entirely in your browser via a background worker) — not a simple average, and not cloud/AI-based.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Patch Tool</p>
           <button class="btn btn-secondary" id="epePatchToolToggle" type="button" aria-pressed="false">Enable Patch Tool</button>
-          <p class="editor-hint">Draw a selection above first, then with Patch Tool enabled, click-drag from a clean area \u2014 releasing replaces the selection with the dragged-from texture, color-matched to blend in. (Patch Tool uses the same direct color-correction technique as before; the PatchMatch engine above upgrades Object Remove specifically.)</p>
+          <p class="editor-hint">Draw a selection above first, then with Patch Tool enabled, click-drag from a clean area — releasing replaces the selection with the dragged-from texture, color-matched to blend in. (Patch Tool uses the same direct color-correction technique as before; the PatchMatch engine above upgrades Object Remove specifically.)</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionFaceRetouch">
@@ -2630,7 +2977,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Teeth</p>
           <div class="qr-controls"><div class="ctrl"><label for="epeTeethWhitenAmount">Whitening Amount</label><input type="range" id="epeTeethWhitenAmount" min="0" max="100" value="50"></div></div>
           <button class="btn btn-ghost" id="epeTeethWhitenBtn" type="button">Whiten Teeth</button>
-          <p class="editor-hint">Whitening is capped at a natural limit \u2014 it will never push teeth to an unrealistic blue-white.</p>
+          <p class="editor-hint">Whitening is capped at a natural limit — it will never push teeth to an unrealistic blue-white.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Eyes</p>
           <div class="qr-controls"><div class="ctrl"><label for="epeEyeBrightenAmount">Brighten Amount</label><input type="range" id="epeEyeBrightenAmount" min="0" max="100" value="50"></div></div>
@@ -2648,12 +2995,12 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Hair</p>
           <button class="btn btn-ghost" id="epeHairEnhanceBtn" type="button">Enhance Hair</button>
-          <p class="editor-hint">Hair has no dedicated face-mesh landmark, so this uses an approximate region above the detected face \u2014 disclosed as an estimate, not a precise hair mask.</p>
+          <p class="editor-hint">Hair has no dedicated face-mesh landmark, so this uses an approximate region above the detected face — disclosed as an estimate, not a precise hair mask.</p>
         </details>
 
         <details class="pp-accordion" id="epeAccordionMaskSystem">
           <summary class="pp-accordion-summary">Mask System</summary>
-          <p class="editor-hint">Reuses the same mask already used by the Eraser/Restore brushes \u2014 everything here edits that one mask, so brush edits and gradient/selection masks combine naturally.</p>
+          <p class="editor-hint">Reuses the same mask already used by the Eraser/Restore brushes — everything here edits that one mask, so brush edits and gradient/selection masks combine naturally.</p>
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Gradient Mask</p>
           <div class="row">
             <select id="epeGradientMaskType"><option value="linear">Linear</option><option value="radial">Radial</option></select>
@@ -2672,7 +3019,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
         <details class="pp-accordion" id="epeAccordionAdvancedRecon">
           <summary class="pp-accordion-summary">Advanced Reconstruction (Expert)</summary>
-          <p class="editor-hint">For advanced users. Normal one-click Remove Object / Healing Brush / Clone Stamp continue working exactly as before \u2014 nothing here is required. Opening this panel only matters once you actually change a value below.</p>
+          <p class="editor-hint">For advanced users. Normal one-click Remove Object / Healing Brush / Clone Stamp continue working exactly as before — nothing here is required. Opening this panel only matters once you actually change a value below.</p>
 
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Reconstruction Mode</p>
           <select id="epeReconMode" title="Quick/Balanced/Professional/Maximum use tuned presets. Custom unlocks every parameter below.">
@@ -2689,11 +3036,11 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <span style="font-size:12px;color:var(--ink-soft);margin-left:12px;">Estimated speed:</span>
             <strong id="epePerformanceMeter">Fast</strong>
           </div>
-          <p class="editor-hint">Estimates are calculated from the parameters currently selected below \u2014 not measured from an actual run, and not a guarantee.</p>
+          <p class="editor-hint">Estimates are calculated from the parameters currently selected below — not measured from an actual run, and not a guarantee.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Repair Presets</p>
           <select id="epeRepairPresetSelect" title="Applies a tuned parameter bundle for this product type. Switches Reconstruction Mode to Custom and every value stays editable afterward.">
-            <option value="">Choose a preset\u2026</option>
+            <option value="">Choose a preset…</option>
             <option value="product-photography">Product Photography</option>
             <option value="portrait">Portrait</option>
             <option value="beauty">Beauty</option>
@@ -2711,7 +3058,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <div class="qr-controls"><div class="ctrl"><label for="epeAdvPatchSize" title="Small = finer detail, more seams on large holes. Large = smoother large-area fills, less fine detail. Real parameter -- directly controls the reconstruction patch window.">Patch Size: <span id="epeAdvPatchSizeVal">5</span>px</label><input type="range" id="epeAdvPatchSize" min="3" max="11" step="2" value="5"></div></div>
 
             <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Search Radius</p>
-            <div class="qr-controls"><div class="ctrl"><label for="epeAdvSearchRadius" title="How far the algorithm searches for matching texture. Larger radius finds more distant matches but is slower.">Search Radius \u00d7<span id="epeAdvSearchRadiusVal">1</span></label><input type="range" id="epeAdvSearchRadius" min="0.5" max="2" step="0.1" value="1"></div></div>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvSearchRadius" title="How far the algorithm searches for matching texture. Larger radius finds more distant matches but is slower.">Search Radius ×<span id="epeAdvSearchRadiusVal">1</span></label><input type="range" id="epeAdvSearchRadius" min="0.5" max="2" step="0.1" value="1"></div></div>
 
             <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Randomness</p>
             <div class="qr-controls"><div class="ctrl"><label for="epeAdvRandomness" title="More random search attempts per step = more thorough exploration, slower. Low randomness converges faster but may settle for a less ideal match.">Search Trials: <span id="epeAdvRandomnessVal">1</span></label><input type="range" id="epeAdvRandomness" min="1" max="4" step="1" value="1"></div></div>
@@ -2724,7 +3071,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <div class="qr-controls"><div class="ctrl"><label for="epeAdvEdgePreservation" title="Adds a real penalty for mismatched local gradients between candidate patches, so straight lines/edges/borders are less likely to be broken by the reconstruction.">Edge Preservation: <span id="epeAdvEdgePreservationVal">0</span></label><input type="range" id="epeAdvEdgePreservation" min="0" max="100" value="0"></div></div>
 
             <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Structure Priority</p>
-            <div class="qr-controls"><div class="ctrl"><label for="epeAdvStructurePriority" title="Positive values weight the exact center of each patch more heavily (favors precise structural match). Negative values weight the whole patch more evenly (favors overall texture statistics over exact placement).">Texture \u2190\u2192 Structure: <span id="epeAdvStructurePriorityVal">0</span></label><input type="range" id="epeAdvStructurePriority" min="-100" max="100" value="0"></div></div>
+            <div class="qr-controls"><div class="ctrl"><label for="epeAdvStructurePriority" title="Positive values weight the exact center of each patch more heavily (favors precise structural match). Negative values weight the whole patch more evenly (favors overall texture statistics over exact placement).">Texture ←→ Structure: <span id="epeAdvStructurePriorityVal">0</span></label><input type="range" id="epeAdvStructurePriority" min="-100" max="100" value="0"></div></div>
 
             <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Color Preservation</p>
             <div class="qr-controls"><div class="ctrl"><label for="epeAdvColorMatch" title="After reconstruction, nudges the filled region's average brightness and color toward the immediately surrounding area's average -- a real post-process color correction, not per-pixel color grading.">Color Matching: <span id="epeAdvColorMatchVal">0</span></label><input type="range" id="epeAdvColorMatch" min="0" max="100" value="0"></div></div>
@@ -2737,10 +3084,10 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
             <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">My Presets</p>
             <div class="row">
-              <select id="epeCustomPresetSelect"><option value="">My presets\u2026</option></select>
+              <select id="epeCustomPresetSelect"><option value="">My presets…</option></select>
             </div>
             <div class="row" style="margin-top:8px;">
-              <input type="text" id="epeCustomPresetName" placeholder="Preset name\u2026" style="flex:1;">
+              <input type="text" id="epeCustomPresetName" placeholder="Preset name…" style="flex:1;">
             </div>
             <div class="row" style="margin-top:8px;flex-wrap:wrap;">
               <button class="btn btn-secondary" id="epeSaveCustomPresetBtn" type="button">Save</button>
@@ -2752,7 +3099,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
             <div class="row" style="margin-top:14px;flex-wrap:wrap;">
               <button class="btn btn-primary" id="epeApplyAdvReconBtn" type="button">Remove Object With These Settings</button>
             </div>
-            <p class="editor-hint">Applies to the current selection made in the Selection &amp; Object Remove panel \u2014 draw one there first if you haven\u2019t already.</p>
+            <p class="editor-hint">Applies to the current selection made in the Selection &amp; Object Remove panel — draw one there first if you haven’t already.</p>
 
             <div class="row" style="margin-top:14px;flex-wrap:wrap;">
               <button class="btn btn-ghost" id="epeResetAdvSectionBtn" type="button">Reset These Settings</button>
@@ -2763,7 +3110,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
         <details class="pp-accordion" id="epeAccordionAnalytics">
           <summary class="pp-accordion-summary">Performance Analytics (Expert)</summary>
-          <p class="editor-hint">For advanced users. All measurements are real (captured with the browser\u2019s own timing APIs) or clearly-labeled heuristics computed from actual pixel data \u2014 nothing here is simulated. Stored locally in this browser only; nothing is sent anywhere.</p>
+          <p class="editor-hint">For advanced users. All measurements are real (captured with the browser’s own timing APIs) or clearly-labeled heuristics computed from actual pixel data — nothing here is simulated. Stored locally in this browser only; nothing is sent anywhere.</p>
 
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Performance Dashboard</p>
           <div id="epePerfDashboardBody" style="font-size:12.5px;line-height:1.7;"></div>
@@ -2782,13 +3129,13 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Benchmark Mode</p>
           <button class="btn btn-secondary" id="epeRunBenchmarkBtn" type="button">Run Benchmark (3 runs on current selection)</button>
-          <p class="editor-hint">Runs the real reconstruction three times on your current selection to measure consistency. This is genuinely expensive \u2014 only use it when you want the numbers, not as part of normal editing.</p>
+          <p class="editor-hint">Runs the real reconstruction three times on your current selection to measure consistency. This is genuinely expensive — only use it when you want the numbers, not as part of normal editing.</p>
           <div id="epeBenchmarkStatus" style="font-size:12px;color:var(--ink-soft);"></div>
           <div id="epeBenchmarkResults" class="hidden" style="font-size:12.5px;line-height:1.6;margin-top:6px;"></div>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Quality vs. Speed</p>
           <canvas id="epeQualitySpeedCanvas" style="width:100%;height:120px;background:var(--card);border:1px solid var(--card-border);border-radius:8px;"></canvas>
-          <p class="editor-hint">Relative comparison based on each mode\u2019s actual configured patch size, iterations, and pyramid depth \u2014 not a live measurement of your specific image.</p>
+          <p class="editor-hint">Relative comparison based on each mode’s actual configured patch size, iterations, and pyramid depth — not a live measurement of your specific image.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Memory Analytics</p>
           <div id="epeMemoryAnalyticsBody" style="font-size:12.5px;line-height:1.6;"></div>
@@ -2804,7 +3151,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Performance Log</p>
           <div class="row">
-            <input type="text" id="epePerfLogSearch" placeholder="Search by operation\u2026" style="flex:1;">
+            <input type="text" id="epePerfLogSearch" placeholder="Search by operation…" style="flex:1;">
             <select id="epePerfLogSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="slowest">Slowest first</option><option value="fastest">Fastest first</option></select>
           </div>
           <div id="epePerfLogBody" style="max-height:200px;overflow-y:auto;margin-top:8px;"></div>
@@ -2817,7 +3164,7 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
         <details class="pp-accordion" id="epeAccordionSession">
           <summary class="pp-accordion-summary">Session &amp; Recovery (Expert)</summary>
-          <p class="editor-hint">For advanced users. Benchmark Mode (in Performance Analytics) now automatically saves a snapshot before running and restores it afterward \u2014 your project is never permanently affected by benchmarking. Everything below is optional and stored locally in this browser only.</p>
+          <p class="editor-hint">For advanced users. Benchmark Mode (in Performance Analytics) now automatically saves a snapshot before running and restores it afterward — your project is never permanently affected by benchmarking. Everything below is optional and stored locally in this browser only.</p>
 
           <p style="font-size:12px;font-weight:700;margin:12px 0 6px;">Recovery Panel</p>
           <div id="epeRecoveryPanelBody" style="font-size:12.5px;line-height:1.7;"></div>
@@ -2826,10 +3173,10 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Save a Snapshot</p>
           <div class="row">
-            <input type="text" id="epeSnapshotName" placeholder="Snapshot name (optional)\u2026" style="flex:1;">
+            <input type="text" id="epeSnapshotName" placeholder="Snapshot name (optional)…" style="flex:1;">
             <button class="btn btn-secondary" id="epeCreateSnapshotBtn" type="button">Save Snapshot</button>
           </div>
-          <p class="editor-hint">Captures your full project \u2014 layers, canvas, selection, viewport, brush settings, and current tool \u2014 so you can safely experiment and return to this exact point.</p>
+          <p class="editor-hint">Captures your full project — layers, canvas, selection, viewport, brush settings, and current tool — so you can safely experiment and return to this exact point.</p>
 
           <p style="font-size:12px;font-weight:700;margin:14px 0 6px;">Saved Snapshots</p>
           <div id="epeSnapshotListBody" style="display:flex;flex-direction:column;gap:4px;"></div>
@@ -2870,7 +3217,23 @@ EPE_FORM = """<div class="view-title"><h2>Ecommerce Product Editor</h2></div>
           </div>
           <div id="epeOutputDims" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;"></div>
         </details>
-      </div>"""
+            </div>
+          </div>
+        </div>
+
+        <nav id="epeBottomToolbar" aria-label="Tool categories">
+          <button class="epe-tab-btn active" type="button" data-epe-category="edit" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Edit</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="effects" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3"/><circle cx="4" cy="13" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/></svg><span>Effects</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="text" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg><span>Text</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="elements" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="4"/><path d="M14 4h6v6h-6zM4 16h16v4H4z"/></svg><span>Elements</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="layers" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg><span>Layers</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="templates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Templates</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="more" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>More</span></button>
+          <button class="epe-tab-btn" type="button" data-epe-category="export" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span>Export</span></button>
+        </nav>
+      </div>
+
+  """
 
 
 IMAGE_TOOLS = [
@@ -2913,7 +3276,7 @@ IMAGE_TOOLS = [
      "subtitle":"Shrink JPG, PNG, and WEBP file size with a live before &amp; after preview — free, private, instant.",
      "meta":"Free online image compressor. Shrink JPG, PNG, and WEBP file size with a live before/after preview, right in your browser.",
      "category":"MultimediaApplication","form":COMPRESS_FORM,
-     "intro":"Large photos slow down websites, fill up phone storage, and bounce out of email attachments. Compress Image shrinks JPG, PNG, and WEBP files right in your browser — no upload, no signup, no waiting on a server.",
+     "intro":"Large photos slow down websites, fill up phone storage, and bounce out of email attachments. Compress Image shrinks JPG, PNG, and WEBP files right in your browser — no upload, no signup, no waiting on a server. See our <a href=\"blog/how-to-compress-images-without-losing-quality.html\">full guide to compressing images without losing quality</a> for tips on getting the best results.",
      "features":["Live before/after preview with exact file sizes","Adjustable quality slider for fine control","Automatic resize for oversized images (2000px cap) to keep exports fast","Works with JPG, PNG, and WEBP up to 50MB"],
      "benefits":["Faster-loading web pages and lighter email attachments","Your image never leaves your device — nothing is uploaded anywhere","No account, no watermark, no daily limits"],
      "how_to":"Drop in an image, adjust the quality slider, and compare the before/after file sizes live. Download once you're happy with the tradeoff between size and quality.",
@@ -2983,7 +3346,7 @@ IMAGE_TOOLS = [
      "how_to":"Upload a photo, then tap Remove background (AI). The first use downloads a small AI model (a few MB, cached afterward), then the background is removed automatically using machine learning. Use the Refine tools below to fix any rough edges before exporting.",
      "faq":[("Is my photo uploaded anywhere?","No — the AI model runs entirely inside your browser using WebAssembly. Your image is never sent to a server."),
             ("What does this work best on?","People, animals, vehicles, furniture, and other common photo subjects. Very fine detail like flyaway hair may not be as precise as a specialized paid tool — that's exactly what the manual refine tools are for.")],
-     "related":["background-changer","magic-eraser","ecommerce-product-editor"]},
+     "related":["background-changer","magic-eraser","ecommerce-product-editor","ai-photo-retouch"]},
 
     {"slug":"background-changer","name":"Background Changer","desc":"Solid colors, gradients, or a custom background image.",
      "subtitle":"Place any transparent image on a solid color, gradient, or custom background.",
@@ -3009,7 +3372,7 @@ IMAGE_TOOLS = [
             ("Will this change how I look?","No \u2014 this tool never warps face shape, never changes identity, and never adds makeup. It only adjusts lighting, color, and smooths skin texture using your own real pixels \u2014 nothing is generated or replaced."),
             ("Why does skin smoothing sometimes look uneven without Face Enhancement on?","Without Face Enhancement, smoothing applies evenly across the whole image, including backgrounds and clothing. Turning it on limits smoothing to detected skin specifically, which usually looks more natural on portraits."),
             ("Is my photo uploaded anywhere?","No \u2014 both the AI face detection and all image processing run entirely inside your browser. Your photo is never sent to a server.")],
-     "related":["magic-eraser","ai-image-upscaler"]},
+     "related":["magic-eraser","ai-image-upscaler","ai-photo-retouch"]},
 
     {"slug":"ai-image-upscaler","name":"AI Image Upscaler","desc":"Upscale images 2x or 4x with real AI \u2014 a browser-optimized model, not the largest available.",
      "subtitle":"Upscale images 2x or 4x with real AI super-resolution \u2014 a browser-optimized model chosen deliberately over the largest available option.",
@@ -3162,7 +3525,7 @@ calc_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-AGE_FORM = """<div class="view-title"><h2>Age Calculator</h2></div>
+AGE_FORM = """<div class="view-title"><h2>Enter Your Birth Date</h2></div>
       <span class="field-label">Date of birth</span>
       <input type="date" id="ageDobInput">
       <span class="field-label" style="margin-top:14px;">Calculate age as of</span>
@@ -3178,7 +3541,7 @@ AGE_FORM = """<div class="view-title"><h2>Age Calculator</h2></div>
       </div>
       <p id="ageTotalDaysLine" class="hidden" style="font-size:12.5px;color:var(--ink-soft);margin-top:12px;">Total days lived: <strong id="ageTotalDays">0</strong></p>"""
 
-BMI_FORM = """<div class="view-title"><h2>BMI Calculator</h2></div>
+BMI_FORM = """<div class="view-title"><h2>Enter Your Details</h2></div>
       <div class="unit-toggle bmi-unit-toggle">
         <button class="active" data-unit="metric" type="button">Metric (cm/kg)</button>
         <button data-unit="imperial" type="button">Imperial (ft/lb)</button>
@@ -3211,7 +3574,7 @@ BMI_FORM = """<div class="view-title"><h2>BMI Calculator</h2></div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin-top:12px;">BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition. It isn't a diagnosis.</p>
       </div>"""
 
-PERCENTAGE_FORM = """<div class="view-title"><h2>Percentage Calculator</h2></div>
+PERCENTAGE_FORM = """<div class="view-title"><h2>Enter Your Values</h2></div>
       <div class="unit-toggle pct-mode-toggle">
         <button class="active" data-mode="of" type="button">X% of Y</button>
         <button data-mode="percentOf" type="button">X is what % of Y</button>
@@ -3232,7 +3595,7 @@ PERCENTAGE_FORM = """<div class="view-title"><h2>Percentage Calculator</h2></div
         <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;" id="pctFormula"></p>
       </div>"""
 
-DISCOUNT_FORM = """<div class="view-title"><h2>Discount Calculator</h2></div>
+DISCOUNT_FORM = """<div class="view-title"><h2>Enter Your Values</h2></div>
       <span class="field-label">Original price</span>
       <input type="number" id="discOriginal" placeholder="e.g. 100" min="0" step="0.01">
       <span class="field-label" style="margin-top:14px;">Discount %</span>
@@ -3242,7 +3605,7 @@ DISCOUNT_FORM = """<div class="view-title"><h2>Discount Calculator</h2></div>
         <div class="result-stat"><div class="num" id="discSaved">0.00</div><div class="label">Amount Saved</div></div>
       </div>"""
 
-EMI_FORM = """<div class="view-title"><h2>EMI / Loan Calculator</h2></div>
+EMI_FORM = """<div class="view-title"><h2>Enter Loan Details</h2></div>
       <span class="field-label">Loan amount</span>
       <input type="number" id="emiAmount" placeholder="e.g. 20000" min="0" step="0.01">
       <span class="field-label" style="margin-top:14px;">Interest rate (annual %)</span>
@@ -3265,7 +3628,7 @@ EMI_FORM = """<div class="view-title"><h2>EMI / Loan Calculator</h2></div>
         <div class="result-stat"><div class="num" id="emiTotal">0.00</div><div class="label">Total Payment</div></div>
       </div>"""
 
-GST_FORM = """<div class="view-title"><h2>GST / VAT Calculator</h2></div>
+GST_FORM = """<div class="view-title"><h2>Enter Amount</h2></div>
       <div class="unit-toggle gst-mode-toggle">
         <button class="active" data-mode="add" type="button">Add GST/VAT</button>
         <button data-mode="remove" type="button">Remove GST/VAT</button>
@@ -3283,7 +3646,7 @@ GST_FORM = """<div class="view-title"><h2>GST / VAT Calculator</h2></div>
         <div class="result-stat"><div class="num" id="gstFinalAmount">0.00</div><div class="label">Final Amount</div></div>
       </div>"""
 
-SCIENTIFIC_FORM = """<div class="view-title"><h2>Scientific Calculator</h2></div>
+SCIENTIFIC_FORM = """<div class="view-title"><h2>Keypad</h2></div>
       <div class="sci-display" id="sciDisplay">0</div>
       <div class="unit-toggle" id="sciAngleToggle" style="margin-top:10px;">
         <button class="active" data-angle="deg" type="button">DEG</button>
@@ -3334,7 +3697,7 @@ SCIENTIFIC_FORM = """<div class="view-title"><h2>Scientific Calculator</h2></div
         <button class="sci-btn sci-equals" data-action="equals" type="button" style="grid-column:span 3;">=</button>
       </div>"""
 
-UNIT_FORM = """<div class="view-title"><h2>Unit Converter</h2></div>
+UNIT_FORM = """<div class="view-title"><h2>Convert Units</h2></div>
       <span class="field-label">Category</span>
       <select id="unitCategory">
         <option value="length" selected>Length</option>
@@ -3362,7 +3725,7 @@ UNIT_FORM = """<div class="view-title"><h2>Unit Converter</h2></div>
         <div class="result-stat"><div class="num" id="unitToValue">—</div><div class="label" id="unitToLabel">Result</div></div>
       </div>"""
 
-CURRENCY_FORM = """<div class="view-title"><h2>Currency Converter</h2></div>
+CURRENCY_FORM = """<div class="view-title"><h2>Convert Currency</h2></div>
       <span class="field-label">Amount</span>
       <input type="number" id="curAmount" placeholder="e.g. 100" value="1" min="0" step="0.01">
 
@@ -3384,6 +3747,7 @@ CALCULATORS = [
      "subtitle":"Find your exact age in years, months, and days — free, private, instant.",
      "meta":"Free online age calculator. Find your exact age in years, months, and days, or calculate your age as of any date.",
      "category":"UtilitiesApplication","form":AGE_FORM,
+     "intro":"This calculator finds the exact time between two dates — typically your date of birth and today — broken down into full years, full months, and remaining days, rather than a single decimal figure. It's useful for anything that requires a precise age on a specific date: eligibility checks, legal or medical forms, or just satisfying curiosity about exactly how old you are down to the day. It also works for any two dates, not just birthdays, so you can use it to find your age as of a past or future date.",
      "how_to":"Enter your date of birth, and optionally change \"Calculate age as of\" to any other date, then tap Calculate age to see your exact age broken down into years, months, and days, plus total days lived.",
      "faq":[("How is my age calculated?","We count full years, then full months, then the remaining days between your date of birth and the \"as of\" date — the same method used by most official age calculators."),
             ("Can I find my age on a specific past or future date?","Yes — change the \"Calculate age as of\" field to any date to see your age at that point in time.")],
@@ -3393,6 +3757,7 @@ CALCULATORS = [
      "subtitle":"Calculate your Body Mass Index from height and weight — metric or imperial.",
      "meta":"Free online BMI calculator. Calculate your Body Mass Index from height and weight in metric or imperial units, with category breakdown.",
      "category":"HealthApplication","form":BMI_FORM,
+     "intro":"Body Mass Index (BMI) is a simple screening measure calculated from your height and weight, using the standard formula weight (kg) ÷ height (m)². It's widely used by health organizations as a quick, population-level indicator of whether someone's weight falls into a typical range for their height — not as an individual diagnosis. This calculator accepts either metric (kg/cm) or imperial (lb/ft-in) units and instantly shows both your BMI number and which standard WHO category it falls into.",
      "how_to":"Choose Metric or Imperial units, enter your height and weight, then tap Calculate BMI to see your Body Mass Index and its standard category.",
      "faq":[("What do the BMI categories mean?","Under 18.5 is Underweight, 18.5–24.9 is Normal weight, 25–29.9 is Overweight, and 30+ is Obesity, using the standard WHO ranges."),
             ("Is BMI accurate for everyone?","BMI is a general screening measure and doesn't account for muscle mass, bone density, or body composition — it isn't a diagnosis.")],
@@ -3402,6 +3767,7 @@ CALCULATORS = [
      "subtitle":"X% of Y, percent of a total, increase, decrease, and difference — all in one tool.",
      "meta":"Free online percentage calculator. Calculate X% of Y, what percent X is of Y, percentage increase, decrease, and difference.",
      "category":"UtilitiesApplication","form":PERCENTAGE_FORM,
+     "intro":"Percentage problems come in several genuinely different shapes — finding what X% of a number is, working out what percent one number is of another, or measuring how much something has grown or shrunk — and each needs a different calculation. Rather than making you remember which formula applies, this tool offers five explicit modes (X% of Y, X is what % of Y, % Increase, % Decrease, and % Difference), shows the formula it used, and gives the result instantly as you type.",
      "how_to":"Choose a mode — X% of Y, X is what % of Y, % Increase, % Decrease, or % Difference — enter your two values, then tap Calculate to see the formula and result.",
      "faq":[("What's the difference between % Increase and % Difference?","% Increase/Decrease measures change relative to the original value; % Difference measures the gap relative to the average of both values, useful when there's no clear \"original\"."),
             ("Can I use negative numbers?","Yes, though results in Increase/Decrease mode are most meaningful when the original value isn't zero.")],
@@ -3411,6 +3777,7 @@ CALCULATORS = [
      "subtitle":"Final price and amount saved, calculated instantly as you type.",
      "meta":"Free online discount calculator. Enter the original price and discount percentage to instantly see the final price and amount saved.",
      "category":"UtilitiesApplication","form":DISCOUNT_FORM,
+     "intro":"A quick way to see exactly what you'll pay and exactly what you'll save on a discounted item, without doing the percentage math by hand. Enter the original price and the discount percentage, and both the final price and the amount saved update live as you type — useful for comparing sale prices while shopping, or checking a discount was applied correctly at checkout.",
      "how_to":"Enter the original price and the discount percentage — the final price and amount saved update instantly as you type, no button needed.",
      "faq":[("Does this work for stacked or multiple discounts?","This calculates a single discount pass; for stacked discounts, use this calculator's Final Price as the Original Price for the next discount."),
             ("Can I calculate the discount percentage from two prices instead?","This tool goes from percentage to price; for the reverse, use the Percentage Calculator's \"X is what % of Y\" mode with the amount saved and original price.")],
@@ -3420,6 +3787,7 @@ CALCULATORS = [
      "subtitle":"Monthly EMI, total interest, and total payment for any loan amount and term.",
      "meta":"Free online EMI and loan calculator. Calculate your monthly EMI, total interest, and total payment using the standard reducing-balance formula.",
      "category":"FinanceApplication","form":EMI_FORM,
+     "intro":"An EMI (Equated Monthly Installment) is the fixed monthly payment you make on a loan, combining both principal and interest, calculated using the standard reducing-balance method banks use — meaning the interest portion shrinks and the principal portion grows with each payment, even though the total monthly amount stays the same. This calculator takes your loan amount, interest rate, and term, and shows your monthly payment alongside the total interest and total amount you'll pay over the life of the loan, so you can compare loan offers or terms before committing.",
      "how_to":"Enter the loan amount, annual interest rate, and loan term in months or years, then tap Calculate EMI to see your monthly payment, total interest, and total amount payable over the life of the loan.",
      "faq":[("How is EMI calculated?","Using the standard reducing-balance formula: EMI = P × r × (1+r)^n / ((1+r)^n − 1), where P is the principal, r is the monthly interest rate, and n is the number of monthly installments."),
             ("Does this include fees or insurance?","No — this calculates principal and interest only. Add any separate fees or insurance premiums manually.")],
@@ -3429,6 +3797,7 @@ CALCULATORS = [
      "subtitle":"Add or remove GST/VAT from any amount instantly.",
      "meta":"Free online GST and VAT calculator. Add or remove tax from any amount instantly, for any country's tax rate.",
      "category":"FinanceApplication","form":GST_FORM,
+     "intro":"Whether you need to add tax to a pre-tax price or work backward to find the pre-tax price from a tax-inclusive total, this calculator handles both directions with a single tax-rate input. It works for GST, VAT, sales tax, or any percentage-based consumption tax regardless of what your country calls it or what rate applies — the underlying math is the same everywhere, only the label differs.",
      "how_to":"Enter the amount and tax percentage, choose whether to add or remove tax, then tap Calculate.",
      "faq":[("What's the difference between adding and removing tax?","\"Add\" treats your amount as the pre-tax price and calculates the tax-inclusive total. \"Remove\" treats your amount as already including tax and extracts the original pre-tax price."),
             ("Does this work for any country's tax rate?","Yes — enter whatever percentage applies in your region; the math is the same regardless of what the tax is called locally.")],
@@ -3438,6 +3807,7 @@ CALCULATORS = [
      "subtitle":"Trig, logs, powers, memory functions, and full keyboard support.",
      "meta":"Free online scientific calculator with trigonometry, logarithms, powers, memory functions, and full keyboard support.",
      "category":"UtilitiesApplication","form":SCIENTIFIC_FORM,
+     "intro":"A full scientific calculator covering the functions a basic calculator leaves out: trigonometry (sin, cos, tan and their inverses), logarithms (natural and base-10), powers and roots, and memory functions (M+, M-, MR, MC) for multi-step calculations. It supports both mouse/touch input via on-screen buttons and direct keyboard typing, so it works equally well for quick lookups or longer calculation sessions.",
      "how_to":"Tap the number and operator buttons to build an expression, or type directly using your keyboard. Use the DEG/RAD toggle to control how sin, cos, and tan interpret angles, then press = to evaluate.",
      "faq":[("Does this support keyboard input?","Yes — digits, + − * /, parentheses, Enter (=), Backspace, and Escape (clear) all work from your keyboard."),
             ("Degrees or radians?","Use the DEG/RAD toggle above the display — it defaults to degrees.")],
@@ -3447,6 +3817,7 @@ CALCULATORS = [
      "subtitle":"Length, weight, temperature, area, volume, speed, time, and data storage — 8 categories.",
      "meta":"Free online unit converter for length, weight, temperature, area, volume, speed, time, and data storage, with instant conversion.",
      "category":"UtilitiesApplication","form":UNIT_FORM,
+     "intro":"Converts between units across eight everyday categories — length, weight, temperature, area, volume, speed, time, and digital storage — using standard, accurate conversion factors for each. Temperature is handled with the correct Celsius/Fahrenheit/Kelvin formulas rather than a simple multiplier, since temperature scales don't share a common zero point the way most other unit pairs do.",
      "how_to":"Pick a category, choose your From and To units, then type a value — the result updates instantly as you type.",
      "faq":[("How many categories are supported?","Eight: Length, Weight, Temperature, Area, Volume, Speed, Time, and Data Storage."),
             ("Are the conversions accurate?","Yes, using standard conversion factors; temperature uses the correct Celsius/Fahrenheit/Kelvin formulas rather than a simple multiplier.")],
@@ -3456,6 +3827,7 @@ CALCULATORS = [
      "subtitle":"Live exchange rates for 25+ currencies, updated daily via the free Frankfurter API.",
      "meta":"Free online currency converter with live daily exchange rates for 25+ currencies. No signup, no API key required.",
      "category":"FinanceApplication","form":CURRENCY_FORM,
+     "intro":"Converts between 25+ world currencies using daily reference exchange rates from the Frankfurter API, an open data source built on European Central Bank rates. Rates refresh once per working day, matching how most banks and official sources publish reference rates — this is a reliable daily figure for budgeting, travel planning, or comparing prices across currencies, not a live trading feed for time-sensitive transactions.",
      "how_to":"Enter an amount, choose your From and To currencies, and the converted amount updates automatically using current exchange rates.",
      "faq":[("Where do the exchange rates come from?","From the free, open Frankfurter API, which publishes daily reference rates sourced from the European Central Bank."),
             ("How often do rates update?","Once per working day — this is a reliable daily reference rate, not real-time tick-by-tick trading data.")],
@@ -3492,6 +3864,10 @@ def build_calculator_page(calc):
             {"@type": "ListItem", "position": 3, "name": calc["name"], "item": f'https://toolflight.com/{calc["slug"]}.html'},
         ]
     }
+    webpage_schema = {
+        "@context": "https://schema.org", "@type": "WebPage",
+        "name": calc["name"], "description": calc["meta"], "url": f'https://toolflight.com/{calc["slug"]}.html'
+    }
     software_schema = {
         "@context": "https://schema.org", "@type": "SoftwareApplication",
         "name": calc["name"], "applicationCategory": calc["category"], "operatingSystem": "Any",
@@ -3515,7 +3891,9 @@ def build_calculator_page(calc):
   </div>
 
   <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">How to use the {calc["name"]}</h2>
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the {calc["name"]}</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{calc["intro"]}</p>
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to use the {calc["name"]}</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{calc["how_to"]}</p>
     <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
 {faq_html}    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Calculators</h2>
@@ -3525,6 +3903,7 @@ def build_calculator_page(calc):
 </div>
 
 <script type="application/ld+json">{_json.dumps(breadcrumb_schema)}</script>
+<script type="application/ld+json">{_json.dumps(webpage_schema)}</script>
 <script type="application/ld+json">{_json.dumps(software_schema)}</script>
 <script type="application/ld+json">{_json.dumps(faqpage_schema)}</script>
 """
@@ -3578,7 +3957,7 @@ ai_body = f"""<div class="hero-sub">
 # Core form markup below is copied verbatim from the working embedded version —
 # same element IDs/classes, so js/app.js needs zero changes to power these pages.
 
-QR_FORM = """<div class="view-title"><h2>QR Generator</h2></div>
+QR_FORM = """<div class="view-title"><h2>Generate Your Code</h2></div>
       <span class="field-label">Link or text to encode</span>
       <input type="text" id="qrInput" placeholder="https://example.com or any text">
       <div class="qr-controls">
@@ -3599,7 +3978,7 @@ QR_FORM = """<div class="view-title"><h2>QR Generator</h2></div>
         <button class="btn btn-success" id="qrDownloadSvgBtn">Download SVG</button>
       </div>"""
 
-ROBOTS_FORM = """<div class="view-title"><h2>Robots.txt Generator</h2></div>
+ROBOTS_FORM = """<div class="view-title"><h2>Generate robots.txt</h2></div>
       <span class="field-label">Website URL</span>
       <input type="text" id="robotsWebsiteUrl" placeholder="https://example.com">
       <span class="field-label" style="margin-top:14px;">Sitemap URL</span>
@@ -3618,7 +3997,7 @@ ROBOTS_FORM = """<div class="view-title"><h2>Robots.txt Generator</h2></div>
         <button class="btn btn-success" id="robotsDownloadBtn">Download robots.txt</button>
       </div>"""
 
-META_FORM = """<div class="view-title"><h2>Meta Tag Generator</h2></div>
+META_FORM = """<div class="view-title"><h2>Generate Meta Tags</h2></div>
       <span class="field-label">Title</span>
       <input type="text" id="metaTitle" placeholder="Page title">
       <span class="field-label" style="margin-top:14px;">Description</span>
@@ -3657,7 +4036,7 @@ META_FORM = """<div class="view-title"><h2>Meta Tag Generator</h2></div>
         <button class="btn btn-success" id="metaDownloadBtn">Download HTML</button>
       </div>"""
 
-GKW_FORM = """<div class="view-title"><h2>AI Keyword Generator</h2></div>
+GKW_FORM = """<div class="view-title"><h2>Enter Your Topic</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Generates keyword ideas using template-based expansion, entirely in your browser. Metrics (volume, CPC, competition, difficulty) are <strong>AI-estimated for ideation</strong>, not live data from any paid keyword-research platform — there's no backend or API on this site to pull real numbers from. Use this to brainstorm broadly, then verify final picks in your search console or preferred keyword tool.</p>
 
       <form id="gkwForm">
@@ -3821,7 +4200,7 @@ GKW_FORM = """<div class="view-title"><h2>AI Keyword Generator</h2></div>
         <div id="gkwResultsBody" style="margin-top:14px;max-height:600px;overflow-y:auto;"></div>
       </div>"""
 
-AEW_FORM = """<div class="view-title"><h2>AI Email Writer</h2></div>
+AEW_FORM = """<div class="view-title"><h2>Compose Your Email</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A real, working email-writing interface with a genuine provider abstraction \u2014 not a fake AI demo. This static, backend-free site can't safely hold a real API key, so no provider is currently connected. See the FAQ below for exactly what that means and why.</p>
 
       <form id="aewForm">
@@ -3941,7 +4320,7 @@ SEO_TOOLS = [
      "faq":[("Is this real keyword-planner data?","No \u2014 this site has no backend or API connection to any paid keyword-research platform (such as Google Keyword Planner), so any tool claiming to show that without one would be misrepresenting its numbers. Instead, this generates keyword ideas through structured template-based expansion and attaches consistent, estimated metrics for ideation and prioritization \u2014 a legitimate, widely-used approach for the free tier of many keyword tools, but always verify final keyword choices with your own search console or a dedicated keyword-data tool before relying on the numbers."),
             ("Why does the same keyword always get the same estimated volume?","The estimates are deterministically generated from the keyword text itself, not randomized \u2014 so your results are consistent and comparable across sessions instead of changing every time you regenerate."),
             ("Can I use this for YouTube or local SEO?","Yes \u2014 dedicated YouTube Keywords and Local Keywords sections are included alongside the main keyword-research categories.")],
-     "related":["meta-tag-generator","robots-txt-generator"]},
+     "related":["meta-tag-generator","robots-txt-generator","ai-email-writer"]},
 ]
 SEO_TOOL_BY_SLUG = {t["slug"]: t for t in SEO_TOOLS}
 
@@ -3958,7 +4337,7 @@ AI_TOOLS = [
             ("What would it take to make this fully functional?","A small secure backend (even a single serverless function) to hold the API key and forward requests to a real provider — the entire interface, prompt construction, and provider abstraction here are already built and ready for that; only the key management piece is missing, deliberately."),
             ("Which providers does the architecture support?","The code includes real, correctly-structured request builders for OpenAI, Claude (Anthropic), Gemini, Groq, and OpenRouter. Any one of them can be activated by supplying a key through a secure backend, without changing this page's interface."),
             ("Is my draft data sent anywhere right now?","No \u2014 with no provider connected, nothing leaves your browser. If a provider is connected in the future, only the fields you fill in would be sent to generate the draft, and that will be disclosed clearly at that time.")],
-     "related":[]},
+     "related":["ai-keyword-generator","meta-tag-generator"]},
 ]
 AI_TOOL_BY_SLUG = {t["slug"]: t for t in AI_TOOLS}
 
@@ -3982,8 +4361,17 @@ def build_seo_tool_page(tool):
 
     related_html = ""
     for rslug in tool["related"]:
-        rt = SEO_TOOL_BY_SLUG[rslug]
-        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">SEO Tool</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
+        # Some related tools are genuinely cross-category (e.g. an SEO tool
+        # legitimately related to an AI tool) -- fall back across category
+        # lookups rather than assuming same-category, and label the badge
+        # accurately for whichever category the related tool actually is.
+        if rslug in SEO_TOOL_BY_SLUG:
+            rt = SEO_TOOL_BY_SLUG[rslug]; rtag = "SEO Tool"
+        elif rslug in AI_TOOL_BY_SLUG:
+            rt = AI_TOOL_BY_SLUG[rslug]; rtag = "AI Tool"
+        else:
+            raise KeyError(f"related slug '{rslug}' not found in SEO_TOOLS or AI_TOOLS")
+        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">{rtag}</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
 
     breadcrumb_schema = {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
@@ -4066,8 +4454,13 @@ def build_ai_tool_page(tool):
 
     related_html = ""
     for rslug in tool["related"]:
-        rt = AI_TOOL_BY_SLUG[rslug]
-        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">AI Tool</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
+        if rslug in AI_TOOL_BY_SLUG:
+            rt = AI_TOOL_BY_SLUG[rslug]; rtag = "AI Tool"
+        elif rslug in SEO_TOOL_BY_SLUG:
+            rt = SEO_TOOL_BY_SLUG[rslug]; rtag = "SEO Tool"
+        else:
+            raise KeyError(f"related slug '{rslug}' not found in AI_TOOLS or SEO_TOOLS")
+        related_html += f'      <a href="{rslug}.html" class="blog-card"><span class="blog-tag">{rtag}</span><h3>{rt["name"]}</h3><p>{rt["desc"]}</p></a>\n'
 
     breadcrumb_schema = {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
@@ -4280,7 +4673,7 @@ PAGE_DEFS = [
     ("pdf-tools.html", "Free Online PDF Tools — Merge, Split, Compress, Resume Builder & More | ToolFlight", "8 free online PDF tools: merge, split, compress, image to PDF, PDF to image, PDF to Word, Word to PDF, and a resume builder with ATS checker. Each with its own dedicated page. No upload, no signup.", pdf_body),
     ("image-tools.html", "Free Online Image Tools — Passport Photo Maker, AI OCR, Upscaler & More | ToolFlight", "11 free online image tools: compress, crop, watermark, rotate/flip, AI background remover, background changer, AI object remover, AI photo enhancer, AI image upscaler, AI OCR, and a passport photo maker. Each with its own dedicated page.", image_body),
     ("calculators.html", "Free Online Calculators — Age, BMI, EMI, GST, Scientific & More | ToolFlight", "9 free online calculators: age, BMI, percentage, discount, EMI/loan, GST/VAT, scientific, unit converter, and currency converter. Each with its own dedicated page.", calc_body),
-    ("finance-tools.html", "Finance Tools — Currency & Loan Calculators | ToolFlight", "Free finance tools including currency converter and loan calculator.", finance_body),
+    ("finance-tools.html", "Finance Tools (Coming Soon) | ToolFlight", "ToolFlight's dedicated finance tools category is in development. For loan and currency calculations available now, see the EMI/Loan Calculator and Currency Converter on our Calculators page.", finance_body),
     ("seo-tools.html", "Free Online SEO Tools — Keyword Generator, QR Code, Robots.txt & Meta Tags | ToolFlight", "4 free online SEO tools: AI keyword generator, QR code generator, robots.txt generator, and meta tag generator. Each with its own dedicated page.", seo_body),
     ("ai-tools.html", "Free AI Tools — AI Email Writer & More | ToolFlight", "Free AI-assisted tools for ToolFlight, starting with the AI Email Writer. Honest about what's currently connected and what isn't.", ai_body),
 ]
@@ -4352,6 +4745,7 @@ ARTICLES = [
     {
         "slug": "passport-photo-rules-ai-editing",
         "title": "Passport Photo Rules Explained: Requirements, Backgrounds, and Why AI Editing Can Get You Rejected",
+        "seo_title": "Passport Photo Rules: Why AI Editing Gets You Rejected",
         "meta": "A complete guide to passport photo requirements, background rules, and AI editing limitations — plus why some countries reject digitally altered photos, and how to verify your photo before submitting.",
         "tag": "Passport Photos",
         "reading_time": 8,
@@ -4442,7 +4836,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>You don't need to install anything to put this into practice — ToolFlight's Image Compressor runs entirely in your browser, resizes large images automatically, and shows a live before/after so you can judge the quality tradeoff yourself.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -4491,7 +4885,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>ToolFlight's Merge PDF tool works exactly this way: drag your files in, reorder them, and download — all processed locally in your browser.</p>
-<a class="inline-cta" href="../pdf-tools.html">Open the free PDF Merger →</a>
+<a class="inline-cta" href="../pdf-merge.html">Open the free PDF Merger →</a>
 """),
         ],
         "faq": [
@@ -4542,7 +4936,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>Not sure which format your image should be? Compress it with ToolFlight and compare the resulting file size directly against the original.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -4625,7 +5019,7 @@ ARTICLES = [
 """),
             ("try-it", "Try it yourself", """
 <p>ToolFlight's Image Compressor automatically resizes any image over 2000px on its longest side as part of compression, so oversized photos are handled for you without an extra step.</p>
-<a class="inline-cta" href="../image-tools.html">Open the free Image Compressor →</a>
+<a class="inline-cta" href="../image-compress.html">Open the free Image Compressor →</a>
 """),
         ],
         "faq": [
@@ -4660,8 +5054,10 @@ def render_article(article):
         "@type": "Article",
         "headline": article["title"],
         "description": article["meta"],
+        "image": "https://toolflight.com/assets/apple-touch-icon.png",
         "author": {"@type": "Organization", "name": "ToolFlight"},
-        "publisher": {"@type": "Organization", "name": "ToolFlight"},
+        "publisher": {"@type": "Organization", "name": "ToolFlight", "logo": {"@type": "ImageObject", "url": "https://toolflight.com/assets/logo.svg"}},
+        "mainEntityOfPage": {"@type": "WebPage", "@id": f'https://toolflight.com/blog/{article["slug"]}.html'},
     }
     import json as _json
     faq_page_schema = {
@@ -4732,6 +5128,7 @@ def footer_for_blog():
              .replace('href="finance-tools.html"', 'href="../finance-tools.html"')
              .replace('href="seo-tools.html"', 'href="../seo-tools.html"')
              .replace('href="ai-tools.html"', 'href="../ai-tools.html"')
+             .replace('href="contact.html"', 'href="../contact.html"')
              .replace('href="index.html#about-section"', 'href="../index.html#about-section"')
              .replace('href="index.html#faq"', 'href="../index.html#faq"')
              .replace('src="assets/', 'src="../assets/'))
@@ -4744,7 +5141,7 @@ for article in ARTICLES:
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{head_for_blog(article["title"] + " | ToolFlight Blog", article["meta"], "blog/" + filename)}
+{head_for_blog(article.get("seo_title", article["title"]) + " | ToolFlight Blog", article["meta"], "blog/" + filename)}
 </head>
 <body>
 {navbar_for_blog(filename)}
