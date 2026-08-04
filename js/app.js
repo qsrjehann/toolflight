@@ -918,6 +918,117 @@ if (document.getElementById('bmiCalcBtn')){
   };
 }
 
+/* ============ QR CODE GENERATOR (qr-code-generator.html) ============ */
+if (document.getElementById('qrGenBtn')){
+  const qrSizeInput = document.getElementById('qrSize');
+  const qrSizeVal = document.getElementById('qrSizeVal');
+  let qrLastCanvas = null, qrLastSvgString = null;
+
+  qrSizeInput.addEventListener('input', () => { qrSizeVal.textContent = qrSizeInput.value; });
+
+  function buildQrModules(text){
+    // typeNumber 0 = auto-detect the smallest QR version that fits the data;
+    // 'M' = medium error correction, a reasonable default balancing density and scan reliability.
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    const count = qr.getModuleCount();
+    const modules = [];
+    for (let r = 0; r < count; r++){
+      const row = [];
+      for (let c = 0; c < count; c++) row.push(qr.isDark(r, c));
+      modules.push(row);
+    }
+    return modules;
+  }
+
+  function renderQrToCanvas(modules, size, fg, bg){
+    const count = modules.length;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const cell = size / count;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = fg;
+    for (let r = 0; r < count; r++){
+      for (let c = 0; c < count; c++){
+        if (modules[r][c]){
+          // Round outward by half a pixel on each edge so adjacent modules
+          // don't leave hairline gaps from sub-pixel rounding at common sizes.
+          const x = Math.floor(c*cell), y = Math.floor(r*cell);
+          const w = Math.ceil((c+1)*cell) - x, h = Math.ceil((r+1)*cell) - y;
+          ctx.fillRect(x, y, w, h);
+        }
+      }
+    }
+    return canvas;
+  }
+
+  function buildQrSvgString(modules, size, fg, bg){
+    const count = modules.length;
+    const cell = size / count;
+    let rects = '';
+    for (let r = 0; r < count; r++){
+      for (let c = 0; c < count; c++){
+        if (modules[r][c]) rects += `<rect x="${(c*cell).toFixed(2)}" y="${(r*cell).toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" fill="${fg}"/>`;
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="${bg}"/>${rects}</svg>`;
+  }
+
+  document.getElementById('qrGenBtn').onclick = () => {
+    const text = document.getElementById('qrInput').value.trim();
+    const viewfinder = document.getElementById('qrViewfinder');
+    if (!text){
+      toast('Enter a link or text to encode first.', 'err');
+      return;
+    }
+    const fg = document.getElementById('qrFg').value;
+    const bg = document.getElementById('qrBg').value;
+    const size = +qrSizeInput.value;
+    try {
+      const modules = buildQrModules(text);
+      const canvas = renderQrToCanvas(modules, size, fg, bg);
+      qrLastCanvas = canvas;
+      qrLastSvgString = buildQrSvgString(modules, size, fg, bg);
+      viewfinder.innerHTML = '';
+      canvas.style.maxWidth = '100%';
+      canvas.style.height = 'auto';
+      viewfinder.appendChild(canvas);
+      document.getElementById('qrDownloadRow').classList.remove('hidden');
+    } catch(err){
+      toast('Could not generate a QR code for that input: ' + err.message, 'err');
+    }
+  };
+
+  document.getElementById('qrClearBtn').onclick = () => {
+    document.getElementById('qrInput').value = '';
+    document.getElementById('qrViewfinder').innerHTML = '<span class="placeholder-text">Your QR code will appear here</span>';
+    document.getElementById('qrDownloadRow').classList.add('hidden');
+    qrLastCanvas = null; qrLastSvgString = null;
+  };
+
+  document.getElementById('qrDownloadPngBtn').onclick = () => {
+    if (!qrLastCanvas) return;
+    const a = document.createElement('a');
+    a.download = 'qrcode.png';
+    a.href = qrLastCanvas.toDataURL('image/png');
+    a.click();
+  };
+
+  document.getElementById('qrDownloadSvgBtn').onclick = () => {
+    if (!qrLastSvgString) return;
+    const blob = new Blob([qrLastSvgString], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.download = 'qrcode.svg';
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
 /* ============ ROBOTS.TXT GENERATOR (seo-tools.html) ============ */
 if (document.getElementById('robotsPreview')){
   let robotsRules = [{ path: '/private/', type: 'Disallow' }];
@@ -9169,11 +9280,56 @@ if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.i
    Maker verbatim -- same classes, not a re-implementation.
    ============================================================ */
 if (document.getElementById('rtDrop')){
-  let rtSourceCanvas = null;   // immutable original, full resolution
-  let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found
-  let rtBgCategoryMask = null; // cached AI segmentation category mask (Uint8Array) + its own w/h, computed once per image
+  let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
+  let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
+  // Multi-Person AI Foundation Slice 1: the primary detected face
+  // (rtFaceLandmarks above) remains the source of truth for every
+  // existing consumer, unchanged. rtDetectedFaces is the new, additive
+  // collection that future person-specific slices will build on --
+  // layer-scoped the same way rtFaceLandmarks already is.
+  const RT_MAX_FACE_COUNT = 4; // configurable cap (Requirement 1) -- not "unlimited," see architecture review Section 2
+  let rtDetectedFaces = [];    // MediaPipe face mesh entries, largest-area first -- ACTIVE LAYER's own
+  // Multi-Person AI Foundation Slice 2: derived purely from rtDetectedFaces
+  // above via geometry -- no new detection, no segmentation. Regenerated
+  // automatically whenever detection runs (see rtGeneratePersonRegions).
+  let rtPersonRegions = [];    // one entry per detected face -- ACTIVE LAYER's own
+  let rtOverlapReport = [];    // one entry per person-pair -- ACTIVE LAYER's own
+  let rtBgCategoryMask = null; // cached AI segmentation category mask (Uint8Array) + its own w/h, computed once per image -- ACTIVE LAYER's own
   let rtBgMaskDims = null;
+  let rtHairCategoryMask = null; // Hair Segmentation Module's own cache -- deliberately separate from rtBgCategoryMask above (different model, different purpose) -- ACTIVE LAYER's own
+  let rtHairMaskDims = null;
   let rtZoom = 1, rtOffsetX = 0, rtOffsetY = 0;
+  /* ---------- Crop & Rotate (Phase 2 slice 3) ----------
+     Document-level (applies to the whole composited stack, like every
+     real editor's crop tool), and non-destructive: it's a post-process
+     step applied AFTER renderRtComposite(), stored as fractions of the
+     rotated canvas so it scales correctly between preview and full-res
+     export without needing to touch any layer's own pixels. */
+  let rtCrop = { active: false, rect: null, rotationQuarter: 0, straighten: 0, ratioKey: 'free' };
+  let rtCropEditMode = false;
+  let rtCropDisplayRect = null; // current in-progress rect, in overlay-local CSS px
+  const RT_CROP_RATIOS = {
+    free: null, '1:1': 1, '4:5': 4/5, '16:9': 16/9, '9:16': 9/16,
+    a4: 210/297, passport: 35/45, square: 1, original: 'original',
+  };
+  /* ---------- Layers (Phase 2) ----------
+     rtSourceCanvas/rtAdj/rtFaceLandmarks/rtBgCategoryMask/rtBgMaskDims above
+     always describe the CURRENTLY ACTIVE layer -- every existing Phase 1
+     function (renderRtToCanvas, applyRtToneColor, applyRtSkinOps, the
+     slider wiring, presets, compare, reset) already reads exactly these
+     closure variables and needs zero changes to become "layer aware":
+     switching the active layer just swaps what these variables point to. */
+  let rtLayers = [];        // [{id, name, canvas, visible, locked, opacity, blendMode, adj, faceLandmarks, bgMask, bgMaskDims}]
+  let rtActiveLayerId = null;
+  let rtLayerIdSeq = 1;
+  const RT_BLEND_MODES = {
+    normal: 'source-over', multiply: 'multiply', screen: 'screen', overlay: 'overlay',
+    'soft-light': 'soft-light', darken: 'darken', lighten: 'lighten',
+  };
+  const RT_BLEND_LABELS = {
+    normal: 'Normal', multiply: 'Multiply', screen: 'Screen', overlay: 'Overlay',
+    'soft-light': 'Soft Light', darken: 'Darken', lighten: 'Lighten',
+  };
   let rtRenderPending = false;
   let rtFaceLandmarkerPromise = null, rtFaceLandmarker = null;
 
@@ -9182,6 +9338,8 @@ if (document.getElementById('rtDrop')){
     saturation:0, vibrance:0, temperature:0, tint:0,
     clarity:0, texture:0, dehaze:0, sharpness:0, noiseReduction:0, hdr:0,
     skinSmooth:0, faceBrighten:0, skinTone:0, bgBlur:0,
+    eyeEnhance:0, teethWhiten:0, lipEnhance:0,
+    hairSmooth:0, hairShine:0, hairTexture:0, hairHealth:0, hairFlyaway:0,
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -9195,6 +9353,8 @@ if (document.getElementById('rtDrop')){
     temperature:'rtTemperature', tint:'rtTint', clarity:'rtClarity', texture:'rtTexture', dehaze:'rtDehaze',
     sharpness:'rtSharpness', noiseReduction:'rtNoiseReduction', hdr:'rtHdr',
     skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone', bgBlur:'rtBgBlur',
+    eyeEnhance:'rtEyeEnhance', teethWhiten:'rtTeethWhiten', lipEnhance:'rtLipEnhance',
+    hairSmooth:'rtHairSmooth', hairShine:'rtHairShine', hairTexture:'rtHairTexture', hairHealth:'rtHairHealth', hairFlyaway:'rtHairFlyaway',
   };
 
   function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
@@ -9211,7 +9371,7 @@ if (document.getElementById('rtDrop')){
         const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
         const fl = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task' },
-          runningMode: 'IMAGE', numFaces: 1,
+          runningMode: 'IMAGE', numFaces: RT_MAX_FACE_COUNT,
         });
         rtFaceLandmarker = fl;
         return fl;
@@ -9220,23 +9380,290 @@ if (document.getElementById('rtDrop')){
     return rtFaceLandmarkerPromise;
   }
 
+  // Derives a bounding box from a landmark set using the same verified
+  // 36-point face-oval index set already established and used elsewhere
+  // in this project (Portrait Intelligence) -- reused by reference, not
+  // duplicated, and not a new detection mechanism.
+  function rtFaceBoundingBoxFromLandmarks(landmarks, sw, sh){
+    let minX=1, maxX=0, minY=1, maxY=0, found=0;
+    for (const i of RT_FACE_OVAL_IDX){
+      const lm = landmarks[i]; if (!lm) continue;
+      found++;
+      minX=Math.min(minX,lm.x); maxX=Math.max(maxX,lm.x);
+      minY=Math.min(minY,lm.y); maxY=Math.max(maxY,lm.y);
+    }
+    if (found === 0) return null; // couldn't derive a box from this landmark set -- honest null, not a fabricated box
+    return { x:minX*sw, y:minY*sh, width:(maxX-minX)*sw, height:(maxY-minY)*sh };
+  }
+
   async function rtDetectFace(){
     const statusEl = document.getElementById('rtFaceStatus');
     try{
       statusEl.textContent = 'Detecting face\u2026';
       const fl = await ensureRtFaceLandmarker();
       const result = fl.detect(rtSourceCanvas);
-      if (result.faceLandmarks && result.faceLandmarks[0]){
-        rtFaceLandmarks = result.faceLandmarks[0];
-        statusEl.textContent = 'Face detected \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.';
+      const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+
+      const faces = [];
+      if (result.faceLandmarks && result.faceLandmarks.length){
+        for (const landmarks of result.faceLandmarks){
+          const boundingBox = rtFaceBoundingBoxFromLandmarks(landmarks, sw, sh);
+          if (!boundingBox) continue;
+          faces.push({
+            personId: null,      // assigned below, after sorting, so ids reflect prominence order
+            landmarks,
+            boundingBox,
+            faceCenter: { x: boundingBox.x + boundingBox.width/2, y: boundingBox.y + boundingBox.height/2 },
+            faceArea: boundingBox.width * boundingBox.height,
+            // MediaPipe's FaceLandmarker result doesn't expose a graded
+            // per-face confidence score in this API -- every entry here
+            // IS a detection the model's own internal threshold already
+            // accepted, so 1.0 honestly represents "detected," not an
+            // invented magnitude. Never treat this as a substitute for
+            // a real graded confidence if one becomes available later.
+            detectionConfidence: 1.0,
+            detectionOrder: null, // assigned below
+          });
+        }
+      }
+      // Sort by visible face area, largest first (Requirement 5).
+      faces.sort((a,b) => b.faceArea - a.faceArea);
+      faces.forEach((f, idx) => { f.personId = 'person-' + idx; f.detectionOrder = idx; });
+      rtDetectedFaces = faces;
+      rtGeneratePersonRegions(); // Slice 2: pure geometry derived from the collection above, always kept in sync with detection
+
+      // Legacy compatibility (Requirement 3): rtFaceLandmarks continues
+      // to be populated exactly as before -- the largest/most prominent
+      // detected face -- so every existing consumer (skin/eye/mouth
+      // masks, Face AI, Face/Portrait Intelligence) keeps working
+      // completely unmodified until a later migration slice.
+      if (faces.length){
+        rtFaceLandmarks = faces[0].landmarks;
+        statusEl.textContent = faces.length > 1
+          ? `Face detected (${faces.length} faces found; using the most prominent one for now) \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.`
+          : 'Face detected \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.';
       } else {
         rtFaceLandmarks = null;
         statusEl.textContent = 'No face detected \u2014 skin smoothing will apply gently across the whole photo instead of being face-targeted.';
       }
     }catch(err){
+      rtDetectedFaces = [];
+      rtPersonRegions = [];
+      rtOverlapReport = [];
       rtFaceLandmarks = null;
       statusEl.textContent = 'Face detection unavailable \u2014 skin smoothing will apply gently across the whole photo instead.';
     }
+  }
+
+  // ---------- Helper APIs (Requirement 4) ----------
+  // The only intended public surface for future person-specific slices
+  // to build on -- nothing else should reach into rtDetectedFaces directly.
+  function rtGetPrimaryFace(){
+    return rtDetectedFaces.length ? rtDetectedFaces[0] : null;
+  }
+  function rtGetDetectedFaces(){
+    return rtDetectedFaces;
+  }
+  function rtGetFaceById(personId){
+    return rtDetectedFaces.find(f => f.personId === personId) || null;
+  }
+
+  /* ============================================================
+     PERSON REGION GENERATION + OVERLAP DETECTION
+     (Multi-Person AI Foundation -- Slice 2)
+     Pure geometry on top of the Slice 1 face-detection collection --
+     no segmentation, no new detection, no per-person editing. This is
+     architecture-only, exactly like Slice 1: no UI, invisible unless a
+     future slice consumes these APIs.
+     ============================================================ */
+
+  // ---- Person Region expansion constants (Requirement 1: every
+  // constant documented, no unexplained magic numbers) ----
+  // These are geometric heuristics for a typical head-and-shoulders
+  // portrait framing, expressed as multiples of the FACE bounding box's
+  // own width/height (Slice 1's boundingBox, derived from the verified
+  // face-oval landmark ring). They are NOT measured from this project's
+  // own photo data -- they're a reasonable starting estimate, and are
+  // called out explicitly here so they're easy to find and tune once
+  // real multi-person photos are available (see the deployment
+  // checklist in this slice's report).
+  const RT_PERSON_REGION_WIDTH_FACTOR = 2.2;  // total region width = face width * this, centered on the face's own horizontal center -- approximates shoulder width for an adult
+  const RT_PERSON_REGION_ABOVE_FACTOR = 0.8;  // extra height ABOVE the face box top = face height * this -- allowance for hair/top-of-head, which sits above the face-oval landmark ring
+  const RT_PERSON_REGION_BELOW_FACTOR = 2.0;  // extra height BELOW the face box bottom (chin) = face height * this -- allowance for neck, shoulders, and upper torso
+  const RT_PERSON_REGION_MIN_AREA_RATIO = 0.001; // a region below 0.1% of the total frame area is treated as too small to be a meaningful person region (Requirement 3)
+  const RT_PERSON_REGION_CLIPPED_OUTSIDE_THRESHOLD = 0.4; // if more than 40% of the RAW (pre-clamp) region falls outside the image bounds, flag 'outside_image' (Requirement 3)
+
+  // ---- Overlap classification thresholds (Requirement 2: documented,
+  // easily configurable) ----
+  // Based on IoU (Intersection over Union) between two person regions'
+  // expanded bounding boxes. These are deliberately conservative (a
+  // fairly low IoU already reads as "Moderate") because even modest
+  // overlap risks cross-contaminating hair/skin measurements between
+  // two people, per the architecture review's Section 3 finding that
+  // the existing segmentation models have no instance concept.
+  const RT_OVERLAP_THRESHOLDS = {
+    SAFE: 0.05,      // IoU below this -> Safe
+    MODERATE: 0.15,  // IoU below this (and >= SAFE) -> Moderate
+    HIGH: 0.35,      // IoU below this (and >= MODERATE) -> High
+    // IoU >= HIGH -> Severe
+  };
+
+  function rtDerivePersonRegion(face, sw, sh){
+    const fb = face.boundingBox;
+    const regionWidth = fb.width * RT_PERSON_REGION_WIDTH_FACTOR;
+    const aboveExtra = fb.height * RT_PERSON_REGION_ABOVE_FACTOR;
+    const belowExtra = fb.height * RT_PERSON_REGION_BELOW_FACTOR;
+    const regionHeight = fb.height + aboveExtra + belowExtra;
+    const faceCenterX = fb.x + fb.width/2;
+    const x = faceCenterX - regionWidth/2;
+    const y = fb.y - aboveExtra;
+    const rawRegion = { x, y, width: regionWidth, height: regionHeight };
+    // Clamp to image bounds for the region future consumers actually
+    // use -- validation below reports honestly on how much of the RAW
+    // (unclamped) region fell outside the frame, rather than silently
+    // losing that information once clamped.
+    const clampedX = Math.max(0, x);
+    const clampedY = Math.max(0, y);
+    const clampedRight = Math.min(sw, x + regionWidth);
+    const clampedBottom = Math.min(sh, y + regionHeight);
+    const expandedPersonRegion = {
+      x: clampedX, y: clampedY,
+      width: Math.max(0, clampedRight - clampedX),
+      height: Math.max(0, clampedBottom - clampedY),
+    };
+    return { rawRegion, expandedPersonRegion };
+  }
+
+  // ---- Region Validation (Requirement 3) ----
+  function rtValidatePersonRegion(rawRegion, expandedPersonRegion, sw, sh){
+    const issues = [];
+    if (!expandedPersonRegion || expandedPersonRegion.width <= 0 || expandedPersonRegion.height <= 0 || sw <= 0 || sh <= 0){
+      return { valid:false, issues:['invalid_geometry'], confidencePenalty: 1.0 };
+    }
+    const areaRatio = (expandedPersonRegion.width*expandedPersonRegion.height)/(sw*sh);
+    if (areaRatio < RT_PERSON_REGION_MIN_AREA_RATIO) issues.push('too_small');
+
+    const rawArea = rawRegion.width*rawRegion.height;
+    const clampedArea = expandedPersonRegion.width*expandedPersonRegion.height;
+    const clippedRatio = rawArea > 0 ? rtClamp((rawArea-clampedArea)/rawArea, 0, 1) : 0;
+    if (clippedRatio > RT_PERSON_REGION_CLIPPED_OUTSIDE_THRESHOLD) issues.push('outside_image');
+
+    // Confidence penalty is real and derived from the above measurements
+    // -- never an arbitrary flat number. A region that's both clipped
+    // AND too small gets a larger combined penalty (clamped to 1.0).
+    const confidencePenalty = rtClamp(clippedRatio*0.5 + (areaRatio < RT_PERSON_REGION_MIN_AREA_RATIO ? 0.5 : 0), 0, 1);
+    return { valid: issues.length === 0, issues, confidencePenalty };
+  }
+
+  // ---- Overlap Detection (Requirement 2) ----
+  function rtRegionIoU(a, b){
+    const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+    const x2 = Math.min(a.x+a.width, b.x+b.width), y2 = Math.min(a.y+a.height, b.y+b.height);
+    const interArea = Math.max(0, x2-x1) * Math.max(0, y2-y1);
+    const unionArea = a.width*a.height + b.width*b.height - interArea;
+    return unionArea > 0 ? interArea/unionArea : 0;
+  }
+
+  function rtClassifyOverlap(iou){
+    if (iou < RT_OVERLAP_THRESHOLDS.SAFE) return 'Safe';
+    if (iou < RT_OVERLAP_THRESHOLDS.MODERATE) return 'Moderate';
+    if (iou < RT_OVERLAP_THRESHOLDS.HIGH) return 'High';
+    return 'Severe';
+  }
+
+  function rtRecommendedActionFor(classification){
+    switch (classification){
+      case 'Safe': return 'Proceed normally -- regions are well separated.';
+      case 'Moderate': return 'Proceed; a small amount of cross-contamination in shared pixels is possible, so a minor confidence reduction is applied.';
+      case 'High': return 'Proceed with caution -- a meaningful confidence reduction is applied; hair/skin measurements in the shared area may be unreliable for either person.';
+      case 'Severe': return 'Independent per-person analysis is unlikely to be reliable for this pair -- a future slice should consider treating them as a single combined region instead.';
+      default: return 'Unknown classification.';
+    }
+  }
+
+  // ---- Overlap Report (Requirement 4) ----
+  function rtBuildOverlapReport(regions){
+    const report = [];
+    for (let i=0; i<regions.length; i++){
+      for (let j=i+1; j<regions.length; j++){
+        const a = regions[i].expandedPersonRegion, b = regions[j].expandedPersonRegion;
+        const iou = rtRegionIoU(a, b);
+        const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+        const x2 = Math.min(a.x+a.width, b.x+b.width), y2 = Math.min(a.y+a.height, b.y+b.height);
+        const interArea = Math.max(0, x2-x1) * Math.max(0, y2-y1);
+        // overlapPercentage: intersection relative to the SMALLER of the
+        // two regions -- more intuitive than IoU for "how much of this
+        // person's own region is compromised," reported alongside IoU
+        // rather than instead of it.
+        const smallerArea = Math.min(a.width*a.height, b.width*b.height);
+        const overlapPercentage = smallerArea > 0 ? rtClamp(interArea/smallerArea, 0, 1) : 0;
+        const classification = rtClassifyOverlap(iou);
+        // Overlap alone never fully zeroes confidence -- overlapping
+        // regions doesn't guarantee contaminated measurements, only
+        // elevated risk, so this is capped below 1.0.
+        const confidencePenalty = rtClamp(iou*1.2, 0, 0.9);
+        report.push({
+          personA: regions[i].personId, personB: regions[j].personId,
+          iou, overlapPercentage, classification,
+          recommendedAction: rtRecommendedActionFor(classification),
+          confidencePenalty,
+        });
+      }
+    }
+    return report;
+  }
+
+  // ---- Orchestrator: regenerates regions + overlap report from the
+  // current rtDetectedFaces collection. Called automatically whenever
+  // detection runs (see rtDetectFace), so these stay in sync without a
+  // separate manual trigger -- matching Slice 1's "always ready,
+  // invisible until consumed" approach. Pure geometry -- no re-detection,
+  // no re-segmentation, no new AI model call. ----
+  function rtGeneratePersonRegions(){
+    if (!rtSourceCanvas || !rtDetectedFaces.length){
+      rtPersonRegions = []; rtOverlapReport = [];
+      return;
+    }
+    const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+    const regions = rtDetectedFaces.map(face => {
+      const { rawRegion, expandedPersonRegion } = rtDerivePersonRegion(face, sw, sh);
+      const validation = rtValidatePersonRegion(rawRegion, expandedPersonRegion, sw, sh);
+      // Combined confidence: the real, already-honest per-face detection
+      // confidence (Slice 1) reduced by any real validation penalty --
+      // never a separately invented number.
+      const confidence = rtClamp(face.detectionConfidence * (1 - validation.confidencePenalty), 0, 1);
+      return {
+        personId: face.personId,
+        faceBoundingBox: face.boundingBox,
+        expandedPersonRegion,
+        width: expandedPersonRegion.width,
+        height: expandedPersonRegion.height,
+        center: { x: expandedPersonRegion.x + expandedPersonRegion.width/2, y: expandedPersonRegion.y + expandedPersonRegion.height/2 },
+        area: expandedPersonRegion.width * expandedPersonRegion.height,
+        confidence,
+        valid: validation.valid,
+        validationIssues: validation.issues,
+      };
+    });
+    rtPersonRegions = regions;
+    rtOverlapReport = rtBuildOverlapReport(regions);
+  }
+
+  // ---- Public Helper APIs (Requirement 5) ----
+  function rtGetPersonRegions(){
+    return rtPersonRegions;
+  }
+  function rtGetPersonRegion(personId){
+    return rtPersonRegions.find(r => r.personId === personId) || null;
+  }
+  // Alias of rtGetPersonRegion -- both names are listed in this slice's
+  // spec; kept as two names for the same lookup rather than guessing
+  // which one future slices will actually call.
+  function rtGetPersonRegionById(personId){
+    return rtGetPersonRegion(personId);
+  }
+  function rtGetOverlapReport(){
+    return rtOverlapReport;
   }
 
   /* ---------- Skin mask: protects eyes, brows, nose, mouth from smoothing.
@@ -9284,6 +9711,124 @@ if (document.getElementById('rtDrop')){
     carve(mouthCx, mouthCy, mouthRx, 0.8);
     // Soft feather so protected zones don't have a hard visible edge.
     return boxBlurGray(mask, w, h, Math.max(2, Math.round(eyeDist*0.06)));
+  }
+
+  /* ---------- Phase 3: Face AI region masks (Eyes / Mouth) ----------
+     Same landmark-driven, scale-invariant approach as buildRtSkinMask
+     above -- ellipses anchored to real detected face landmarks, sized
+     relative to inter-eye distance so they scale correctly with face
+     size and distance from camera, then feathered so there's no visible
+     hard edge. */
+  function buildRtEyeMask(w, h, sw, sh){
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask;
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
+    const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
+    const r = eyeDist * 0.20;
+    const leftEyeC = toPx(159), rightEyeC = toPx(386);
+    function stamp(cxp, cyp, rr, ryScale){
+      const y0=Math.max(0,Math.floor(cyp-rr*ryScale)), y1=Math.min(h-1,Math.ceil(cyp+rr*ryScale));
+      const x0=Math.max(0,Math.floor(cxp-rr)), x1=Math.min(w-1,Math.ceil(cxp+rr));
+      for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+        const dx=(x-cxp)/rr, dy=(y-cyp)/(rr*ryScale);
+        if (dx*dx+dy*dy <= 1) mask[y*w+x] = 1;
+      }
+    }
+    stamp(leftEyeC.x, leftEyeC.y, r, 0.65);
+    stamp(rightEyeC.x, rightEyeC.y, r, 0.65);
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.08)));
+  }
+  // scaleR/ryScale let the same builder serve both the wider lip region and
+  // the narrower inner-mouth (teeth) region from the same landmarks.
+  function buildRtMouthMask(w, h, sw, sh, scaleR, ryScale){
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask;
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
+    const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
+    const mouthL = toPx(61), mouthR = toPx(291);
+    const mcx=(mouthL.x+mouthR.x)/2, mcy=(mouthL.y+mouthR.y)/2;
+    const mrx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * scaleR;
+    const y0=Math.max(0,Math.floor(mcy-mrx*ryScale)), y1=Math.min(h-1,Math.ceil(mcy+mrx*ryScale));
+    const x0=Math.max(0,Math.floor(mcx-mrx)), x1=Math.min(w-1,Math.ceil(mcx+mrx));
+    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+      const dx=(x-mcx)/mrx, dy=(y-mcy)/(mrx*ryScale);
+      if (dx*dx+dy*dy <= 1) mask[y*w+x] = 1;
+    }
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.05)));
+  }
+
+  /* ---------- Phase 3: Face AI (Eyes / Teeth / Lips) ----------
+     Landmark-dependent -- with no detected face there is no honest
+     region to target, so these simply do nothing rather than falling
+     back to a guessed/uniform effect (unlike skin smoothing, which has
+     a legitimate gentle whole-frame fallback). */
+  function applyRtFaceAI(data, w, h, sw, sh){
+    const a = rtAdj;
+    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0) return;
+    if (!rtFaceLandmarks) return;
+    if (a.eyeEnhance > 0){
+      const mask = buildRtEyeMask(w, h, sw, sh);
+      const strength = a.eyeEnhance/100;
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*strength;
+        if (m <= 0) continue;
+        const i = p*4;
+        let r=data[i], g=data[i+1], b=data[i+2];
+        const l = rtLuma(r,g,b);
+        const cf = 1 + 0.25*m;
+        r = rtClamp(cf*(r-l)+l + 6*m, 0, 255);
+        g = rtClamp(cf*(g-l)+l + 6*m, 0, 255);
+        b = rtClamp(cf*(b-l)+l + 8*m, 0, 255);
+        const l2 = rtLuma(r,g,b); const sat = 1 + 0.3*m;
+        r = rtClamp(l2+(r-l2)*sat, 0, 255); g = rtClamp(l2+(g-l2)*sat, 0, 255); b = rtClamp(l2+(b-l2)*sat, 0, 255);
+        data[i]=r; data[i+1]=g; data[i+2]=b;
+      }
+    }
+    if (a.teethWhiten > 0){
+      const mask = buildRtMouthMask(w, h, sw, sh, 0.75, 0.55);
+      const strength = a.teethWhiten/100;
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*strength;
+        if (m <= 0) continue;
+        const i = p*4;
+        let r=data[i], g=data[i+1], b=data[i+2];
+        const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+        const sat = mx>0 ? (mx-mn)/mx : 0;
+        const lum = rtLuma(r,g,b);
+        // Only pixels that actually look like teeth (bright, not too
+        // saturated) get whitened -- gums/tongue/lips are more red/pink
+        // (higher saturation, lower luma) and are correctly left alone,
+        // even though they can sit inside the same bounding region.
+        const teethLikelihood = rtClamp((lum-90)/80, 0, 1) * rtClamp(1 - sat/0.55, 0, 1);
+        const eff = m * teethLikelihood;
+        if (eff <= 0) continue;
+        b = rtClamp(b + 18*eff, 0, 255);
+        r = rtClamp(r - 6*eff, 0, 255);
+        g = rtClamp(g - 2*eff, 0, 255);
+        const l2 = rtLuma(r,g,b); const desat = 1 - 0.35*eff;
+        r = rtClamp(l2+(r-l2)*desat, 0, 255); g = rtClamp(l2+(g-l2)*desat, 0, 255); b = rtClamp(l2+(b-l2)*desat, 0, 255);
+        r = rtClamp(r + 10*eff, 0, 255); g = rtClamp(g + 10*eff, 0, 255); b = rtClamp(b + 10*eff, 0, 255);
+        data[i]=r; data[i+1]=g; data[i+2]=b;
+      }
+    }
+    if (a.lipEnhance > 0){
+      const mask = buildRtMouthMask(w, h, sw, sh, 1.35, 0.85);
+      const strength = a.lipEnhance/100;
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*strength;
+        if (m <= 0) continue;
+        const i = p*4;
+        let r=data[i], g=data[i+1], b=data[i+2];
+        const l = rtLuma(r,g,b);
+        const sat = 1 + 0.4*m;
+        r = rtClamp(l+(r-l)*sat, 0, 255); g = rtClamp(l+(g-l)*sat, 0, 255); b = rtClamp(l+(b-l)*sat, 0, 255);
+        const cf = 1 + 0.15*m;
+        r = rtClamp(cf*(r-128)+128, 0, 255); g = rtClamp(cf*(g-128)+128, 0, 255); b = rtClamp(cf*(b-128)+128, 0, 255);
+        data[i]=r; data[i+1]=g; data[i+2]=b;
+      }
+    }
   }
 
   /* ---------- Core per-pixel tone/color adjustments, one pass ---------- */
@@ -9510,6 +10055,1624 @@ if (document.getElementById('rtDrop')){
     }
   }
 
+  /* ============================================================
+     HAIR SEGMENTATION MODULE (Phase 3 Slice 2a)
+     Deliberately independent from the Face Mesh module (rtDetectFace /
+     rtFaceLandmarks above) and from the Background module (rtSegmenter /
+     rtBgCategoryMask above) -- its own model, own loader, own cache, per
+     the architecture requirement that Hair AI not be coupled to Face
+     Mesh. Uses MediaPipe's multiclass selfie segmenter, which (unlike
+     the binary selfie_segmenter used for background blur) outputs a
+     real dedicated "hair" category alongside skin/clothes/background --
+     the correct model for this job, not a repurposed one.
+     ============================================================ */
+  const RT_HAIR_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
+  const RT_HAIR_CATEGORY = 1; // MediaPipe multiclass selfie segmenter label set: 0 background, 1 hair, 2 body-skin, 3 face-skin, 4 clothes, 5 others
+  let rtHairSegmenter = null, rtHairSegmenterLoadPromise = null;
+  async function ensureRtHairSegmenter(){
+    if (rtHairSegmenter) return rtHairSegmenter;
+    if (!rtHairSegmenterLoadPromise){
+      rtHairSegmenterLoadPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14`);
+        const { ImageSegmenter, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm`);
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: RT_HAIR_MODEL_URL },
+          outputCategoryMask: true, outputConfidenceMasks: false, runningMode: 'IMAGE',
+        });
+        rtHairSegmenter = seg;
+        return seg;
+      })().catch((err) => { rtHairSegmenterLoadPromise = null; throw err; });
+    }
+    return rtHairSegmenterLoadPromise;
+  }
+
+  /* Cached per layer (see rtHairCategoryMask/rtHairMaskDims + the layer
+     sync/swap functions above) -- computed once per image, reused across
+     every render and every slider drag until the image changes. */
+  async function ensureRtHairMask(w, h){
+    if (rtHairCategoryMask && rtHairMaskDims && rtHairMaskDims.w === w && rtHairMaskDims.h === h) return rtHairCategoryMask;
+    try{
+      const seg = await ensureRtHairSegmenter();
+      const result = seg.segment(rtSourceCanvas);
+      const mask = result.categoryMask;
+      const maskData = mask.getAsUint8Array();
+      const mw = mask.width, mh = mask.height;
+      const out = new Float32Array(w*h);
+      for (let y=0; y<h; y++) for (let x=0; x<w; x++){
+        const mx = Math.min(mw-1, Math.round(x*mw/w)), my = Math.min(mh-1, Math.round(y*mh/h));
+        out[y*w+x] = maskData[my*mw+mx] === RT_HAIR_CATEGORY ? 1 : 0;
+      }
+      mask.close && mask.close();
+      rtHairCategoryMask = boxBlurGray(out, w, h, 2); // soft edge -- no visible hard boundary at the hairline
+      rtHairMaskDims = { w, h };
+      return rtHairCategoryMask;
+    }catch(err){
+      return null; // no honest fallback -- hair effects require a real detected hair region
+    }
+  }
+
+  /* ---------- Reusable Hair APIs (Part 4: these are the exact entry
+     points a future AI Magic module would call -- built now, alongside
+     the mask, so there's no architectural change needed later). ---------- */
+  function rtHairBoundingRegion(mask, w, h){
+    if (!mask) return null;
+    let minX=w, maxX=0, minY=h, maxY=0, any=false;
+    for (let y=0; y<h; y++) for (let x=0; x<w; x++){
+      if (mask[y*w+x] > 0.5){ any=true; if (x<minX)minX=x; if (x>maxX)maxX=x; if (y<minY)minY=y; if (y>maxY)maxY=y; }
+    }
+    return any ? { x:minX, y:minY, width:maxX-minX, height:maxY-minY } : null;
+  }
+  function rtHairStatistics(data, mask, w, h){
+    if (!mask) return null;
+    let count=0, sumLuma=0, sumSq=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.4) continue;
+      const i=p*4;
+      const l = rtLuma(data[i], data[i+1], data[i+2]);
+      sumLuma += l; sumSq += l*l; count++;
+    }
+    if (!count) return null;
+    const meanLuma = sumLuma/count;
+    const variance = Math.max(0, sumSq/count - meanLuma*meanLuma);
+    const stdDev = Math.sqrt(variance); // Hair Contrast API -- standard statistical contrast, distinct from texture's local-gradient measure below
+    return {
+      pixelCount: count,
+      coverageRatio: count/(w*h),
+      brightness: meanLuma/255,             // Hair Brightness API
+      contrast: rtClamp(stdDev/70, 0, 1),   // Hair Contrast API
+    };
+  }
+
+  /* Shared Sobel gradient computation -- reused by both the texture
+     analyzer and the direction map below, so the (relatively expensive)
+     gradient pass never runs twice for the same frame. */
+  function rtSobelGradients(data, w, h){
+    const luma = new Float32Array(w*h);
+    for (let p=0; p<w*h; p++){ const i=p*4; luma[p] = rtLuma(data[i], data[i+1], data[i+2]); }
+    const gx = new Float32Array(w*h), gy = new Float32Array(w*h);
+    for (let y=1; y<h-1; y++){
+      for (let x=1; x<w-1; x++){
+        const p = y*w+x;
+        const tl=luma[p-w-1], t=luma[p-w], tr=luma[p-w+1];
+        const l=luma[p-1], r=luma[p+1];
+        const bl=luma[p+w-1], b=luma[p+w], br=luma[p+w+1];
+        gx[p] = (tr+2*r+br) - (tl+2*l+bl);
+        gy[p] = (bl+2*b+br) - (tl+2*t+tr);
+      }
+    }
+    return { gx, gy };
+  }
+
+  // Real boundary/contour extraction: any hair pixel with at least one
+  // non-hair 4-neighbor. Used directly as the Hair Contour API and as
+  // the perimeter input to the frizz (boundary irregularity) score.
+  function rtHairContour(mask, w, h){
+    if (!mask) return null;
+    const points = [];
+    const isHair = (x,y) => x>=0 && x<w && y>=0 && y<h && mask[y*w+x] > 0.5;
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        if (!isHair(x,y)) continue;
+        if (!isHair(x-1,y) || !isHair(x+1,y) || !isHair(x,y-1) || !isHair(x,y+1)) points.push({ x, y });
+      }
+    }
+    return points;
+  }
+
+  function rtHairDensity(mask, w, h, region){
+    if (!mask || !region || region.width<=0 || region.height<=0) return null;
+    let count=0;
+    for (let y=region.y; y<region.y+region.height; y++){
+      for (let x=region.x; x<region.x+region.width; x++){
+        if (mask[y*w+x] > 0.5) count++;
+      }
+    }
+    const areaOfRegion = region.width*region.height;
+    return areaOfRegion>0 ? count/areaOfRegion : null;
+  }
+
+  /* ---------- Hair Texture Analyzer (Part 2) ----------
+     Real, measurable local-gradient ("high-frequency edge content")
+     signal via Sobel magnitude -- NOT the same computation as Hair
+     Contrast above (global luma spread), a genuinely distinct metric.
+     Honest limitation: classifying Straight/Wavy/Curly/Coily reliably
+     needs a trained curl-pattern classifier, which isn't among this
+     project's integrated models -- so the categorical label is always
+     "Unknown" here, per the project's anti-fake-classification rule,
+     while the underlying scores are real and reusable. */
+  function rtHairTextureAnalyze(data, mask, w, h, gradients){
+    if (!mask) return null;
+    const { gx, gy } = gradients || rtSobelGradients(data, w, h);
+    let count=0, sumMag=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.4) continue;
+      sumMag += Math.hypot(gx[p], gy[p]); count++;
+    }
+    if (!count) return null;
+    const avgMag = sumMag/count;
+    return {
+      textureScore: rtClamp(avgMag/60, 0, 1),
+      detailScore: rtClamp(avgMag/90, 0, 1),
+      confidence: rtClamp(count/2000, 0, 1),
+      classification: 'Unknown',
+      classificationReason: 'Curl-pattern classification requires a trained hair-texture model not present in this project; only measurable texture/detail scores are provided.',
+    };
+  }
+
+  /* ---------- Hair Volume Analyzer (Part 3) ----------
+     No geometry manipulation, no faking -- purely measurable signals
+     (density within the hair's own bounding region + overall coverage).
+     Classification only happens above a real confidence threshold that
+     scales with both sample size and density; otherwise Unknown. */
+  function rtHairVolumeAnalyze(mask, w, h, region){
+    if (!mask) return null;
+    region = region || rtHairBoundingRegion(mask, w, h);
+    if (!region) return null;
+    const density = rtHairDensity(mask, w, h, region);
+    if (density == null) return null;
+    let coverageCount = 0;
+    for (let p=0; p<w*h; p++) if (mask[p] > 0.5) coverageCount++;
+    const coverageRatio = coverageCount/(w*h);
+    const volumeScore = rtClamp(density*0.6 + Math.min(1, coverageRatio*8)*0.4, 0, 1);
+    const sampleSize = region.width*region.height;
+    const confidence = rtClamp(sampleSize/8000, 0, 1) * rtClamp(density*1.2, 0, 1);
+    let classification = 'Unknown';
+    if (confidence > 0.5){
+      if (volumeScore < 0.35) classification = 'Thin';
+      else if (volumeScore > 0.65) classification = 'Thick';
+      else classification = 'Normal';
+    }
+    return { volumeScore, confidence, classification, density, coverageRatio };
+  }
+
+  // Real, explainable shine measurement: ratio of pixels that stand out
+  // as localized bright spots above their own neighborhood average
+  // (specular highlights), not just "how bright overall."
+  function rtHairShineScore(data, mask, w, h){
+    if (!mask) return null;
+    const luma = new Float32Array(w*h);
+    for (let p=0; p<w*h; p++){ const i=p*4; luma[p] = rtLuma(data[i], data[i+1], data[i+2]); }
+    const blurred = boxBlurGray(luma, w, h, 10);
+    let count=0, highlightCount=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.4) continue;
+      count++;
+      if (luma[p]-blurred[p] > 25) highlightCount++;
+    }
+    if (!count) return null;
+    return { shineScore: rtClamp((highlightCount/count)*6, 0, 1), highlightRatio: highlightCount/count };
+  }
+
+  // Frizz as boundary irregularity: isoperimetric-style compactness
+  // (perimeter^2 / 4*pi*area) -- 1.0 for a perfectly smooth/circular
+  // boundary, higher for a jagged, strand-scattered edge.
+  function rtHairFrizzScore(mask, contour, w, h){
+    if (!mask || !contour || !contour.length) return null;
+    let area=0; for (let p=0; p<w*h; p++) if (mask[p] > 0.5) area++;
+    if (!area) return null;
+    const perimeter = contour.length;
+    const compactness = (perimeter*perimeter) / (4*Math.PI*area);
+    return { frizzScore: rtClamp((compactness-1)/6, 0, 1), compactness, perimeter, area };
+  }
+
+  function rtHairHealthScore(shine, smoothness, frizz){
+    if (shine == null || smoothness == null || frizz == null) return null;
+    return rtClamp(shine*0.35 + smoothness*0.4 + (1-frizz)*0.25, 0, 1);
+  }
+
+  /* ---------- Hair Direction Map (Part 4) ----------
+     Real structure-tensor orientation estimation -- the same well-
+     established technique used for fingerprint ridge-orientation
+     fields. Reuses the shared Sobel gradients above; no separate
+     inference pass. Coarse per-cell grid so it's reusable/cheap for
+     future consumers (AI Hairstyle, Flyaway Cleanup) without needing
+     per-pixel precision. */
+  function rtHairDirectionMap(data, mask, w, h, cellSize, gradients){
+    if (!mask) return null;
+    cellSize = cellSize || 24;
+    const { gx, gy } = gradients || rtSobelGradients(data, w, h);
+    const cols = Math.ceil(w/cellSize), rows = Math.ceil(h/cellSize);
+    const cells = [];
+    for (let cy=0; cy<rows; cy++){
+      for (let cx=0; cx<cols; cx++){
+        let sxx=0, syy=0, sxy=0, count=0;
+        const x0=cx*cellSize, y0=cy*cellSize;
+        const x1=Math.min(w,x0+cellSize), y1=Math.min(h,y0+cellSize);
+        for (let y=y0; y<y1; y++){
+          for (let x=x0; x<x1; x++){
+            const p=y*w+x;
+            if (mask[p] <= 0.4) continue;
+            sxx += gx[p]*gx[p]; syy += gy[p]*gy[p]; sxy += gx[p]*gy[p];
+            count++;
+          }
+        }
+        if (count < cellSize){ cells.push({ cx, cy, hasData:false }); continue; }
+        const angle = 0.5*Math.atan2(2*sxy, sxx-syy); // dominant edge orientation -> strand flow direction
+        const coherence = Math.hypot(sxx-syy, 2*sxy) / (sxx+syy+1e-6); // 0..1: directional vs. isotropic
+        cells.push({ cx, cy, hasData:true, angle, coherence, sampleCount:count });
+      }
+    }
+    return { cellSize, cols, rows, cells };
+  }
+
+  /* ---------- Flyaway Detection Foundation (Part 5) ----------
+     Hair Strand Analysis -> Loose Hair Detection -> Flyaway Mask ->
+     Reusable Flyaway Data. Real connected-component analysis (flood
+     fill) on the hair mask: the largest connected blob is the main hair
+     mass; small disconnected blobs plausibly near it are flagged as
+     flyaway candidates. This is detection infrastructure only -- no
+     cleanup/blur is applied here, per this slice's explicit scope. */
+  function rtHairFlyawayDetect(mask, w, h){
+    if (!mask) return null;
+    const visited = new Uint8Array(w*h);
+    const components = [];
+    const isHair = (p) => mask[p] > 0.5;
+    for (let start=0; start<w*h; start++){
+      if (!isHair(start) || visited[start]) continue;
+      const stack = [start];
+      visited[start] = 1;
+      let count=0, minX=w, maxX=0, minY=h, maxY=0;
+      while (stack.length){
+        const p = stack.pop();
+        count++;
+        const x = p % w, y = (p / w) | 0;
+        if (x<minX) minX=x; if (x>maxX) maxX=x; if (y<minY) minY=y; if (y>maxY) maxY=y;
+        const candidates = [p-1, p+1, p-w, p+w];
+        for (const n of candidates){
+          if (n < 0 || n >= w*h) continue;
+          const nx = n % w;
+          if (Math.abs(nx-x) > 1) continue; // guards against row-wrap on the +-1 neighbors
+          if (!visited[n] && isHair(n)){ visited[n]=1; stack.push(n); }
+        }
+      }
+      components.push({ count, minX, maxX, minY, maxY });
+    }
+    if (!components.length) return { flyawayCandidates: [], mainRegionArea: 0, componentCount: 0 };
+    components.sort((a,b) => b.count - a.count);
+    const main = components[0];
+    const mainCx = (main.minX+main.maxX)/2, mainCy = (main.minY+main.maxY)/2;
+    const mainRadius = Math.max(main.maxX-main.minX, main.maxY-main.minY)/2;
+    const flyawayCandidates = components.slice(1).filter(c => {
+      const cx=(c.minX+c.maxX)/2, cy=(c.minY+c.maxY)/2;
+      return c.count < main.count*0.05 && Math.hypot(cx-mainCx, cy-mainCy) < mainRadius*1.6;
+    }).map(c => ({ x:c.minX, y:c.minY, width:c.maxX-c.minX, height:c.maxY-c.minY, pixelCount:c.count }));
+    return { mainRegionArea: main.count, componentCount: components.length, flyawayCandidates, flyawayCount: flyawayCandidates.length };
+  }
+
+  /* ---------- Orchestrator: the single entry point future modules
+     (AI Magic, Portrait AI, Hair Color AI, etc.) will call. Computes
+     once, caches the full report on the active layer, reuses the
+     already-cached hair mask (never re-runs segmentation). ---------- */
+  async function rtGetHairIntelligence(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.hairIntelligence && layer.hairIntelligenceDims &&
+        layer.hairIntelligenceDims.w === w && layer.hairIntelligenceDims.h === h){
+      return layer.hairIntelligence;
+    }
+    const mask = await ensureRtHairMask(w, h);
+    if (!mask) return null;
+    const scratch = document.createElement('canvas');
+    scratch.width = w; scratch.height = h;
+    scratch.getContext('2d').drawImage(rtSourceCanvas, 0, 0, w, h);
+    const data = scratch.getContext('2d').getImageData(0, 0, w, h).data;
+
+    const region = rtHairBoundingRegion(mask, w, h);
+    const stats = rtHairStatistics(data, mask, w, h);
+    const gradients = rtSobelGradients(data, w, h); // computed once, shared below
+    const contour = rtHairContour(mask, w, h);
+    const texture = rtHairTextureAnalyze(data, mask, w, h, gradients);
+    const volume = rtHairVolumeAnalyze(mask, w, h, region);
+    const shine = rtHairShineScore(data, mask, w, h);
+    const frizz = rtHairFrizzScore(mask, contour, w, h);
+    const direction = rtHairDirectionMap(data, mask, w, h, 24, gradients);
+    const flyaway = rtHairFlyawayDetect(mask, w, h);
+    const healthScore = (shine && stats && frizz) ? rtHairHealthScore(shine.shineScore, rtClamp(1-(texture ? texture.textureScore : 0.5), 0, 1), frizz.frizzScore) : null;
+
+    const report = { region, stats, texture, volume, shine, frizz, direction, flyaway, healthScore, computedAt: Date.now() };
+    if (layer){ layer.hairIntelligence = report; layer.hairIntelligenceDims = { w, h }; }
+    return report;
+  }
+
+  /* ============================================================
+     PORTRAIT INTELLIGENCE CORE (Phase 3 -- Portrait AI, Slice 1 of N)
+     Pure orchestration: consumes the ALREADY-DETECTED Face Mesh
+     (rtFaceLandmarks) and the ALREADY-CACHED Hair Intelligence report
+     (rtGetHairIntelligence, called here -- never re-segmented, never
+     re-analyzed) and combines them into portrait-level geometry and
+     explainable pixel statistics. No new AI model, no new segmentation
+     pass -- this slice is deliberately scoped to what's honestly
+     computable from data that already exists: real geometry (from
+     landmark positions) and real, standard image statistics (Laplacian-
+     variance sharpness, luma mean/stddev, R/B channel balance).
+     Composition/Symmetry/Lighting-direction (more elaborate geometric
+     reasoning) and Eye Contact/Expression/Pose (which genuinely require
+     trained models this project doesn't have) are deliberately deferred
+     to later slices rather than approximated here -- see Part 12's
+     "never fake AI" rule. ============================================================ */
+  const RT_FACE_OVAL_IDX = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+
+  function rtPortraitFacePosition(landmarks, sw, sh){
+    if (!landmarks) return null;
+    let minX=1, maxX=0, minY=1, maxY=0, found=0;
+    for (const i of RT_FACE_OVAL_IDX){
+      const lm = landmarks[i]; if (!lm) continue;
+      found++;
+      minX=Math.min(minX,lm.x); maxX=Math.max(maxX,lm.x);
+      minY=Math.min(minY,lm.y); maxY=Math.max(maxY,lm.y);
+    }
+    if (found < RT_FACE_OVAL_IDX.length*0.8) return null; // too many missing points to trust the box -- honest bail-out, not a guess
+    return {
+      x: minX*sw, y: minY*sh, width:(maxX-minX)*sw, height:(maxY-minY)*sh,
+      completeness: found/RT_FACE_OVAL_IDX.length,
+    };
+  }
+
+  // Roll angle from the eye line -- real, well-established geometry (the
+  // same technique face-alignment preprocessing uses), not a guess.
+  function rtPortraitRotation(landmarks){
+    if (!landmarks) return null;
+    const l = landmarks[33], r = landmarks[263];
+    if (!l || !r) return null;
+    const angleRad = Math.atan2(r.y-l.y, r.x-l.x);
+    const angleDeg = angleRad * 180/Math.PI;
+    // Orientation is only classified when the measured angle clearly
+    // supports it -- a small, honest threshold on a real measurement,
+    // not a learned classification.
+    let orientation = 'Unknown';
+    if (Math.abs(angleDeg) < 15) orientation = 'Upright';
+    else if (angleDeg >= 15 && angleDeg < 165) orientation = 'Tilted Right';
+    else if (angleDeg <= -15 && angleDeg > -165) orientation = 'Tilted Left';
+    return { rollDegrees: Math.round(angleDeg*10)/10, orientation };
+  }
+
+  // Face scale relative to frame width -- inter-eye distance is the same
+  // scale-invariant reference already used throughout Face AI/Hair AI.
+  function rtPortraitScale(landmarks, sw){
+    if (!landmarks) return null;
+    const l = landmarks[33], r = landmarks[263];
+    if (!l || !r) return null;
+    const eyeDist = Math.hypot((r.x-l.x)*sw, (r.y-l.y)*0); // horizontal component dominates for a scale reference
+    const eyeDistFull = Math.hypot((r.x-l.x)*sw, (r.y-l.y)*sw);
+    return rtClamp(eyeDistFull/sw, 0, 1); // 0..1, roughly "how much of the frame width the eyes span"
+  }
+
+  function rtPortraitUnionRegion(faceRegion, hairRegion){
+    if (!faceRegion && !hairRegion) return null;
+    if (!hairRegion) return { x:faceRegion.x, y:faceRegion.y, width:faceRegion.width, height:faceRegion.height };
+    if (!faceRegion) return { x:hairRegion.x, y:hairRegion.y, width:hairRegion.width, height:hairRegion.height };
+    const x0 = Math.min(faceRegion.x, hairRegion.x), y0 = Math.min(faceRegion.y, hairRegion.y);
+    const x1 = Math.max(faceRegion.x+faceRegion.width, hairRegion.x+hairRegion.width);
+    const y1 = Math.max(faceRegion.y+faceRegion.height, hairRegion.y+hairRegion.height);
+    return { x:x0, y:y0, width:x1-x0, height:y1-y0 };
+  }
+
+  /* ---------- Portrait Composition (rule-of-thirds + balance) ----------
+     Real geometry against the subject's own bounding-region center --
+     distance to the nearest rule-of-thirds intersection, and how
+     centered the subject sits in the frame. Both are standard,
+     explainable photographic-composition measures, not learned/guessed
+     classifications. ---------- */
+  function rtPortraitComposition(subjectRegion, w, h){
+    if (!subjectRegion) return null;
+    const cx = subjectRegion.x + subjectRegion.width/2;
+    const cy = subjectRegion.y + subjectRegion.height/2;
+    const thirdsPoints = [];
+    for (const tx of [w/3, 2*w/3]) for (const ty of [h/3, 2*h/3]) thirdsPoints.push({x:tx, y:ty});
+    let minDist = Infinity;
+    for (const p of thirdsPoints){ const d = Math.hypot(cx-p.x, cy-p.y); if (d < minDist) minDist = d; }
+    const frameDiag = Math.hypot(w, h);
+    const thirdsScore = rtClamp(1 - minDist/(frameDiag*0.25), 0, 1);
+    const horizontalOffset = Math.abs(cx - w/2)/(w/2);
+    const verticalOffset = Math.abs(cy - h/2)/(h/2);
+    const balanceScore = rtClamp(1 - (horizontalOffset+verticalOffset)/2, 0, 1);
+    return { thirdsScore, balanceScore, centerX: cx/w, centerY: cy/h };
+  }
+
+  /* ---------- Portrait Symmetry ----------
+     Compares each paired left/right landmark's distance from the face's
+     own centerline (the nose-tip x position) -- if left and right
+     distances match closely, the face reads as symmetric in this pose;
+     if they diverge, less so. Reuses the exact same face-edge indices
+     (234/454) already verified and used elsewhere in this project for
+     ground-truth face-width sampling, plus the established eye/mouth
+     pairs -- no new landmark indices introduced. Needs at least 2 valid
+     pairs to report a value at all; otherwise honestly Unknown. ---------- */
+  function rtPortraitSymmetry(landmarks){
+    if (!landmarks) return null;
+    const noseTip = landmarks[1];
+    if (!noseTip) return null;
+    const centerX = noseTip.x;
+    const pairs = [[33,263],[159,386],[61,291],[234,454]];
+    let totalDiff = 0, validPairs = 0;
+    for (const [li, ri] of pairs){
+      const l = landmarks[li], r = landmarks[ri];
+      if (!l || !r) continue;
+      const leftDist = Math.abs(l.x - centerX), rightDist = Math.abs(r.x - centerX);
+      const avgDist = (leftDist+rightDist)/2;
+      if (avgDist < 1e-6) continue;
+      totalDiff += Math.abs(leftDist-rightDist)/avgDist;
+      validPairs++;
+    }
+    if (validPairs < 2) return null; // not enough valid pairs to trust an estimate -- honest bail-out
+    const avgDiff = totalDiff/validPairs;
+    return {
+      symmetryScore: rtClamp(1 - avgDiff*2, 0, 1),
+      pairsUsed: validPairs,
+      confidence: rtClamp(validPairs/pairs.length, 0, 1),
+    };
+  }
+
+  /* ---------- Portrait Crop Quality ----------
+     Real edge-touch geometry: a subject region touching the LEFT or
+     RIGHT frame edge usually indicates an unintentional crop (a person
+     cut off mid-body); touching the TOP is common and often intentional
+     in headshots/portraits (cropping above the hairline), so it isn't
+     penalized the same way. An explainable heuristic, not a guess. ---------- */
+  function rtPortraitCropQuality(subjectRegion, w, h){
+    if (!subjectRegion) return null;
+    const margin = Math.min(w, h) * 0.02;
+    const touchesTop = subjectRegion.y <= margin;
+    const touchesBottom = (subjectRegion.y+subjectRegion.height) >= h-margin;
+    const touchesLeft = subjectRegion.x <= margin;
+    const touchesRight = (subjectRegion.x+subjectRegion.width) >= w-margin;
+    const concerningTouches = [touchesLeft, touchesRight].filter(Boolean).length;
+    return { cropQualityScore: rtClamp(1 - concerningTouches*0.4, 0, 1), touchesTop, touchesBottom, touchesLeft, touchesRight };
+  }
+
+  // Real, standard image statistics within the portrait region --
+  // luma mean (Brightness), luma standard deviation (Contrast), and
+  // R-vs-B channel balance (Warmth) -- the same category of measurable
+  // signal already used throughout Hair Intelligence, just scoped to the
+  // portrait region instead of the hair mask.
+  function rtPortraitPhotometrics(data, w, h, region){
+    if (!region || region.width <= 0 || region.height <= 0) return null;
+    const x0 = Math.max(0, Math.round(region.x)), y0 = Math.max(0, Math.round(region.y));
+    const x1 = Math.min(w, Math.round(region.x+region.width)), y1 = Math.min(h, Math.round(region.y+region.height));
+    if (x1 <= x0 || y1 <= y0) return null;
+    let sumL=0, sumSqL=0, sumR=0, sumB=0, count=0;
+    for (let y=y0; y<y1; y++){
+      for (let x=x0; x<x1; x++){
+        const i = (y*w+x)*4;
+        const l = rtLuma(data[i], data[i+1], data[i+2]);
+        sumL += l; sumSqL += l*l; sumR += data[i]; sumB += data[i+2]; count++;
+      }
+    }
+    if (!count) return null;
+    const meanL = sumL/count;
+    const variance = Math.max(0, sumSqL/count - meanL*meanL);
+    const warmthRaw = (sumR-sumB)/count; // positive = warmer (more red than blue), negative = cooler
+    return {
+      brightness: meanL/255,
+      contrast: rtClamp(Math.sqrt(variance)/70, 0, 1),
+      warmth: rtClamp(0.5 + warmthRaw/160, 0, 1), // 0.5 = neutral, >0.5 warmer, <0.5 cooler
+    };
+  }
+
+  // Laplacian-variance focus measure -- a well-established, standard
+  // computer-vision sharpness metric (higher variance of the Laplacian
+  // response = more high-frequency detail = more in-focus), computed
+  // specifically within the FACE region so it measures whether the
+  // subject is sharp, not just whether anything in the frame is.
+  function rtPortraitSharpness(data, w, h, region){
+    if (!region || region.width <= 4 || region.height <= 4) return null;
+    const x0 = Math.max(1, Math.round(region.x)), y0 = Math.max(1, Math.round(region.y));
+    const x1 = Math.min(w-1, Math.round(region.x+region.width)), y1 = Math.min(h-1, Math.round(region.y+region.height));
+    if (x1 <= x0+2 || y1 <= y0+2) return null;
+    const lap = [];
+    for (let y=y0; y<y1; y++){
+      for (let x=x0; x<x1; x++){
+        const i = (y*w+x)*4;
+        const c = rtLuma(data[i], data[i+1], data[i+2]);
+        const n = rtLuma(data[i-w*4], data[i-w*4+1], data[i-w*4+2]);
+        const s = rtLuma(data[i+w*4], data[i+w*4+1], data[i+w*4+2]);
+        const e = rtLuma(data[i+4], data[i+5], data[i+6]);
+        const wst = rtLuma(data[i-4], data[i-3], data[i-2]);
+        lap.push(Math.abs(4*c - n - s - e - wst));
+      }
+    }
+    if (!lap.length) return null;
+    let sum=0; for (const v of lap) sum += v;
+    const mean = sum/lap.length;
+    let sumSq=0; for (const v of lap) sumSq += (v-mean)*(v-mean);
+    const variance = sumSq/lap.length;
+    return { sharpnessScore: rtClamp(variance/400, 0, 1), focusMeasure: variance };
+  }
+
+  /* ---------- Portrait Intelligence orchestrator ----------
+     Deliberately does NOT gate on hair being available -- a face-only
+     photo (hair segmentation unavailable, or hair not the focus) should
+     still get real portrait geometry and photometrics. */
+  async function rtGetPortraitIntelligence(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.portraitIntelligence && layer.portraitIntelligenceDims &&
+        layer.portraitIntelligenceDims.w === w && layer.portraitIntelligenceDims.h === h){
+      return layer.portraitIntelligence;
+    }
+    if (!rtSourceCanvas) return null;
+    const scratch = document.createElement('canvas');
+    scratch.width = w; scratch.height = h;
+    scratch.getContext('2d').drawImage(rtSourceCanvas, 0, 0, w, h);
+    const data = scratch.getContext('2d').getImageData(0, 0, w, h).data;
+
+    const facePosition = rtPortraitFacePosition(rtFaceLandmarks, w, h);
+    const rotation = rtPortraitRotation(rtFaceLandmarks);
+    const scale = rtPortraitScale(rtFaceLandmarks, w);
+    const hairIntel = await rtGetHairIntelligence(w, h); // reused, never recalculated
+    const hairPosition = (hairIntel && hairIntel.region) ? hairIntel.region : null;
+    const subjectRegion = rtPortraitUnionRegion(facePosition, hairPosition);
+
+    const faceDetected = !!facePosition;
+    const hairDetected = !!hairPosition;
+    // Confidence reflects how much of the portrait we could actually
+    // measure -- a face-only detection is still useful (0.6), face+hair
+    // together is more complete (up to 1.0); no face at all is 0 (Unknown
+    // downstream), not a guess.
+    const confidence = !faceDetected ? 0 : rtClamp(0.6 + (facePosition.completeness*0.2) + (hairDetected ? 0.2 : 0), 0, 1);
+
+    const visibility = subjectRegion ? rtClamp((subjectRegion.width*subjectRegion.height)/(w*h), 0, 1) : null;
+    const photometrics = subjectRegion ? rtPortraitPhotometrics(data, w, h, subjectRegion) : rtPortraitPhotometrics(data, w, h, { x:0, y:0, width:w, height:h });
+    const sharpness = facePosition ? rtPortraitSharpness(data, w, h, facePosition) : null;
+    const composition = subjectRegion ? rtPortraitComposition(subjectRegion, w, h) : null;
+    const symmetry = rtPortraitSymmetry(rtFaceLandmarks);
+    const cropQuality = subjectRegion ? rtPortraitCropQuality(subjectRegion, w, h) : null;
+
+    const report = {
+      facePosition, hairPosition, subjectRegion, rotation, scale,
+      confidence, visibility, photometrics, sharpness, composition, symmetry, cropQuality,
+      faceDetected, hairDetected,
+      // Explicitly deferred to a later slice -- honestly Unknown rather
+      // than approximated, per Part 12's "never fake AI" rule.
+      lighting: { value: 'Unknown', reason: 'Lighting direction/quality analysis is planned for a later Portrait AI slice.' },
+      eyeContact: { value: 'Unknown', reason: 'Gaze/eye-contact estimation requires a model not integrated in this project.' },
+      expression: { value: 'Unknown', reason: 'Expression classification requires a model not integrated in this project.' },
+      pose: { value: 'Unknown', reason: 'Pose-quality classification requires a model not integrated in this project.' },
+      computedAt: Date.now(),
+    };
+    if (layer){ layer.portraitIntelligence = report; layer.portraitIntelligenceDims = { w, h }; }
+    return report;
+  }
+
+  /* ============================================================
+     BACKGROUND INTELLIGENCE (Phase 3 -- Portrait AI, Part 6)
+     Built entirely on top of the EXISTING, UNMODIFIED ensureRtBgMask
+     segmenter (the same binary person/background model already powering
+     Background Blur since Phase 1) -- the segmentation engine itself is
+     never touched here, only new analysis of its output. ============================================================ */
+
+  // Real luma-variance measure within background-only pixels -- a busy,
+  // detailed background has high local variance; a plain wall or an
+  // already-blurred background has low variance. Same technique already
+  // used for Hair Contrast/Complexity, applied to the background region.
+  function rtBackgroundComplexity(data, mask, w, h){
+    if (!mask) return null;
+    let count=0, sumL=0, sumSqL=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.5) continue;
+      const i=p*4;
+      const l = rtLuma(data[i], data[i+1], data[i+2]);
+      sumL += l; sumSqL += l*l; count++;
+    }
+    if (!count) return null;
+    const mean = sumL/count;
+    const variance = Math.max(0, sumSqL/count - mean*mean);
+    return { complexityScore: rtClamp(Math.sqrt(variance)/60, 0, 1), pixelCount: count };
+  }
+
+  // Real gradient-steepness measure of the mask's OWN 0-to-1 transition,
+  // sampled only near the actual boundary (mask value strictly between
+  // the two extremes) -- a crisp segmentation has a short, steep
+  // transition; a fuzzy one has a long, gradual one. Directly reusable
+  // by Background Blur / future AI Background Remove to know how far
+  // they can safely push an effect before the boundary shows artifacts.
+  function rtBackgroundEdgeQuality(mask, w, h){
+    if (!mask) return null;
+    let count=0, sumGrad=0;
+    for (let y=1; y<h-1; y++){
+      for (let x=1; x<w-1; x++){
+        const p = y*w+x;
+        if (mask[p] < 0.15 || mask[p] > 0.85) continue;
+        const gx = mask[p+1]-mask[p-1], gy = mask[p+w]-mask[p-w];
+        sumGrad += Math.hypot(gx, gy); count++;
+      }
+    }
+    if (!count) return { edgeQualityScore: null, boundaryPixelCount: 0 }; // no detectable boundary at all -- honest null, not a guess
+    return { edgeQualityScore: rtClamp((sumGrad/count)*4, 0, 1), boundaryPixelCount: count };
+  }
+
+  // Real luma-difference measure between subject and background regions
+  // -- a subject that's visually distinct in tone from its background is
+  // more reliably separable than one that blends into it.
+  function rtSubjectSeparation(data, mask, w, h){
+    if (!mask) return null;
+    let sCount=0, sSumL=0, bCount=0, bSumL=0;
+    for (let p=0; p<w*h; p++){
+      const i=p*4;
+      const l = rtLuma(data[i], data[i+1], data[i+2]);
+      if (mask[p] > 0.5){ bSumL += l; bCount++; } else { sSumL += l; sCount++; }
+    }
+    if (!sCount || !bCount) return null;
+    const sMean = sSumL/sCount, bMean = bSumL/bCount;
+    return { separationScore: rtClamp(Math.abs(sMean-bMean)/80, 0, 1), subjectMeanLuma: sMean/255, backgroundMeanLuma: bMean/255 };
+  }
+
+  // Real degeneracy check: a mask that's essentially all-background or
+  // all-subject indicates an unreliable segmentation result for THIS
+  // photo, not a meaningful split -- flagged with low confidence rather
+  // than treated as trustworthy.
+  function rtBackgroundConfidence(mask, w, h){
+    if (!mask) return 0;
+    let bgCount=0;
+    for (let p=0; p<w*h; p++) if (mask[p] > 0.5) bgCount++;
+    const bgRatio = bgCount/(w*h);
+    if (bgRatio < 0.02 || bgRatio > 0.98) return 0.15;
+    return rtClamp(1 - Math.abs(bgRatio-0.45)/0.55, 0.3, 1);
+  }
+
+  function rtSubjectIsolationQuality(edgeQuality, confidence){
+    if (!edgeQuality || edgeQuality.edgeQualityScore == null || confidence == null) return null;
+    return rtClamp(edgeQuality.edgeQualityScore*0.7 + confidence*0.3, 0, 1);
+  }
+
+  // Given the CURRENT Background Blur slider setting and the measured
+  // edge quality, estimate how clean the resulting blur boundary would
+  // look -- a crisp segmentation tolerates stronger blur before haloing
+  // becomes visible; a fuzzy one doesn't. Directly actionable, not just
+  // descriptive.
+  function rtBackgroundBlurQuality(edgeQuality, currentBlurStrength){
+    if (!edgeQuality || edgeQuality.edgeQualityScore == null) return null;
+    const eq = edgeQuality.edgeQualityScore;
+    const safeStrength = rtClamp(1 - currentBlurStrength*(1-eq), 0, 1);
+    return {
+      blurQualityScore: safeStrength,
+      recommendation: eq < 0.4
+        ? 'Segmentation edges are soft -- keep blur strength moderate to avoid visible haloing.'
+        : 'Segmentation edges are crisp -- higher blur strengths should stay clean.',
+    };
+  }
+
+  /* ---------- Background Intelligence orchestrator ----------
+     Reuses ensureRtBgMask (never redesigned) and never re-segments if
+     the cached mask already matches this resolution. */
+  async function rtGetBackgroundIntelligence(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.backgroundIntelligence && layer.backgroundIntelligenceDims &&
+        layer.backgroundIntelligenceDims.w === w && layer.backgroundIntelligenceDims.h === h){
+      return layer.backgroundIntelligence;
+    }
+    const mask = await ensureRtBgMask(w, h);
+    if (!mask) return null;
+    const scratch = document.createElement('canvas');
+    scratch.width = w; scratch.height = h;
+    scratch.getContext('2d').drawImage(rtSourceCanvas, 0, 0, w, h);
+    const data = scratch.getContext('2d').getImageData(0, 0, w, h).data;
+
+    const complexity = rtBackgroundComplexity(data, mask, w, h);
+    const edgeQuality = rtBackgroundEdgeQuality(mask, w, h);
+    const separation = rtSubjectSeparation(data, mask, w, h);
+    const confidence = rtBackgroundConfidence(mask, w, h);
+    const isolationQuality = rtSubjectIsolationQuality(edgeQuality, confidence);
+    const blurQuality = rtBackgroundBlurQuality(edgeQuality, rtClamp(rtAdj.bgBlur/100, 0, 1));
+
+    const report = { complexity, edgeQuality, separation, confidence, isolationQuality, blurQuality, computedAt: Date.now() };
+    if (layer){ layer.backgroundIntelligence = report; layer.backgroundIntelligenceDims = { w, h }; }
+    return report;
+  }
+
+  /* ============================================================
+     FACE INTELLIGENCE (Phase 3 -- AI Magic, Slice 2)
+     Reuses the EXISTING landmark-driven region masks already built for
+     Face AI effects -- buildRtSkinMask / buildRtEyeMask / buildRtMouthMask
+     -- no new masks, no new detection. Adds only new MEASUREMENT code on
+     top of those regions, the same real/explainable pattern already
+     proven for Hair and Background Intelligence. This is the module
+     that was missing before: Face AI (an earlier slice) built the
+     enhancement EFFECTS but never a scoring layer, which is why AI
+     Magic's earlier slice deliberately left skin/eye/teeth/lip decisions
+     out -- this module is what makes those decisions honest instead of
+     guessed. ============================================================ */
+  function rtMaskBoundingBox(mask, w, h){
+    let minX=w, maxX=0, minY=h, maxY=0, found=false;
+    for (let y=0; y<h; y++) for (let x=0; x<w; x++){
+      if (mask[y*w+x] > 0.5){ found=true; if (x<minX)minX=x; if (x>maxX)maxX=x; if (y<minY)minY=y; if (y>maxY)maxY=y; }
+    }
+    return found ? { x:minX, y:minY, width:maxX-minX, height:maxY-minY } : null;
+  }
+
+  // Real luma-variance measure within the skin region -- same technique
+  // already proven for Hair Frizz/Texture and Background Complexity,
+  // applied here to skin. Requires a real minimum sample size before
+  // reporting anything, rather than trusting a handful of pixels.
+  function rtSkinCondition(data, mask, w, h){
+    if (!mask) return null;
+    let count=0, sumL=0, sumSqL=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.5) continue;
+      const i=p*4;
+      const l = rtLuma(data[i], data[i+1], data[i+2]);
+      sumL += l; sumSqL += l*l; count++;
+    }
+    if (count < 200) return null; // too small a sample to trust -- honest null, not a guess
+    const mean = sumL/count;
+    const variance = Math.max(0, sumSqL/count - mean*mean);
+    return { smoothnessScore: rtClamp(1 - Math.sqrt(variance)/45, 0, 1), pixelCount: count, meanBrightness: mean/255 };
+  }
+
+  // Reuses rtPortraitSharpness (the same Laplacian-variance focus
+  // measure already built for Portrait Intelligence) against a bounding
+  // box derived from the eye mask -- genuine reuse, not a duplicate
+  // sharpness algorithm.
+  function rtEyeCondition(data, mask, w, h){
+    if (!mask) return null;
+    let count=0, sumL=0;
+    for (let p=0; p<w*h; p++){ if (mask[p]<=0.5) continue; const i=p*4; sumL += rtLuma(data[i],data[i+1],data[i+2]); count++; }
+    if (count < 30) return null;
+    const bbox = rtMaskBoundingBox(mask, w, h);
+    const sharpness = bbox ? rtPortraitSharpness(data, w, h, bbox) : null;
+    return { brightness: (sumL/count)/255, sharpnessScore: sharpness ? sharpness.sharpnessScore : null, pixelCount: count };
+  }
+
+  // Measures teeth whiteness using the SAME bright/low-saturation
+  // "teeth likelihood" gate already used by the actual Teeth Whiten
+  // effect (applyRtFaceAI) -- reused as a measurement, not duplicated as
+  // a second implementation of the effect itself. Honestly reports
+  // teethVisible:false when too few gated pixels are found (mouth
+  // closed, or no confident match) rather than guessing a score.
+  function rtTeethCondition(data, mask, w, h){
+    if (!mask) return null;
+    let teethPixelCount=0, sumSat=0, sumL=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.5) continue;
+      const i=p*4;
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+      const sat = mx>0 ? (mx-mn)/mx : 0;
+      const lum = rtLuma(r,g,b);
+      const teethLikelihood = rtClamp((lum-90)/80, 0, 1) * rtClamp(1 - sat/0.55, 0, 1);
+      if (teethLikelihood < 0.3) continue;
+      teethPixelCount++; sumSat += sat; sumL += lum;
+    }
+    if (teethPixelCount < 15){
+      return { whitenessScore: null, teethVisible: false, reason: 'Teeth not clearly visible (mouth likely closed, or no confidently-matching pixels).' };
+    }
+    const avgSat = sumSat/teethPixelCount, avgL = sumL/teethPixelCount;
+    return { whitenessScore: rtClamp((avgL/255)*0.6 + (1-avgSat/0.4)*0.4, 0, 1), teethVisible: true, pixelCount: teethPixelCount };
+  }
+
+  // Real saturation measure within the lip region -- how much color
+  // richness is already present.
+  function rtLipCondition(data, mask, w, h){
+    if (!mask) return null;
+    let count=0, sumSat=0, sumL=0;
+    for (let p=0; p<w*h; p++){
+      if (mask[p] <= 0.5) continue;
+      const i=p*4;
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+      sumSat += mx>0 ? (mx-mn)/mx : 0; sumL += rtLuma(r,g,b); count++;
+    }
+    if (count < 30) return null;
+    return { richnessScore: rtClamp((sumSat/count)/0.5, 0, 1), meanBrightness: (sumL/count)/255, pixelCount: count };
+  }
+
+  /* ---------- Face Intelligence orchestrator ----------
+     Reuses the existing mask builders directly -- no new segmentation,
+     no new landmark detection. */
+  async function rtGetFaceIntelligence(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.faceIntelligence && layer.faceIntelligenceDims &&
+        layer.faceIntelligenceDims.w === w && layer.faceIntelligenceDims.h === h){
+      return layer.faceIntelligence;
+    }
+    if (!rtFaceLandmarks || !rtSourceCanvas) return null;
+    const scratch = document.createElement('canvas');
+    scratch.width = w; scratch.height = h;
+    scratch.getContext('2d').drawImage(rtSourceCanvas, 0, 0, w, h);
+    const data = scratch.getContext('2d').getImageData(0, 0, w, h).data;
+
+    const skinMask = buildRtSkinMask(w, h, w, h);
+    const eyeMask = buildRtEyeMask(w, h, w, h);
+    const teethMask = buildRtMouthMask(w, h, w, h, 0.75, 0.55);
+    const lipMask = buildRtMouthMask(w, h, w, h, 1.35, 0.85);
+
+    const skin = rtSkinCondition(data, skinMask, w, h);
+    const eyes = rtEyeCondition(data, eyeMask, w, h);
+    const teeth = rtTeethCondition(data, teethMask, w, h);
+    const lips = rtLipCondition(data, lipMask, w, h);
+
+    const report = { skin, eyes, teeth, lips, computedAt: Date.now() };
+    if (layer){ layer.faceIntelligence = report; layer.faceIntelligenceDims = { w, h }; }
+    return report;
+  }
+
+  /* ============================================================
+     ATTRIBUTE PROFILE FOUNDATION (AI Magic -- Recommendation 2)
+     Deliberately NOT a Gender/identity classifier. Reuses Face/Hair/
+     Portrait Intelligence (never re-detects, never reruns any model)
+     and repackages already-computed measurements into one stable
+     value/confidence/reason shape (Part 3) that AI Magic and every
+     future module (Wedding AI, Group AI, etc.) can consume instead of
+     inferring who someone is. Several fields here are literally the
+     same numbers Hair/Face Intelligence already computed, just exposed
+     consistently in one place. Attributes this project genuinely cannot
+     support yet (Hair Length Estimate, Facial Hair Presence/Coverage,
+     Eyebrow Density/Thickness) are intentionally NOT included here --
+     they would need new geometric regions this slice hasn't built and
+     verified, and Part 2 requires honesty over completeness; they're
+     documented as a follow-up rather than approximated now.
+     ============================================================ */
+  function rtAttr(value, confidence, reason){ return { value, confidence, reason }; }
+  function rtAttrUnknown(reason){ return { value:'Unknown', confidence:0, reason }; }
+
+  async function rtGetAttributeProfile(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.attributeProfile && layer.attributeProfileDims &&
+        layer.attributeProfileDims.w === w && layer.attributeProfileDims.h === h){
+      return layer.attributeProfile;
+    }
+    const hairIntel = await rtGetHairIntelligence(w, h);       // cache hit whenever already computed elsewhere this session
+    const faceIntel = await rtGetFaceIntelligence(w, h);       // cache hit whenever already computed elsewhere this session
+    const portraitIntel = await rtGetPortraitIntelligence(w, h); // cache hit whenever already computed elsewhere this session
+
+    const attributes = {};
+
+    attributes.hairCoverage = (hairIntel && hairIntel.stats && hairIntel.stats.coverageRatio != null)
+      ? rtAttr(hairIntel.stats.coverageRatio, rtClamp(hairIntel.stats.pixelCount/3000, 0, 1), 'Measured from the Hair Segmentation mask coverage ratio.')
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.hairDensity = (hairIntel && hairIntel.volume && hairIntel.volume.density != null)
+      ? rtAttr(hairIntel.volume.density, hairIntel.volume.confidence, 'Measured pixel density within the hair bounding region (Hair Volume Analyzer).')
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.hairVolume = (hairIntel && hairIntel.volume && hairIntel.volume.volumeScore != null)
+      ? rtAttr(hairIntel.volume.volumeScore, hairIntel.volume.confidence, `Hair Volume Analyzer score (classification: ${hairIntel.volume.classification}).`)
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.hairTexture = (hairIntel && hairIntel.texture && hairIntel.texture.textureScore != null)
+      ? rtAttr(hairIntel.texture.textureScore, hairIntel.texture.confidence, 'Hair Texture Analyzer score (gradient magnitude within hair region).')
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.hairHealth = (hairIntel && hairIntel.healthScore != null)
+      ? rtAttr(hairIntel.healthScore, hairIntel.stats ? rtClamp(hairIntel.stats.pixelCount/3000, 0, 1) : 0.5, 'Hair Health Score (composite of Shine, Smoothness and Frizz measurements).')
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.hairShine = (hairIntel && hairIntel.shine && hairIntel.shine.shineScore != null)
+      ? rtAttr(hairIntel.shine.shineScore, hairIntel.stats ? rtClamp(hairIntel.stats.pixelCount/3000, 0, 1) : 0.5, 'Ratio of localized bright highlight pixels within the hair region.')
+      : rtAttrUnknown('No hair region detected.');
+
+    attributes.eyeVisibility = (faceIntel && faceIntel.eyes && faceIntel.eyes.pixelCount != null)
+      ? rtAttr(rtClamp(faceIntel.eyes.pixelCount/300, 0, 1), rtClamp(faceIntel.eyes.pixelCount/300, 0, 1), 'Derived from the pixel count found within the detected eye region.')
+      : rtAttrUnknown('No face detected.');
+
+    attributes.lipVisibility = (faceIntel && faceIntel.lips && faceIntel.lips.pixelCount != null)
+      ? rtAttr(rtClamp(faceIntel.lips.pixelCount/200, 0, 1), rtClamp(faceIntel.lips.pixelCount/200, 0, 1), 'Derived from the pixel count found within the detected lip region.')
+      : rtAttrUnknown('No face detected.');
+
+    attributes.teethVisibility = (faceIntel && faceIntel.teeth)
+      ? (faceIntel.teeth.teethVisible
+          ? rtAttr(1, rtClamp((faceIntel.teeth.pixelCount||0)/100, 0, 1), 'Bright, low-saturation pixels consistent with visible teeth were found within the mouth region.')
+          : rtAttr(0, 0.8, faceIntel.teeth.reason || 'Teeth not visible (mouth likely closed).'))
+      : rtAttrUnknown('No face detected.');
+
+    attributes.skinVisibility = (faceIntel && faceIntel.skin && faceIntel.skin.pixelCount != null)
+      ? rtAttr(rtClamp(faceIntel.skin.pixelCount/1000, 0, 1), rtClamp(faceIntel.skin.pixelCount/1000, 0, 1), 'Derived from the pixel count found within the detected skin region.')
+      : rtAttrUnknown('No face detected.');
+
+    attributes.faceVisibility = (portraitIntel && portraitIntel.facePosition && portraitIntel.facePosition.completeness != null)
+      ? rtAttr(portraitIntel.facePosition.completeness, portraitIntel.confidence || 0, 'Fraction of expected face-oval landmarks that were successfully detected.')
+      : rtAttrUnknown('No face detected.');
+
+    const report = { attributes, computedAt: Date.now() };
+    if (layer){ layer.attributeProfile = report; layer.attributeProfileDims = { w, h }; }
+    return report;
+  }
+
+  /* ============================================================
+     PORTRAIT AI COORDINATOR (Phase 3 -- Portrait AI, Part 3)
+     The single entry point future systems (AI Magic, Wedding AI,
+     Corporate Headshot AI, etc.) should call instead of understanding
+     Face AI / Hair AI / Background AI / Portrait Intelligence
+     individually. Purely combines the reports those modules already
+     produce -- calls nothing new, duplicates no algorithm, and every
+     call below hits an existing per-layer cache when one is available.
+     ============================================================ */
+  async function rtPortraitCoordinator(w, h){
+    const portrait = await rtGetPortraitIntelligence(w, h);       // internally: Face AI + Hair AI, combined
+    const background = await rtGetBackgroundIntelligence(w, h);   // Background AI
+
+    // Overall Portrait Score (Part 7): a real, explainable average of
+    // whichever real sub-scores were actually computable for this photo.
+    // A missing/Unknown component (e.g. no hair detected, or background
+    // segmentation unavailable) is EXCLUDED from the average rather than
+    // counted as zero -- that would unfairly punish a photo just because
+    // one signal wasn't available, which is not the same thing as that
+    // aspect of the photo being poor.
+    const scoreComponents = [];
+    if (portrait){
+      if (portrait.sharpness && portrait.sharpness.sharpnessScore != null) scoreComponents.push(portrait.sharpness.sharpnessScore);
+      if (portrait.composition){
+        if (portrait.composition.thirdsScore != null) scoreComponents.push(portrait.composition.thirdsScore);
+        if (portrait.composition.balanceScore != null) scoreComponents.push(portrait.composition.balanceScore);
+      }
+      if (portrait.symmetry && portrait.symmetry.symmetryScore != null) scoreComponents.push(portrait.symmetry.symmetryScore);
+      if (portrait.cropQuality && portrait.cropQuality.cropQualityScore != null) scoreComponents.push(portrait.cropQuality.cropQualityScore);
+    }
+    if (background && background.isolationQuality != null) scoreComponents.push(background.isolationQuality);
+
+    const overallScore = scoreComponents.length ? scoreComponents.reduce((a,b)=>a+b, 0)/scoreComponents.length : null;
+
+    return {
+      portrait, background,
+      overallScore, scoreComponentCount: scoreComponents.length,
+      faceDetected: portrait ? portrait.faceDetected : false,
+      hairDetected: portrait ? portrait.hairDetected : false,
+      backgroundDetected: !!background,
+      computedAt: Date.now(),
+    };
+  }
+
+  /* ============================================================
+     PORTRAIT ENHANCEMENT COORDINATOR (Phase 3 -- Portrait AI, Part 4)
+     Orchestration ONLY. This deliberately does NOT decide what to
+     enhance or by how much -- that judgment belongs to future systems
+     (AI Magic, Wedding AI, Corporate Headshot AI, etc.), which are
+     explicitly out of scope for this slice. What this DOES provide is
+     the single safe entry point for applying a coordinated set of
+     adjustments across Face/Hair/Background together: one validated
+     write to the existing rtAdj schema, one render, one history entry
+     -- instead of a future caller needing to know internal module
+     details or triggering N separate renders/history entries for what
+     is conceptually one edit. No pixel algorithm is reimplemented here;
+     every value it writes is applied by the exact same render pipeline
+     (applyRtFaceAI / applyRtHairOps / applyRtBgBlurSync) already built
+     and verified in earlier slices. ============================================================ */
+  async function rtApplyCoordinatedEnhancement(config, label){
+    const active = rtGetActiveLayer();
+    if (active && active.locked){ toast('This layer is locked.', 'err'); return false; }
+    const validKeys = new Set(Object.keys(RT_DEFAULTS));
+    let appliedAny = false;
+    for (const group of ['face', 'hair', 'background', 'general']){
+      const values = config && config[group];
+      if (!values) continue;
+      for (const [key, val] of Object.entries(values)){
+        if (!validKeys.has(key)){
+          console.warn('rtApplyCoordinatedEnhancement: unknown adjustment key ignored:', key);
+          continue;
+        }
+        rtAdj[key] = val;
+        appliedAny = true;
+      }
+    }
+    if (!appliedAny) return false;
+    rtApplyAdjustmentsToUI();
+    await renderRtPreview();
+    rtPushHistory(label || 'Coordinated Enhancement');
+    return true;
+  }
+
+  /* ============================================================
+     AI MAGIC DECISION ENGINE (Phase 3 -- Slice 1: Hair + Background +
+     Lighting, using intelligence modules that already produce real
+     scores. Face-specific decisions -- skin/eye/teeth/lip -- are
+     deliberately deferred to a later slice: making them today would
+     require either fabricating a signal or using an unfounded fixed
+     number, both of which Part 2 forbids. Nothing here is a fixed
+     preset or a random value -- every amount is a function of a real,
+     already-computed intelligence score, and every decision carries an
+     explanation referencing the specific measurement that drove it.
+     ============================================================ */
+  const RT_AI_MAGIC_PRIORITY = { CRITICAL:'Critical', RECOMMENDED:'Recommended', OPTIONAL:'Optional', SKIP:'Skip' };
+  function rtAiMagicPriorityFor(amount, isNotableProblem){
+    if (amount < 5) return RT_AI_MAGIC_PRIORITY.SKIP;
+    if (isNotableProblem && amount >= 40) return RT_AI_MAGIC_PRIORITY.CRITICAL;
+    if (amount >= 20) return RT_AI_MAGIC_PRIORITY.RECOMMENDED;
+    return RT_AI_MAGIC_PRIORITY.OPTIONAL;
+  }
+
+  // Attribute-Profile-driven safety gate (Part 5): extremely low Hair
+  // Coverage means there isn't enough real hair to meaningfully enhance
+  // -- shared by every hair decision below rather than duplicated per
+  // function. Threshold is deliberately low (3%) since this should only
+  // catch genuinely near-bald/no-hair cases, not just short hair.
+  function rtHairCoverageTooLow(attrProfile){
+    const cov = attrProfile && attrProfile.attributes && attrProfile.attributes.hairCoverage;
+    if (!cov || cov.value === 'Unknown') return null; // no attribute data -- don't gate on something unmeasured
+    return cov.value < 0.03 ? cov.value : false;
+  }
+
+  function rtDecideHairSmooth(hairIntel, attrProfile){
+    if (!hairIntel || !hairIntel.frizz || hairIntel.frizz.frizzScore == null){
+      return { key:'hairSmooth', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No hair detected -- skipping Hair Smooth.' };
+    }
+    const lowCoverage = rtHairCoverageTooLow(attrProfile);
+    if (lowCoverage !== null && lowCoverage !== false){
+      return { key:'hairSmooth', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Hair Smooth skipped because Hair Coverage is extremely low (${Math.round(lowCoverage*100)}%).` };
+    }
+    const frizz = hairIntel.frizz.frizzScore;
+    const amount = Math.round(rtClamp(frizz*60, 0, 60));
+    const reason = frizz > 0.5
+      ? `Hair Smooth set to ${amount} because measured Frizz Score is high (${Math.round(frizz*100)}%).`
+      : `Hair Smooth kept low (${amount}) because Frizz Score is low (${Math.round(frizz*100)}%) -- hair already looks orderly.`;
+    return { key:'hairSmooth', amount, priority: rtAiMagicPriorityFor(amount, frizz>0.6), reason };
+  }
+
+  function rtDecideHairShine(hairIntel, attrProfile){
+    if (!hairIntel || !hairIntel.shine || hairIntel.shine.shineScore == null){
+      return { key:'hairShine', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No hair detected -- skipping Hair Shine.' };
+    }
+    const lowCoverage = rtHairCoverageTooLow(attrProfile);
+    if (lowCoverage !== null && lowCoverage !== false){
+      return { key:'hairShine', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Hair Shine skipped because Hair Coverage is extremely low (${Math.round(lowCoverage*100)}%).` };
+    }
+    const shine = hairIntel.shine.shineScore;
+    const amount = Math.round(rtClamp((1-shine)*50, 0, 50));
+    // Safety rule (Part 3): hair that already measures shiny should NOT
+    // get more shine boost -- that's how an over-glossy, artificial look
+    // happens.
+    const reason = shine > 0.6
+      ? `Hair Shine reduced to ${amount} because hair already measures shiny (${Math.round(shine*100)}%) -- avoiding an over-glossy result.`
+      : `Hair Shine set to ${amount} because measured Shine Score is low (${Math.round(shine*100)}%).`;
+    return { key:'hairShine', amount, priority: rtAiMagicPriorityFor(amount, shine<0.25), reason };
+  }
+
+  function rtDecideHairTexture(hairIntel, attrProfile){
+    if (!hairIntel || !hairIntel.texture || hairIntel.texture.textureScore == null){
+      return { key:'hairTexture', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No hair detected -- skipping Hair Texture.' };
+    }
+    const lowCoverage = rtHairCoverageTooLow(attrProfile);
+    if (lowCoverage !== null && lowCoverage !== false){
+      return { key:'hairTexture', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Hair Texture skipped because Hair Coverage is extremely low (${Math.round(lowCoverage*100)}%).` };
+    }
+    const texture = hairIntel.texture.textureScore;
+    const frizz = (hairIntel.frizz && hairIntel.frizz.frizzScore != null) ? hairIntel.frizz.frizzScore : 0.3;
+    let amount = Math.round(rtClamp((1-texture)*45, 0, 45));
+    // Safety rule (Part 3): don't amplify texture on already-frizzy hair
+    // -- that would make the frizz worse, not add flattering detail.
+    if (frizz > 0.55) amount = Math.round(amount*0.3);
+    const reason = frizz > 0.55
+      ? `Hair Texture limited to ${amount} because hair already reads as frizzy (${Math.round(frizz*100)}%) -- more texture enhancement would amplify that.`
+      : (texture > 0.6
+          ? `Hair Texture kept low (${amount}) because hair already has good measured detail (${Math.round(texture*100)}%).`
+          : `Hair Texture set to ${amount} because measured Texture Score is low (${Math.round(texture*100)}%).`);
+    return { key:'hairTexture', amount, priority: rtAiMagicPriorityFor(amount, texture<0.2 && frizz<=0.55), reason };
+  }
+
+  function rtDecideHairHealth(hairIntel, attrProfile){
+    if (!hairIntel || hairIntel.healthScore == null){
+      return { key:'hairHealth', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No hair detected -- skipping Hair Repair.' };
+    }
+    // This is the exact "Skip Hair Repair when Hair Coverage is
+    // extremely low" example from Part 5.
+    const lowCoverage = rtHairCoverageTooLow(attrProfile);
+    if (lowCoverage !== null && lowCoverage !== false){
+      return { key:'hairHealth', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Hair Repair skipped because Hair Coverage is extremely low (${Math.round(lowCoverage*100)}%).` };
+    }
+    const health = hairIntel.healthScore;
+    const amount = Math.round(rtClamp((1-health)*70, 0, 70));
+    // This is the exact "healthy hair -> reduce Hair Repair" rule named in Part 3.
+    const reason = health > 0.7
+      ? `Hair Repair reduced to ${amount} because Hair Health Score is already high (${Math.round(health*100)}%).`
+      : `Hair Repair set to ${amount} because Hair Health Score is low (${Math.round(health*100)}%).`;
+    return { key:'hairHealth', amount, priority: rtAiMagicPriorityFor(amount, health<0.35), reason };
+  }
+
+  function rtDecideHairFlyaway(hairIntel, attrProfile){
+    if (!hairIntel || !hairIntel.flyaway || !hairIntel.flyaway.flyawayCandidates){
+      return { key:'hairFlyaway', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No hair detected -- skipping Flyaway Cleanup.' };
+    }
+    const lowCoverage = rtHairCoverageTooLow(attrProfile);
+    if (lowCoverage !== null && lowCoverage !== false){
+      return { key:'hairFlyaway', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Flyaway Cleanup skipped because Hair Coverage is extremely low (${Math.round(lowCoverage*100)}%).` };
+    }
+    const count = hairIntel.flyaway.flyawayCandidates.length;
+    if (count === 0){
+      return { key:'hairFlyaway', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No flyaway strands detected -- skipping Flyaway Cleanup.' };
+    }
+    const amount = Math.round(rtClamp(30 + count*8, 30, 65));
+    return { key:'hairFlyaway', amount, priority: rtAiMagicPriorityFor(amount, count>=3), reason: `Flyaway Cleanup set to ${amount} because ${count} candidate flyaway strand${count===1?'':'s'} were detected.` };
+  }
+
+  function rtDecideBackgroundBlur(bgIntel, currentBlur){
+    if (!bgIntel || !bgIntel.complexity || bgIntel.complexity.complexityScore == null){
+      return { key:'bgBlur', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Background could not be analyzed -- skipping Background Blur.' };
+    }
+    const complexity = bgIntel.complexity.complexityScore;
+    const isolation = bgIntel.isolationQuality != null ? bgIntel.isolationQuality : 0.5;
+    let amount = Math.round(rtClamp(complexity*45*isolation, 0, 45));
+    const parts = [complexity > 0.5
+      ? `background is visually busy (Complexity ${Math.round(complexity*100)}%)`
+      : `background is fairly plain (Complexity ${Math.round(complexity*100)}%)`];
+    // Safety rule (Part 3): poor segmentation confidence -> reduce strength.
+    if (isolation < 0.5) parts.push(`Subject Isolation confidence is low (${Math.round(isolation*100)}%), so strength was reduced to avoid visible edge artifacts`);
+    // Safety rule (Part 3): background already blurred -> reduce further recommendation.
+    if (currentBlur > 20){ amount = Math.round(amount*0.4); parts.push(`Background Blur is already applied (${currentBlur}), so the recommendation was reduced further`); }
+    return { key:'bgBlur', amount, priority: rtAiMagicPriorityFor(amount, complexity>0.6 && isolation>=0.5), reason: `Background Blur set to ${amount} because ${parts.join('; ')}.` };
+  }
+
+  function rtDecideLightingCorrection(portraitIntel){
+    if (!portraitIntel || !portraitIntel.photometrics || portraitIntel.photometrics.brightness == null){
+      return { key:'exposure', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Portrait could not be analyzed -- skipping lighting correction.' };
+    }
+    const brightness = portraitIntel.photometrics.brightness;
+    // Safety rule (Part 3): only correct when actually dark; a normally
+    // lit portrait gets no unnecessary adjustment.
+    if (brightness >= 0.35){
+      return { key:'exposure', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason: `Exposure left unchanged -- measured brightness (${Math.round(brightness*100)}%) is already in a normal range.` };
+    }
+    const amount = Math.round(rtClamp((0.35-brightness)*140, 0, 35));
+    return { key:'exposure', amount, priority: rtAiMagicPriorityFor(amount, brightness<0.2), reason: `Exposure increased by ${amount} because the portrait measures dark (Brightness ${Math.round(brightness*100)}%).` };
+  }
+
+  function rtDecideSkinSmooth(faceIntel, attrProfile){
+    if (!faceIntel || !faceIntel.skin || faceIntel.skin.smoothnessScore == null){
+      return { key:'skinSmooth', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'No face detected -- skipping Skin Smoothing.' };
+    }
+    const smoothness = faceIntel.skin.smoothnessScore;
+    let amount = Math.round(rtClamp((1-smoothness)*55, 0, 55));
+    // Safety rule (Part 5): poor Face Visibility means the skin sample
+    // itself is less trustworthy -- reduce strength rather than fully
+    // skip, since some real measurement did succeed.
+    const faceVis = attrProfile && attrProfile.attributes && attrProfile.attributes.faceVisibility;
+    let visNote = '';
+    if (faceVis && faceVis.value !== 'Unknown' && faceVis.value < 0.7){
+      amount = Math.round(amount * rtClamp(faceVis.value, 0.3, 1));
+      visNote = ` (reduced further because Face Visibility is only ${Math.round(faceVis.value*100)}%)`;
+    }
+    const reason = (smoothness > 0.7
+      ? `Skin Smoothing kept low (${amount}) because skin already measures smooth (${Math.round(smoothness*100)}%).`
+      : `Skin Smoothing set to ${amount} because measured skin smoothness is ${Math.round(smoothness*100)}%.`) + visNote;
+    return { key:'skinSmooth', amount, priority: rtAiMagicPriorityFor(amount, smoothness<0.35), reason };
+  }
+
+  function rtDecideEyeEnhance(faceIntel){
+    if (!faceIntel || !faceIntel.eyes || faceIntel.eyes.sharpnessScore == null){
+      return { key:'eyeEnhance', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Eyes could not be measured -- skipping Eye Enhance.' };
+    }
+    const sharpness = faceIntel.eyes.sharpnessScore;
+    // Safety rule (this is the exact "already sharp eyes -> don't over
+    // enhance" example named in the spec).
+    const amount = Math.round(rtClamp((1-sharpness)*40, 0, 40));
+    const reason = sharpness > 0.65
+      ? `Eye Enhance kept low (${amount}) because eyes already measure sharp (${Math.round(sharpness*100)}%) -- avoiding over-enhancement.`
+      : `Eye Enhance set to ${amount} because measured eye sharpness is ${Math.round(sharpness*100)}%.`;
+    return { key:'eyeEnhance', amount, priority: rtAiMagicPriorityFor(amount, sharpness<0.3), reason };
+  }
+
+  function rtDecideTeethWhiten(faceIntel){
+    if (!faceIntel || !faceIntel.teeth || !faceIntel.teeth.teethVisible){
+      return { key:'teethWhiten', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason: (faceIntel && faceIntel.teeth && faceIntel.teeth.reason) || 'Teeth not visible -- skipping Teeth Whitening.' };
+    }
+    const whiteness = faceIntel.teeth.whitenessScore;
+    // Safety rule (this is the exact "already white teeth -> don't
+    // whiten" example named in the spec).
+    if (whiteness > 0.75){
+      return { key:'teethWhiten', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason: `Teeth already measure white (${Math.round(whiteness*100)}%) -- skipping Teeth Whitening.` };
+    }
+    const amount = Math.round(rtClamp((1-whiteness)*45, 0, 45));
+    return { key:'teethWhiten', amount, priority: rtAiMagicPriorityFor(amount, whiteness<0.4), reason: `Teeth Whitening set to ${amount} because measured whiteness is ${Math.round(whiteness*100)}%.` };
+  }
+
+  function rtDecideLipEnhance(faceIntel, attrProfile){
+    if (!faceIntel || !faceIntel.lips || faceIntel.lips.richnessScore == null){
+      return { key:'lipEnhance', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Lips could not be measured -- skipping Lip Enhance.' };
+    }
+    // Safety rule (Part 5): "Avoid Lip Enhancement when Lip Visibility is
+    // insufficient" -- explicit attribute-driven gate, distinct from the
+    // null-check above (this catches a LOW-but-present sample too small
+    // to trust, not just a total absence of data).
+    const lipVis = attrProfile && attrProfile.attributes && attrProfile.attributes.lipVisibility;
+    if (lipVis && lipVis.value !== 'Unknown' && lipVis.value < 0.15){
+      return { key:'lipEnhance', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Lip Enhance skipped because Lip Visibility is insufficient (${Math.round(lipVis.value*100)}%).` };
+    }
+    const richness = faceIntel.lips.richnessScore;
+    const amount = Math.round(rtClamp((1-richness)*35, 0, 35));
+    const reason = richness > 0.7
+      ? `Lip Enhance kept low (${amount}) because lip color already measures rich (${Math.round(richness*100)}%).`
+      : `Lip Enhance set to ${amount} because measured lip color richness is ${Math.round(richness*100)}%.`;
+    return { key:'lipEnhance', amount, priority: rtAiMagicPriorityFor(amount, richness<0.25), reason };
+  }
+
+  /* ---------- Enhancement Plan Generator (Part 5) ----------
+     Reuses the Portrait Coordinator (which itself reuses Face/Hair/
+     Background Intelligence -- nothing re-detected, nothing
+     re-segmented). Applies nothing -- pure decision-making.
+
+     ARCHITECTURE NOTE (mandatory foundation, not yet multi-person):
+     Returns a PLAN COLLECTION -- an array of Person Objects -- rather
+     than a single flat plan, so every future consumer (Wedding AI,
+     Group Portrait AI, Family AI, etc.) is written against the
+     person-keyed shape from day one. Today this array always contains
+     exactly one entry (personId:'primary'), because Person Detection /
+     multiple Face Mesh / multiple Hair Masks are explicitly NOT built
+     yet -- this slice only prevents a breaking-change migration later.
+     Each Person Object owns its own plan, explanation, and confidence
+     (Part 6) rather than those being tracked globally, so per-person
+     explainability requires no restructuring when multi-person analysis
+     is eventually added. */
+  async function rtGenerateAiMagicPlanCollection(w, h){
+    const coordinated = await rtPortraitCoordinator(w, h);
+    const hairIntel = await rtGetHairIntelligence(w, h);       // cache hit if the coordinator above already computed it
+    const bgIntel = await rtGetBackgroundIntelligence(w, h);   // cache hit if the coordinator above already computed it
+    const faceIntel = await rtGetFaceIntelligence(w, h);       // cache hit if the coordinator above already computed it
+    const attrProfile = await rtGetAttributeProfile(w, h);     // cache hit -- reuses the exact same intelligence just computed above
+    const portraitIntel = coordinated ? coordinated.portrait : null;
+
+    const decisions = [
+      rtDecideSkinSmooth(faceIntel, attrProfile),
+      rtDecideEyeEnhance(faceIntel),
+      rtDecideTeethWhiten(faceIntel),
+      rtDecideLipEnhance(faceIntel, attrProfile),
+      rtDecideHairSmooth(hairIntel, attrProfile),
+      rtDecideHairTexture(hairIntel, attrProfile),
+      rtDecideHairShine(hairIntel, attrProfile),
+      rtDecideHairHealth(hairIntel, attrProfile),
+      rtDecideHairFlyaway(hairIntel, attrProfile),
+      rtDecideBackgroundBlur(bgIntel, rtAdj.bgBlur),
+      rtDecideLightingCorrection(portraitIntel),
+    ];
+
+    const plan = {};
+    const explanation = [];
+    for (const d of decisions){
+      if (d.priority !== RT_AI_MAGIC_PRIORITY.SKIP && d.amount > 0) plan[d.key] = d.amount;
+      explanation.push({ key:d.key, amount:d.amount, priority:d.priority, reason:d.reason });
+    }
+
+    // Confidence is the same real, already-computed Portrait Intelligence
+    // confidence (face-detection completeness) -- never a separate
+    // invented number. Zero when no face was found, matching every other
+    // "never guess" gate in this project.
+    const confidence = portraitIntel ? (portraitIntel.confidence || 0) : 0;
+
+    const personObject = {
+      personId: 'primary',
+      role: 'primary',
+      confidence,
+      // References to the underlying (already-cached) intelligence
+      // reports this person's plan was derived from -- for
+      // explainability and reuse, not duplicated data.
+      intelligence: { portrait: portraitIntel, hair: hairIntel, background: bgIntel, face: faceIntel, attributes: attrProfile },
+      plan,
+      explanation,
+      overallScore: coordinated ? coordinated.overallScore : null,
+      faceDetected: coordinated ? coordinated.faceDetected : false,
+      hairDetected: coordinated ? coordinated.hairDetected : false,
+      backgroundDetected: coordinated ? coordinated.backgroundDetected : false,
+      computedAt: Date.now(),
+    };
+
+    return [personObject]; // always a collection, even in today's single-person mode
+  }
+
+  /* ---------- AI Magic Orchestrator (Part 1) ----------
+     The ONLY public entry point. Generates a Plan Collection, then hands
+     the PRIMARY person's plan to the EXISTING Enhancement Coordinator --
+     never bypassed, never touches rtAdj or sliders directly itself.
+     Generates exactly one collection and triggers exactly one render
+     (Part 10). Per Part 3: in today's single-subject mode, the
+     coordinator simply consumes collection[0] -- when multi-person
+     analysis is eventually added, this becomes a loop over the
+     collection with no change to how any single person's plan is
+     applied. */
+  async function rtRunAiMagic(){
+    const active = rtGetActiveLayer();
+    if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
+    if (!rtSourceCanvas) return null;
+    const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+    const maxDim = 900;
+    let w = sw, h = sh;
+    if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+
+    const collection = await rtGenerateAiMagicPlanCollection(w, h);
+    const primary = collection[0];
+    const { plan } = primary;
+    if (!Object.keys(plan).length){
+      toast('AI Magic found nothing worth adjusting in this photo.', 'ok');
+      return { collection, primary, applied:false };
+    }
+
+    const faceGroup = {};
+    ['skinSmooth','eyeEnhance','teethWhiten','lipEnhance'].forEach(k => { if (plan[k] !== undefined) faceGroup[k] = plan[k]; });
+    const hairGroup = {};
+    ['hairSmooth','hairTexture','hairShine','hairHealth','hairFlyaway'].forEach(k => { if (plan[k] !== undefined) hairGroup[k] = plan[k]; });
+    const backgroundGroup = {};
+    if (plan.bgBlur !== undefined) backgroundGroup.bgBlur = plan.bgBlur;
+    const generalGroup = {};
+    if (plan.exposure !== undefined) generalGroup.exposure = plan.exposure;
+
+    const applied = await rtApplyCoordinatedEnhancement(
+      { face: faceGroup, hair: hairGroup, background: backgroundGroup, general: generalGroup },
+      'AI Magic'
+    );
+    if (applied){
+      const summary = Object.entries(plan).map(([k,v]) => `${k} +${v}`).join(', ');
+      toast('AI Magic applied: ' + summary, 'ok');
+    }
+    return { collection, primary, applied };
+  }
+
+  /* ============================================================
+     HAIR ENHANCEMENT ENGINE (Phase 3 Slice 2c-i)
+     Pipeline: Hair Segmentation -> Hair Intelligence -> Enhancement (here)
+     -> Layer Renderer -> Final Composite. Consumes rtGetHairIntelligence's
+     cached report (never recalculates it -- same cache-per-layer-per-size
+     the Intelligence Engine already maintains) so Smooth and Shine adapt
+     to what's actually measured in THIS photo's hair instead of applying
+     one fixed curve to every image. When intelligence isn't available
+     (e.g. segmentation failed), each adaptive factor falls back to a
+     clearly-labeled neutral constant rather than guessing -- the base
+     effect still works, it just isn't adaptive in that case.
+     ============================================================ */
+  async function applyRtHairOps(data, w, h){
+    const a = rtAdj;
+    if (a.hairSmooth <= 0 && a.hairShine <= 0 && a.hairTexture <= 0 && a.hairHealth <= 0 && a.hairFlyaway <= 0) return;
+    const mask = await ensureRtHairMask(w, h);
+    if (!mask) return;
+    const intel = await rtGetHairIntelligence(w, h);
+    const direction = intel && intel.direction;
+
+    /* ---------- Stage: Hair Smooth ---------- */
+    if (a.hairSmooth > 0){
+      const baseStrength = a.hairSmooth/100;
+      // Adaptive radius: a higher measured Frizz Score means more
+      // disorganized fine strands, which benefit from a slightly wider
+      // smoothing kernel; low frizz (already-clean hair) uses a narrower
+      // one so detail isn't unnecessarily lost.
+      const frizzScore = (intel && intel.frizz) ? intel.frizz.frizzScore : 0.3; // neutral fallback, not a guess about this specific photo
+      const radius = Math.max(1, Math.round(baseStrength * (4 + frizzScore*3)));
+      for (let ch=0; ch<3; ch++){
+        const plane = new Float32Array(w*h);
+        for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+        const blurred = boxBlurGray(plane, w, h, radius);
+        for (let p=0; p<w*h; p++){
+          // Per-pixel weight from the Direction Map: low coherence (the
+          // structure tensor sees no single dominant strand direction --
+          // characteristic of frizzy/flyaway areas) gets smoothed more;
+          // high coherence (clean, well-defined flowing strands) is
+          // preserved more, avoiding the flat/plastic look of a uniform
+          // blur applied everywhere regardless of what's actually there.
+          let localWeight = 1;
+          if (direction && direction.cellSize){
+            const x = p % w, y = (p / w) | 0;
+            const cx = Math.min(direction.cols-1, Math.floor(x/direction.cellSize));
+            const cy = Math.min(direction.rows-1, Math.floor(y/direction.cellSize));
+            const cell = direction.cells[cy*direction.cols+cx];
+            if (cell && cell.hasData) localWeight = rtClamp(1.3 - cell.coherence, 0.4, 1.3);
+          }
+          const m = rtClamp(mask[p]*baseStrength*localWeight, 0, 1);
+          data[p*4+ch] = plane[p]*(1-m) + blurred[p]*m;
+        }
+      }
+    }
+
+    /* ---------- Stage: Hair Texture ---------- */
+    if (a.hairTexture > 0){
+      const baseStrength = a.hairTexture/100;
+      // Adaptive strength: hair that already measures high on Texture
+      // Score has real detail already -- adding more unsharp-mask
+      // amplification on top of that is exactly how oversharpening and
+      // halos happen, so it's scaled DOWN there. Smooth/low-detail hair
+      // gets more, since there's real headroom to add visible strand
+      // definition without it looking artificial.
+      const textureScore = (intel && intel.texture) ? intel.texture.textureScore : 0.4;
+      const adaptiveStrength = baseStrength * rtClamp(1.15 - textureScore*0.6, 0.4, 1.15);
+      const radius = 2; // small kernel targeting fine strand-scale detail, not broad shape -- the main halo-avoidance lever here
+      for (let ch=0; ch<3; ch++){
+        const plane = new Float32Array(w*h);
+        for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+        const blurred = boxBlurGray(plane, w, h, radius);
+        for (let p=0; p<w*h; p++){
+          const m = mask[p]*adaptiveStrength;
+          if (m <= 0) continue;
+          // Unsharp mask: amplify the high-frequency component (original
+          // minus a small local blur = fine strand detail) and add it
+          // back ON TOP of the original, rather than replacing pixels --
+          // this preserves the underlying photo instead of manufacturing
+          // texture that isn't there.
+          const highFreq = plane[p] - blurred[p];
+          data[p*4+ch] = rtClamp(plane[p] + highFreq*m*1.2, 0, 255);
+        }
+      }
+    }
+
+    /* ---------- Stage: Hair Shine ---------- */
+    if (a.hairShine > 0){
+      const baseStrength = a.hairShine/100;
+      const brightness = (intel && intel.stats) ? intel.stats.brightness : 0.5;
+      const shineScore = (intel && intel.shine) ? intel.shine.shineScore : 0.3;
+      // Adaptive boost + ceiling: hair that already measures as bright
+      // and/or already has a lot of highlight content gets a gentler
+      // boost and a firmer headroom ceiling, so shine enhancement can't
+      // blow already-near-white highlights out to flat clipped white --
+      // the single biggest way a "shine" effect starts looking fake.
+      const boostFactor = 0.9 * (1 - shineScore*0.5);
+      const ceiling = rtClamp(255 - brightness*40, 200, 255);
+      for (let ch=0; ch<3; ch++){
+        const plane = new Float32Array(w*h);
+        for (let p=0; p<w*h; p++) plane[p] = data[p*4+ch];
+        const broadBlur = boxBlurGray(plane, w, h, 10);
+        for (let p=0; p<w*h; p++){
+          const m = mask[p]*baseStrength;
+          if (m <= 0) continue;
+          const local = plane[p] - broadBlur[p];
+          const boosted = local > 0 ? local * (1 + boostFactor*baseStrength) : local * (1 - 0.2*baseStrength);
+          const enhanced = rtClamp(broadBlur[p] + boosted, 0, ceiling);
+          data[p*4+ch] = enhanced*m + plane[p]*(1-m);
+        }
+      }
+    }
+
+    /* ---------- Stage: Hair Repair (Health Enhancement) ---------- */
+    if (a.hairHealth > 0){
+      const baseStrength = a.hairHealth/100;
+      const healthScore = (intel && intel.healthScore != null) ? intel.healthScore : 0.5;
+      // Adaptive: hair already measuring healthy (the Health Score is
+      // itself a real composite of Shine/Smoothness/Frizz -- see
+      // rtHairHealthScore in the Intelligence Engine) needs little
+      // correction; hair measuring duller gets proportionally more.
+      // Deliberately NOT the same specular-highlight technique as Hair
+      // Shine above -- this is a gentle richness/contrast lift only,
+      // capped low throughout, so it reads as "healthier hair" rather
+      // than an artificial glossy filter.
+      const adaptiveStrength = baseStrength * rtClamp(1.3 - healthScore, 0.3, 1.3);
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*adaptiveStrength;
+        if (m <= 0) continue;
+        const i = p*4;
+        let r=data[i], g=data[i+1], b=data[i+2];
+        const l = rtLuma(r,g,b);
+        const sat = 1 + 0.18*m;
+        r = rtClamp(l+(r-l)*sat, 0, 255); g = rtClamp(l+(g-l)*sat, 0, 255); b = rtClamp(l+(b-l)*sat, 0, 255);
+        const cf = 1 + 0.10*m;
+        const l2 = rtLuma(r,g,b);
+        r = rtClamp(cf*(r-l2)+l2, 0, 255); g = rtClamp(cf*(g-l2)+l2, 0, 255); b = rtClamp(cf*(b-l2)+l2, 0, 255);
+        data[i]=r; data[i+1]=g; data[i+2]=b;
+      }
+    }
+
+    /* ---------- Stage: Flyaway Cleanup (final stage, per coordinator order) ---------- */
+    if (a.hairFlyaway > 0){
+      applyRtHairFlyawayCleanup(data, w, h, mask, intel, a.hairFlyaway/100);
+    }
+  }
+
+  /* ============================================================
+     FLYAWAY CLEANUP (Phase 3 Slice 2c-iv)
+     Pipeline: Hair Intelligence (reused, not recalculated) -> Flyaway
+     Mask (from the existing rtHairFlyawayDetect candidates) ->
+     Confidence Filtering -> Direction-aware + Texture/Density/Health-
+     aware Correction -> Edge-aware Refinement (masked inpainting that
+     excludes the flyaway's own pixels from its fill, so a strand's own
+     stray color can't smear back into its replacement) -> Boundary
+     Protection (only ever touches the flagged candidate's own pixels,
+     never the main hair silhouette) -> Natural Blend (intensity-scaled,
+     never a hard cutout) -> Final Hair Output.
+
+     Performance: flyaway candidates are small by construction (the
+     existing detector only flags components under ~5% of the main hair
+     mass), so every stage here operates on each candidate's own tiny
+     bounding box plus a small margin -- never the full image -- making
+     this cheap regardless of photo resolution. ---------- */
+  function rtMaskedInpaintBlur(plane, excludeMask, w, h, radius){
+    // Local box-average that skips excluded ("hole") pixels entirely, so
+    // the fill value comes only from genuinely surrounding context.
+    const out = new Float32Array(w*h);
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        let sum=0, count=0;
+        for (let dy=-radius; dy<=radius; dy++){
+          const ny=y+dy; if (ny<0||ny>=h) continue;
+          for (let dx=-radius; dx<=radius; dx++){
+            const nx=x+dx; if (nx<0||nx>=w) continue;
+            const np = ny*w+nx;
+            if (excludeMask[np] > 0.5) continue;
+            sum += plane[np]; count++;
+          }
+        }
+        const p = y*w+x;
+        out[p] = count > 0 ? sum/count : plane[p]; // fully surrounded by holes (rare for a small candidate): leave unchanged rather than guess
+      }
+    }
+    return out;
+  }
+  function applyRtHairFlyawayCleanup(data, w, h, mask, intel, strength){
+    // No detected candidates, or no intelligence at all (e.g. segmentation
+    // unavailable) -- honestly do nothing rather than guess at strands
+    // that were never actually identified.
+    if (!intel || !intel.flyaway || !intel.flyaway.flyawayCandidates || !intel.flyaway.flyawayCandidates.length) return;
+    const direction = intel.direction;
+    const textureScore = (intel.texture) ? intel.texture.textureScore : 0.4;
+    const density = (intel.volume && intel.volume.density != null) ? intel.volume.density : 0.5;
+    const healthScore = (intel.healthScore != null) ? intel.healthScore : 0.5;
+    // These four are per-image (not per-candidate) modulators, computed
+    // once and reused for every candidate below:
+    const textureConfidence = rtClamp(1.1 - textureScore*0.4, 0.5, 1.1);   // very textured/curly hair: be a bit more conservative, avoid stripping legitimate strand character
+    const densityConfidence = rtClamp(1.15 - density*0.3, 0.6, 1.15);      // very dense hair: small gaps are more likely natural complexity than a stray strand
+    const healthConfidence = rtClamp(0.6 + healthScore*0.5, 0.6, 1.1);     // healthier/cleaner overall hair: an isolated small blob is more confidently a genuine stray
+
+    for (const cand of intel.flyaway.flyawayCandidates){
+      // Flyaway Confidence: peaks at a realistic thin-strand size relative
+      // to the main hair mass; both much-smaller (likely noise/artifact)
+      // and much-larger (likely a legitimate secondary hair clump, not a
+      // stray) candidates score lower. Continuous, not a hard cutoff.
+      const areaRatio = cand.pixelCount / Math.max(1, intel.flyaway.mainRegionArea);
+      const sizeConfidence = rtClamp(1 - Math.abs(areaRatio - 0.015) / 0.03, 0, 1);
+
+      // Direction-aware correction: a candidate sitting where the
+      // Direction Map shows low coherence (no single dominant strand
+      // direction nearby -- disorganized) is more consistent with a
+      // genuine loose stray hair; high coherence there argues for
+      // legitimate detail instead, and confidence is reduced.
+      let directionConfidence = 0.7;
+      if (direction && direction.cellSize){
+        const ccx = cand.x + cand.width/2, ccy = cand.y + cand.height/2;
+        const cx = Math.min(direction.cols-1, Math.floor(ccx/direction.cellSize));
+        const cy = Math.min(direction.rows-1, Math.floor(ccy/direction.cellSize));
+        const cell = direction.cells[cy*direction.cols+cx];
+        if (cell && cell.hasData) directionConfidence = rtClamp(1.2 - cell.coherence*0.6, 0.3, 1.0);
+      }
+
+      const modulatorAvg = (directionConfidence + textureConfidence + densityConfidence + healthConfidence) / 4;
+      const combinedConfidence = rtClamp(sizeConfidence * modulatorAvg, 0, 1);
+      if (combinedConfidence < 0.15) continue; // too uncertain -- never guess, leave this candidate untouched
+
+      const margin = 3;
+      const x0 = Math.max(0, cand.x - margin), y0 = Math.max(0, cand.y - margin);
+      const x1 = Math.min(w-1, cand.x + cand.width + margin), y1 = Math.min(h-1, cand.y + cand.height + margin);
+      const bw = x1-x0+1, bh = y1-y0+1;
+      if (bw <= 0 || bh <= 0) continue;
+
+      // Boundary protection: this exclude-mask marks ONLY this
+      // candidate's own footprint within the base hair mask -- never the
+      // main hair silhouette (which lives in a wholly separate, much
+      // larger connected component by construction of the detector).
+      const localExclude = new Float32Array(bw*bh);
+      for (let ly=0; ly<bh; ly++){
+        for (let lx=0; lx<bw; lx++){
+          const gx = x0+lx, gy = y0+ly, gp = gy*w+gx;
+          if (mask[gp] > 0.5 && gx >= cand.x && gx <= cand.x+cand.width && gy >= cand.y && gy <= cand.y+cand.height){
+            localExclude[ly*bw+lx] = 1;
+          }
+        }
+      }
+
+      const blend = rtClamp(strength * combinedConfidence, 0, 1);
+      for (let ch=0; ch<3; ch++){
+        const localPlane = new Float32Array(bw*bh);
+        for (let ly=0; ly<bh; ly++) for (let lx=0; lx<bw; lx++) localPlane[ly*bw+lx] = data[((y0+ly)*w+(x0+lx))*4+ch];
+        const filled = rtMaskedInpaintBlur(localPlane, localExclude, bw, bh, 3);
+        for (let ly=0; ly<bh; ly++){
+          for (let lx=0; lx<bw; lx++){
+            if (!localExclude[ly*bw+lx]) continue; // natural blend, boundary-protected: only the flagged strand's own pixels ever change
+            const gx = x0+lx, gy = y0+ly;
+            const idx = (gy*w+gx)*4+ch;
+            data[idx] = data[idx]*(1-blend) + filled[ly*bw+lx]*blend;
+          }
+        }
+      }
+    }
+  }
+
   function applyRtBgBlurSync(data, w, h, mask){
     if (rtAdj.bgBlur <= 0 || !mask) return;
     const radius = Math.max(1, Math.round(rtAdj.bgBlur/100 * 18));
@@ -9543,12 +11706,177 @@ if (document.getElementById('rtDrop')){
     applyRtNoiseReduction(data, w, h);
     applyRtSharpness(data, w, h);
     applyRtSkinOps(data, w, h, sw, sh);
+    applyRtFaceAI(data, w, h, sw, sh);
+    await applyRtHairOps(data, w, h);
     if (rtAdj.bgBlur > 0){
       const mask = await ensureRtBgMask(w, h);
       applyRtBgBlurSync(data, w, h, mask);
     }
     ctx.putImageData(imgData, 0, 0);
   }
+
+  /* ---------- Layer stack compositing (Phase 2) ----------
+     Renders each visible layer's adjusted pixels using the exact same,
+     already-tested renderRtToCanvas() above -- by temporarily pointing
+     its closure inputs (rtSourceCanvas/rtAdj/rtFaceLandmarks/rtBgCategoryMask/
+     rtBgMaskDims) at that layer, then restoring the real active layer's
+     state afterward. Blend modes use the browser's native canvas
+     compositing operators (globalCompositeOperation), so "Multiply",
+     "Screen", "Overlay" etc. are genuinely correct, not approximated. */
+  function rtSyncActiveLayerFromGlobals(){
+    const layer = rtLayers.find(l => l.id === rtActiveLayerId);
+    if (!layer) return;
+    layer.canvas = rtSourceCanvas;
+    layer.adj = { ...rtAdj };
+    layer.faceLandmarks = rtFaceLandmarks;
+    layer.detectedFaces = rtDetectedFaces;
+    layer.personRegions = rtPersonRegions;
+    layer.overlapReport = rtOverlapReport;
+    layer.bgMask = rtBgCategoryMask;
+    layer.bgMaskDims = rtBgMaskDims;
+    layer.hairMask = rtHairCategoryMask;
+    layer.hairMaskDims = rtHairMaskDims;
+  }
+  function rtLoadActiveLayerIntoGlobals(layer){
+    rtSourceCanvas = layer.canvas;
+    rtAdj = { ...layer.adj };
+    rtFaceLandmarks = layer.faceLandmarks || null;
+    rtDetectedFaces = layer.detectedFaces || [];
+    rtPersonRegions = layer.personRegions || [];
+    rtOverlapReport = layer.overlapReport || [];
+    rtBgCategoryMask = layer.bgMask || null;
+    rtBgMaskDims = layer.bgMaskDims || null;
+    rtHairCategoryMask = layer.hairMask || null;
+    rtHairMaskDims = layer.hairMaskDims || null;
+    rtApplyAdjustmentsToUI();
+  }
+  async function rtRenderLayerAdjusted(layer, targetCanvas, maxDim){
+    // Swap globals to this layer, reuse the untouched Phase 1 pipeline, restore.
+    const saved = { rtSourceCanvas, rtAdj, rtFaceLandmarks, rtDetectedFaces, rtPersonRegions, rtOverlapReport, rtBgCategoryMask, rtBgMaskDims, rtHairCategoryMask, rtHairMaskDims };
+    rtSourceCanvas = layer.canvas; rtAdj = layer.adj; rtFaceLandmarks = layer.faceLandmarks || null;
+    rtDetectedFaces = layer.detectedFaces || [];
+    rtPersonRegions = layer.personRegions || [];
+    rtOverlapReport = layer.overlapReport || [];
+    rtBgCategoryMask = layer.bgMask || null; rtBgMaskDims = layer.bgMaskDims || null;
+    rtHairCategoryMask = layer.hairMask || null; rtHairMaskDims = layer.hairMaskDims || null;
+    try{
+      await renderRtToCanvas(targetCanvas, maxDim);
+      layer.hairMask = rtHairCategoryMask; layer.hairMaskDims = rtHairMaskDims; // write back any mask computed just now, so it's cached for next time
+      if (layer.healCanvas){
+        targetCanvas.getContext('2d').drawImage(layer.healCanvas, 0, 0, targetCanvas.width, targetCanvas.height);
+      }
+    } finally {
+      ({ rtSourceCanvas, rtAdj, rtFaceLandmarks, rtDetectedFaces, rtPersonRegions, rtOverlapReport, rtBgCategoryMask, rtBgMaskDims, rtHairCategoryMask, rtHairMaskDims } = saved);
+    }
+  }
+  function rtCloneCanvas(c){
+    if (!c) return null;
+    const out = document.createElement('canvas');
+    out.width = c.width; out.height = c.height;
+    out.getContext('2d').drawImage(c, 0, 0);
+    return out;
+  }
+  // Converts a grayscale mask canvas into an RGBA canvas whose ALPHA
+  // channel encodes the mask's luminance, so it can be applied with
+  // 'destination-in' compositing (white = fully visible, black = hidden).
+  function rtMaskToAlphaCanvas(maskCanvas, w, h){
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const octx = out.getContext('2d');
+    octx.drawImage(maskCanvas, 0, 0, w, h);
+    const id = octx.getImageData(0, 0, w, h);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4){
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = lum;
+    }
+    octx.putImageData(id, 0, 0);
+    return out;
+  }
+  async function renderRtComposite(targetCanvas, maxDim){
+    if (!rtLayers.length) return renderRtToCanvas(targetCanvas, maxDim);
+    rtSyncActiveLayerFromGlobals();
+    const baseCanvas = rtLayers[0].canvas;
+    const sw = baseCanvas.width, sh = baseCanvas.height;
+    let w = sw, h = sh;
+    if (maxDim && Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+    targetCanvas.width = w; targetCanvas.height = h;
+    const ctx = targetCanvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    for (const layer of rtLayers){
+      if (!layer.visible) continue;
+      const scratch = document.createElement('canvas');
+      await rtRenderLayerAdjusted(layer, scratch, maxDim);
+      if (layer.mask && layer.maskEnabled){
+        const alphaMask = rtMaskToAlphaCanvas(layer.mask, scratch.width, scratch.height);
+        const sctx = scratch.getContext('2d');
+        sctx.globalCompositeOperation = 'destination-in';
+        sctx.drawImage(alphaMask, 0, 0);
+        sctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.save();
+      ctx.globalAlpha = rtClamp(layer.opacity, 0, 100) / 100;
+      ctx.globalCompositeOperation = RT_BLEND_MODES[layer.blendMode] || 'source-over';
+      ctx.drawImage(scratch, 0, 0, w, h);
+      ctx.restore();
+    }
+  }
+
+
+  /* ---------- Crop/rotate helpers (Phase 2 slice 3) ---------- */
+  function rtGetRotatedDims(){
+    const base = rtLayers[0] ? rtLayers[0].canvas : null;
+    if (!base) return { w: 1, h: 1 };
+    const rad = (rtCrop.rotationQuarter*90 + rtCrop.straighten) * Math.PI/180;
+    const sw = base.width, sh = base.height;
+    const absCos = Math.abs(Math.cos(rad)), absSin = Math.abs(Math.sin(rad));
+    return { w: sw*absCos + sh*absSin, h: sw*absSin + sh*absCos };
+  }
+  function rtCropCurrentRatioValue(){
+    const key = rtCrop.ratioKey;
+    if (key === 'free') return null;
+    if (key === 'original'){ const d = rtGetRotatedDims(); return d.w/d.h; }
+    return RT_CROP_RATIOS[key];
+  }
+  function rtCropDefaultRectFraction(){
+    const { w: rw, h: rh } = rtGetRotatedDims();
+    const ratio = rtCropCurrentRatioValue();
+    if (ratio == null) return { x: 0, y: 0, w: 1, h: 1 };
+    let w, h;
+    if (rw/rh > ratio){ h = rh; w = rh*ratio; } else { w = rw; h = rw/ratio; }
+    return { x: (rw-w)/2/rw, y: (rh-h)/2/rh, w: w/rw, h: h/rh };
+  }
+  function rtRotateCanvas(srcCanvas, quarterTurns, straightenDeg){
+    const totalDeg = quarterTurns*90 + straightenDeg;
+    if (totalDeg === 0) return srcCanvas;
+    const rad = totalDeg * Math.PI/180;
+    const sw = srcCanvas.width, sh = srcCanvas.height;
+    const absCos = Math.abs(Math.cos(rad)), absSin = Math.abs(Math.sin(rad));
+    const outW = Math.max(1, Math.round(sw*absCos + sh*absSin));
+    const outH = Math.max(1, Math.round(sw*absSin + sh*absCos));
+    const out = document.createElement('canvas');
+    out.width = outW; out.height = outH;
+    const ctx = out.getContext('2d');
+    ctx.translate(outW/2, outH/2);
+    ctx.rotate(rad);
+    ctx.drawImage(srcCanvas, -sw/2, -sh/2);
+    return out;
+  }
+  async function rtGetRotatedComposite(maxDim){
+    const composite = document.createElement('canvas');
+    await renderRtComposite(composite, maxDim);
+    return rtRotateCanvas(composite, rtCrop.rotationQuarter, rtCrop.straighten);
+  }
+  function rtCropCanvasToFracRect(rotatedCanvas, fracRect){
+    const rw = rotatedCanvas.width, rh = rotatedCanvas.height;
+    const x = Math.round(fracRect.x*rw), y = Math.round(fracRect.y*rh);
+    const w = Math.max(1, Math.round(fracRect.w*rw)), h = Math.max(1, Math.round(fracRect.h*rh));
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    out.getContext('2d').drawImage(rotatedCanvas, -x, -y);
+    return out;
+  }
+
 
   function fitRtCanvasDisplay(){
     const canvas = document.getElementById('rtPreviewCanvas');
@@ -9564,10 +11892,48 @@ if (document.getElementById('rtDrop')){
     if (rtRenderPending) return;
     rtRenderPending = true;
     try{
-      await renderRtToCanvas(document.getElementById('rtPreviewCanvas'), 1100);
+      const target = document.getElementById('rtPreviewCanvas');
+      if (rtMaskEditActive || rtHealEditActive){
+        // Painting a layer's mask/heal overlay: show that layer's own
+        // adjusted content directly, unrotated and uncropped, so on-canvas
+        // coordinates map exactly to that layer's own pixel space (crop
+        // rotation would otherwise silently misplace every brush stroke).
+        const active = rtGetActiveLayer();
+        if (active){
+          rtSyncActiveLayerFromGlobals();
+          const layerCanvas = document.createElement('canvas');
+          await rtRenderLayerAdjusted(active, layerCanvas, 1100);
+          if (active.mask && active.maskEnabled){
+            const alphaMask = rtMaskToAlphaCanvas(active.mask, layerCanvas.width, layerCanvas.height);
+            const lctx = layerCanvas.getContext('2d');
+            lctx.globalCompositeOperation = 'destination-in';
+            lctx.drawImage(alphaMask, 0, 0);
+            lctx.globalCompositeOperation = 'source-over';
+          }
+          target.width = layerCanvas.width; target.height = layerCanvas.height;
+          target.getContext('2d').clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+          target.getContext('2d').drawImage(layerCanvas, 0, 0);
+          fitRtCanvasDisplay();
+        }
+        return;
+      }
+      const rotated = await rtGetRotatedComposite(1100);
+      let finalCanvas = rotated;
+      if (!rtCropEditMode && rtCrop.active && rtCrop.rect){
+        finalCanvas = rtCropCanvasToFracRect(rotated, rtCrop.rect);
+      }
+      target.width = finalCanvas.width; target.height = finalCanvas.height;
+      target.getContext('2d').clearRect(0, 0, finalCanvas.width, finalCanvas.height);
+      target.getContext('2d').drawImage(finalCanvas, 0, 0);
       fitRtCanvasDisplay();
+      if (rtCropEditMode) rtSyncCropOverlayToCanvas();
     } finally {
       rtRenderPending = false;
+      if (rtPendingHistoryLabel){
+        const label = rtPendingHistoryLabel;
+        rtPendingHistoryLabel = null;
+        rtPushHistory(label);
+      }
     }
   }
 
@@ -9609,10 +11975,13 @@ if (document.getElementById('rtDrop')){
   }
 
   document.getElementById('rtResetBtn').onclick = () => {
+    const active = rtGetActiveLayer();
+    if (active && active.locked){ toast('This layer is locked.', 'err'); return; }
     rtAdj = { ...RT_DEFAULTS };
     rtApplyAdjustmentsToUI();
     rtZoom = 1;
     renderRtPreview();
+    rtPushHistory('Reset Layer');
     toast('Reset to original.');
   };
 
@@ -9628,11 +11997,14 @@ if (document.getElementById('rtDrop')){
   };
   document.querySelectorAll('#rtAccordionFilters [data-preset]').forEach(btn => {
     btn.onclick = () => {
+      const active = rtGetActiveLayer();
+      if (active && active.locked){ toast('This layer is locked.', 'err'); return; }
       const preset = RT_PRESETS[btn.dataset.preset];
       if (!preset) return;
       rtAdj = { ...RT_DEFAULTS, ...preset };
       rtApplyAdjustmentsToUI();
       renderRtPreview();
+      rtPushHistory(`Preset: ${btn.textContent}`);
       toast(`Applied "${btn.textContent}" preset.`);
     };
   });
@@ -9676,6 +12048,7 @@ if (document.getElementById('rtDrop')){
   const rtCanvasEl = document.getElementById('rtPreviewCanvas');
   rtCanvasEl.addEventListener('touchstart', (e) => {
     if (!rtSourceCanvas) return;
+    if (rtMaskEditActive) return; // brush painting owns single-touch input in this mode; see pointerdown handler above
     if (e.touches.length === 2){
       e.preventDefault();
       const [a,b] = e.touches;
@@ -9714,7 +12087,10 @@ if (document.getElementById('rtDrop')){
     setLoading(btn, true);
     try{
       const exportCanvas = document.createElement('canvas');
-      await renderRtToCanvas(exportCanvas, null); // null maxDim = full source resolution
+      const rotated = await rtGetRotatedComposite(null); // null maxDim = full source resolution, all visible layers composited
+      const finalCanvas = (rtCrop.active && rtCrop.rect) ? rtCropCanvasToFracRect(rotated, rtCrop.rect) : rotated;
+      exportCanvas.width = finalCanvas.width; exportCanvas.height = finalCanvas.height;
+      exportCanvas.getContext('2d').drawImage(finalCanvas, 0, 0);
       const format = document.getElementById('rtExportFormat').value;
       const ext = format === 'jpeg' ? 'jpg' : format;
       exportCanvas.toBlob((blob) => {
@@ -9736,11 +12112,32 @@ if (document.getElementById('rtDrop')){
     rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
     rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
     rtBgCategoryMask = null; rtBgMaskDims = null;
+    rtHairCategoryMask = null; rtHairMaskDims = null;
     rtAdj = { ...RT_DEFAULTS };
+    rtLayerIdSeq = 1;
+    rtLayers = [{
+      id: rtLayerIdSeq++, name: 'Background', canvas: rtSourceCanvas,
+      visible: true, locked: false, opacity: 100, blendMode: 'normal',
+      adj: { ...RT_DEFAULTS }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+      mask: null, maskEnabled: true, maskVersion: 0,
+      healCanvas: null, healVersion: 0,
+      type: 'image', subjectMask: null, canvasVersion: 0,
+    }];
+    rtActiveLayerId = rtLayers[0].id;
     rtApplyAdjustmentsToUI();
+    rtCrop = { active: false, rect: null, rotationQuarter: 0, straighten: 0, ratioKey: 'free' };
+    if (rtCropEditMode) rtSetCropEditMode(false);
+    if (rtHealEditActive) rtSetHealEditMode(false);
+    rtCloneSourcePoint = null; rtCloneOffset = null;
+    rtSyncCropControlsToState();
     document.getElementById('rtStage').classList.remove('hidden');
+    document.getElementById('rtStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(rtUpdatePanelMaxHeight, 400);
     document.getElementById('rtOutputDims').textContent = `${rtSourceCanvas.width}\u00d7${rtSourceCanvas.height}px (original resolution)`;
     await rtDetectFace();
+    rtSyncActiveLayerFromGlobals();
+    rtRenderLayersPanel();
+    rtResetHistory();
     await renderRtPreview();
     toast('Image loaded.');
   }
@@ -9759,6 +12156,1569 @@ if (document.getElementById('rtDrop')){
 
   window.addEventListener('resize', () => { if (rtSourceCanvas) fitRtCanvasDisplay(); });
   setupRtAccordionExclusivity();
+
+  /* ---------- Bottom toolbar <-> panel sheet sync (Phase 1 workspace
+     shell). Category buttons just open the matching .pp-accordion --
+     the existing setupRtAccordionExclusivity() above already closes the
+     others, so this stays a single source of truth instead of a second,
+     divergent "which panel is open" state. ---------- */
+  (function setupRtBottomToolbar(){
+    const toolbar = document.getElementById('rtBottomToolbar');
+    if (!toolbar) return;
+    const tbButtons = Array.from(toolbar.querySelectorAll('.rt-bt-item'));
+    function syncActiveFromOpenAccordion(){
+      const openAcc = document.querySelector('#rtPanelSheet .pp-accordion[open]');
+      tbButtons.forEach(b => b.setAttribute('aria-selected', String(!!openAcc && b.dataset.target === openAcc.id)));
+    }
+    tbButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.target);
+        if (!target) return;
+        target.open = true;
+        target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        syncActiveFromOpenAccordion();
+      });
+    });
+    document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => {
+      acc.addEventListener('toggle', syncActiveFromOpenAccordion);
+    });
+    syncActiveFromOpenAccordion();
+  })();
+
+  /* ---------- Beauty / Advanced mode (UI presentation layer, built on
+     top of the existing verified panel architecture -- toggling modes
+     never touches layers, history, adjustments, or any other state; it
+     only shows/hides which bottom-toolbar categories are reachable). ---------- */
+  let rtUiMode = 'beauty';
+  function rtApplyUiMode(){
+    const toolbar = document.getElementById('rtBottomToolbar');
+    if (toolbar) toolbar.classList.toggle('rt-beauty-mode', rtUiMode === 'beauty');
+    const stage = document.getElementById('rtStage');
+    if (stage) stage.classList.toggle('rt-mode-beauty', rtUiMode === 'beauty');
+    document.querySelectorAll('.rt-mode-toggle-btn').forEach(btn => {
+      const isActive = btn.dataset.mode === rtUiMode;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+    if (rtUiMode === 'beauty'){
+      const openAcc = document.querySelector('#rtPanelSheet .pp-accordion[open]');
+      if (openAcc){
+        const btn = document.querySelector(`.rt-bt-item[data-target="${openAcc.id}"]`);
+        const isHiddenNow = btn && btn.dataset.advanced === 'true';
+        if (isHiddenNow){
+          // The panel the user was looking at just left Beauty Mode's
+          // reachable set -- send them to Face (the closest equivalent
+          // "Beauty" panel) instead of leaving an orphaned open panel.
+          const fallback = document.getElementById('rtAccordionFace');
+          if (fallback) fallback.open = true;
+        }
+      }
+    }
+  }
+  document.querySelectorAll('.rt-mode-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === rtUiMode) return;
+      rtUiMode = btn.dataset.mode;
+      rtApplyUiMode();
+    });
+  });
+  rtApplyUiMode();
+
+  /* ---------- Panel sheet height: measured, not guessed (Phase 1 fix) ----
+     A vh-based max-height can't know how tall the sticky top toolbar +
+     canvas + zoom row above it actually are (that varies with the photo's
+     aspect ratio and the device), so a fixed percentage either wastes
+     space or -- worse -- lets the panel render underneath the fixed
+     bottom toolbar. This measures the real remaining space instead. */
+  function rtUpdatePanelMaxHeight(){
+    const sheet = document.getElementById('rtPanelSheet');
+    const toolbar = document.getElementById('rtBottomToolbar');
+    if (!sheet || !toolbar || window.innerWidth >= 900) { if (sheet) sheet.style.maxHeight = ''; return; }
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const sheetTop = sheet.getBoundingClientRect().top;
+    const hardCeiling = Math.max(60, toolbarRect.top - sheetTop - 8);
+    const available = window.innerHeight - toolbarRect.height - sheetTop - 10;
+    const preferred = Math.max(140, available);
+    sheet.style.maxHeight = Math.min(preferred, hardCeiling) + 'px';
+    // Self-correct on the next frame: the panel's top position can still
+    // shift slightly after this calculation (layout settling, late
+    // reflows) -- verify the ACTUAL rendered overlap against the toolbar's
+    // real final position and tighten further if anything still overlaps,
+    // rather than trusting a single point-in-time measurement.
+    requestAnimationFrame(() => {
+      const sheetRect = sheet.getBoundingClientRect();
+      const toolbarRect2 = toolbar.getBoundingClientRect();
+      const overlap = sheetRect.bottom - toolbarRect2.top;
+      if (overlap > 0){
+        const current = parseFloat(sheet.style.maxHeight) || sheetRect.height;
+        sheet.style.maxHeight = Math.max(60, current - overlap - 4) + 'px';
+      }
+    });
+  }
+  window.addEventListener('resize', rtUpdatePanelMaxHeight);
+  let rtScrollDebounce = null;
+  window.addEventListener('scroll', () => {
+    clearTimeout(rtScrollDebounce);
+    rtScrollDebounce = setTimeout(rtUpdatePanelMaxHeight, 80);
+  }, { passive: true });
+  window.addEventListener('orientationchange', () => setTimeout(rtUpdatePanelMaxHeight, 250));
+  document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => {
+    acc.addEventListener('toggle', () => {
+      rtUpdatePanelMaxHeight();
+      setTimeout(rtUpdatePanelMaxHeight, 150);
+      setTimeout(rtUpdatePanelMaxHeight, 400);
+      setTimeout(rtUpdatePanelMaxHeight, 800);
+    });
+  });
+
+  /* ---------- History (Phase 2: layer-aware) ----------
+     Each step snapshots the ENTIRE layer stack's metadata (id, name,
+     visible, locked, opacity, blendMode, adj) -- not pixel data, which
+     never needs to be duplicated since a layer's own canvas is immutable
+     once created; only its metadata changes. This is why undo/redo stays
+     cheap even with many layers and many steps. */
+  let rtHistory = [];
+  let rtHistoryIndex = -1;
+  const rtUndoBtn = document.getElementById('rtUndoBtn');
+  const rtRedoBtn = document.getElementById('rtRedoBtn');
+  function rtUpdateHistoryButtons(){
+    if (rtUndoBtn) rtUndoBtn.disabled = rtHistoryIndex <= 0;
+    if (rtRedoBtn) rtRedoBtn.disabled = rtHistoryIndex >= rtHistory.length - 1;
+  }
+  function rtSnapshotLayers(){
+    return rtLayers.map(l => ({ ...l, adj: { ...l.adj }, mask: rtCloneCanvas(l.mask), healCanvas: rtCloneCanvas(l.healCanvas) }));
+  }
+  function rtSnapshotKey(activeId, layers, crop){
+    return JSON.stringify({
+      a: activeId,
+      l: layers.map(l => [l.id, l.name, l.visible, l.locked, l.opacity, l.blendMode, l.adj, !!l.mask, l.maskEnabled, l.maskVersion, l.healVersion, l.type, l.canvasVersion]),
+      c: crop,
+    });
+  }
+  let rtPendingHistoryLabel = null;
+  function rtPushHistory(label){
+    if (rtRenderPending){
+      // A render is currently in flight and has temporarily swapped
+      // rtSourceCanvas/rtAdj to render a *different* layer's content
+      // (see rtRenderLayerAdjusted) -- syncing right now would write that
+      // other layer's canvas into the active layer's slot. Defer until
+      // renderRtPreview's finally block confirms the swap has been fully
+      // restored, then run for real.
+      rtPendingHistoryLabel = label || rtPendingHistoryLabel || 'Adjustment';
+      return;
+    }
+    rtSyncActiveLayerFromGlobals();
+    const layers = rtSnapshotLayers();
+    const crop = { ...rtCrop };
+    const key = rtSnapshotKey(rtActiveLayerId, layers, crop);
+    const top = rtHistory[rtHistoryIndex];
+    if (top && top.key === key) return;
+    rtHistory = rtHistory.slice(0, rtHistoryIndex + 1);
+    rtHistory.push({ activeLayerId: rtActiveLayerId, layers, crop, key, label: label || 'Adjustment' });
+    rtHistoryIndex = rtHistory.length - 1;
+    rtUpdateHistoryButtons();
+    rtRenderHistoryPanel();
+  }
+  function rtResetHistory(){
+    rtSyncActiveLayerFromGlobals();
+    const layers = rtSnapshotLayers();
+    const crop = { ...rtCrop };
+    rtHistory = [{ activeLayerId: rtActiveLayerId, layers, crop, key: rtSnapshotKey(rtActiveLayerId, layers, crop), label: 'Open Image' }];
+    rtHistoryIndex = 0;
+    rtUpdateHistoryButtons();
+    rtRenderHistoryPanel();
+  }
+  function rtGoToHistory(index){
+    if (index < 0 || index >= rtHistory.length) return;
+    rtHistoryIndex = index;
+    const entry = rtHistory[index];
+    rtLayers = entry.layers.map(l => ({ ...l, adj: { ...l.adj }, mask: rtCloneCanvas(l.mask), healCanvas: rtCloneCanvas(l.healCanvas) }));
+    rtActiveLayerId = entry.activeLayerId;
+    rtCrop = entry.crop ? { ...entry.crop } : { active: false, rect: null, rotationQuarter: 0, straighten: 0, ratioKey: 'free' };
+    if (rtCropEditMode) rtSetCropEditMode(false);
+    rtSyncCropControlsToState();
+    const activeLayer = rtLayers.find(l => l.id === rtActiveLayerId) || rtLayers[0];
+    rtLoadActiveLayerIntoGlobals(activeLayer);
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtUpdateHistoryButtons();
+    rtRenderHistoryPanel();
+  }
+  if (rtUndoBtn) rtUndoBtn.addEventListener('click', () => rtGoToHistory(rtHistoryIndex - 1));
+  if (rtRedoBtn) rtRedoBtn.addEventListener('click', () => rtGoToHistory(rtHistoryIndex + 1));
+  // Commit a history step when a slider is released ('change'), not on
+  // every 'input' tick while dragging -- that would flood the stack with
+  // an entry per pixel of drag distance.
+  Object.values(RT_ID_MAP).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => rtPushHistory('Adjustment'));
+  });
+
+  function rtRenderHistoryPanel(){
+    const list = document.getElementById('rtHistoryList');
+    if (!list) return;
+    list.innerHTML = '';
+    rtHistory.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = 'rt-history-row' + (i === rtHistoryIndex ? ' current' : '');
+      row.setAttribute('role', 'listitem');
+      row.tabIndex = 0;
+      const num = document.createElement('span'); num.className = 'rt-history-step-num'; num.textContent = String(i);
+      const label = document.createElement('span'); label.textContent = entry.label;
+      row.appendChild(num); row.appendChild(label);
+      row.addEventListener('click', () => rtGoToHistory(i));
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); rtGoToHistory(i); } });
+      list.appendChild(row);
+    });
+    const current = list.querySelector('.rt-history-row.current');
+    if (current) current.scrollIntoView({ block: 'nearest' });
+  }
+
+  /* ---------- Layers (Phase 2) ---------- */
+  function rtGetActiveLayer(){ return rtLayers.find(l => l.id === rtActiveLayerId); }
+
+  function rtUpdateSliderLockState(){
+    const layer = rtGetActiveLayer();
+    const locked = !!(layer && layer.locked);
+    Object.values(RT_ID_MAP).forEach(id => { const el = document.getElementById(id); if (el) el.disabled = locked; });
+    document.querySelectorAll('#rtAccordionFilters [data-preset]').forEach(btn => { btn.disabled = locked; });
+  }
+
+  function rtSelectLayer(id){
+    if (id === rtActiveLayerId) return;
+    if (rtMaskEditActive) rtSetMaskEditMode(false);
+    if (rtHealEditActive) rtSetHealEditMode(false);
+    rtSyncActiveLayerFromGlobals();
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer) return;
+    rtActiveLayerId = id;
+    rtLoadActiveLayerIntoGlobals(layer);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    renderRtPreview();
+  }
+
+  function rtAddLayer(){
+    rtSyncActiveLayerFromGlobals();
+    const base = rtLayers[0];
+    const blank = document.createElement('canvas');
+    blank.width = base.canvas.width; blank.height = base.canvas.height;
+    const newLayer = {
+      id: rtLayerIdSeq++, name: `Layer ${rtLayers.length + 1}`, canvas: blank,
+      visible: true, locked: false, opacity: 100, blendMode: 'normal',
+      adj: { ...RT_DEFAULTS }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+      mask: null, maskEnabled: true, maskVersion: 0,
+      healCanvas: null, healVersion: 0,
+      type: 'image', subjectMask: null, canvasVersion: 0,
+    };
+    rtLayers.push(newLayer);
+    rtActiveLayerId = newLayer.id;
+    rtLoadActiveLayerIntoGlobals(newLayer);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('New Layer');
+    toast('New layer added.');
+  }
+
+  /* ---------- Background Layer system (Phase 2 slice 5) ----------
+     Color and Gradient layers are ordinary layers whose canvas starts
+     pre-filled instead of blank -- they flow through the exact same
+     compositor, mask, blend-mode, opacity, and history machinery as any
+     photo layer, so there's no separate "background" code path to keep
+     in sync. Reordered to the bottom of the stack (via the existing
+     reorder controls), any of these serves as the document's background. */
+  function rtAddColorLayer(){
+    rtSyncActiveLayerFromGlobals();
+    const base = rtLayers[0];
+    const color = document.getElementById('rtBgFillColor').value;
+    const filled = document.createElement('canvas');
+    filled.width = base.canvas.width; filled.height = base.canvas.height;
+    const fctx = filled.getContext('2d');
+    fctx.fillStyle = color;
+    fctx.fillRect(0, 0, filled.width, filled.height);
+    const newLayer = {
+      id: rtLayerIdSeq++, name: `Color Fill ${rtLayers.length + 1}`, canvas: filled,
+      visible: true, locked: false, opacity: 100, blendMode: 'normal',
+      adj: { ...RT_DEFAULTS }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+      mask: null, maskEnabled: true, maskVersion: 0,
+      healCanvas: null, healVersion: 0,
+      type: 'color', fillColor: color, subjectMask: null, canvasVersion: 0,
+    };
+    rtLayers.push(newLayer);
+    rtActiveLayerId = newLayer.id;
+    rtLoadActiveLayerIntoGlobals(newLayer);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Color Fill Layer');
+    toast('Color fill layer added.');
+  }
+  function rtAddGradientLayer(){
+    rtSyncActiveLayerFromGlobals();
+    const base = rtLayers[0];
+    const c1 = document.getElementById('rtGradientColor1').value;
+    const c2 = document.getElementById('rtGradientColor2').value;
+    const filled = document.createElement('canvas');
+    filled.width = base.canvas.width; filled.height = base.canvas.height;
+    const fctx = filled.getContext('2d');
+    const grad = fctx.createLinearGradient(0, 0, 0, filled.height);
+    grad.addColorStop(0, c1);
+    grad.addColorStop(1, c2);
+    fctx.fillStyle = grad;
+    fctx.fillRect(0, 0, filled.width, filled.height);
+    const newLayer = {
+      id: rtLayerIdSeq++, name: `Gradient Fill ${rtLayers.length + 1}`, canvas: filled,
+      visible: true, locked: false, opacity: 100, blendMode: 'normal',
+      adj: { ...RT_DEFAULTS }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+      mask: null, maskEnabled: true, maskVersion: 0,
+      healCanvas: null, healVersion: 0,
+      type: 'gradient', gradientColors: [c1, c2], subjectMask: null, canvasVersion: 0,
+    };
+    rtLayers.push(newLayer);
+    rtActiveLayerId = newLayer.id;
+    rtLoadActiveLayerIntoGlobals(newLayer);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Gradient Fill Layer');
+    toast('Gradient fill layer added.');
+  }
+  function rtMakeLayerTransparent(){
+    const active = rtGetActiveLayer();
+    if (!active) return;
+    if (active.locked){ toast('This layer is locked.', 'err'); return; }
+    const blank = document.createElement('canvas');
+    blank.width = active.canvas.width; blank.height = active.canvas.height;
+    active.canvas = blank;
+    active.type = 'transparent';
+    active.canvasVersion = (active.canvasVersion || 0) + 1;
+    active.mask = null; active.maskVersion = 0;
+    active.healCanvas = null; active.healVersion = 0;
+    if (active.id === rtActiveLayerId) rtSourceCanvas = blank;
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Make Layer Transparent');
+    toast('Layer cleared to transparent \u2014 export as PNG to keep transparency.');
+  }
+  document.getElementById('rtAddColorLayerBtn').addEventListener('click', rtAddColorLayer);
+  const rtHairAnalyzeBtnEl = document.getElementById('rtHairAnalyzeBtn');
+  if (rtHairAnalyzeBtnEl) rtHairAnalyzeBtnEl.addEventListener('click', async () => {
+    const resultsEl = document.getElementById('rtHairAnalysisResults');
+    rtHairAnalyzeBtnEl.disabled = true;
+    rtHairAnalyzeBtnEl.textContent = 'Analyzing\u2026';
+    resultsEl.style.display = 'none';
+    try{
+      const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+      const maxDim = 900;
+      let w = sw, h = sh;
+      if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+      const report = await rtGetHairIntelligence(w, h);
+      if (!report){
+        resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">No hair region could be detected in this photo.</p>';
+      } else {
+        const pct = (v) => v == null ? '\u2014' : Math.round(v*100) + '%';
+        resultsEl.innerHTML = `
+          <div class="rt-mask-row"><label style="min-width:110px;">Brightness</label><span>${pct(report.stats && report.stats.brightness)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Contrast</label><span>${pct(report.stats && report.stats.contrast)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Shine</label><span>${pct(report.shine && report.shine.shineScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Texture</label><span>${pct(report.texture && report.texture.textureScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Frizz</label><span>${pct(report.frizz && report.frizz.frizzScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Health Score</label><span>${pct(report.healthScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Curl Pattern</label><span>${report.texture ? report.texture.classification : 'Unknown'} (confidence: ${pct(report.texture && report.texture.confidence)})</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Volume</label><span>${report.volume ? report.volume.classification : 'Unknown'} (confidence: ${pct(report.volume && report.volume.confidence)})</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Flyaway Strands</label><span>${report.flyaway ? report.flyaway.flyawayCount : '\u2014'} candidate region(s) detected</span></div>
+        `;
+      }
+      resultsEl.style.display = 'block';
+    }catch(err){
+      resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">Analysis failed: ' + (err.message || 'unknown error') + '</p>';
+      resultsEl.style.display = 'block';
+    } finally {
+      rtHairAnalyzeBtnEl.disabled = false;
+      rtHairAnalyzeBtnEl.textContent = 'Analyze Hair';
+    }
+  });
+  const rtPortraitAnalyzeBtnEl = document.getElementById('rtPortraitAnalyzeBtn');
+  if (rtPortraitAnalyzeBtnEl) rtPortraitAnalyzeBtnEl.addEventListener('click', async () => {
+    const resultsEl = document.getElementById('rtPortraitAnalysisResults');
+    rtPortraitAnalyzeBtnEl.disabled = true;
+    rtPortraitAnalyzeBtnEl.textContent = 'Analyzing\u2026';
+    resultsEl.style.display = 'none';
+    try{
+      const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+      const maxDim = 900;
+      let w = sw, h = sh;
+      if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+      const coordinated = await rtPortraitCoordinator(w, h);
+      const report = coordinated ? coordinated.portrait : null;
+      if (!report || !report.faceDetected){
+        resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">No face could be detected in this photo, so Portrait Intelligence has nothing reliable to measure.</p>';
+      } else {
+        const pct = (v) => v == null ? '\u2014' : Math.round(v*100) + '%';
+        const unk = (field) => field && field.value !== undefined ? field.value : (field == null ? 'Unknown' : field);
+        resultsEl.innerHTML = `
+          <div class="rt-mask-row"><label style="min-width:110px;"><strong>Overall Score</strong></label><span><strong>${pct(coordinated.overallScore)}</strong> (from ${coordinated.scoreComponentCount} measured signals)</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Background Detected</label><span>${coordinated.backgroundDetected ? 'Yes' : 'No'}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Confidence</label><span>${pct(report.confidence)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Hair Detected</label><span>${report.hairDetected ? 'Yes' : 'No'}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Subject Visibility</label><span>${pct(report.visibility)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Rotation</label><span>${report.rotation ? report.rotation.rollDegrees + '\u00b0 (' + report.rotation.orientation + ')' : '\u2014'}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Face Scale</label><span>${pct(report.scale)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Brightness</label><span>${pct(report.photometrics && report.photometrics.brightness)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Contrast</label><span>${pct(report.photometrics && report.photometrics.contrast)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Warmth</label><span>${pct(report.photometrics && report.photometrics.warmth)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Subject Sharpness</label><span>${pct(report.sharpness && report.sharpness.sharpnessScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Rule of Thirds</label><span>${pct(report.composition && report.composition.thirdsScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Frame Balance</label><span>${pct(report.composition && report.composition.balanceScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Facial Symmetry</label><span>${report.symmetry ? pct(report.symmetry.symmetryScore) + ' (confidence: ' + pct(report.symmetry.confidence) + ')' : 'Unknown'}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Crop Quality</label><span>${pct(report.cropQuality && report.cropQuality.cropQualityScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Lighting</label><span>${unk(report.lighting)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Eye Contact</label><span>${unk(report.eyeContact)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Expression</label><span>${unk(report.expression)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:110px;">Pose</label><span>${unk(report.pose)}</span></div>
+        `;
+      }
+      resultsEl.style.display = 'block';
+    }catch(err){
+      resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">Analysis failed: ' + (err.message || 'unknown error') + '</p>';
+      resultsEl.style.display = 'block';
+    } finally {
+      rtPortraitAnalyzeBtnEl.disabled = false;
+      rtPortraitAnalyzeBtnEl.textContent = 'Analyze Portrait';
+    }
+  });
+  const rtBackgroundAnalyzeBtnEl = document.getElementById('rtBackgroundAnalyzeBtn');
+  if (rtBackgroundAnalyzeBtnEl) rtBackgroundAnalyzeBtnEl.addEventListener('click', async () => {
+    const resultsEl = document.getElementById('rtBackgroundAnalysisResults');
+    rtBackgroundAnalyzeBtnEl.disabled = true;
+    rtBackgroundAnalyzeBtnEl.textContent = 'Analyzing\u2026';
+    resultsEl.style.display = 'none';
+    try{
+      const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+      const maxDim = 900;
+      let w = sw, h = sh;
+      if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+      const report = await rtGetBackgroundIntelligence(w, h);
+      if (!report){
+        resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">Background could not be separated from the subject in this photo.</p>';
+      } else {
+        const pct = (v) => v == null ? '\u2014' : Math.round(v*100) + '%';
+        resultsEl.innerHTML = `
+          <div class="rt-mask-row"><label style="min-width:130px;">Background Confidence</label><span>${pct(report.confidence)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:130px;">Subject Isolation</label><span>${pct(report.isolationQuality)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:130px;">Edge Quality</label><span>${pct(report.edgeQuality && report.edgeQuality.edgeQualityScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:130px;">Background Complexity</label><span>${pct(report.complexity && report.complexity.complexityScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:130px;">Subject Separation</label><span>${pct(report.separation && report.separation.separationScore)}</span></div>
+          <div class="rt-mask-row"><label style="min-width:130px;">Blur Headroom</label><span>${pct(report.blurQuality && report.blurQuality.blurQualityScore)}</span></div>
+          <p class="editor-hint" style="margin-top:8px;">${report.blurQuality ? report.blurQuality.recommendation : ''}</p>
+        `;
+      }
+      resultsEl.style.display = 'block';
+    }catch(err){
+      resultsEl.innerHTML = '<p class="editor-hint" style="margin:0;">Analysis failed: ' + (err.message || 'unknown error') + '</p>';
+      resultsEl.style.display = 'block';
+    } finally {
+      rtBackgroundAnalyzeBtnEl.disabled = false;
+      rtBackgroundAnalyzeBtnEl.textContent = 'Analyze Background';
+    }
+  });
+  const rtAiMagicBtnEl = document.getElementById('rtAiMagicBtn');
+  if (rtAiMagicBtnEl) rtAiMagicBtnEl.addEventListener('click', async () => {
+    rtAiMagicBtnEl.disabled = true;
+    rtAiMagicBtnEl.textContent = 'Thinking\u2026';
+    try{
+      await rtRunAiMagic();
+    }catch(err){
+      toast('AI Magic could not complete: ' + (err.message || 'unknown error'), 'err');
+    } finally {
+      rtAiMagicBtnEl.disabled = false;
+      rtAiMagicBtnEl.textContent = 'Run AI Magic';
+    }
+  });
+  document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
+  document.getElementById('rtMakeTransparentBtn').addEventListener('click', rtMakeLayerTransparent);
+
+  /* ---------- Canvas Background (Phase 2 slice 5) ----------
+     Purely a view-time CSS background behind the canvas -- toggling it
+     never touches renderRtComposite, renderRtPreview, or the export
+     pipeline, so it can never leak into an exported file. */
+  const RT_CANVAS_BG_CLASSES = ['rt-canvas-bg-white', 'rt-canvas-bg-gray', 'rt-canvas-bg-black', 'rt-canvas-bg-custom'];
+  function rtSetCanvasBackground(mode, customColor){
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    if (!wrap) return;
+    wrap.classList.remove(...RT_CANVAS_BG_CLASSES);
+    if (mode !== 'checker') wrap.classList.add('rt-canvas-bg-' + mode);
+    if (mode === 'custom' && customColor) wrap.style.setProperty('--rt-canvas-custom-bg', customColor);
+    document.querySelectorAll('.rt-canvas-bg-swatch').forEach(btn => btn.classList.toggle('active', btn.dataset.bg === mode));
+  }
+  document.querySelectorAll('.rt-canvas-bg-swatch[data-bg]').forEach(btn => {
+    btn.addEventListener('click', () => rtSetCanvasBackground(btn.dataset.bg));
+  });
+  document.getElementById('rtCanvasBgCustomColor').addEventListener('input', (e) => rtSetCanvasBackground('custom', e.target.value));
+
+  async function rtDuplicateLayer(){
+    const active = rtGetActiveLayer();
+    if (!active || active.locked){ if (active && active.locked) toast('This layer is locked.', 'err'); return; }
+    rtSyncActiveLayerFromGlobals();
+    // Bake the active layer's current adjusted look into the duplicate's
+    // own pristine canvas -- the copy starts as an independent layer with
+    // its own adjustments reset to default, matching how "Duplicate Layer"
+    // behaves in professional editors (adjustments don't stack twice).
+    const baked = document.createElement('canvas');
+    await rtRenderLayerAdjusted(active, baked, null);
+    const dup = {
+      id: rtLayerIdSeq++, name: `${active.name} copy`, canvas: baked,
+      visible: active.visible, locked: false, opacity: active.opacity, blendMode: active.blendMode,
+      adj: { ...RT_DEFAULTS }, faceLandmarks: active.faceLandmarks, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+      mask: null, maskEnabled: true, maskVersion: 0,
+      healCanvas: null, healVersion: 0,
+      type: 'image', subjectMask: null, canvasVersion: 0,
+    };
+    const idx = rtLayers.findIndex(l => l.id === active.id);
+    rtLayers.splice(idx + 1, 0, dup);
+    rtActiveLayerId = dup.id;
+    rtLoadActiveLayerIntoGlobals(dup);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    await renderRtPreview();
+    rtPushHistory('Duplicate Layer');
+    toast('Layer duplicated.');
+  }
+
+  function rtDeleteLayer(){
+    const active = rtGetActiveLayer();
+    if (rtLayers.length <= 1){ toast('At least one layer is required.', 'err'); return; }
+    if (active && active.locked){ toast('This layer is locked.', 'err'); return; }
+    const idx = rtLayers.findIndex(l => l.id === rtActiveLayerId);
+    if (idx === -1) return;
+    rtLayers.splice(idx, 1);
+    const next = rtLayers[Math.max(0, idx - 1)];
+    rtActiveLayerId = next.id;
+    rtLoadActiveLayerIntoGlobals(next);
+    rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Delete Layer');
+    toast('Layer deleted.');
+  }
+
+  function rtRenameLayer(id, name){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer || layer.locked) { rtRenderLayersPanel(); return; }
+    const trimmed = (name || '').trim().slice(0, 40);
+    if (!trimmed || trimmed === layer.name){ rtRenderLayersPanel(); return; }
+    layer.name = trimmed;
+    rtRenderLayersPanel();
+    rtPushHistory('Rename Layer');
+  }
+
+  function rtToggleLayerVisible(id){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer) return;
+    layer.visible = !layer.visible;
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Toggle Layer Visibility');
+  }
+
+  function rtToggleLayerLock(id){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer) return;
+    layer.locked = !layer.locked;
+    if (layer.id === rtActiveLayerId) rtUpdateSliderLockState();
+    rtRenderLayersPanel();
+    rtPushHistory('Toggle Layer Lock');
+  }
+
+  function rtSetLayerOpacity(id, value){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer || layer.locked) return;
+    layer.opacity = rtClamp(+value, 0, 100);
+    renderRtPreview();
+  }
+
+  function rtSetLayerBlendMode(id, mode){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer || layer.locked || !RT_BLEND_MODES[mode]) return;
+    layer.blendMode = mode;
+    renderRtPreview();
+    rtPushHistory('Blend Mode');
+  }
+
+  function rtMoveLayer(id, dir){
+    const layer = rtLayers.find(l => l.id === id);
+    if (!layer || layer.locked) return;
+    const idx = rtLayers.findIndex(l => l.id === id);
+    const newIdx = idx + dir;
+    if (idx === -1 || newIdx < 0 || newIdx >= rtLayers.length) return;
+    const [item] = rtLayers.splice(idx, 1);
+    rtLayers.splice(newIdx, 0, item);
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Reorder Layers');
+  }
+
+  function rtReorderLayerDrop(draggedId, targetId){
+    const dragged = rtLayers.find(l => l.id === draggedId);
+    if (!dragged || dragged.locked || draggedId === targetId) return;
+    const fromIdx = rtLayers.findIndex(l => l.id === draggedId);
+    const toIdx = rtLayers.findIndex(l => l.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [item] = rtLayers.splice(fromIdx, 1);
+    rtLayers.splice(toIdx, 0, item);
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Reorder Layers');
+  }
+
+  function rtLayerThumbDataUrl(layer){
+    const t = document.createElement('canvas');
+    const size = 40;
+    const scale = Math.min(size / layer.canvas.width, size / layer.canvas.height);
+    t.width = Math.max(1, Math.round(layer.canvas.width * scale));
+    t.height = Math.max(1, Math.round(layer.canvas.height * scale));
+    t.getContext('2d').drawImage(layer.canvas, 0, 0, t.width, t.height);
+    return t.toDataURL('image/jpeg', 0.6);
+  }
+
+  const RT_ICON_EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const RT_ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.9 4.2A11 11 0 0112 4c7 0 11 7 11 7a13.5 13.5 0 01-3.1 3.8M6.5 6.6A13.4 13.4 0 001 11s4 7 11 7a10.6 10.6 0 004.2-.85"/></svg>';
+  const RT_ICON_LOCK_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>';
+  const RT_ICON_LOCK_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 017.6-1.8"/></svg>';
+  const RT_ICON_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  const RT_ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+
+  function rtRenderLayersPanel(){
+    const list = document.getElementById('rtLayersList');
+    if (!list) return;
+    list.innerHTML = '';
+    // Top of visual stack shown first, matching how the layers actually composite.
+    const displayOrder = rtLayers.map((layer, index) => ({ layer, index })).reverse();
+    displayOrder.forEach(({ layer, index }) => {
+      const row = document.createElement('div');
+      row.className = 'rt-layer-row' + (layer.id === rtActiveLayerId ? ' active' : '') + (layer.locked ? ' locked' : '');
+      row.setAttribute('role', 'listitem');
+      row.dataset.layerId = String(layer.id);
+
+      const top = document.createElement('div');
+      top.className = 'rt-layer-row-top';
+
+      const thumb = document.createElement('img');
+      thumb.className = 'rt-layer-thumb'; thumb.alt = ''; thumb.src = rtLayerThumbDataUrl(layer);
+      top.appendChild(thumb);
+
+      const nameInput = document.createElement('input');
+      nameInput.className = 'rt-layer-name-input'; nameInput.value = layer.name;
+      nameInput.setAttribute('aria-label', 'Layer name'); nameInput.disabled = layer.locked;
+      nameInput.addEventListener('click', (e) => e.stopPropagation());
+      nameInput.addEventListener('change', () => rtRenameLayer(layer.id, nameInput.value));
+      top.appendChild(nameInput);
+
+      const visBtn = document.createElement('button');
+      visBtn.type = 'button'; visBtn.className = 'rt-layer-icon-btn';
+      visBtn.title = layer.visible ? 'Hide layer' : 'Show layer';
+      visBtn.setAttribute('aria-pressed', String(layer.visible));
+      visBtn.innerHTML = layer.visible ? RT_ICON_EYE_OPEN : RT_ICON_EYE_OFF;
+      visBtn.addEventListener('click', (e) => { e.stopPropagation(); rtToggleLayerVisible(layer.id); });
+      top.appendChild(visBtn);
+
+      const lockBtn = document.createElement('button');
+      lockBtn.type = 'button'; lockBtn.className = 'rt-layer-icon-btn';
+      lockBtn.title = layer.locked ? 'Unlock layer' : 'Lock layer';
+      lockBtn.setAttribute('aria-pressed', String(layer.locked));
+      lockBtn.innerHTML = layer.locked ? RT_ICON_LOCK_CLOSED : RT_ICON_LOCK_OPEN;
+      lockBtn.addEventListener('click', (e) => { e.stopPropagation(); rtToggleLayerLock(layer.id); });
+      top.appendChild(lockBtn);
+
+      row.appendChild(top);
+
+      const controls = document.createElement('div');
+      controls.className = 'rt-layer-row-controls';
+
+      const opLabel = document.createElement('label'); opLabel.textContent = 'Opacity';
+      const opSlider = document.createElement('input');
+      opSlider.type = 'range'; opSlider.min = '0'; opSlider.max = '100'; opSlider.value = String(layer.opacity);
+      opSlider.className = 'rt-layer-opacity'; opSlider.disabled = layer.locked;
+      opSlider.addEventListener('click', (e) => e.stopPropagation());
+      opSlider.addEventListener('input', (e) => { e.stopPropagation(); rtSetLayerOpacity(layer.id, e.target.value); });
+      opSlider.addEventListener('change', (e) => { e.stopPropagation(); rtPushHistory('Layer Opacity'); });
+      controls.appendChild(opLabel); controls.appendChild(opSlider);
+
+      const blendSelect = document.createElement('select');
+      blendSelect.className = 'rt-layer-blend-select'; blendSelect.disabled = layer.locked;
+      blendSelect.addEventListener('click', (e) => e.stopPropagation());
+      Object.keys(RT_BLEND_MODES).forEach(key => {
+        const opt = document.createElement('option');
+        opt.value = key; opt.textContent = RT_BLEND_LABELS[key];
+        if (key === layer.blendMode) opt.selected = true;
+        blendSelect.appendChild(opt);
+      });
+      blendSelect.addEventListener('change', (e) => { e.stopPropagation(); rtSetLayerBlendMode(layer.id, e.target.value); });
+      controls.appendChild(blendSelect);
+
+      const reorderWrap = document.createElement('div');
+      reorderWrap.className = 'rt-layer-reorder-btns';
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button'; upBtn.className = 'rt-layer-icon-btn'; upBtn.title = 'Move layer up'; upBtn.innerHTML = RT_ICON_UP;
+      upBtn.disabled = layer.locked || index === rtLayers.length - 1;
+      upBtn.addEventListener('click', (e) => { e.stopPropagation(); rtMoveLayer(layer.id, 1); });
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button'; downBtn.className = 'rt-layer-icon-btn'; downBtn.title = 'Move layer down'; downBtn.innerHTML = RT_ICON_DOWN;
+      downBtn.disabled = layer.locked || index === 0;
+      downBtn.addEventListener('click', (e) => { e.stopPropagation(); rtMoveLayer(layer.id, -1); });
+      reorderWrap.appendChild(upBtn); reorderWrap.appendChild(downBtn);
+      controls.appendChild(reorderWrap);
+
+      row.appendChild(controls);
+      row.addEventListener('click', () => rtSelectLayer(layer.id));
+
+      // Desktop drag-and-drop reordering (progressive enhancement; the
+      // up/down buttons above are the reliable path on touch devices,
+      // where native HTML5 DnD isn't available out of the box).
+      if (!layer.locked){
+        row.draggable = true;
+        row.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(layer.id)); e.dataTransfer.effectAllowed = 'move'; });
+        row.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+        row.addEventListener('drop', (e) => { e.preventDefault(); rtReorderLayerDrop(+e.dataTransfer.getData('text/plain'), layer.id); });
+      }
+
+      list.appendChild(row);
+    });
+
+    const deleteBtn = document.getElementById('rtLayerDeleteBtn');
+    if (deleteBtn){ const active = rtGetActiveLayer(); deleteBtn.disabled = rtLayers.length <= 1 || !!(active && active.locked); }
+    const dupBtn = document.getElementById('rtLayerDuplicateBtn');
+    if (dupBtn){ const active = rtGetActiveLayer(); dupBtn.disabled = !!(active && active.locked); }
+    rtRenderMaskPanel();
+  }
+
+  /* ---------- Layer Masks (Phase 2 slice 2) ----------
+     A mask is its own grayscale canvas at the layer's full resolution:
+     white = fully visible, black = fully hidden, gray = partial. Applied
+     during compositing (see renderRtComposite) via luminance-to-alpha +
+     destination-in, so it works correctly with every existing blend mode
+     and opacity setting -- masks aren't a separate code path from the
+     rest of the layer system, they plug into the same compositor. */
+  let rtMaskEditActive = false;
+  let rtMaskBrushSize = 60;   // in the layer's own full-resolution pixels
+  let rtMaskBrushMode = 'reveal'; // 'reveal' paints white, 'conceal' paints black
+  let rtMaskPainting = false;
+  let rtMaskLastPoint = null;
+
+  function rtAddLayerMask(){
+    const active = rtGetActiveLayer();
+    if (!active){ return; }
+    if (active.locked){ toast('This layer is locked.', 'err'); return; }
+    if (active.mask){ toast('This layer already has a mask.', 'err'); return; }
+    const m = document.createElement('canvas');
+    m.width = active.canvas.width; m.height = active.canvas.height;
+    const mctx = m.getContext('2d');
+    mctx.fillStyle = '#fff'; mctx.fillRect(0, 0, m.width, m.height);
+    active.mask = m; active.maskEnabled = true; active.maskVersion = 1;
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Add Layer Mask');
+    toast('Layer mask added \u2014 tap "Edit Mask" then paint to hide or reveal parts of this layer.');
+  }
+  function rtDeleteLayerMask(){
+    const active = rtGetActiveLayer();
+    if (!active || !active.mask) return;
+    if (active.locked){ toast('This layer is locked.', 'err'); return; }
+    active.mask = null; active.maskEnabled = true; active.maskVersion = 0;
+    rtSetMaskEditMode(false);
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Delete Layer Mask');
+  }
+  function rtInvertLayerMask(){
+    const active = rtGetActiveLayer();
+    if (!active || !active.mask || active.locked) return;
+    const ctx = active.mask.getContext('2d');
+    const id = ctx.getImageData(0, 0, active.mask.width, active.mask.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4){ d[i] = 255-d[i]; d[i+1] = 255-d[i+1]; d[i+2] = 255-d[i+2]; }
+    ctx.putImageData(id, 0, 0);
+    active.maskVersion = (active.maskVersion || 0) + 1;
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Invert Mask');
+  }
+  function rtToggleMaskEnabled(){
+    const active = rtGetActiveLayer();
+    if (!active || !active.mask) return;
+    active.maskEnabled = !active.maskEnabled;
+    rtRenderLayersPanel();
+    renderRtPreview();
+    rtPushHistory('Toggle Mask Visibility');
+  }
+  function rtSetMaskEditMode(on){
+    rtMaskEditActive = on;
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    if (wrap) wrap.classList.toggle('tool-brush', on);
+    rtRenderLayersPanel();
+  }
+
+  function rtCanvasDisplayToSourcePoint(clientX, clientY){
+    const active = rtGetActiveLayer();
+    const canvas = document.getElementById('rtPreviewCanvas');
+    if (!active || !canvas || !canvas.width) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const previewX = (clientX - rect.left) * (canvas.width / rect.width);
+    const previewY = (clientY - rect.top) * (canvas.height / rect.height);
+    const fullScaleX = active.canvas.width / canvas.width;
+    const fullScaleY = active.canvas.height / canvas.height;
+    return { x: previewX * fullScaleX, y: previewY * fullScaleY };
+  }
+  function rtPaintMaskAt(x, y){
+    const active = rtGetActiveLayer();
+    if (!active || !active.mask) return;
+    const ctx = active.mask.getContext('2d');
+    ctx.fillStyle = rtMaskBrushMode === 'reveal' ? '#fff' : '#000';
+    ctx.beginPath();
+    ctx.arc(x, y, rtMaskBrushSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  function rtPaintMaskStroke(x1, y1, x2, y2){
+    const dist = Math.hypot(x2-x1, y2-y1);
+    const steps = Math.max(1, Math.ceil(dist / Math.max(4, rtMaskBrushSize/3)));
+    for (let i = 0; i <= steps; i++){
+      const t = i/steps;
+      rtPaintMaskAt(x1 + (x2-x1)*t, y1 + (y2-y1)*t);
+    }
+  }
+  function rtMaskDebouncedRender(){
+    clearTimeout(window.__rtMaskDebounce);
+    window.__rtMaskDebounce = setTimeout(renderRtPreview, 40);
+  }
+  let rtMaskCapturedPointerId = null;
+  const rtCanvasElForMask = document.getElementById('rtPreviewCanvas');
+  rtCanvasElForMask.addEventListener('pointerdown', (e) => {
+    if (!rtMaskEditActive) return;
+    const active = rtGetActiveLayer();
+    if (!active || !active.mask || active.locked) return;
+    e.preventDefault();
+    rtMaskPainting = true;
+    const pt = rtCanvasDisplayToSourcePoint(e.clientX, e.clientY);
+    if (pt){ rtPaintMaskAt(pt.x, pt.y); rtMaskLastPoint = pt; rtMaskDebouncedRender(); }
+    if (rtCanvasElForMask.setPointerCapture) { try{ rtCanvasElForMask.setPointerCapture(e.pointerId); rtMaskCapturedPointerId = e.pointerId; }catch(err){} }
+  });
+  rtCanvasElForMask.addEventListener('pointermove', (e) => {
+    if (!rtMaskEditActive || !rtMaskPainting) return;
+    e.preventDefault();
+    const pt = rtCanvasDisplayToSourcePoint(e.clientX, e.clientY);
+    if (pt && rtMaskLastPoint){ rtPaintMaskStroke(rtMaskLastPoint.x, rtMaskLastPoint.y, pt.x, pt.y); rtMaskLastPoint = pt; rtMaskDebouncedRender(); }
+  });
+  function rtEndMaskStroke(){
+    if (rtMaskCapturedPointerId !== null && rtCanvasElForMask.releasePointerCapture){
+      try{ rtCanvasElForMask.releasePointerCapture(rtMaskCapturedPointerId); }catch(err){}
+      rtMaskCapturedPointerId = null;
+    }
+    if (!rtMaskPainting) return;
+    rtMaskPainting = false; rtMaskLastPoint = null;
+    const active = rtGetActiveLayer();
+    if (active) active.maskVersion = (active.maskVersion || 0) + 1;
+    renderRtPreview();
+    rtPushHistory('Brush Mask');
+  }
+  rtCanvasElForMask.addEventListener('pointerup', rtEndMaskStroke);
+  rtCanvasElForMask.addEventListener('pointercancel', rtEndMaskStroke);
+  rtCanvasElForMask.addEventListener('pointerleave', rtEndMaskStroke);
+
+  function rtRenderMaskPanel(){
+    const box = document.getElementById('rtMaskPanel');
+    if (!box) return;
+    box.innerHTML = '';
+    const active = rtGetActiveLayer();
+    if (!active) return;
+
+    if (!active.mask){
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn btn-secondary';
+      btn.style.width = '100%'; btn.style.marginBottom = '12px';
+      btn.textContent = `+ Add Layer Mask to "${active.name}"`;
+      btn.disabled = active.locked;
+      btn.addEventListener('click', rtAddLayerMask);
+      box.appendChild(btn);
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'rt-mask-box';
+
+    const top = document.createElement('div');
+    top.className = 'rt-mask-box-top';
+    const thumb = document.createElement('img');
+    thumb.className = 'rt-mask-thumb'; thumb.alt = '';
+    thumb.src = rtLayerThumbDataUrl({ canvas: active.mask });
+    const title = document.createElement('div');
+    title.className = 'rt-mask-title'; title.textContent = `Mask \u2014 ${active.name}`;
+    const visBtn = document.createElement('button');
+    visBtn.type = 'button'; visBtn.className = 'rt-layer-icon-btn';
+    visBtn.title = active.maskEnabled ? 'Disable mask' : 'Enable mask';
+    visBtn.setAttribute('aria-pressed', String(active.maskEnabled));
+    visBtn.innerHTML = active.maskEnabled ? RT_ICON_EYE_OPEN : RT_ICON_EYE_OFF;
+    visBtn.addEventListener('click', rtToggleMaskEnabled);
+    top.appendChild(thumb); top.appendChild(title); top.appendChild(visBtn);
+    wrap.appendChild(top);
+
+    const editRow = document.createElement('div');
+    editRow.className = 'rt-mask-row';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button'; editBtn.className = 'btn btn-ghost rt-mask-edit-btn' + (rtMaskEditActive ? ' editing' : '');
+    editBtn.style.flex = '1';
+    editBtn.textContent = rtMaskEditActive ? 'Done Editing Mask' : 'Edit Mask (Brush)';
+    editBtn.disabled = active.locked;
+    editBtn.addEventListener('click', () => rtSetMaskEditMode(!rtMaskEditActive));
+    editRow.appendChild(editBtn);
+    wrap.appendChild(editRow);
+
+    if (rtMaskEditActive){
+      const modeRow = document.createElement('div');
+      modeRow.className = 'rt-mask-row';
+      const modeLabel = document.createElement('label'); modeLabel.textContent = 'Brush:';
+      const seg = document.createElement('div'); seg.className = 'rt-mask-segmented';
+      const revealBtn = document.createElement('button'); revealBtn.type = 'button'; revealBtn.textContent = 'Reveal';
+      revealBtn.className = rtMaskBrushMode === 'reveal' ? 'active' : '';
+      revealBtn.addEventListener('click', () => { rtMaskBrushMode = 'reveal'; rtRenderMaskPanel(); });
+      const concealBtn = document.createElement('button'); concealBtn.type = 'button'; concealBtn.textContent = 'Conceal';
+      concealBtn.className = rtMaskBrushMode === 'conceal' ? 'active' : '';
+      concealBtn.addEventListener('click', () => { rtMaskBrushMode = 'conceal'; rtRenderMaskPanel(); });
+      seg.appendChild(revealBtn); seg.appendChild(concealBtn);
+      modeRow.appendChild(modeLabel); modeRow.appendChild(seg);
+      wrap.appendChild(modeRow);
+
+      const sizeRow = document.createElement('div');
+      sizeRow.className = 'rt-mask-row';
+      const sizeLabel = document.createElement('label'); sizeLabel.textContent = `Brush Size: ${rtMaskBrushSize}px`;
+      const sizeSlider = document.createElement('input');
+      sizeSlider.type = 'range'; sizeSlider.min = '10'; sizeSlider.max = '250'; sizeSlider.value = String(rtMaskBrushSize);
+      sizeSlider.style.flex = '1';
+      sizeSlider.addEventListener('input', () => { rtMaskBrushSize = +sizeSlider.value; sizeLabel.textContent = `Brush Size: ${rtMaskBrushSize}px`; });
+      sizeRow.appendChild(sizeLabel); sizeRow.appendChild(sizeSlider);
+      wrap.appendChild(sizeRow);
+
+      const hint = document.createElement('p');
+      hint.className = 'editor-hint';
+      hint.textContent = 'Draw directly on the photo above: Reveal paints this layer back in, Conceal hides it. Pinch-zoom is unavailable while editing a mask.';
+      wrap.appendChild(hint);
+    }
+
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'rt-mask-row';
+    const invertBtn = document.createElement('button');
+    invertBtn.type = 'button'; invertBtn.className = 'btn btn-ghost'; invertBtn.style.flex = '1';
+    invertBtn.textContent = 'Invert Mask'; invertBtn.disabled = active.locked;
+    invertBtn.addEventListener('click', rtInvertLayerMask);
+    const deleteMaskBtn = document.createElement('button');
+    deleteMaskBtn.type = 'button'; deleteMaskBtn.className = 'btn btn-danger'; deleteMaskBtn.style.flex = '1';
+    deleteMaskBtn.textContent = 'Delete Mask'; deleteMaskBtn.disabled = active.locked;
+    deleteMaskBtn.addEventListener('click', rtDeleteLayerMask);
+    actionsRow.appendChild(invertBtn); actionsRow.appendChild(deleteMaskBtn);
+    wrap.appendChild(actionsRow);
+
+    box.appendChild(wrap);
+  }
+
+  /* ---------- Crop & Rotate UI (Phase 2 slice 3) ---------- */
+  function rtSyncCropControlsToState(){
+    document.querySelectorAll('.rt-crop-ratio-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.ratio === rtCrop.ratioKey);
+    });
+    const straightenSlider = document.getElementById('rtStraightenSlider');
+    const straightenVal = document.getElementById('rtStraightenVal');
+    if (straightenSlider) straightenSlider.value = String(rtCrop.straighten);
+    if (straightenVal) straightenVal.textContent = `${rtCrop.straighten}\u00b0`;
+    const editBtn = document.getElementById('rtCropEditBtn');
+    const applyBtn = document.getElementById('rtCropApplyBtn');
+    const cancelBtn = document.getElementById('rtCropCancelBtn');
+    const removeBtn = document.getElementById('rtCropRemoveBtn');
+    if (editBtn) editBtn.style.display = rtCropEditMode ? 'none' : '';
+    if (applyBtn) applyBtn.style.display = rtCropEditMode ? '' : 'none';
+    if (cancelBtn) cancelBtn.style.display = rtCropEditMode ? '' : 'none';
+    if (removeBtn) removeBtn.style.display = (!rtCropEditMode && rtCrop.active) ? '' : 'none';
+    if (editBtn) editBtn.textContent = rtCrop.active ? 'Edit Crop' : 'Start Crop';
+  }
+
+  function rtSetCropEditMode(on){
+    rtCropEditMode = on;
+    const overlay = document.getElementById('rtCropOverlay');
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    const zoomRow = document.getElementById('rtZoomRow');
+    if (wrap) wrap.classList.toggle('overlay-on', on);
+    if (wrap) wrap.classList.toggle('rt-crop-editing', on);
+    if (overlay) overlay.classList.toggle('hidden', !on);
+    // Lock zoom/pan to 100% while cropping so the overlay <-> canvas
+    // coordinate mapping stays simple and exact instead of chasing a
+    // moving target; re-enabled automatically on Apply/Cancel.
+    if (zoomRow) zoomRow.style.opacity = on ? '0.4' : '';
+    const zoomSlider = document.getElementById('rtZoomSlider');
+    if (zoomSlider) zoomSlider.disabled = on;
+    if (on){
+      rtZoom = 1;
+      if (zoomSlider){ zoomSlider.value = '100'; document.getElementById('rtZoomVal').textContent = '100'; }
+    }
+    rtSyncCropControlsToState();
+  }
+
+  function rtCropRectPxToFrac(overlayW, overlayH, px){
+    return { x: px.x/overlayW, y: px.y/overlayH, w: px.w/overlayW, h: px.h/overlayH };
+  }
+  function rtCropRectFracToPx(overlayW, overlayH, frac){
+    return { x: frac.x*overlayW, y: frac.y*overlayH, w: frac.w*overlayW, h: frac.h*overlayH };
+  }
+
+  function rtPositionCropOverlay(){
+    const canvas = document.getElementById('rtPreviewCanvas');
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    const overlay = document.getElementById('rtCropOverlay');
+    if (!canvas || !wrap || !overlay || overlay.classList.contains('hidden')) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const left = canvasRect.left - wrapRect.left + wrap.scrollLeft;
+    const top = canvasRect.top - wrapRect.top + wrap.scrollTop;
+    overlay.style.left = left + 'px';
+    overlay.style.top = top + 'px';
+    overlay.style.width = canvasRect.width + 'px';
+    overlay.style.height = canvasRect.height + 'px';
+  }
+
+  function rtSyncCropOverlayToCanvas(){
+    rtPositionCropOverlay();
+    const overlay = document.getElementById('rtCropOverlay');
+    if (!overlay) return;
+    const ow = overlay.clientWidth, oh = overlay.clientHeight;
+    if (!ow || !oh) return;
+    if (!rtCropDisplayRect){
+      const frac = rtCrop.rect || rtCropDefaultRectFraction();
+      rtCropDisplayRect = rtCropRectFracToPx(ow, oh, frac);
+    }
+    rtRenderCropOverlayContents();
+  }
+
+  function rtRenderCropOverlayContents(){
+    const overlay = document.getElementById('rtCropOverlay');
+    if (!overlay || !rtCropDisplayRect) return;
+    const ow = overlay.clientWidth, oh = overlay.clientHeight;
+    const r = rtCropDisplayRect;
+    overlay.innerHTML = '';
+
+    const shades = [
+      { top: 0, left: 0, width: ow, height: Math.max(0, r.y) },
+      { top: r.y + r.h, left: 0, width: ow, height: Math.max(0, oh - (r.y + r.h)) },
+      { top: r.y, left: 0, width: Math.max(0, r.x), height: r.h },
+      { top: r.y, left: r.x + r.w, width: Math.max(0, ow - (r.x + r.w)), height: r.h },
+    ];
+    shades.forEach(s => {
+      const d = document.createElement('div');
+      d.className = 'rt-crop-shade';
+      d.style.top = s.top + 'px'; d.style.left = s.left + 'px';
+      d.style.width = s.width + 'px'; d.style.height = s.height + 'px';
+      overlay.appendChild(d);
+    });
+
+    const rectEl = document.createElement('div');
+    rectEl.className = 'rt-crop-rect';
+    rectEl.style.left = r.x + 'px'; rectEl.style.top = r.y + 'px';
+    rectEl.style.width = r.w + 'px'; rectEl.style.height = r.h + 'px';
+    rectEl.addEventListener('pointerdown', (e) => rtCropStartDrag(e, 'move'));
+    overlay.appendChild(rectEl);
+
+    const gridSelect = document.getElementById('rtCropGridSelect');
+    const gridType = gridSelect ? gridSelect.value : 'thirds';
+    if (gridType !== 'none'){
+      const fracs = gridType === 'golden' ? [0.382, 0.618] : gridType === 'center' ? [0.5] : [1/3, 2/3];
+      fracs.forEach(f => {
+        const v = document.createElement('div'); v.className = 'rt-crop-grid-line';
+        v.style.left = (r.x + r.w*f) + 'px'; v.style.top = r.y + 'px'; v.style.width = '1px'; v.style.height = r.h + 'px';
+        overlay.appendChild(v);
+        const h = document.createElement('div'); h.className = 'rt-crop-grid-line';
+        h.style.left = r.x + 'px'; h.style.top = (r.y + r.h*f) + 'px'; h.style.width = r.w + 'px'; h.style.height = '1px';
+        overlay.appendChild(h);
+      });
+    }
+
+    const ratioLocked = rtCropCurrentRatioValue() !== null;
+    const handleDefs = [
+      ['nw', r.x, r.y], ['n', r.x+r.w/2, r.y], ['ne', r.x+r.w, r.y],
+      ['w', r.x, r.y+r.h/2], ['e', r.x+r.w, r.y+r.h/2],
+      ['sw', r.x, r.y+r.h], ['s', r.x+r.w/2, r.y+r.h], ['se', r.x+r.w, r.y+r.h],
+    ];
+    handleDefs.forEach(([pos, hx, hy]) => {
+      const isEdge = pos.length === 1;
+      if (isEdge && ratioLocked) return; // edge-only resize would break a locked ratio; corners remain
+      const h = document.createElement('div');
+      h.className = 'rt-crop-handle rt-crop-handle-' + pos + (isEdge ? ' rt-crop-handle-edge' : '');
+      h.style.left = hx + 'px'; h.style.top = hy + 'px';
+      h.addEventListener('pointerdown', (e) => rtCropStartDrag(e, pos));
+      overlay.appendChild(h);
+    });
+  }
+
+  let rtCropDrag = null;
+  let rtCropDragPointerId = null;
+  function rtCropStartDrag(e, mode){
+    e.preventDefault(); e.stopPropagation();
+    const overlay = document.getElementById('rtCropOverlay');
+    rtCropDrag = {
+      mode, startClientX: e.clientX, startClientY: e.clientY,
+      startRect: { ...rtCropDisplayRect }, ratio: rtCropCurrentRatioValue(),
+      ow: overlay.clientWidth, oh: overlay.clientHeight,
+    };
+    if (overlay.setPointerCapture){ try{ overlay.setPointerCapture(e.pointerId); rtCropDragPointerId = e.pointerId; }catch(err){} }
+    document.addEventListener('pointermove', rtCropOnDragMove);
+    document.addEventListener('pointerup', rtCropOnDragEnd);
+  }
+  function rtCropOnDragMove(e){
+    if (!rtCropDrag) return;
+    const dx = e.clientX - rtCropDrag.startClientX;
+    const dy = e.clientY - rtCropDrag.startClientY;
+    const { mode, startRect, ratio, ow, oh } = rtCropDrag;
+    const minSize = 24;
+    let r;
+    if (mode === 'move'){
+      r = {
+        x: rtClamp(startRect.x + dx, 0, Math.max(0, ow - startRect.w)),
+        y: rtClamp(startRect.y + dy, 0, Math.max(0, oh - startRect.h)),
+        w: startRect.w, h: startRect.h,
+      };
+    } else if (ratio && (mode === 'nw' || mode === 'ne' || mode === 'sw' || mode === 'se')){
+      const anchorX = mode.includes('w') ? startRect.x + startRect.w : startRect.x;
+      const anchorY = mode.includes('n') ? startRect.y + startRect.h : startRect.y;
+      const curX = mode.includes('w') ? startRect.x + dx : startRect.x + startRect.w + dx;
+      const curY = mode.includes('n') ? startRect.y + dy : startRect.y + startRect.h + dy;
+      let w = Math.abs(curX - anchorX);
+      let h = w / ratio;
+      const maxW = mode.includes('w') ? anchorX : (ow - anchorX);
+      const maxH = mode.includes('n') ? anchorY : (oh - anchorY);
+      if (h > maxH){ h = maxH; w = h*ratio; }
+      if (w > maxW){ w = maxW; h = w/ratio; }
+      w = Math.max(minSize, w); h = Math.max(minSize, h);
+      const x = mode.includes('w') ? anchorX - w : anchorX;
+      const y = mode.includes('n') ? anchorY - h : anchorY;
+      r = { x, y, w, h };
+    } else {
+      let { x, y, w, h } = startRect;
+      if (mode.includes('e')) w = rtClamp(startRect.w + dx, minSize, ow - x);
+      if (mode.includes('s')) h = rtClamp(startRect.h + dy, minSize, oh - y);
+      if (mode.includes('w')){ const newX = rtClamp(startRect.x + dx, 0, x + w - minSize); w = (x + w) - newX; x = newX; }
+      if (mode.includes('n')){ const newY = rtClamp(startRect.y + dy, 0, y + h - minSize); h = (y + h) - newY; y = newY; }
+      r = { x, y, w, h };
+    }
+    rtCropDisplayRect = r;
+    rtRenderCropOverlayContents();
+  }
+  function rtCropOnDragEnd(){
+    document.removeEventListener('pointermove', rtCropOnDragMove);
+    document.removeEventListener('pointerup', rtCropOnDragEnd);
+    const overlay = document.getElementById('rtCropOverlay');
+    if (rtCropDragPointerId !== null && overlay && overlay.releasePointerCapture){
+      try{ overlay.releasePointerCapture(rtCropDragPointerId); }catch(err){}
+      rtCropDragPointerId = null;
+    }
+    rtCropDrag = null;
+  }
+
+  document.querySelectorAll('.rt-crop-ratio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      rtCrop.ratioKey = btn.dataset.ratio;
+      rtSyncCropControlsToState();
+      if (rtCropEditMode){
+        const overlay = document.getElementById('rtCropOverlay');
+        const frac = rtCropDefaultRectFraction();
+        rtCropDisplayRect = rtCropRectFracToPx(overlay.clientWidth, overlay.clientHeight, frac);
+        rtRenderCropOverlayContents();
+      }
+    });
+  });
+
+  function rtApplyRotationChange(){
+    rtCropDisplayRect = null; // rotation changes the bounds; recompute a fresh default rect
+    if (rtCropEditMode){
+      renderRtPreview().then(() => {
+        const overlay = document.getElementById('rtCropOverlay');
+        const frac = rtCropDefaultRectFraction();
+        rtCropDisplayRect = rtCropRectFracToPx(overlay.clientWidth, overlay.clientHeight, frac);
+        rtRenderCropOverlayContents();
+      });
+    } else if (rtCrop.active) {
+      // Rotating outside of edit mode with a previously-applied crop:
+      // refit the existing crop to the new rotated bounds automatically.
+      rtCrop.rect = rtCropDefaultRectFraction();
+      renderRtPreview();
+    } else {
+      renderRtPreview();
+    }
+  }
+  document.getElementById('rtStraightenSlider').addEventListener('input', (e) => {
+    rtCrop.straighten = +e.target.value;
+    document.getElementById('rtStraightenVal').textContent = `${rtCrop.straighten}\u00b0`;
+    rtApplyRotationChange();
+  });
+  document.getElementById('rtStraightenSlider').addEventListener('change', () => rtPushHistory('Straighten'));
+  document.getElementById('rtRotateMinus90').addEventListener('click', () => {
+    rtCrop.rotationQuarter = (rtCrop.rotationQuarter + 3) % 4;
+    rtApplyRotationChange();
+    rtPushHistory('Rotate -90\u00b0');
+  });
+  document.getElementById('rtRotatePlus90').addEventListener('click', () => {
+    rtCrop.rotationQuarter = (rtCrop.rotationQuarter + 1) % 4;
+    rtApplyRotationChange();
+    rtPushHistory('Rotate +90\u00b0');
+  });
+  document.getElementById('rtRotateResetBtn').addEventListener('click', () => {
+    rtCrop.rotationQuarter = 0; rtCrop.straighten = 0;
+    document.getElementById('rtStraightenSlider').value = '0';
+    document.getElementById('rtStraightenVal').textContent = '0\u00b0';
+    rtApplyRotationChange();
+    rtPushHistory('Reset Rotation');
+  });
+  document.getElementById('rtCropGridSelect').addEventListener('change', () => { if (rtCropEditMode) rtRenderCropOverlayContents(); });
+
+  document.getElementById('rtCropEditBtn').addEventListener('click', async () => {
+    rtSetCropEditMode(true);
+    rtCropDisplayRect = null;
+    await renderRtPreview();
+    rtSyncCropOverlayToCanvas();
+  });
+  document.getElementById('rtCropApplyBtn').addEventListener('click', () => {
+    const overlay = document.getElementById('rtCropOverlay');
+    rtCrop.rect = rtCropRectPxToFrac(overlay.clientWidth, overlay.clientHeight, rtCropDisplayRect);
+    rtCrop.active = true;
+    rtSetCropEditMode(false);
+    renderRtPreview();
+    rtPushHistory('Apply Crop');
+    toast('Crop applied \u2014 you can reopen "Edit Crop" anytime before exporting.');
+  });
+  document.getElementById('rtCropCancelBtn').addEventListener('click', () => {
+    rtSetCropEditMode(false);
+    rtCropDisplayRect = null;
+    renderRtPreview();
+  });
+  document.getElementById('rtCropRemoveBtn').addEventListener('click', () => {
+    rtCrop.active = false; rtCrop.rect = null;
+    rtSyncCropControlsToState();
+    renderRtPreview();
+    rtPushHistory('Remove Crop');
+    toast('Crop removed.');
+  });
+  window.addEventListener('resize', () => { if (rtCropEditMode) rtSyncCropOverlayToCanvas(); });
+
+  /* ---------- Healing / Clone / Spot Heal (Phase 2 slice 4) ----------
+     All three tools paint onto layer.healCanvas, a transparent overlay
+     composited on top of that layer's adjusted output (see
+     rtRenderLayerAdjusted above) -- layer.canvas, the original photo
+     pixels, is never modified. Clone Stamp and Healing Brush sample
+     directly; Spot Healing reuses the project's existing PatchMatch
+     worker (js/patchmatch-worker.js, the same engine already powering
+     Object Remove in the Ecommerce Product Editor) for real
+     content-aware reconstruction instead of a fake blur-fill. */
+  let rtHealEditActive = false;
+  let rtHealTool = 'clone';
+  let rtHealBrushSize = 40;
+  let rtHealPainting = false;
+  let rtHealLastPoint = null;
+  let rtHealCapturedPointerId = null;
+  let rtCloneSourcePoint = null;
+  let rtCloneOffset = null;
+  let rtHealStrokeMaskPoints = [];
+  let rtPatchMatchWorker = null;
+  let rtPatchMatchRunning = false;
+
+  function rtGetPatchMatchWorker(){
+    if (!rtPatchMatchWorker) rtPatchMatchWorker = new Worker('js/patchmatch-worker.js');
+    return rtPatchMatchWorker;
+  }
+  function rtEnsureHealCanvas(layer){
+    if (!layer.healCanvas){
+      const c = document.createElement('canvas');
+      c.width = layer.canvas.width; c.height = layer.canvas.height;
+      layer.healCanvas = c;
+    }
+    return layer.healCanvas;
+  }
+
+  function rtSetHealEditMode(on){
+    rtHealEditActive = on;
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    if (wrap) wrap.classList.toggle('tool-brush', on);
+    if (!on){ rtCloneSourcePoint = null; rtCloneOffset = null; }
+    rtSyncHealControlsToState();
+  }
+  function rtSyncHealControlsToState(){
+    const editBtn = document.getElementById('rtHealEditBtn');
+    if (editBtn) editBtn.textContent = rtHealEditActive ? 'Stop Healing' : 'Start Healing';
+    const hint = document.getElementById('rtHealSourceHint');
+    if (hint){
+      if (rtHealTool === 'spotHeal'){
+        hint.textContent = 'Spot Healing: paint over a blemish or unwanted object and it will be reconstructed automatically using the surrounding photo.';
+      } else {
+        hint.textContent = rtCloneSourcePoint
+          ? 'Source set \u2014 now paint over the area you want to fix.'
+          : 'Clone Stamp / Healing Brush: tap once on the area you want to copy from (sets the source), then paint over the area you want to fix.';
+      }
+    }
+  }
+
+  document.querySelectorAll('#rtHealToolSeg button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      rtHealTool = btn.dataset.tool;
+      document.querySelectorAll('#rtHealToolSeg button').forEach(b => b.classList.toggle('active', b === btn));
+      rtCloneSourcePoint = null; rtCloneOffset = null;
+      rtSyncHealControlsToState();
+    });
+  });
+  document.getElementById('rtHealBrushSizeSlider').addEventListener('input', (e) => {
+    rtHealBrushSize = +e.target.value;
+    document.getElementById('rtHealBrushSizeVal').textContent = `${rtHealBrushSize}px`;
+  });
+  document.getElementById('rtHealEditBtn').addEventListener('click', async () => {
+    const active = rtGetActiveLayer();
+    if (!rtHealEditActive && active && active.locked){ toast('This layer is locked.', 'err'); return; }
+    rtSetHealEditMode(!rtHealEditActive);
+    await renderRtPreview();
+  });
+  document.getElementById('rtHealClearBtn').addEventListener('click', () => {
+    const active = rtGetActiveLayer();
+    if (!active) return;
+    if (active.locked){ toast('This layer is locked.', 'err'); return; }
+    active.healCanvas = null;
+    active.healVersion = (active.healVersion || 0) + 1;
+    renderRtPreview();
+    rtPushHistory('Clear Heal Edits');
+    toast('Heal edits cleared.');
+  });
+
+  function rtPaintCloneAt(layer, targetX, targetY){
+    const half = rtHealBrushSize;
+    const srcX = targetX - rtCloneOffset.dx, srcY = targetY - rtCloneOffset.dy;
+    const ctx = rtEnsureHealCanvas(layer).getContext('2d');
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, half, 0, Math.PI*2);
+    ctx.clip();
+    ctx.drawImage(layer.canvas, srcX-half, srcY-half, half*2, half*2, targetX-half, targetY-half, half*2, half*2);
+    ctx.restore();
+  }
+  function rtPaintHealingBrushAt(layer, targetX, targetY){
+    // Clone the source texture, then match the target area's overall
+    // tone (a simple, real "frequency separation" approximation: keep
+    // the source's local detail/texture, but shift its average color to
+    // the target's average color so the graft blends in seamlessly
+    // instead of looking like a pasted patch).
+    const half = rtHealBrushSize;
+    const srcX = targetX - rtCloneOffset.dx, srcY = targetY - rtCloneOffset.dy;
+    const sw = layer.canvas.width, sh = layer.canvas.height;
+    const clampedSrcX = rtClamp(srcX, half, sw-half), clampedSrcY = rtClamp(srcY, half, sh-half);
+    const patch = document.createElement('canvas');
+    patch.width = half*2; patch.height = half*2;
+    const pctx = patch.getContext('2d');
+    pctx.drawImage(layer.canvas, clampedSrcX-half, clampedSrcY-half, half*2, half*2, 0, 0, half*2, half*2);
+
+    function avgColor(ctx2, w, h){
+      const d = ctx2.getImageData(0, 0, w, h).data;
+      let r=0,g=0,b=0,n=0;
+      for (let i=0; i<d.length; i+=4*7){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; } // sample every 7th pixel, plenty for an average
+      return n ? { r:r/n, g:g/n, b:b/n } : { r:128,g:128,b:128 };
+    }
+    const srcAvg = avgColor(pctx, half*2, half*2);
+    const targetPatch = document.createElement('canvas');
+    targetPatch.width = half*2; targetPatch.height = half*2;
+    const tctx = targetPatch.getContext('2d');
+    tctx.drawImage(layer.canvas, rtClamp(targetX-half,0,sw-half*2), rtClamp(targetY-half,0,sh-half*2), half*2, half*2, 0, 0, half*2, half*2);
+    const tgtAvg = avgColor(tctx, half*2, half*2);
+
+    const pData = pctx.getImageData(0, 0, half*2, half*2);
+    const d = pData.data;
+    const dr = tgtAvg.r - srcAvg.r, dg = tgtAvg.g - srcAvg.g, db = tgtAvg.b - srcAvg.b;
+    for (let i=0; i<d.length; i+=4){
+      d[i]   = rtClamp(d[i]+dr, 0, 255);
+      d[i+1] = rtClamp(d[i+1]+dg, 0, 255);
+      d[i+2] = rtClamp(d[i+2]+db, 0, 255);
+    }
+    pctx.putImageData(pData, 0, 0);
+
+    const ctx = rtEnsureHealCanvas(layer).getContext('2d');
+    ctx.save();
+    // Soft (feathered) round clip so the graft's edge blends rather than
+    // showing a hard circular seam.
+    const grad = ctx.createRadialGradient(targetX, targetY, half*0.55, targetX, targetY, half);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(patch, targetX-half, targetY-half);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(targetX, targetY, half, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  function rtPaintHealStroke(layer, x1, y1, x2, y2){
+    const dist = Math.hypot(x2-x1, y2-y1);
+    const steps = Math.max(1, Math.ceil(dist / Math.max(4, rtHealBrushSize/3)));
+    for (let i = 0; i <= steps; i++){
+      const t = i/steps;
+      const x = x1+(x2-x1)*t, y = y1+(y2-y1)*t;
+      if (rtHealTool === 'clone') rtPaintCloneAt(layer, x, y);
+      else if (rtHealTool === 'healingBrush') rtPaintHealingBrushAt(layer, x, y);
+    }
+  }
+
+  function rtShowHealProgress(show){
+    const el = document.getElementById('rtHealProgress');
+    if (el) el.classList.toggle('hidden', !show);
+  }
+  function rtUpdateHealProgress(pct){
+    const bar = document.getElementById('rtHealProgressBar');
+    if (bar) bar.style.width = pct + '%';
+  }
+  function rtRunSpotHealOnStrokePoints(layer, points){
+    return new Promise((resolve, reject) => {
+      const w = layer.canvas.width, h = layer.canvas.height;
+      // Build the mask (255 = hole to reconstruct) from the painted stroke.
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = w; maskCanvas.height = h;
+      const mctx = maskCanvas.getContext('2d');
+      mctx.fillStyle = '#fff';
+      mctx.lineCap = 'round'; mctx.lineJoin = 'round'; mctx.strokeStyle = '#fff';
+      mctx.lineWidth = rtHealBrushSize*2;
+      mctx.beginPath();
+      points.forEach((p, i) => { if (i===0) mctx.moveTo(p.x, p.y); else mctx.lineTo(p.x, p.y); });
+      mctx.stroke();
+      points.forEach(p => { mctx.beginPath(); mctx.arc(p.x, p.y, rtHealBrushSize, 0, Math.PI*2); mctx.fill(); });
+      const maskData = mctx.getImageData(0, 0, w, h).data;
+      const maskArray = new Uint8ClampedArray(w*h);
+      for (let i=0; i<w*h; i++) maskArray[i] = maskData[i*4] > 10 ? 255 : 0;
+
+      // Reconstruct against the layer's CURRENT visible pixels (original +
+      // any earlier heal edits already applied), so repeated spot-healing
+      // in the same area keeps using the best available surrounding
+      // content -- but the result is written to healCanvas, not baked
+      // into layer.canvas.
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w; srcCanvas.height = h;
+      const sctx = srcCanvas.getContext('2d');
+      sctx.drawImage(layer.canvas, 0, 0);
+      if (layer.healCanvas) sctx.drawImage(layer.healCanvas, 0, 0);
+      const imgData = sctx.getImageData(0, 0, w, h);
+
+      const worker = rtGetPatchMatchWorker();
+      rtPatchMatchRunning = true;
+      rtShowHealProgress(true);
+      rtUpdateHealProgress(0);
+      const onMessage = (e) => {
+        const msg = e.data;
+        if (msg.type === 'progress'){
+          rtUpdateHealProgress(msg.pct);
+        } else if (msg.type === 'done'){
+          worker.removeEventListener('message', onMessage);
+          rtPatchMatchRunning = false;
+          rtShowHealProgress(false);
+          const healCtx = rtEnsureHealCanvas(layer).getContext('2d');
+          const healData = healCtx.getImageData(0, 0, w, h);
+          const hd = healData.data;
+          for (let i=0; i<msg.holeIndices.length; i++){
+            const idx = msg.holeIndices[i];
+            hd[idx*4]   = msg.colors[i*3];
+            hd[idx*4+1] = msg.colors[i*3+1];
+            hd[idx*4+2] = msg.colors[i*3+2];
+            hd[idx*4+3] = 255;
+          }
+          healCtx.putImageData(healData, 0, 0);
+          resolve();
+        } else if (msg.type === 'error'){
+          worker.removeEventListener('message', onMessage);
+          rtPatchMatchRunning = false;
+          rtShowHealProgress(false);
+          reject(new Error(msg.message));
+        } else if (msg.type === 'cancelled'){
+          worker.removeEventListener('message', onMessage);
+          rtPatchMatchRunning = false;
+          rtShowHealProgress(false);
+          resolve();
+        }
+      };
+      worker.addEventListener('message', onMessage);
+      worker.postMessage({ type: 'run', data: imgData.data, mask: maskArray, w, h, quality: 'balanced', seed: Date.now() & 0xffffffff, overrides: {} });
+    });
+  }
+
+  let rtHealCanvasEl = document.getElementById('rtPreviewCanvas');
+  rtHealCanvasEl.addEventListener('pointerdown', (e) => {
+    if (!rtHealEditActive || rtPatchMatchRunning) return;
+    const active = rtGetActiveLayer();
+    if (!active || active.locked) return;
+    e.preventDefault();
+    const pt = rtCanvasDisplayToSourcePoint(e.clientX, e.clientY);
+    if (!pt) return;
+    if (rtHealTool === 'spotHeal'){
+      rtHealPainting = true;
+      rtHealStrokeMaskPoints = [pt];
+    } else {
+      if (!rtCloneSourcePoint){
+        rtCloneSourcePoint = pt;
+        rtSyncHealControlsToState();
+        return; // first tap only sets the source point, doesn't paint yet
+      }
+      if (!rtCloneOffset) rtCloneOffset = { dx: pt.x - rtCloneSourcePoint.x, dy: pt.y - rtCloneSourcePoint.y };
+      rtHealPainting = true;
+      rtHealLastPoint = pt;
+      rtPaintHealStroke(active, pt.x, pt.y, pt.x, pt.y);
+      renderRtPreview();
+    }
+    if (rtHealCanvasEl.setPointerCapture){ try{ rtHealCanvasEl.setPointerCapture(e.pointerId); rtHealCapturedPointerId = e.pointerId; }catch(err){} }
+  });
+  rtHealCanvasEl.addEventListener('pointermove', (e) => {
+    if (!rtHealEditActive || !rtHealPainting) return;
+    e.preventDefault();
+    const pt = rtCanvasDisplayToSourcePoint(e.clientX, e.clientY);
+    if (!pt) return;
+    const active = rtGetActiveLayer();
+    if (rtHealTool === 'spotHeal'){
+      rtHealStrokeMaskPoints.push(pt);
+    } else if (active && rtCloneOffset){
+      rtPaintHealStroke(active, rtHealLastPoint.x, rtHealLastPoint.y, pt.x, pt.y);
+      rtHealLastPoint = pt;
+      renderRtPreview();
+    }
+  });
+  async function rtEndHealStroke(){
+    if (rtHealCapturedPointerId !== null && rtHealCanvasEl.releasePointerCapture){
+      try{ rtHealCanvasEl.releasePointerCapture(rtHealCapturedPointerId); }catch(err){}
+      rtHealCapturedPointerId = null;
+    }
+    if (!rtHealPainting) return;
+    rtHealPainting = false;
+    const active = rtGetActiveLayer();
+    if (!active) return;
+    if (rtHealTool === 'spotHeal' && rtHealStrokeMaskPoints.length){
+      try{
+        await rtRunSpotHealOnStrokePoints(active, rtHealStrokeMaskPoints);
+        active.healVersion = (active.healVersion || 0) + 1;
+        await renderRtPreview();
+        rtPushHistory('Spot Healing');
+        toast('Area reconstructed.');
+      }catch(err){
+        toast('Healing failed: ' + (err.message || 'unknown error'), 'err');
+      }
+      rtHealStrokeMaskPoints = [];
+    } else if (rtCloneOffset){
+      active.healVersion = (active.healVersion || 0) + 1;
+      await renderRtPreview();
+      rtPushHistory(rtHealTool === 'clone' ? 'Clone Stamp' : 'Healing Brush');
+    }
+    rtHealLastPoint = null;
+  }
+  rtHealCanvasEl.addEventListener('pointerup', rtEndHealStroke);
+  rtHealCanvasEl.addEventListener('pointercancel', rtEndHealStroke);
+  rtHealCanvasEl.addEventListener('pointerleave', rtEndHealStroke);
+
+  const rtLayerAddBtnEl = document.getElementById('rtLayerAddBtn');
+  const rtLayerDuplicateBtnEl = document.getElementById('rtLayerDuplicateBtn');
+  const rtLayerDeleteBtnEl = document.getElementById('rtLayerDeleteBtn');
+  if (rtLayerAddBtnEl) rtLayerAddBtnEl.addEventListener('click', rtAddLayer);
+  if (rtLayerDuplicateBtnEl) rtLayerDuplicateBtnEl.addEventListener('click', rtDuplicateLayer);
+  if (rtLayerDeleteBtnEl) rtLayerDeleteBtnEl.addEventListener('click', rtDeleteLayer);
 }
 
 /* ============================================================
