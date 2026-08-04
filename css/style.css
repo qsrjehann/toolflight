@@ -139,6 +139,9 @@ a{color:inherit;}
    :has() so no other tool's .workspace styling is affected. */
 .workspace:has(#epeToolPanel){ backdrop-filter:none; -webkit-backdrop-filter:none; }
 .workspace:has(#epeStage:not(.hidden)){ margin-top:0; padding:0; border:none; box-shadow:none; background:transparent; }
+/* Same containing-block issue as above, same fix, for AI Photo Retouch's
+   fixed bottom toolbar and sticky top toolbar. */
+.workspace:has(#rtStage.rt-shell:not(.hidden)){ backdrop-filter:none; -webkit-backdrop-filter:none; margin-top:0; padding:0; border:none; box-shadow:none; background:transparent; }
 .tool-view{display:none;}
 .tool-view.active{display:block;animation:fadein .35s ease;}
 @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
@@ -1524,3 +1527,240 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   #aiPanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
   #aiToolPanel{ position:relative; }
 }
+
+/* ============================================================
+   AI PHOTO RETOUCH -- WORKSPACE SHELL (rt-* prefix)
+   Phase 1 architecture: sticky top toolbar (undo/redo/fit/compare/
+   reset), a canvas area that always stays visible, a panel sheet for
+   the existing .pp-accordion controls (unchanged, reused verbatim),
+   and a horizontally-scrollable bottom toolbar of category buttons.
+   Scoped entirely under #rtStage.rt-shell so no other tool (including
+   Passport Photo Maker's shared .pp-accordion rules) is affected.
+   Mobile-first: base rules target phones, desktop widened at 900px.
+   ============================================================ */
+#rtStage.rt-shell{ margin-top:14px; }
+
+#rtStage .rt-topbar{
+  position:sticky; top:8px; z-index:6;
+  display:flex; align-items:center; gap:6px;
+  background:var(--card); border:1px solid var(--card-border);
+  border-radius:14px; padding:6px 8px;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 6px 20px -10px rgba(20,15,50,0.25);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+#rtStage .rt-tb-icon-btn{
+  flex:0 0 auto; width:38px; height:38px; border-radius:10px;
+  border:1px solid var(--card-border); background:transparent; color:var(--ink);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+#rtStage .rt-tb-icon-btn svg{ width:18px; height:18px; }
+#rtStage .rt-tb-icon-btn:disabled{ opacity:.35; cursor:not-allowed; }
+#rtStage .rt-tb-icon-btn:not(:disabled):hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+#rtStage .rt-tb-sep{ width:1px; height:22px; background:var(--card-border); flex:0 0 auto; margin:0 2px; }
+
+/* ---- Beauty / Advanced mode toggle (UI evolution on the verified Phase 2 architecture) ---- */
+#rtStage .rt-mode-toggle{
+  display:flex; flex:0 0 auto; border:1.5px solid var(--card-border); border-radius:10px; padding:2px; gap:2px;
+  background:var(--card);
+}
+#rtStage .rt-mode-toggle-btn{
+  border:none; background:transparent; color:var(--ink-soft); font-size:12px; font-weight:700;
+  padding:7px 11px; border-radius:8px; cursor:pointer; white-space:nowrap;
+}
+#rtStage .rt-mode-toggle-btn.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; }
+/* Advanced-only bottom-toolbar categories are simply hidden in Beauty Mode --
+   nothing about the underlying panels, data, or history changes; switching
+   back to Advanced Mode reveals exactly the same state, untouched. */
+#rtBottomToolbar.rt-beauty-mode .rt-bt-item[data-advanced="true"]{ display:none; }
+#rtStage.rt-mode-beauty .rt-advanced-only-section{ display:none; }
+#rtStage .rt-tb-text-btn{
+  flex:0 0 auto; white-space:nowrap; font-size:12.5px; font-weight:700;
+  padding:9px 12px; border-radius:10px; border:1px solid var(--card-border);
+  background:transparent; color:var(--ink); cursor:pointer;
+}
+#rtStage .rt-tb-text-btn:hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+#rtStage .rt-tb-text-btn.rt-tb-danger{ margin-left:auto; color:#E5484D; border-color:color-mix(in srgb, #E5484D 35%, var(--card-border)); }
+#rtStage .rt-tb-text-btn[aria-pressed="true"]{ background:var(--accent1); color:#fff; border-color:transparent; }
+
+#rtStage .rt-canvas-area{ margin-top:12px; }
+#rtStage .rt-zoom-row{ display:flex; align-items:center; gap:10px; margin-top:8px; }
+@media (max-width: 899px){
+  /* Shared .editor-stage-wrap base rule (520px cap) is untouched -- this
+     only narrows it further inside the retouch tool on small screens, so
+     the panel sheet + fixed bottom toolbar always have real room below
+     the canvas instead of being squeezed off-screen. */
+  #rtStage .editor-stage-wrap{ max-height:min(380px, 34vh); max-height:min(380px, 34dvh); }
+}
+
+/* Panel sheet: on mobile this sits ABOVE the bottom toolbar as a capped-
+   height, internally-scrolling drawer so the canvas above never gets
+   pushed off screen -- only the active .pp-accordion (single-open,
+   existing exclusivity logic) is visible at a time. */
+#rtStage .rt-panel-sheet{
+  margin-top:12px; margin-bottom:12px;
+  max-height:42vh; max-height:42dvh; /* fallback before JS measures exact space; JS inline style overrides this */
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth;
+  padding-bottom:16px;
+}
+#rtStage .rt-panel-sheet .pp-accordion{ scroll-margin-top:10px; }
+
+#rtStage .rt-bottom-toolbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:7;
+  display:flex; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+  padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  background:var(--bg, var(--card)); background:color-mix(in srgb, var(--card) 92%, var(--bg, #fff) 8%);
+  border-top:1px solid var(--card-border);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+}
+#rtStage .rt-bt-item{
+  flex:1 0 auto; min-width:64px; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:7px 10px; border:none; background:transparent; color:var(--ink-soft);
+  border-radius:10px; cursor:pointer; font-size:10.5px; font-weight:700; letter-spacing:.01em;
+}
+#rtStage .rt-bt-item svg{ width:20px; height:20px; }
+#rtStage .rt-bt-item[aria-selected="true"]{ color:var(--accent1-solid, var(--accent1)); background:color-mix(in srgb, var(--accent1) 12%, transparent); }
+#rtStage .rt-bt-item:hover{ color:var(--ink); }
+
+/* (No mobile-only panel-sheet override needed anymore -- the base rule's
+   max-height calc() and padding-bottom already account for the fixed
+   bottom toolbar's height directly, see .rt-panel-sheet above.) */
+
+/* Desktop (>=900px): left/right split so the canvas stays large and
+   centered -- left column repurposes the bottom toolbar as a vertical
+   rail, right column becomes a persistent (non-sheet) properties panel.
+   Only applied if it improves usability, per project layout rules. */
+@media (min-width: 900px){
+  #rtStage.rt-shell{
+    display:grid; grid-template-columns:76px minmax(0,1fr) 340px;
+    grid-template-areas:"rail topbar topbar" "rail canvas panel";
+    gap:14px; align-items:start;
+  }
+  #rtStage .rt-topbar{ grid-area:topbar; position:sticky; top:14px; }
+  #rtStage .rt-canvas-area{ grid-area:canvas; margin-top:0; }
+  #rtStage .rt-panel-sheet{
+    grid-area:panel; margin-top:0; margin-bottom:0; max-height:none;
+    max-height:initial; position:sticky; top:70px; padding-bottom:16px;
+    max-height:calc(100vh - 90px); max-height:calc(100dvh - 90px);
+  }
+  #rtStage .rt-bottom-toolbar{
+    grid-area:rail; position:sticky; top:14px; bottom:auto; left:auto; right:auto;
+    flex-direction:column; height:fit-content; max-height:calc(100vh - 30px);
+    border-top:none; border-radius:14px; border:1px solid var(--card-border);
+    padding:8px; background:var(--card);
+  }
+  #rtStage .rt-bt-item{ min-width:auto; }
+}
+
+/* ---- Layers panel ---- */
+#rtLayersList{ display:flex; flex-direction:column; gap:8px; }
+.rt-layer-row{
+  border:1.5px solid var(--card-border); border-radius:12px; padding:8px 10px;
+  background:var(--card); cursor:pointer; transition:border-color .15s;
+}
+.rt-layer-row.active{ border-color:var(--accent1-solid, var(--accent1)); background:color-mix(in srgb, var(--accent1) 8%, var(--card)); }
+.rt-layer-row.locked{ opacity:.75; }
+.rt-layer-row-top{ display:flex; align-items:center; gap:8px; }
+.rt-layer-thumb{ width:36px; height:36px; border-radius:7px; object-fit:cover; border:1px solid var(--card-border); flex:0 0 auto; background:#8884; }
+.rt-layer-name-input{
+  flex:1; min-width:0; font-size:13px; font-weight:700; color:var(--ink); background:transparent; border:none; outline:none;
+  padding:4px 2px; border-radius:6px;
+}
+.rt-layer-name-input:focus{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+.rt-layer-icon-btn{
+  flex:0 0 auto; width:30px; height:30px; border-radius:8px; border:1px solid var(--card-border);
+  background:transparent; color:var(--ink-soft); display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.rt-layer-icon-btn svg{ width:15px; height:15px; }
+.rt-layer-icon-btn[aria-pressed="true"]{ color:var(--accent1-solid, var(--accent1)); border-color:var(--accent1-solid, var(--accent1)); }
+.rt-layer-row-controls{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.rt-layer-row-controls label{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+.rt-layer-opacity{ flex:1; min-width:70px; }
+.rt-layer-blend-select{
+  font-size:11.5px; padding:5px 6px; border-radius:8px; border:1.5px solid var(--card-border);
+  background:var(--card); color:var(--ink);
+}
+.rt-layer-reorder-btns{ display:flex; gap:4px; margin-left:auto; }
+
+/* ---- History panel ---- */
+#rtHistoryList{ display:flex; flex-direction:column; gap:2px; max-height:320px; overflow-y:auto; }
+.rt-history-row{
+  display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:9px; cursor:pointer;
+  font-size:12.5px; color:var(--ink-soft); border:1px solid transparent;
+}
+.rt-history-row:hover{ background:color-mix(in srgb, var(--accent1) 6%, transparent); }
+.rt-history-row.current{ background:color-mix(in srgb, var(--accent1) 12%, transparent); color:var(--ink); font-weight:700; border-color:color-mix(in srgb, var(--accent1) 30%, transparent); }
+.rt-history-step-num{ flex:0 0 auto; width:20px; text-align:right; font-variant-numeric:tabular-nums; opacity:.7; }
+
+/* ---- Mask controls ---- */
+#rtMaskPanel:empty{ display:none; }
+.rt-mask-box{ border:1.5px dashed var(--card-border); border-radius:12px; padding:10px; margin-bottom:12px; }
+.rt-mask-box-top{ display:flex; align-items:center; gap:10px; }
+.rt-mask-thumb{ width:34px; height:34px; border-radius:6px; border:1px solid var(--card-border); object-fit:cover; background:#000; }
+.rt-mask-title{ font-size:12.5px; font-weight:700; color:var(--ink); flex:1; }
+.rt-mask-row{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.rt-mask-row label{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+.rt-mask-segmented{ display:flex; border:1.5px solid var(--card-border); border-radius:9px; overflow:hidden; }
+.rt-mask-segmented button{
+  border:none; background:transparent; color:var(--ink-soft); font-size:11.5px; font-weight:700;
+  padding:6px 10px; cursor:pointer;
+}
+.rt-mask-segmented button.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; }
+.rt-mask-edit-btn.editing{ background:var(--accent1-solid, var(--accent1)); color:#fff; border-color:transparent; }
+
+/* ---- Canvas Background selector (Phase 2 Slice 5) ----
+   Purely a CSS background behind the canvas for viewing convenience --
+   never touches pixel data, so it can never leak into an export. */
+.rt-canvas-bg-row{ display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.rt-canvas-bg-swatch{
+  width:26px; height:26px; border-radius:7px; border:1.5px solid var(--card-border);
+  cursor:pointer; padding:0; flex:0 0 auto;
+}
+.rt-canvas-bg-swatch.active{ outline:2px solid var(--accent1-solid, var(--accent1)); outline-offset:1px; }
+.rt-canvas-bg-swatch-checker{
+  background:
+    linear-gradient(45deg, #9992 25%, transparent 25%) 0 0/10px 10px,
+    linear-gradient(-45deg, #9992 25%, transparent 25%) 0 0/10px 10px,
+    linear-gradient(45deg, transparent 75%, #9992 75%) 0 0/10px 10px,
+    linear-gradient(-45deg, transparent 75%, #9992 75%) 0 0/10px 10px, #fff;
+}
+.rt-canvas-bg-swatch-white{ background:#fff; }
+.rt-canvas-bg-swatch-gray{ background:#8a8a8a; }
+.rt-canvas-bg-swatch-black{ background:#111; }
+.rt-canvas-bg-swatch-custom{ width:26px; height:26px; border-radius:7px; border:1.5px solid var(--card-border); padding:0; cursor:pointer; flex:0 0 auto; }
+#rtCanvasStageWrap.rt-canvas-bg-white{ background:#fff; }
+#rtCanvasStageWrap.rt-canvas-bg-gray{ background:#8a8a8a; }
+#rtCanvasStageWrap.rt-canvas-bg-black{ background:#111; }
+#rtCanvasStageWrap.rt-canvas-bg-custom{ background:var(--rt-canvas-custom-bg, #5142d6); }
+
+/* ---- Crop panel ---- */
+.rt-crop-ratios{ display:flex; flex-wrap:wrap; gap:6px; }
+.rt-crop-ratio-btn{
+  font-size:12px; font-weight:700; padding:7px 11px; border-radius:9px;
+  border:1.5px solid var(--card-border); background:var(--card); color:var(--ink-soft); cursor:pointer;
+}
+.rt-crop-ratio-btn.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; border-color:transparent; }
+
+/* ---- Crop overlay (interactive, on-canvas) ----
+   Positioned via JS to exactly match #rtPreviewCanvas's rendered box;
+   all coordinates inside are plain CSS pixels within that box. */
+.rt-crop-overlay{ position:absolute; top:0; left:0; touch-action:none; }
+.rt-crop-overlay.hidden{ display:none; }
+#rtCanvasStageWrap.rt-crop-editing{ overflow:visible; }
+.rt-crop-shade{ position:absolute; background:rgba(0,0,0,0.55); pointer-events:none; }
+.rt-crop-rect{
+  position:absolute; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,0.4);
+  box-sizing:border-box; cursor:move;
+}
+.rt-crop-grid-line{ position:absolute; background:rgba(255,255,255,0.55); pointer-events:none; }
+.rt-crop-handle{
+  position:absolute; width:26px; height:26px; margin:-13px; border-radius:50%;
+  background:#fff; border:2px solid var(--accent1-solid, var(--accent1)); box-shadow:0 1px 4px rgba(0,0,0,0.35);
+  touch-action:none; z-index:2;
+}
+.rt-crop-handle.rt-crop-handle-edge{ background:rgba(255,255,255,0.9); }
+.rt-crop-handle-nw{ cursor:nwse-resize; } .rt-crop-handle-se{ cursor:nwse-resize; }
+.rt-crop-handle-ne{ cursor:nesw-resize; } .rt-crop-handle-sw{ cursor:nesw-resize; }
+.rt-crop-handle-n{ cursor:ns-resize; } .rt-crop-handle-s{ cursor:ns-resize; }
+.rt-crop-handle-e{ cursor:ew-resize; } .rt-crop-handle-w{ cursor:ew-resize; }
