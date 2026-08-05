@@ -344,6 +344,9 @@ input[type=range]::-moz-range-thumb{
 }
 input[type=range]:focus-visible::-webkit-slider-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
 input[type=range]:focus-visible::-moz-range-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
+@keyframes rtResetFlash{ 0%{ filter:brightness(1); } 30%{ filter:brightness(1.6) saturate(1.4); } 100%{ filter:brightness(1); } }
+input[type=range].rt-reset-flash::-webkit-slider-runnable-track{ animation:rtResetFlash 0.4s ease; }
+input[type=range].rt-reset-flash{ animation:rtResetFlash 0.4s ease; }
 input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:pointer;background:none;padding:0;}
 
 /* Page grid for split */
@@ -854,6 +857,10 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   display:flex;align-items:center;justify-content:space-between;
   -webkit-tap-highlight-color:transparent;min-height:24px;
 }
+.pp-accordion-summary-left{ display:inline-flex; align-items:center; flex:1; min-width:0; }
+.pp-accordion-summary-icon{ display:inline-flex; flex:0 0 auto; margin-right:9px; color:var(--accent1-solid); }
+.pp-accordion-summary-icon svg{ width:18px; height:18px; }
+.pp-accordion-summary-title{ flex:1; }
 .pp-accordion-summary::-webkit-details-marker{display:none;}
 .pp-accordion-summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:rotate(-45deg);transition:transform .15s;margin-right:4px;}
 .pp-accordion[open] > .pp-accordion-summary::after{transform:rotate(45deg);}
@@ -1643,6 +1650,10 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
      over the same space. This block only provides the drag-handle
      affordance, snap-animation timing, and per-state overflow behavior. */
   #rtStage .rt-panel-sheet{
+    position:fixed; left:0; right:0; z-index:15;
+    background:var(--epe-shell-surface); border-top-left-radius:20px; border-top-right-radius:20px;
+    box-shadow:0 -12px 32px -14px rgba(20,15,50,0.28);
+    margin:0; padding-left:16px; padding-right:16px; padding-bottom:16px;
     transition:height 0.28s cubic-bezier(0.22,0.9,0.32,1);
     overflow-y:hidden; /* Half state: no internal scroll -- see Part 1's "Internal scrolling only happens in Expanded state" */
   }
@@ -1658,16 +1669,17 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   #rtStage .rt-panel-sheet.rt-sheet-dragging .rt-sheet-handle{ cursor:grabbing; }
 }
 
-/* Panel sheet: on mobile this sits ABOVE the bottom toolbar as a capped-
-   height, internally-scrolling drawer so the canvas above never gets
-   pushed off screen -- only the active .pp-accordion (single-open,
-   existing exclusivity logic) is visible at a time. */
+/* Panel sheet: on mobile this floats above the canvas and bottom
+   toolbar as a fixed-position overlay (see the mobile-scoped rule
+   above, which owns position/margin/padding/background on mobile) --
+   only the active .pp-accordion (single-open, existing exclusivity
+   logic) is visible at a time. This base rule now only supplies
+   scroll-behavior and the pre-JS max-height fallback, both harmless on
+   desktop (which re-declares margin:0 in its own grid-context rule). */
 #rtStage .rt-panel-sheet{
-  margin-top:12px; margin-bottom:12px;
   max-height:42vh; max-height:42dvh; /* fallback before JS measures exact space; JS inline style overrides this */
   overflow-y:auto; -webkit-overflow-scrolling:touch;
   scroll-behavior:smooth;
-  padding-bottom:16px;
 }
 #rtStage .rt-panel-sheet .pp-accordion{ scroll-margin-top:10px; }
 
@@ -1757,8 +1769,12 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 .rt-layer-row-controls label{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
 .rt-layer-opacity{ flex:1; min-width:70px; }
 .rt-layer-blend-select{
-  font-size:11.5px; padding:5px 6px; border-radius:8px; border:1.5px solid var(--card-border);
-  background:var(--card); color:var(--ink);
+  font-size:11.5px; padding:5px 22px 5px 8px; border-radius:8px; border:1.5px solid var(--card-border);
+  background:var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6b7a' stroke-width='2.2'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 6px center / 13px 13px;
+  background-color:var(--card);
+  color:var(--ink);
+  -webkit-appearance:none; -moz-appearance:none; appearance:none;
+  width:auto; max-width:130px; flex:0 0 auto;
 }
 .rt-layer-reorder-btns{ display:flex; gap:4px; margin-left:auto; }
 
