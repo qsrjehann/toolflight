@@ -9,9 +9,9 @@
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#6D5EF5">
 <meta name="author" content="ToolFlight">
-<link rel="icon" href="assets/favicon.ico?v=20260805-1900" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260805-1900">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260805-1900">
+<link rel="icon" href="assets/favicon.ico?v=20260806-0810" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-0810">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-0810">
 <link rel="canonical" href="https://toolflight.com/ai-photo-retouch.html">
 
 <meta property="og:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
@@ -47,7 +47,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
-<link rel="stylesheet" href="css/style.css?v=20260805-1900">
+<link rel="stylesheet" href="css/style.css?v=20260806-0810">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -72,7 +72,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260805-1900" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260806-0810" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -111,6 +111,7 @@
   </div>
 
   <div class="workspace">
+      <div id="rtUploadSection">
       <div class="view-title"><h2>Upload Your Photo</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">A professional portrait retouch editor \u2014 skin smoothing, background blur, and a full set of Lightroom-style tone and color adjustments, running entirely in your browser at full resolution. Nothing you upload ever leaves your device.</p>
 
@@ -122,6 +123,7 @@
       </div>
 
       <div class="model-status-line hidden" id="rtModelStatus" role="status"><span class="dot"></span><span></span></div>
+      </div>
 
       <div id="rtStage" class="hidden rt-shell">
         <div class="rt-topbar" id="rtTopBar">
@@ -138,8 +140,8 @@
           </button>
           <span class="rt-tb-sep"></span>
           <button class="rt-tb-text-btn" id="rtFitScreenBtn" type="button">Fit</button>
-          <button class="rt-tb-text-btn" id="rtCompareBtn" type="button" aria-pressed="false">Hold to Compare</button>
           <button class="rt-tb-text-btn rt-tb-danger" id="rtResetBtn" type="button">Reset</button>
+          <button class="rt-tb-text-btn" id="rtChangePhotoBtn" type="button" title="Load a different photo">New Photo</button>
         </div>
 
         <div class="rt-canvas-area">
@@ -162,10 +164,17 @@
         </div>
 
         <div class="rt-panel-sheet" id="rtPanelSheet">
+        <div class="rt-sheet-handle" id="rtSheetHandle" aria-hidden="true"><span></span></div>
         <details class="pp-accordion" id="rtAccordionAiMagic">
-          <summary class="pp-accordion-summary">\u2728 AI Magic</summary>
+          <summary class="pp-accordion-summary">\ud83e\ude84\u2728 AI Magic</summary>
           <p class="editor-hint">One tap: reads what's actually in your photo (hair condition, background complexity, lighting) and decides real adjustment amounts \u2014 never a fixed preset, never applied where it isn't needed. Everything it does remains fully undoable.</p>
           <button type="button" class="btn btn-primary" id="rtAiMagicBtn" style="width:100%;">Run AI Magic</button>
+          <div id="rtAiMagicStage" style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;min-height:16px;"></div>
+          <div id="rtAiMagicResults" class="hidden" style="margin-top:12px;">
+            <div id="rtAiMagicRecommendations" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
+            <div id="rtAiMagicPlan" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;font-size:12.5px;"></div>
+            <button type="button" class="btn btn-primary" id="rtApplyBeautyPlanBtn" style="width:100%;">Apply Beauty Plan</button>
+          </div>
         </details>
 
         <details class="pp-accordion" id="rtAccordionCrop">
@@ -215,7 +224,7 @@
           </div>
         </details>
 
-        <details class="pp-accordion" id="rtAccordionFace" open>
+        <details class="pp-accordion" id="rtAccordionFace">
           <summary class="pp-accordion-summary">Skin &amp; Face</summary>
           <p class="editor-hint">Face-aware smoothing that protects eyes, brows, nose, mouth, and ears from being blurred \u2014 detected automatically once a face is found.</p>
           <div id="rtFaceStatus" style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;"></div>
@@ -411,9 +420,9 @@
         </div>
 
         <div class="rt-bottom-toolbar" id="rtBottomToolbar" role="tablist" aria-label="Editing categories">
-          <button class="rt-bt-item" type="button" data-target="rtAccordionAiMagic" role="tab" aria-selected="false">
+          <button class="rt-bt-item rt-bt-item-hero" type="button" data-target="rtAccordionAiMagic" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
-            <span>AI Magic</span>
+            <span>\ud83e\ude84\u2728 AI Magic</span>
           </button>
           <button class="rt-bt-item" type="button" data-target="rtAccordionCrop" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg>
@@ -507,7 +516,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260805-1900" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-0810" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -544,6 +553,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260805-1900"></script>
+<script defer src="js/app.js?v=20260806-0810"></script>
 </body>
 </html>
