@@ -12572,6 +12572,37 @@ if (document.getElementById('rtDrop')){
     syncActiveFromOpenAccordion();
   })();
 
+  /* ---------- Universal slider double-tap-to-reset (Design System §6) ----------
+     Event delegation on the whole panel sheet -- works for every slider,
+     current and future, without adding a listener to each one
+     individually. Double-tapping/double-clicking a slider's label
+     resets that one value to its default and flashes the track briefly. */
+  (function setupSliderDoubleTapReset(){
+    const REVERSE_ID_MAP = {};
+    Object.keys(RT_ID_MAP).forEach(key => { REVERSE_ID_MAP[RT_ID_MAP[key]] = key; });
+    const sheet = document.getElementById('rtPanelSheet');
+    if (!sheet) return;
+    sheet.addEventListener('dblclick', (e) => {
+      const label = e.target.closest('label[for]');
+      if (!label) return;
+      const forId = label.getAttribute('for');
+      const key = REVERSE_ID_MAP[forId];
+      if (!key || !(key in RT_DEFAULTS)) return;
+      const active = rtGetActiveLayer();
+      if (active && active.locked){ toast('This layer is locked.', 'err'); return; }
+      if (rtAdj[key] === RT_DEFAULTS[key]) return; // already at default -- nothing to reset, nothing to flash
+      rtAdj[key] = RT_DEFAULTS[key];
+      rtApplyAdjustmentsToUI();
+      renderRtPreview();
+      rtPushHistory('Reset ' + label.textContent.split(':')[0].trim());
+      const input = document.getElementById(forId);
+      if (input){
+        input.classList.add('rt-reset-flash');
+        setTimeout(() => input.classList.remove('rt-reset-flash'), 400);
+      }
+    });
+  })();
+
   /* ---------- Beauty / Advanced mode (UI presentation layer, built on
      top of the existing verified panel architecture -- toggling modes
      never touches layers, history, adjustments, or any other state; it
@@ -12623,72 +12654,77 @@ if (document.getElementById('rtDrop')){
   // canvasHeight = totalBudget - sheetHeight, recomputed on every sheet
   // height change (drag or state snap), so the canvas genuinely resizes
   // in lockstep rather than reacting to a discrete open/closed guess.
-  function rtSheetTotalBudget(){
+  function rtBottomNavHeight(){
+    const toolbar = document.getElementById('rtBottomToolbar');
+    return toolbar ? toolbar.getBoundingClientRect().height : 66;
+  }
+
+  // Canvas gets a FIXED height, computed once (on load/resize/orientation
+  // change only -- never on sheet state change) and completely
+  // independent of whether the sheet is Closed, Half, or Expanded. The
+  // sheet floats ON TOP of the canvas's lower portion when open; it
+  // never resizes the canvas itself. This is the core architecture
+  // change requested: "opening any tool must never shrink or
+  // permanently reduce the canvas size."
+  function rtCanvasFixedHeight(){
     const wrap = document.getElementById('rtCanvasStageWrap');
     const toolbar = document.getElementById('rtBottomToolbar');
     const bgRow = document.getElementById('rtCanvasBgRow');
     if (!wrap || !toolbar) return null;
-    const wrapTop = wrap.getBoundingClientRect().top; // stable: depends on what's ABOVE the canvas (navbar/margins), not on the canvas's own current height
+    const wrapTop = wrap.getBoundingClientRect().top; // stable: depends on what's ABOVE the canvas, not on the canvas's own current height
     const toolbarTop = toolbar.getBoundingClientRect().top;
-    // The canvas-background swatch row sits in normal flow BETWEEN the
-    // canvas and the sheet -- it's real, always-present space that must
-    // be subtracted from the shared budget, or canvas+sheet combined
-    // overflow the true available area and the sheet renders lower than
-    // expected (found via direct testing: this caused the bg-row to
-    // visually overlap the sheet's drag handle).
     const bgRowHeight = bgRow ? bgRow.getBoundingClientRect().height : 36;
-    return Math.max(260, toolbarTop - wrapTop - bgRowHeight - 20);
+    return Math.max(200, toolbarTop - wrapTop - bgRowHeight - 20);
   }
+  function rtSetCanvasFixedHeight(){
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    if (!wrap) return;
+    if (window.innerWidth >= 900) { wrap.style.height = ''; wrap.style.maxHeight = ''; return; }
+    const h = rtCanvasFixedHeight();
+    if (h == null) return;
+    let canvasH = h;
+    // Cap to what the actual image can use at the available width --
+    // otherwise a width-constrained (portrait-oriented) photo gets a
+    // taller wrap than it can ever fill, leaving a visible empty gap
+    // below the image (found via direct screenshot inspection in an
+    // earlier slice). For a height-constrained (landscape) photo, this
+    // estimate naturally exceeds canvasH and has no effect.
+    const previewCanvas = document.getElementById('rtPreviewCanvas');
+    if (previewCanvas && previewCanvas.width && previewCanvas.height){
+      const availW = wrap.clientWidth - 4;
+      const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width) * rtZoom;
+      if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
+    }
+    wrap.style.height = canvasH + 'px';
+    wrap.style.maxHeight = canvasH + 'px';
+    requestAnimationFrame(() => { fitRtCanvasDisplay(); });
+  }
+
   function rtSheetTargetHeights(){
-    const total = rtSheetTotalBudget();
-    if (total == null) return null;
-    const closed = 8; // just the handle bar, no content -- "maximum canvas area"
+    // The sheet's heights are computed against the full viewport (minus
+    // the bottom nav it floats above), NOT against a budget shared with
+    // canvas -- canvas is now sized independently (see above). The
+    // sheet overlays whatever portion of the canvas it covers.
+    const navH = rtBottomNavHeight();
+    const available = window.innerHeight - navH;
+    const closed = 8; // just the handle bar, no content -- maximum canvas visibility
     const halfPreferred = Math.min(Math.round(window.innerHeight * 0.42), 380);
-    const half = Math.max(closed + 60, Math.min(halfPreferred, total - 160)); // never squeeze canvas below a 160px floor for Half
-    const expanded = Math.max(half + 40, total - 140); // most of the shared budget; canvas keeps a small floor rather than vanishing entirely
+    const half = Math.max(closed + 60, Math.min(halfPreferred, available - 100));
+    const expanded = Math.max(half + 40, available - 60);
     return { closed, half, expanded };
   }
   let rtSheetState = 'closed';
   let rtSheetCurrentHeight = 8;
   function rtApplySheetHeightPx(px){
     const sheet = document.getElementById('rtPanelSheet');
-    const wrap = document.getElementById('rtCanvasStageWrap');
-    const bgRow = document.getElementById('rtCanvasBgRow');
     if (!sheet || window.innerWidth >= 900) return;
     rtSheetCurrentHeight = px;
-    sheet.style.maxHeight = 'none'; // overrides the old base CSS rule's max-height:42vh fallback, which this system fully supersedes
+    sheet.style.bottom = rtBottomNavHeight() + 'px'; // float directly above the bottom nav, never covering it
+    sheet.style.maxHeight = 'none'; // overrides the base CSS rule's max-height:42vh fallback, which this system fully supersedes
     sheet.style.height = px + 'px';
-    const total = rtSheetTotalBudget();
-    if (total != null && wrap){
-      // The canvas-background row sits in normal flow between the
-      // canvas and the sheet -- its real, live-measured height must be
-      // subtracted from canvas's share too, or canvas renders taller
-      // than the budget actually allows and pushes the sheet down into
-      // the fixed toolbar. Found via direct overlap measurement, not
-      // assumed.
-      const bgRowH = bgRow ? bgRow.getBoundingClientRect().height : 0;
-      let canvasH = Math.max(120, total - px - bgRowH - 24);
-      // Cap to what the actual image can use at the available width --
-      // otherwise a width-constrained (portrait-oriented) photo gets a
-      // taller wrap than it can ever fill, leaving a visible empty gap
-      // below the image. Found via direct screenshot inspection, not
-      // assumed: a real device profile showed a ~166px checkerboard gap
-      // beneath a portrait test photo before this fix. For a
-      // height-constrained (landscape) photo, the width-based estimate
-      // below naturally exceeds the budget and this cap has no effect --
-      // fitRtCanvasDisplay's own min() then correctly uses the height
-      // constraint and fills the wrap exactly, so this fix is safe for
-      // both orientations, not just the one that exposed the bug.
-      const previewCanvas = document.getElementById('rtPreviewCanvas');
-      if (previewCanvas && previewCanvas.width && previewCanvas.height){
-        const availW = wrap.clientWidth - 4;
-        const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width) * rtZoom;
-        if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
-      }
-      wrap.style.height = canvasH + 'px';
-      wrap.style.maxHeight = canvasH + 'px';
-      requestAnimationFrame(() => { fitRtCanvasDisplay(); });
-    }
+    // Canvas is intentionally NOT touched here -- it's sized
+    // independently via rtSetCanvasFixedHeight(), so opening/dragging
+    // the sheet never shrinks it.
   }
   function rtSetSheetState(state, animate){
     if (window.innerWidth >= 900) return; // desktop: untouched, keeps its own persistent grid layout entirely
@@ -12712,12 +12748,7 @@ if (document.getElementById('rtDrop')){
   // accordion toggle) keeps working unmodified, now routed through the
   // one unified system above instead of two separate ones.
   function rtUpdateCanvasMaxHeight(){
-    if (window.innerWidth >= 900){
-      const wrap = document.getElementById('rtCanvasStageWrap');
-      if (wrap){ wrap.style.maxHeight = ''; wrap.style.height = ''; }
-      return;
-    }
-    rtApplySheetHeightPx(rtSheetCurrentHeight);
+    rtSetCanvasFixedHeight();
   }
   window.addEventListener('resize', rtUpdateCanvasMaxHeight);
   window.addEventListener('orientationchange', () => setTimeout(rtUpdateCanvasMaxHeight, 250));
@@ -12725,7 +12756,7 @@ if (document.getElementById('rtDrop')){
   function rtUpdatePanelMaxHeight(){
     if (window.innerWidth >= 900){
       const sheet = document.getElementById('rtPanelSheet');
-      if (sheet) { sheet.style.height = ''; sheet.style.maxHeight = ''; }
+      if (sheet) { sheet.style.height = ''; sheet.style.maxHeight = ''; sheet.style.bottom = ''; }
       return;
     }
     rtApplySheetHeightPx(rtSheetCurrentHeight);
@@ -13604,6 +13635,11 @@ if (document.getElementById('rtDrop')){
     if (!active || !active.mask || active.locked) return;
     e.preventDefault();
     rtMaskPainting = true;
+    // Collapse the sheet for the duration of the stroke so the entire
+    // canvas is reachable -- restored once the stroke ends. Brush
+    // controls (Reveal/Conceal, size) remain visible whenever the user
+    // isn't actively painting.
+    if (window.rtSetSheetState) window.rtSetSheetState('closed', true);
     const pt = rtCanvasDisplayToSourcePoint(e.clientX, e.clientY);
     if (pt){ rtPaintMaskAt(pt.x, pt.y); rtMaskLastPoint = pt; rtMaskDebouncedRender(); }
     if (rtCanvasElForMask.setPointerCapture) { try{ rtCanvasElForMask.setPointerCapture(e.pointerId); rtMaskCapturedPointerId = e.pointerId; }catch(err){} }
@@ -13625,6 +13661,7 @@ if (document.getElementById('rtDrop')){
     if (active) active.maskVersion = (active.maskVersion || 0) + 1;
     renderRtPreview();
     rtPushHistory('Brush Mask');
+    if (rtMaskEditActive && window.rtSetSheetState) window.rtSetSheetState('half', true);
   }
   rtCanvasElForMask.addEventListener('pointerup', rtEndMaskStroke);
   rtCanvasElForMask.addEventListener('pointercancel', rtEndMaskStroke);
@@ -14258,15 +14295,17 @@ if (document.getElementById('rtDrop')){
     if (rtHealTool === 'spotHeal'){
       rtHealPainting = true;
       rtHealStrokeMaskPoints = [pt];
+      if (window.rtSetSheetState) window.rtSetSheetState('closed', true);
     } else {
       if (!rtCloneSourcePoint){
         rtCloneSourcePoint = pt;
         rtSyncHealControlsToState();
-        return; // first tap only sets the source point, doesn't paint yet
+        return; // first tap only sets the source point, doesn't paint yet -- sheet stays as-is
       }
       if (!rtCloneOffset) rtCloneOffset = { dx: pt.x - rtCloneSourcePoint.x, dy: pt.y - rtCloneSourcePoint.y };
       rtHealPainting = true;
       rtHealLastPoint = pt;
+      if (window.rtSetSheetState) window.rtSetSheetState('closed', true);
       rtPaintHealStroke(active, pt.x, pt.y, pt.x, pt.y);
       renderRtPreview();
     }
@@ -14312,6 +14351,7 @@ if (document.getElementById('rtDrop')){
       rtPushHistory(rtHealTool === 'clone' ? 'Clone Stamp' : 'Healing Brush');
     }
     rtHealLastPoint = null;
+    if (rtHealEditActive && window.rtSetSheetState) window.rtSetSheetState('half', true);
   }
   rtHealCanvasEl.addEventListener('pointerup', rtEndHealStroke);
   rtHealCanvasEl.addEventListener('pointercancel', rtEndHealStroke);
