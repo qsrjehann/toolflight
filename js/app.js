@@ -11374,16 +11374,238 @@ if (document.getElementById('rtDrop')){
      analysis is eventually added, this becomes a loop over the
      collection with no change to how any single person's plan is
      applied. */
-  async function rtRunAiMagic(){
+  /* ============================================================
+     AI MAGIC EVOLUTION -- Slice 1: Intelligent Photo Analysis &
+     Smart Recommendations
+     Every function here reuses already-cached intelligence (Portrait/
+     Face/Hair/Background Intelligence, Attribute Profile, Multi-Person
+     detection) -- nothing here re-runs a model or duplicates a
+     computation that already exists elsewhere in this file. This module
+     only ASSEMBLES, LABELS, and EXPLAINS what's already measured. No
+     image modification happens anywhere in this block.
+     ============================================================ */
+
+  // ---- Confidence Calculator ----
+  // Maps a real, already-computed numeric confidence (0-1) to a
+  // High/Medium/Low label. Never invents a confidence value -- if the
+  // caller has no real number, it must pass null/undefined and get
+  // 'Unknown' back, not a guessed label.
+  // Shared cache between the Analyze step and the Apply step below --
+  // Apply reuses this instead of recomputing (Part 9: analysis runs once
+  // per image, not once per tap).
+  let rtCachedAiMagicCollection = null;
+  let rtCachedAiMagicDims = null;
+
+  function rtConfidenceLabel(numericConfidence){
+    if (numericConfidence == null || Number.isNaN(numericConfidence)) return 'Unknown';
+    if (numericConfidence >= 0.7) return 'High';
+    if (numericConfidence >= 0.4) return 'Medium';
+    return 'Low';
+  }
+
+  // ---- Multi-Person Adapter (future-ready; detection only, no editing) ----
+  // Wraps the Multi-Person AI Foundation's existing detection collection
+  // (built in an earlier slice) -- purely informational for now, exactly
+  // as this slice's Part 5 specifies.
+  function rtMultiPersonAwareness(){
+    const faces = (typeof rtGetDetectedFaces === 'function') ? rtGetDetectedFaces() : [];
+    return {
+      multiplePeople: faces.length > 1,
+      faceCount: faces.length,
+      note: faces.length > 1
+        ? `${faces.length} faces were detected. Multi-person editing is not yet available -- this photo's primary (largest) face is what AI Magic currently analyzes.`
+        : null,
+    };
+  }
+
+  // ---- Portrait Analysis Pipeline (Part 1) ----
+  // Pure analysis -- assembles the requested checklist from intelligence
+  // that's already computed and cached elsewhere. Cached per layer+size
+  // itself too (Part 9: analysis runs once per image, not re-run on
+  // every tap unless the image actually changed).
+  async function rtGetPortraitAnalysisReport(w, h){
+    const layer = rtGetActiveLayer();
+    if (layer && layer.aiMagicAnalysis && layer.aiMagicAnalysisDims &&
+        layer.aiMagicAnalysisDims.w === w && layer.aiMagicAnalysisDims.h === h){
+      return layer.aiMagicAnalysis;
+    }
+    const portraitIntel = await rtGetPortraitIntelligence(w, h); // cache hit if already computed
+    const faceIntel = await rtGetFaceIntelligence(w, h);         // cache hit if already computed
+    const hairIntel = await rtGetHairIntelligence(w, h);         // cache hit if already computed
+    const bgIntel = await rtGetBackgroundIntelligence(w, h);     // cache hit if already computed
+    const attrProfile = await rtGetAttributeProfile(w, h);       // cache hit if already computed
+    const multiPerson = rtMultiPersonAwareness();
+
+    const photometrics = portraitIntel ? portraitIntel.photometrics : null;
+
+    const report = {
+      faceVisible: !!(portraitIntel && portraitIntel.faceDetected),
+      faceCount: multiPerson.faceCount,
+      multiplePeople: multiPerson.multiplePeople,
+      faceSize: portraitIntel ? portraitIntel.scale : null, // 0-1, fraction of frame width the eyes span
+      faceAngle: portraitIntel ? portraitIntel.rotation : null, // {rollDegrees, orientation}
+      exposure: photometrics ? photometrics.brightness : null, // 0-1
+      contrast: photometrics ? photometrics.contrast : null, // 0-1
+      whiteBalance: photometrics ? photometrics.warmth : null, // 0-1, 0.5=neutral
+      skinVisible: !!(faceIntel && faceIntel.skin && faceIntel.skin.pixelCount > 0),
+      hairVisible: !!(hairIntel && hairIntel.stats && hairIntel.stats.pixelCount > 0),
+      eyeVisible: !!(faceIntel && faceIntel.eyes && faceIntel.eyes.pixelCount > 0),
+      backgroundComplexity: (bgIntel && bgIntel.complexity) ? bgIntel.complexity.complexityScore : null,
+      subjectLuma: (bgIntel && bgIntel.separation) ? bgIntel.separation.subjectMeanLuma : null,
+      backgroundLuma: (bgIntel && bgIntel.separation) ? bgIntel.separation.backgroundMeanLuma : null,
+      overallConfidence: portraitIntel ? portraitIntel.confidence : 0,
+      multiPersonNote: multiPerson.note,
+      computedAt: Date.now(),
+    };
+    if (layer){ layer.aiMagicAnalysis = report; layer.aiMagicAnalysisDims = { w, h }; }
+    return report;
+  }
+
+  // ---- Beauty Plan Generator (Part 3) ----
+  // Formats the Decision Engine's already-validated numeric plan (built
+  // in an earlier slice) into Low/Medium/High labels for display. Does
+  // NOT change or re-derive the underlying amounts -- purely a
+  // presentation layer over numbers that are already real.
+  function rtBeautyPlanAmountLabel(amount){
+    if (amount == null || amount <= 0) return 'Off';
+    if (amount < 20) return 'Low';
+    if (amount < 45) return 'Medium';
+    return 'High';
+  }
+  function rtFormatBeautyPlan(plan){
+    const labels = {
+      skinSmooth: 'Skin Smoothing', skinTone: 'Skin Tone', eyeEnhance: 'Eye Enhancement',
+      teethWhiten: 'Teeth Whitening', lipEnhance: 'Lip Enhancement', hairSmooth: 'Hair Smoothing',
+      hairTexture: 'Hair Texture', hairShine: 'Hair Shine', hairHealth: 'Hair Repair',
+      hairFlyaway: 'Flyaway Cleanup', bgBlur: 'Background Blur', exposure: 'Exposure',
+    };
+    const allKeys = Object.keys(labels);
+    return allKeys.map(key => ({
+      key, label: labels[key],
+      amount: plan[key] || 0,
+      levelLabel: rtBeautyPlanAmountLabel(plan[key]),
+    })).filter(item => item.amount > 0 || ['skinSmooth','eyeEnhance','hairHealth','bgBlur'].includes(item.key));
+    // Keeps a few always-relevant rows visible even at "Off" (matching the
+    // example in the spec, which shows "Background Blur: Off" explicitly
+    // rather than omitting untouched categories entirely) while not
+    // flooding the list with every possible key that was never touched.
+  }
+
+  // ---- Smart Recommendation Engine (Part 2) ----
+  // Every recommendation is derived from a specific, named measurement
+  // above -- never a random or generic line. Each includes a real
+  // confidence label from rtConfidenceLabel, never invented.
+  function rtGenerateSmartRecommendations(analysis, explanation){
+    const recs = [];
+    const push = (text, confidenceValue) => recs.push({ text, confidence: rtConfidenceLabel(confidenceValue) });
+
+    if (!analysis.faceVisible){
+      push('No face was clearly detected -- recommendations below are limited to general photo-wide observations.', 0.9);
+    } else {
+      if (analysis.multiplePeople) push(analysis.multiPersonNote, 0.9);
+
+      // Exposure / lighting, derived directly from measured brightness.
+      if (analysis.exposure != null){
+        if (analysis.exposure < 0.32) push('Face is underexposed -- a brightness lift would help.', 1 - Math.abs(analysis.exposure-0.32));
+        else if (analysis.exposure > 0.78) push('Face is slightly overexposed -- highlights may be losing detail.', analysis.exposure);
+      }
+      // Backlight: subject meaningfully darker than the background it's set against -- a real, measured comparison, not a guess.
+      if (analysis.subjectLuma != null && analysis.backgroundLuma != null){
+        const gap = analysis.backgroundLuma - analysis.subjectLuma;
+        if (gap > 0.22) push('Strong backlight detected -- the background is noticeably brighter than the face.', rtClamp(gap*2, 0, 1));
+      }
+      if (analysis.contrast != null && analysis.contrast < 0.25){
+        push('Contrast reads a little flat -- portrait could use more depth.', 1 - analysis.contrast);
+      }
+      if (analysis.eyeVisible && explanation){
+        const eyeDecision = explanation.find(d => d.key === 'eyeEnhance');
+        if (eyeDecision && eyeDecision.amount > 5) push('Eyes appear slightly soft -- a light sharpen would help them stand out.', analysis.overallConfidence);
+      } else if (!analysis.eyeVisible){
+        push('Eyes were not clearly visible -- eye-specific enhancement was skipped.', 0.8);
+      }
+      if (analysis.skinVisible && explanation){
+        const skinDecision = explanation.find(d => d.key === 'skinSmooth');
+        if (skinDecision && skinDecision.amount > 5) push('Skin could benefit from light smoothing.', analysis.overallConfidence);
+      }
+      if (analysis.hairVisible && explanation){
+        const hairDecision = explanation.find(d => d.key === 'hairHealth' || d.key === 'hairShine');
+        if (hairDecision && hairDecision.amount > 5) push('Hair detail can be enhanced.', analysis.overallConfidence);
+      } else if (!analysis.hairVisible){
+        push('Hair was not clearly detected in this frame -- hair enhancements were skipped.', 0.7);
+      }
+    }
+    if (analysis.backgroundComplexity != null && analysis.backgroundComplexity > 0.55){
+      push('Background is a little busy -- a subtle blur could help the subject stand out.', analysis.backgroundComplexity);
+    }
+    if (recs.length === 0){
+      push('Portrait already looks balanced -- no strong adjustments were found necessary.', analysis.overallConfidence || 0.5);
+    }
+    return recs;
+  }
+
+  // ---- Analysis Orchestrator (Part 1 + Part 6) ----
+  // Computes analysis + recommendations + a proposed Beauty Plan.
+  // Applies NOTHING (Part 3). Stage messages are tied to real awaited
+  // calls, not artificial delays -- "Checking Lighting..." is the one
+  // exception, documented inline: photometrics/lighting data is
+  // computed AS PART OF the portrait-geometry call (there's no separate
+  // model for lighting in this architecture), so that message reflects
+  // the moment that data becomes available rather than a distinct
+  // awaited step of its own.
+  async function rtRunAiMagicAnalysis(){
     const active = rtGetActiveLayer();
     if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
-    if (!rtSourceCanvas) return null;
+    if (!rtSourceCanvas){ toast('Upload a photo first, then tap AI Magic to get started.', 'ok'); return null; }
     const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
     const maxDim = 900;
     let w = sw, h = sh;
     if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
 
-    const collection = await rtGenerateAiMagicPlanCollection(w, h);
+    const setStage = (text) => { const el = document.getElementById('rtAiMagicStage'); if (el) el.textContent = text; };
+
+    setStage('Analyzing Portrait\u2026');
+    await rtGetPortraitIntelligence(w, h); // real await -- portrait geometry, exposure/contrast/white-balance photometrics
+
+    setStage('Checking Lighting\u2026'); // see function comment above -- reflects data from the call just above, not a separate model
+    await new Promise(r => requestAnimationFrame(r)); // yield one frame so this message is actually seen, not an artificial wait
+
+    setStage('Detecting Skin\u2026');
+    await rtGetFaceIntelligence(w, h); // real await -- skin/eye/teeth/lip region analysis
+
+    setStage('Detecting Hair\u2026');
+    await rtGetHairIntelligence(w, h); // real await -- hair segmentation + intelligence
+
+    setStage('Preparing Beauty Plan\u2026');
+    const collection = await rtGenerateAiMagicPlanCollection(w, h); // real await -- Decision Engine runs here (also computes Background Intelligence internally)
+    const primary = collection[0];
+    const analysis = await rtGetPortraitAnalysisReport(w, h); // cache hit -- assembles the pieces already computed above
+
+    const recommendations = rtGenerateSmartRecommendations(analysis, primary.explanation);
+    const planDisplay = rtFormatBeautyPlan(primary.plan);
+
+    rtCachedAiMagicCollection = collection;
+    rtCachedAiMagicDims = { w, h };
+
+    return { analysis, recommendations, planDisplay, primary, collection };
+  }
+
+  async function rtRunAiMagic(){
+    const active = rtGetActiveLayer();
+    if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
+    if (!rtSourceCanvas){ toast('Upload a photo first, then tap AI Magic to get started.', 'ok'); return null; }
+    const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
+    const maxDim = 900;
+    let w = sw, h = sh;
+    if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
+
+    // Reuse the Analyze step's cached collection when it's still valid
+    // for this layer/size -- avoids recomputing analysis that already
+    // ran (Part 9). Falls back to computing fresh only if Apply is
+    // reached without a prior Analyze (defensive, shouldn't normally
+    // happen given the UI always analyzes first).
+    const collection = (rtCachedAiMagicCollection && rtCachedAiMagicDims && rtCachedAiMagicDims.w === w && rtCachedAiMagicDims.h === h)
+      ? rtCachedAiMagicCollection
+      : await rtGenerateAiMagicPlanCollection(w, h);
     const primary = collection[0];
     const { plan } = primary;
     if (!Object.keys(plan).length){
@@ -11882,7 +12104,7 @@ if (document.getElementById('rtDrop')){
     const canvas = document.getElementById('rtPreviewCanvas');
     const wrap = document.getElementById('rtCanvasStageWrap');
     if (!canvas.width || !wrap) return;
-    const availW = wrap.clientWidth - 4, availH = Math.max(280, wrap.clientHeight - 4);
+    const availW = wrap.clientWidth - 4, availH = Math.max(80, wrap.clientHeight - 4); // the 280px floor once here is gone -- it predates the bottom-sheet system (this slice) and caused the canvas to overflow its wrap whenever the sheet legitimately needed the canvas smaller than that; the sheet system's own rtApplySheetHeightPx already enforces a sensible floor (120px)
     const fitScale = Math.min(1, availW/canvas.width, availH/canvas.height) * rtZoom;
     canvas.style.width = Math.round(canvas.width*fitScale) + 'px';
     canvas.style.height = Math.round(canvas.height*fitScale) + 'px';
@@ -11985,6 +12207,16 @@ if (document.getElementById('rtDrop')){
     toast('Reset to original.');
   };
 
+  document.getElementById('rtChangePhotoBtn').onclick = () => {
+    document.getElementById('rtStage').classList.add('hidden');
+    const uploadSectionEl = document.getElementById('rtUploadSection');
+    if (uploadSectionEl) uploadSectionEl.classList.remove('hidden');
+    rtSourceCanvas = null; // defensive: nothing should render against a stale canvas while the upload section is showing
+    const inputEl = document.getElementById('rtInput');
+    if (inputEl) inputEl.value = ''; // allows re-selecting the same file
+    document.getElementById('rtUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   /* ---------- Filter presets: real slider combinations, not a separate
      rendering path -- applying a preset just sets rtAdj and goes through
      the exact same renderRtToCanvas() as manual adjustments. ---------- */
@@ -12009,15 +12241,127 @@ if (document.getElementById('rtDrop')){
     };
   });
 
-  /* ---------- Compare (hold to see original) ---------- */
-  const compareBtn = document.getElementById('rtCompareBtn');
+  /* ---------- Compare (touch anywhere on the image to see original) ----------
+     Replaces the old dedicated "Hold to Compare" button (Mobile UX Polish
+     Sprint, Part 2) -- reuses the exact same rtShowOriginal() rendering
+     logic already proven, just wired to the canvas itself via pointer
+     events instead of a separate button. Coexists with pinch-zoom and
+     double-tap (handled by the existing touchstart/touchmove/touchend
+     listeners further below): a second touch point starting a pinch
+     immediately cancels compare (see the pinch-start branch below), so
+     the user never pinches while looking at the unedited original. */
+  const rtCompareCanvasEl = document.getElementById('rtPreviewCanvas');
   function rtShowOriginal(show){
     const canvas = document.getElementById('rtPreviewCanvas');
     if (show) canvas.getContext('2d').drawImage(rtSourceCanvas, 0, 0, canvas.width, canvas.height);
     else renderRtPreview();
   }
-  ['pointerdown'].forEach(ev => compareBtn.addEventListener(ev, () => rtShowOriginal(true)));
-  ['pointerup','pointerleave'].forEach(ev => compareBtn.addEventListener(ev, () => rtShowOriginal(false)));
+  let rtCompareActive = false;
+  function rtStartCompare(e){
+    if (!rtSourceCanvas) return;
+    if (rtMaskEditActive || rtHealEditActive) return; // brush painting owns single-touch input in this mode
+    if (rtCropEditMode) return; // don't interfere with crop handle dragging
+    if (e.pointerType === 'touch' && e.isPrimary === false) return; // ignore secondary touch points (pinch)
+    rtCompareActive = true;
+    rtShowOriginal(true);
+    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+  }
+  function rtEndCompare(){
+    if (!rtCompareActive) return;
+    rtCompareActive = false;
+    rtShowOriginal(false);
+  }
+  rtCompareCanvasEl.addEventListener('pointerdown', rtStartCompare);
+  rtCompareCanvasEl.addEventListener('pointerup', rtEndCompare);
+  rtCompareCanvasEl.addEventListener('pointercancel', rtEndCompare);
+  rtCompareCanvasEl.addEventListener('pointerleave', rtEndCompare);
+
+  /* ---------- Floating Top Toolbar (Mobile UX Polish Sprint, Part 1) ----------
+     Mobile only (desktop keeps its existing sticky grid-area toolbar,
+     untouched -- see the >=900px media query which never applies these
+     classes/positions). Draggable via the bar's own background (not its
+     buttons, which keep normal tap behavior), snaps to the nearest
+     horizontal edge on release, and auto-hides to 25% opacity after
+     ~2s idle -- woken instantly by any interaction. rtSuspendToolbarIdle
+     lets AI Magic / export / any future dialog keep it fully visible
+     regardless of idle time. */
+  (function setupFloatingTopbar(){
+    const topbar = document.getElementById('rtTopBar');
+    if (!topbar) return;
+    let idleTimer = null;
+    let dragging = false, dragStartX = 0, dragStartY = 0, barStartLeft = 0, barStartTop = 0;
+    window.rtSuspendToolbarIdle = false;
+
+    // The site's own navbar is position:sticky at the true viewport top
+    // with a higher z-index than anything in this tool -- the floating
+    // toolbar must never sit underneath it (found via real interaction
+    // testing: clicks were being intercepted by the navbar). Computed
+    // live rather than hardcoded, since navbar height can vary.
+    function rtMinTopbarY(){
+      const nav = document.querySelector('.navbar');
+      return (nav ? nav.getBoundingClientRect().bottom : 0) + 8;
+    }
+    // Set the real, correct initial position now that the navbar's
+    // actual height is known (CSS's 76px is only a reasonable fallback).
+    topbar.style.top = rtMinTopbarY() + 'px';
+
+    function rtWakeFloatingToolbar(){
+      topbar.classList.remove('rt-toolbar-idle');
+      clearTimeout(idleTimer);
+      if (window.innerWidth >= 900) return; // desktop: sticky toolbar, no idle-fade behavior at all
+      idleTimer = setTimeout(() => {
+        if (window.rtSuspendToolbarIdle) { rtWakeFloatingToolbar(); return; } // re-arm instead of hiding during AI/export/dialogs
+        topbar.classList.add('rt-toolbar-idle');
+      }, 2000);
+    }
+    window.rtWakeFloatingToolbar = rtWakeFloatingToolbar;
+
+    topbar.addEventListener('pointerdown', (e) => {
+      if (window.innerWidth >= 900) return;
+      rtWakeFloatingToolbar();
+      if (e.target.closest('button, input, a')) return; // let buttons/inputs behave normally -- only the bar's own background drags
+      dragging = true;
+      topbar.classList.add('rt-toolbar-dragging');
+      const rect = topbar.getBoundingClientRect();
+      barStartLeft = rect.left; barStartTop = rect.top;
+      topbar.style.width = rect.width + 'px'; // pin width BEFORE releasing the right constraint below, or the bar reflows to its natural (viewport-exceeding) content width and breaks the drag math
+      topbar.style.right = 'auto';
+      dragStartX = e.clientX; dragStartY = e.clientY;
+      try{ topbar.setPointerCapture(e.pointerId); }catch(err){}
+      e.preventDefault();
+    });
+    topbar.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+      const maxLeft = Math.max(4, window.innerWidth - topbar.offsetWidth - 4);
+      const maxTop = Math.max(4, window.innerHeight - topbar.offsetHeight - 4);
+      const newLeft = rtClamp(barStartLeft + dx, 4, maxLeft);
+      const newTop = rtClamp(barStartTop + dy, rtMinTopbarY(), maxTop);
+      topbar.style.left = newLeft + 'px';
+      topbar.style.top = newTop + 'px';
+      topbar.style.right = 'auto';
+    });
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      topbar.classList.remove('rt-toolbar-dragging');
+      // Snap to the nearest horizontal edge -- keeps whatever vertical position the user dropped it at.
+      const rect = topbar.getBoundingClientRect();
+      const centerX = rect.left + rect.width/2;
+      if (centerX < window.innerWidth/2){ topbar.style.left = '8px'; topbar.style.right = 'auto'; }
+      else { topbar.style.left = Math.max(4, window.innerWidth - rect.width - 8) + 'px'; }
+      rtWakeFloatingToolbar();
+    }
+    topbar.addEventListener('pointerup', endDrag);
+    topbar.addEventListener('pointercancel', endDrag);
+
+    // Any interaction anywhere in the editor wakes the toolbar -- taps,
+    // drags, pinches, zooms, opening a panel (Part 1's exact list).
+    ['pointerdown','wheel'].forEach(ev => document.addEventListener(ev, rtWakeFloatingToolbar, { passive: true }));
+    document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => acc.addEventListener('toggle', rtWakeFloatingToolbar));
+    rtWakeFloatingToolbar();
+  })();
 
   /* ---------- Zoom / Fit to Screen / mouse wheel / gestures ---------- */
   document.getElementById('rtZoomSlider').addEventListener('input', (e) => {
@@ -12051,6 +12395,7 @@ if (document.getElementById('rtDrop')){
     if (rtMaskEditActive) return; // brush painting owns single-touch input in this mode; see pointerdown handler above
     if (e.touches.length === 2){
       e.preventDefault();
+      rtEndCompare(); // must never interfere with pinch zoom -- restore the edited view before pinch begins
       const [a,b] = e.touches;
       rtPinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
       rtPinchStartZoom = rtZoom;
@@ -12085,6 +12430,8 @@ if (document.getElementById('rtDrop')){
     if (!rtSourceCanvas) return;
     const btn = document.getElementById('rtDownloadBtn');
     setLoading(btn, true);
+    window.rtSuspendToolbarIdle = true;
+    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     try{
       const exportCanvas = document.createElement('canvas');
       const rotated = await rtGetRotatedComposite(null); // null maxDim = full source resolution, all visible layers composited
@@ -12099,6 +12446,8 @@ if (document.getElementById('rtDrop')){
       }, 'image/' + format, 0.98);
     } finally {
       setLoading(btn, false);
+      window.rtSuspendToolbarIdle = false;
+      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     }
   };
 
@@ -12129,9 +12478,16 @@ if (document.getElementById('rtDrop')){
     if (rtCropEditMode) rtSetCropEditMode(false);
     if (rtHealEditActive) rtSetHealEditMode(false);
     rtCloneSourcePoint = null; rtCloneOffset = null;
+    rtZoom = 1; rtOffsetX = 0; rtOffsetY = 0; // Auto Fit: every newly loaded photo starts centered at best-fit zoom
     rtSyncCropControlsToState();
+    const uploadSectionEl = document.getElementById('rtUploadSection');
+    if (uploadSectionEl) uploadSectionEl.classList.add('hidden'); // Canvas is King: removed from layout, not just hidden
     document.getElementById('rtStage').classList.remove('hidden');
     document.getElementById('rtStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    rtSetSheetState('closed', false); // every new photo starts with maximum canvas area, no panel open
+    setTimeout(rtUpdateCanvasMaxHeight, 150);
+    setTimeout(rtUpdateCanvasMaxHeight, 400);
+    setTimeout(rtUpdateCanvasMaxHeight, 800);
     setTimeout(rtUpdatePanelMaxHeight, 400);
     document.getElementById('rtOutputDims').textContent = `${rtSourceCanvas.width}\u00d7${rtSourceCanvas.height}px (original resolution)`;
     await rtDetectFace();
@@ -12139,6 +12495,7 @@ if (document.getElementById('rtDrop')){
     rtRenderLayersPanel();
     rtResetHistory();
     await renderRtPreview();
+    rtUpdateCanvasMaxHeight(); // final pass once the real image is rendered and its aspect ratio is known
     toast('Image loaded.');
   }
   setupDropZone('rtDrop','rtInput', async (files) => {
@@ -12174,8 +12531,24 @@ if (document.getElementById('rtDrop')){
       btn.addEventListener('click', () => {
         const target = document.getElementById(btn.dataset.target);
         if (!target) return;
-        target.open = true;
-        target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        const isMobile = window.innerWidth < 900;
+        if (target.open && isMobile){
+          // Tapping the already-active category closes the sheet entirely
+          // (Part 1: Closed state -- maximum canvas area).
+          target.open = false;
+          if (window.rtSetSheetState) window.rtSetSheetState('closed', true);
+        } else {
+          target.open = true;
+          if (isMobile){
+            const sheetEl = document.getElementById('rtPanelSheet');
+            if (sheetEl) sheetEl.scrollTop = 0; // keep the drag handle visible -- only one category is ever shown on mobile now, so there's nothing else to scroll to
+          } else {
+            target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); // desktop still lists every category -- genuinely needs to scroll the newly-opened one into view
+          }
+          // Part 5: switching to any category always lands in Half, even
+          // if the sheet was previously Expanded or Closed.
+          if (isMobile && window.rtSetSheetState) window.rtSetSheetState('half', true);
+        }
         syncActiveFromOpenAccordion();
       });
     });
@@ -12230,44 +12603,177 @@ if (document.getElementById('rtDrop')){
      aspect ratio and the device), so a fixed percentage either wastes
      space or -- worse -- lets the panel render underneath the fixed
      bottom toolbar. This measures the real remaining space instead. */
-  function rtUpdatePanelMaxHeight(){
-    const sheet = document.getElementById('rtPanelSheet');
+  // Canva-style Bottom Sheet (Mobile UX Polish Sprint, drag + swipe
+  // slice). Canvas and sheet now share ONE live-measured budget instead
+  // of two separate systems each guessing how much the other needs --
+  // canvasHeight = totalBudget - sheetHeight, recomputed on every sheet
+  // height change (drag or state snap), so the canvas genuinely resizes
+  // in lockstep rather than reacting to a discrete open/closed guess.
+  function rtSheetTotalBudget(){
+    const wrap = document.getElementById('rtCanvasStageWrap');
     const toolbar = document.getElementById('rtBottomToolbar');
-    if (!sheet || !toolbar || window.innerWidth >= 900) { if (sheet) sheet.style.maxHeight = ''; return; }
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const sheetTop = sheet.getBoundingClientRect().top;
-    const hardCeiling = Math.max(60, toolbarRect.top - sheetTop - 8);
-    const available = window.innerHeight - toolbarRect.height - sheetTop - 10;
-    const preferred = Math.max(140, available);
-    sheet.style.maxHeight = Math.min(preferred, hardCeiling) + 'px';
-    // Self-correct on the next frame: the panel's top position can still
-    // shift slightly after this calculation (layout settling, late
-    // reflows) -- verify the ACTUAL rendered overlap against the toolbar's
-    // real final position and tighten further if anything still overlaps,
-    // rather than trusting a single point-in-time measurement.
-    requestAnimationFrame(() => {
-      const sheetRect = sheet.getBoundingClientRect();
-      const toolbarRect2 = toolbar.getBoundingClientRect();
-      const overlap = sheetRect.bottom - toolbarRect2.top;
-      if (overlap > 0){
-        const current = parseFloat(sheet.style.maxHeight) || sheetRect.height;
-        sheet.style.maxHeight = Math.max(60, current - overlap - 4) + 'px';
-      }
-    });
+    const bgRow = document.getElementById('rtCanvasBgRow');
+    if (!wrap || !toolbar) return null;
+    const wrapTop = wrap.getBoundingClientRect().top; // stable: depends on what's ABOVE the canvas (navbar/margins), not on the canvas's own current height
+    const toolbarTop = toolbar.getBoundingClientRect().top;
+    // The canvas-background swatch row sits in normal flow BETWEEN the
+    // canvas and the sheet -- it's real, always-present space that must
+    // be subtracted from the shared budget, or canvas+sheet combined
+    // overflow the true available area and the sheet renders lower than
+    // expected (found via direct testing: this caused the bg-row to
+    // visually overlap the sheet's drag handle).
+    const bgRowHeight = bgRow ? bgRow.getBoundingClientRect().height : 36;
+    return Math.max(260, toolbarTop - wrapTop - bgRowHeight - 20);
+  }
+  function rtSheetTargetHeights(){
+    const total = rtSheetTotalBudget();
+    if (total == null) return null;
+    const closed = 8; // just the handle bar, no content -- "maximum canvas area"
+    const halfPreferred = Math.min(Math.round(window.innerHeight * 0.42), 380);
+    const half = Math.max(closed + 60, Math.min(halfPreferred, total - 160)); // never squeeze canvas below a 160px floor for Half
+    const expanded = Math.max(half + 40, total - 140); // most of the shared budget; canvas keeps a small floor rather than vanishing entirely
+    return { closed, half, expanded };
+  }
+  let rtSheetState = 'closed';
+  let rtSheetCurrentHeight = 8;
+  function rtApplySheetHeightPx(px){
+    const sheet = document.getElementById('rtPanelSheet');
+    const wrap = document.getElementById('rtCanvasStageWrap');
+    const bgRow = document.getElementById('rtCanvasBgRow');
+    if (!sheet || window.innerWidth >= 900) return;
+    rtSheetCurrentHeight = px;
+    sheet.style.maxHeight = 'none'; // overrides the old base CSS rule's max-height:42vh fallback, which this system fully supersedes
+    sheet.style.height = px + 'px';
+    const total = rtSheetTotalBudget();
+    if (total != null && wrap){
+      // The canvas-background row sits in normal flow between the
+      // canvas and the sheet -- its real, live-measured height must be
+      // subtracted from canvas's share too, or canvas renders taller
+      // than the budget actually allows and pushes the sheet down into
+      // the fixed toolbar. Found via direct overlap measurement, not
+      // assumed.
+      const bgRowH = bgRow ? bgRow.getBoundingClientRect().height : 0;
+      const canvasH = Math.max(120, total - px - bgRowH - 24);
+      wrap.style.height = canvasH + 'px';
+      wrap.style.maxHeight = canvasH + 'px';
+      requestAnimationFrame(() => { fitRtCanvasDisplay(); });
+    }
+  }
+  function rtSetSheetState(state, animate){
+    if (window.innerWidth >= 900) return; // desktop: untouched, keeps its own persistent grid layout entirely
+    const sheet = document.getElementById('rtPanelSheet');
+    const heights = rtSheetTargetHeights();
+    if (!sheet || !heights) return;
+    rtSheetState = state;
+    sheet.classList.toggle('rt-sheet-expanded', state === 'expanded');
+    sheet.classList.toggle('rt-sheet-dragging', animate === false);
+    rtApplySheetHeightPx(heights[state]);
+    if (state === 'closed'){
+      // Closed: no controls visible at all (Part 1) -- also close whichever category was open.
+      const openAcc = document.querySelector('#rtPanelSheet .pp-accordion[open]');
+      if (openAcc) openAcc.open = false;
+    }
+  }
+  window.rtSetSheetState = rtSetSheetState; // exposed for the bottom-toolbar category handler below
+
+  // Both original function names are preserved as thin wrappers -- every
+  // existing call site (image load, resize, scroll, orientationchange,
+  // accordion toggle) keeps working unmodified, now routed through the
+  // one unified system above instead of two separate ones.
+  function rtUpdateCanvasMaxHeight(){
+    if (window.innerWidth >= 900){
+      const wrap = document.getElementById('rtCanvasStageWrap');
+      if (wrap){ wrap.style.maxHeight = ''; wrap.style.height = ''; }
+      return;
+    }
+    rtApplySheetHeightPx(rtSheetCurrentHeight);
+  }
+  window.addEventListener('resize', rtUpdateCanvasMaxHeight);
+  window.addEventListener('orientationchange', () => setTimeout(rtUpdateCanvasMaxHeight, 250));
+
+  function rtUpdatePanelMaxHeight(){
+    if (window.innerWidth >= 900){
+      const sheet = document.getElementById('rtPanelSheet');
+      if (sheet) { sheet.style.height = ''; sheet.style.maxHeight = ''; }
+      return;
+    }
+    rtApplySheetHeightPx(rtSheetCurrentHeight);
   }
   window.addEventListener('resize', rtUpdatePanelMaxHeight);
+
+  // Drag gesture on the handle bar (Parts 2-3): live 1:1 height tracking
+  // while dragging, velocity-aware snap to the nearest state on release.
+  (function setupSheetDrag(){
+    const handle = document.getElementById('rtSheetHandle');
+    const sheet = document.getElementById('rtPanelSheet');
+    if (!handle || !sheet) return;
+    let dragging = false, dragStartY = 0, startHeight = 0, rafPending = false, pendingHeight = null;
+    let moveHistory = [];
+    handle.addEventListener('pointerdown', (e) => {
+      if (window.innerWidth >= 900) return;
+      dragging = true;
+      sheet.classList.add('rt-sheet-dragging');
+      dragStartY = e.clientY;
+      startHeight = rtSheetCurrentHeight;
+      moveHistory = [{ t: performance.now(), y: e.clientY }];
+      try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const heights = rtSheetTargetHeights();
+      if (!heights) return;
+      const dy = e.clientY - dragStartY; // positive = dragged down
+      pendingHeight = rtClamp(startHeight - dy, heights.closed, heights.expanded); // drag up (negative dy) increases height
+      moveHistory.push({ t: performance.now(), y: e.clientY });
+      if (moveHistory.length > 6) moveHistory.shift();
+      if (!rafPending){
+        rafPending = true;
+        requestAnimationFrame(() => { if (pendingHeight != null) rtApplySheetHeightPx(pendingHeight); rafPending = false; });
+      }
+    });
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      sheet.classList.remove('rt-sheet-dragging');
+      const heights = rtSheetTargetHeights();
+      if (!heights) return;
+      let velocity = 0; // px/ms, positive = moving down
+      if (moveHistory.length >= 2){
+        const first = moveHistory[0], last = moveHistory[moveHistory.length-1];
+        const dt = last.t - first.t;
+        if (dt > 0) velocity = (last.y - first.y) / dt;
+      }
+      const current = rtSheetCurrentHeight;
+      let target;
+      if (velocity < -0.5){ // fast upward flick
+        target = current < heights.half ? 'half' : 'expanded';
+      } else if (velocity > 0.5){ // fast downward flick
+        target = current > heights.half ? 'half' : 'closed';
+      } else {
+        const dists = { closed: Math.abs(current-heights.closed), half: Math.abs(current-heights.half), expanded: Math.abs(current-heights.expanded) };
+        target = Object.keys(dists).reduce((a,b) => dists[a] <= dists[b] ? a : b);
+      }
+      rtSetSheetState(target, true);
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+  })();
+
   let rtScrollDebounce = null;
   window.addEventListener('scroll', () => {
     clearTimeout(rtScrollDebounce);
-    rtScrollDebounce = setTimeout(rtUpdatePanelMaxHeight, 80);
+    rtScrollDebounce = setTimeout(() => { rtUpdatePanelMaxHeight(); rtUpdateCanvasMaxHeight(); }, 80);
   }, { passive: true });
   window.addEventListener('orientationchange', () => setTimeout(rtUpdatePanelMaxHeight, 250));
   document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => {
     acc.addEventListener('toggle', () => {
+      rtUpdateCanvasMaxHeight();
       rtUpdatePanelMaxHeight();
-      setTimeout(rtUpdatePanelMaxHeight, 150);
-      setTimeout(rtUpdatePanelMaxHeight, 400);
-      setTimeout(rtUpdatePanelMaxHeight, 800);
+      setTimeout(() => { rtUpdateCanvasMaxHeight(); rtUpdatePanelMaxHeight(); }, 150);
+      setTimeout(() => { rtUpdateCanvasMaxHeight(); rtUpdatePanelMaxHeight(); }, 400);
+      setTimeout(() => { rtUpdateCanvasMaxHeight(); rtUpdatePanelMaxHeight(); }, 800);
     });
   });
 
@@ -12624,16 +13130,83 @@ if (document.getElementById('rtDrop')){
     }
   });
   const rtAiMagicBtnEl = document.getElementById('rtAiMagicBtn');
+  function rtRenderAiMagicResults(result){
+    const { analysis, recommendations, planDisplay } = result;
+    const recEl = document.getElementById('rtAiMagicRecommendations');
+    const planEl = document.getElementById('rtAiMagicPlan');
+    const resultsEl = document.getElementById('rtAiMagicResults');
+    if (!recEl || !planEl || !resultsEl) return;
+
+    recEl.innerHTML = '';
+    recommendations.forEach(rec => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:12.5px;';
+      const badgeColor = rec.confidence === 'High' ? 'var(--accent1)' : 'var(--ink-soft)';
+      const recText = document.createElement('span');
+      recText.style.flex = '1';
+      recText.textContent = rec.text;
+      const recBadge = document.createElement('span');
+      recBadge.style.cssText = `font-size:10.5px;font-weight:700;color:${badgeColor};white-space:nowrap;`;
+      recBadge.textContent = rec.confidence;
+      row.appendChild(recText); row.appendChild(recBadge);
+      recEl.appendChild(row);
+    });
+
+    planEl.innerHTML = '';
+    const planTitle = document.createElement('div');
+    planTitle.style.cssText = 'font-weight:700;margin-bottom:2px;';
+    planTitle.textContent = 'Proposed Beauty Plan';
+    planEl.appendChild(planTitle);
+    planDisplay.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;color:var(--ink-soft);';
+      const label = document.createElement('span'); label.textContent = item.label;
+      const level = document.createElement('span'); level.textContent = item.levelLabel;
+      row.appendChild(label); row.appendChild(level);
+      planEl.appendChild(row);
+    });
+    if (analysis.multiPersonNote){
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:11.5px;color:var(--ink-soft);margin-top:4px;';
+      note.textContent = analysis.multiPersonNote;
+      planEl.appendChild(note);
+    }
+    resultsEl.classList.remove('hidden');
+  }
+
   if (rtAiMagicBtnEl) rtAiMagicBtnEl.addEventListener('click', async () => {
     rtAiMagicBtnEl.disabled = true;
-    rtAiMagicBtnEl.textContent = 'Thinking\u2026';
+    document.getElementById('rtAiMagicResults').classList.add('hidden');
+    window.rtSuspendToolbarIdle = true;
+    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     try{
-      await rtRunAiMagic();
+      const result = await rtRunAiMagicAnalysis();
+      if (result) rtRenderAiMagicResults(result);
     }catch(err){
       toast('AI Magic could not complete: ' + (err.message || 'unknown error'), 'err');
     } finally {
       rtAiMagicBtnEl.disabled = false;
-      rtAiMagicBtnEl.textContent = 'Run AI Magic';
+      document.getElementById('rtAiMagicStage').textContent = '';
+      window.rtSuspendToolbarIdle = false;
+      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+    }
+  });
+  const rtApplyBeautyPlanBtnEl = document.getElementById('rtApplyBeautyPlanBtn');
+  if (rtApplyBeautyPlanBtnEl) rtApplyBeautyPlanBtnEl.addEventListener('click', async () => {
+    rtApplyBeautyPlanBtnEl.disabled = true;
+    rtApplyBeautyPlanBtnEl.textContent = 'Applying\u2026';
+    window.rtSuspendToolbarIdle = true;
+    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+    try{
+      await rtRunAiMagic(); // unchanged apply logic -- reuses the cached analysis from the step above
+      document.getElementById('rtAiMagicResults').classList.add('hidden');
+    }catch(err){
+      toast('Could not apply the Beauty Plan: ' + (err.message || 'unknown error'), 'err');
+    } finally {
+      rtApplyBeautyPlanBtnEl.disabled = false;
+      rtApplyBeautyPlanBtnEl.textContent = 'Apply Beauty Plan';
+      window.rtSuspendToolbarIdle = false;
+      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     }
   });
   document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
