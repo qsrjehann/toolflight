@@ -1549,6 +1549,28 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   box-shadow:0 6px 20px -10px rgba(20,15,50,0.25);
   overflow-x:auto; -webkit-overflow-scrolling:touch;
 }
+@media (max-width: 899px){
+  /* Floating Toolbar (Mobile UX Polish Sprint, Part 1): fully out of
+     document flow -- consumes zero permanent layout height. The
+     existing rtUpdateCanvasMaxHeight() measures the canvas wrap's real,
+     live position each time, so it automatically reclaims whatever
+     space this frees up -- no change to the canvas-sizing formula
+     itself was needed or made. */
+  #rtStage .rt-topbar{
+    position:fixed; top:76px; left:8px; right:8px; z-index:20;
+    background:color-mix(in srgb, var(--card) 88%, transparent);
+    border-radius:16px;
+    box-shadow:0 10px 28px -14px rgba(20,15,50,0.4);
+    transition:opacity 0.35s ease;
+    cursor:grab;
+    touch-action:none; /* dragging is handled entirely via pointer events below */
+  }
+  #rtStage .rt-topbar.rt-toolbar-idle{ opacity:0.25; }
+  #rtStage .rt-topbar.rt-toolbar-dragging{ transition:none; cursor:grabbing; }
+  /* Buttons inside the floating bar keep normal touch behavior (tap),
+     only the bar's own background area initiates a drag. */
+  #rtStage .rt-topbar button, #rtStage .rt-topbar input{ touch-action:manipulation; }
+}
 #rtStage .rt-tb-icon-btn{
   flex:0 0 auto; width:38px; height:38px; border-radius:10px;
   border:1px solid var(--card-border); background:transparent; color:var(--ink);
@@ -1585,12 +1607,55 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 
 #rtStage .rt-canvas-area{ margin-top:12px; }
 #rtStage .rt-zoom-row{ display:flex; align-items:center; gap:10px; margin-top:8px; }
+#rtStage .rt-sheet-handle{ display:none; } /* base/desktop default -- the mobile media query below overrides this to display:flex, correctly winning via source order since its condition is satisfied on mobile */
 @media (max-width: 899px){
   /* Shared .editor-stage-wrap base rule (520px cap) is untouched -- this
-     only narrows it further inside the retouch tool on small screens, so
-     the panel sheet + fixed bottom toolbar always have real room below
-     the canvas instead of being squeezed off-screen. */
-  #rtStage .editor-stage-wrap{ max-height:min(380px, 34vh); max-height:min(380px, 34dvh); }
+     only narrows it further inside the retouch tool on small screens.
+     "Canvas is King" (Mobile UX Polish Sprint): the canvas should claim
+     ~70-75% of the mobile screen once an image is loaded. This starting
+     value is intentionally generous -- rtUpdateCanvasMaxHeight() (JS)
+     recalculates the real, safe value from actual measured layout
+     (topbar/toolbar heights) on load/resize, the same proven
+     self-correcting pattern already used for the panel sheet's height,
+     so this CSS value is only ever the pre-JS fallback, not the final
+     word. */
+  #rtStage .editor-stage-wrap{ max-height:min(640px, 68vh); max-height:min(640px, 68dvh); }
+  /* Zoom slider replaced by pinch-to-zoom + double-tap on mobile (modern
+     editors don't use a slider for this) -- kept in the DOM and fully
+     functional on desktop, where there's no touch gesture equivalent. */
+  #rtStage .rt-zoom-row{ display:none; }
+  /* Canva-style navigation (Mobile UX Polish Sprint, Part 2): only the
+     currently-open category is visible -- everything else is hidden
+     entirely rather than shown as a scrollable list of collapsed
+     headers. The bottom nav is the sole way to switch categories now,
+     so the header list was redundant; removing it also means the panel
+     sheet collapses to near-zero height when nothing is selected,
+     directly freeing more room for the canvas (Part 4). Reuses the
+     exact same .pp-accordion elements and exclusivity logic already
+     built -- this is a presentational change, not a rewrite. */
+  #rtStage .rt-panel-sheet .pp-accordion:not([open]){ display:none; }
+
+  /* Canva-style Bottom Sheet (Mobile UX Polish Sprint, drag + swipe slice).
+     Height itself is set directly by JS (rtApplySheetHeight) tied to live
+     measurements, not by a CSS max-height guess -- this is what lets the
+     canvas resize in lockstep with the sheet during an active drag,
+     using ONE shared source of truth instead of two systems fighting
+     over the same space. This block only provides the drag-handle
+     affordance, snap-animation timing, and per-state overflow behavior. */
+  #rtStage .rt-panel-sheet{
+    transition:height 0.28s cubic-bezier(0.22,0.9,0.32,1);
+    overflow-y:hidden; /* Half state: no internal scroll -- see Part 1's "Internal scrolling only happens in Expanded state" */
+  }
+  #rtStage .rt-panel-sheet.rt-sheet-dragging{ transition:none; } /* live 1:1 finger tracking, no animation lag */
+  #rtStage .rt-panel-sheet.rt-sheet-expanded{ overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  #rtStage .rt-sheet-handle{
+    display:flex; align-items:center; justify-content:center;
+    height:22px; width:100%; touch-action:none; cursor:grab;
+  }
+  #rtStage .rt-sheet-handle span{
+    width:36px; height:4px; border-radius:2px; background:var(--card-border);
+  }
+  #rtStage .rt-panel-sheet.rt-sheet-dragging .rt-sheet-handle{ cursor:grabbing; }
 }
 
 /* Panel sheet: on mobile this sits ABOVE the bottom toolbar as a capped-
@@ -1622,6 +1687,20 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 #rtStage .rt-bt-item svg{ width:20px; height:20px; }
 #rtStage .rt-bt-item[aria-selected="true"]{ color:var(--accent1-solid, var(--accent1)); background:color-mix(in srgb, var(--accent1) 12%, transparent); }
 #rtStage .rt-bt-item:hover{ color:var(--ink); }
+
+/* AI Magic hero button (Mobile UX Polish Sprint, Part 5): the flagship
+   one-tap action reads as visually primary among its neighbors --
+   gradient fill, subtle glow, slightly larger -- without competing so
+   hard it becomes distracting or crowds out the other categories. */
+#rtStage .rt-bt-item-hero{
+  background:linear-gradient(135deg, var(--accent1), var(--accent2));
+  color:#fff; border-radius:12px; padding:8px 12px;
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--accent1) 35%, transparent), 0 4px 14px -4px color-mix(in srgb, var(--accent1) 55%, transparent);
+  transform:scale(1.06);
+}
+#rtStage .rt-bt-item-hero svg{ width:22px; height:22px; }
+#rtStage .rt-bt-item-hero[aria-selected="true"]{ color:#fff; background:linear-gradient(135deg, var(--accent1), var(--accent2)); filter:brightness(1.1); }
+#rtStage .rt-bt-item-hero:hover{ color:#fff; filter:brightness(1.08); }
 
 /* (No mobile-only panel-sheet override needed anymore -- the base rule's
    max-height calc() and padding-bottom already account for the fixed
