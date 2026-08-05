@@ -12293,7 +12293,7 @@ if (document.getElementById('rtDrop')){
     const topbar = document.getElementById('rtTopBar');
     if (!topbar) return;
     let idleTimer = null;
-    let dragging = false, dragStartX = 0, dragStartY = 0, barStartLeft = 0, barStartTop = 0;
+    let dragging = false, dragCandidate = false, dragStartX = 0, dragStartY = 0, barStartLeft = 0, barStartTop = 0;
     window.rtSuspendToolbarIdle = false;
 
     // The site's own navbar is position:sticky at the true viewport top
@@ -12323,21 +12323,29 @@ if (document.getElementById('rtDrop')){
     topbar.addEventListener('pointerdown', (e) => {
       if (window.innerWidth >= 900) return;
       rtWakeFloatingToolbar();
-      if (e.target.closest('button, input, a')) return; // let buttons/inputs behave normally -- only the bar's own background drags
-      dragging = true;
-      topbar.classList.add('rt-toolbar-dragging');
+      if (e.target.closest('button, input, a')) return; // let buttons/inputs behave normally -- only the bar's own background is a drag/scroll candidate
+      dragCandidate = true;
+      dragging = false;
       const rect = topbar.getBoundingClientRect();
       barStartLeft = rect.left; barStartTop = rect.top;
-      topbar.style.width = rect.width + 'px'; // pin width BEFORE releasing the right constraint below, or the bar reflows to its natural (viewport-exceeding) content width and breaks the drag math
-      topbar.style.right = 'auto';
       dragStartX = e.clientX; dragStartY = e.clientY;
-      try{ topbar.setPointerCapture(e.pointerId); }catch(err){}
-      e.preventDefault();
+      // Deliberately no preventDefault()/pointer capture here -- direction isn't known yet.
+      // Committing too early would block native horizontal scroll before we can tell the gesture apart from one.
     });
     topbar.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      e.preventDefault();
+      if (!dragCandidate) return;
       const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+      if (!dragging){
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // not enough movement yet to tell direction apart
+        if (Math.abs(dy) <= Math.abs(dx)){ dragCandidate = false; return; } // horizontal-dominant -- hand off to native pan-x scroll, never intercepted
+        // Vertical-dominant -- commit to repositioning the toolbar.
+        dragging = true;
+        topbar.classList.add('rt-toolbar-dragging');
+        topbar.style.width = topbar.getBoundingClientRect().width + 'px'; // pin width BEFORE releasing the right constraint below, or the bar reflows to its natural (viewport-exceeding) content width and breaks the drag math
+        topbar.style.right = 'auto';
+        try{ topbar.setPointerCapture(e.pointerId); }catch(err){}
+      }
+      e.preventDefault();
       const maxLeft = Math.max(4, window.innerWidth - topbar.offsetWidth - 4);
       const maxTop = Math.max(4, window.innerHeight - topbar.offsetHeight - 4);
       const newLeft = rtClamp(barStartLeft + dx, 4, maxLeft);
@@ -12347,6 +12355,7 @@ if (document.getElementById('rtDrop')){
       topbar.style.right = 'auto';
     });
     function endDrag(){
+      dragCandidate = false;
       if (!dragging) return;
       dragging = false;
       topbar.classList.remove('rt-toolbar-dragging');
