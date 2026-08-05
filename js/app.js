@@ -12211,6 +12211,10 @@ if (document.getElementById('rtDrop')){
     document.getElementById('rtStage').classList.add('hidden');
     const uploadSectionEl = document.getElementById('rtUploadSection');
     if (uploadSectionEl) uploadSectionEl.classList.remove('hidden');
+    ['rtHeroSub', 'rtBackRow', 'rtMarketingSections', 'rtSiteFooter'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+    });
     rtSourceCanvas = null; // defensive: nothing should render against a stale canvas while the upload section is showing
     const inputEl = document.getElementById('rtInput');
     if (inputEl) inputEl.value = ''; // allows re-selecting the same file
@@ -12482,6 +12486,16 @@ if (document.getElementById('rtDrop')){
     rtSyncCropControlsToState();
     const uploadSectionEl = document.getElementById('rtUploadSection');
     if (uploadSectionEl) uploadSectionEl.classList.add('hidden'); // Canvas is King: removed from layout, not just hidden
+    // The editor should feel like a real app, not a webpage (found via
+    // real-device screenshots: a page masthead and marketing/SEO
+    // sections were still reachable by scrolling above and below the
+    // active editor, with the sticky toolbar staying pinned the whole
+    // time). Content stays in the DOM for SEO -- only visually hidden
+    // while actively editing.
+    ['rtHeroSub', 'rtBackRow', 'rtMarketingSections', 'rtSiteFooter'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
     document.getElementById('rtStage').classList.remove('hidden');
     document.getElementById('rtStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
     rtSetSheetState('closed', false); // every new photo starts with maximum canvas area, no panel open
@@ -12653,7 +12667,24 @@ if (document.getElementById('rtDrop')){
       // the fixed toolbar. Found via direct overlap measurement, not
       // assumed.
       const bgRowH = bgRow ? bgRow.getBoundingClientRect().height : 0;
-      const canvasH = Math.max(120, total - px - bgRowH - 24);
+      let canvasH = Math.max(120, total - px - bgRowH - 24);
+      // Cap to what the actual image can use at the available width --
+      // otherwise a width-constrained (portrait-oriented) photo gets a
+      // taller wrap than it can ever fill, leaving a visible empty gap
+      // below the image. Found via direct screenshot inspection, not
+      // assumed: a real device profile showed a ~166px checkerboard gap
+      // beneath a portrait test photo before this fix. For a
+      // height-constrained (landscape) photo, the width-based estimate
+      // below naturally exceeds the budget and this cap has no effect --
+      // fitRtCanvasDisplay's own min() then correctly uses the height
+      // constraint and fills the wrap exactly, so this fix is safe for
+      // both orientations, not just the one that exposed the bug.
+      const previewCanvas = document.getElementById('rtPreviewCanvas');
+      if (previewCanvas && previewCanvas.width && previewCanvas.height){
+        const availW = wrap.clientWidth - 4;
+        const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width) * rtZoom;
+        if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
+      }
       wrap.style.height = canvasH + 'px';
       wrap.style.maxHeight = canvasH + 'px';
       requestAnimationFrame(() => { fitRtCanvasDisplay(); });
