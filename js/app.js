@@ -9399,9 +9399,9 @@ if (document.getElementById('rtDrop')){
   }
 
   async function rtDetectFace(){
-    const statusEl = document.getElementById('rtFaceStatus');
+    const statusEl = document.getElementById('rtFaceStatus'); // optional -- the panel that hosted this status text moved into Makeup Studio's compact layout, which has no room for it; face detection itself is unaffected either way
     try{
-      statusEl.textContent = 'Detecting face\u2026';
+      if (statusEl) statusEl.textContent = 'Detecting face\u2026';
       const fl = await ensureRtFaceLandmarker();
       const result = fl.detect(rtSourceCanvas);
       const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
@@ -9441,19 +9441,19 @@ if (document.getElementById('rtDrop')){
       // completely unmodified until a later migration slice.
       if (faces.length){
         rtFaceLandmarks = faces[0].landmarks;
-        statusEl.textContent = faces.length > 1
+        if (statusEl) statusEl.textContent = faces.length > 1
           ? `Face detected (${faces.length} faces found; using the most prominent one for now) \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.`
           : 'Face detected \u2014 skin smoothing will protect eyes, brows, nose, and mouth automatically.';
       } else {
         rtFaceLandmarks = null;
-        statusEl.textContent = 'No face detected \u2014 skin smoothing will apply gently across the whole photo instead of being face-targeted.';
+        if (statusEl) statusEl.textContent = 'No face detected \u2014 skin smoothing will apply gently across the whole photo instead of being face-targeted.';
       }
     }catch(err){
       rtDetectedFaces = [];
       rtPersonRegions = [];
       rtOverlapReport = [];
       rtFaceLandmarks = null;
-      statusEl.textContent = 'Face detection unavailable \u2014 skin smoothing will apply gently across the whole photo instead.';
+      if (statusEl) statusEl.textContent = 'Face detection unavailable \u2014 skin smoothing will apply gently across the whole photo instead.';
     }
   }
 
@@ -12200,6 +12200,7 @@ if (document.getElementById('rtDrop')){
     });
   }
 
+
   document.getElementById('rtResetBtn').onclick = () => {
     const active = rtGetActiveLayer();
     if (active && active.locked){ toast('This layer is locked.', 'err'); return; }
@@ -12300,6 +12301,122 @@ if (document.getElementById('rtDrop')){
      ~2s idle -- woken instantly by any interaction. rtSuspendToolbarIdle
      lets AI Magic / export / any future dialog keep it fully visible
      regardless of idle time. */
+  const RT_MAKEUP_CATEGORIES = [
+    { id:'skin', label:'Skin', tools:[
+      { label:'Smoothness', key:'skinSmooth' },
+      { label:'Glow', key:'faceBrighten' },
+      { label:'Tone', key:'skinTone' },
+    ]},
+    { id:'face', label:'Face', tools:[
+      { label:'Brightness', key:'faceBrighten' },
+    ]},
+    { id:'eyes', label:'Eyes', tools:[
+      { label:'Eye Enhancement', key:'eyeEnhance' },
+    ]},
+    { id:'lips', label:'Lips', tools:[
+      { label:'Lip Enhancement', key:'lipEnhance' },
+      { label:'Lip Color', key:null },
+      { label:'Lip Gloss', key:null },
+    ]},
+    { id:'teeth', label:'Teeth', tools:[
+      { label:'Whitening', key:'teethWhiten' },
+    ]},
+    { id:'hair', label:'Hair', tools:[
+      { label:'Shine', key:'hairShine' },
+      { label:'Smoothness', key:'hairSmooth' },
+    ]},
+    { id:'beard', label:'Beard', tools:[ { label:'Beard Color', key:null } ]},
+    { id:'eyebrows', label:'Eyebrows', tools:[ { label:'Shaping', key:null } ]},
+    { id:'nose', label:'Nose', tools:[ { label:'Reshape', key:null } ]},
+    { id:'blush', label:'Blush', tools:[ { label:'Blush', key:null } ]},
+    { id:'contour', label:'Contour', tools:[ { label:'Contour', key:null } ]},
+    { id:'highlight', label:'Highlight', tools:[ { label:'Highlight', key:null } ]},
+    { id:'freckles', label:'Freckles', tools:[ { label:'Freckles', key:null } ]},
+    { id:'beautymarks', label:'Beauty Marks', tools:[ { label:'Beauty Marks', key:null } ]},
+  ];
+  const RT_MAKEUP_KEY_TO_ID = {
+    skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone',
+    eyeEnhance:'rtEyeEnhance', teethWhiten:'rtTeethWhiten', lipEnhance:'rtLipEnhance',
+    hairShine:'rtHairShine', hairSmooth:'rtHairSmooth',
+  };
+
+  (function setupMakeupStudio(){
+    const openBtn = document.getElementById('rtOpenMakeupStudioBtn');
+    const bar = document.getElementById('rtMakeupBar');
+    const normalToolbar = document.getElementById('rtBottomToolbar');
+    const level1 = document.getElementById('rtMsLevel1');
+    const level2 = document.getElementById('rtMsLevel2');
+    const level3 = document.getElementById('rtMsLevel3');
+    const catChipsWrap = document.getElementById('rtMsCategoryChips');
+    const toolChipsWrap = document.getElementById('rtMsToolChips');
+    const toolLabelEl = document.getElementById('rtMsToolLabel');
+    const comingSoonEl = document.getElementById('rtMsComingSoon');
+    if (!openBtn || !bar) return;
+
+    let activeCategoryId = null;
+
+    function showLevel(n){
+      level1.classList.toggle('hidden', n !== 1);
+      level2.classList.toggle('hidden', n !== 2);
+      level3.classList.toggle('hidden', n !== 3);
+    }
+
+    function renderCategoryChips(){
+      catChipsWrap.innerHTML = '';
+      RT_MAKEUP_CATEGORIES.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'rt-ms-chip'; chip.textContent = cat.label;
+        chip.addEventListener('click', () => selectCategory(cat.id));
+        catChipsWrap.appendChild(chip);
+      });
+    }
+
+    function selectCategory(catId){
+      const cat = RT_MAKEUP_CATEGORIES.find(c => c.id === catId);
+      if (!cat) return;
+      activeCategoryId = catId;
+      toolChipsWrap.innerHTML = '';
+      cat.tools.forEach((tool, idx) => {
+        const chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'rt-ms-chip'; chip.textContent = tool.label;
+        chip.addEventListener('click', () => selectTool(catId, idx));
+        toolChipsWrap.appendChild(chip);
+      });
+      showLevel(2);
+    }
+
+    function selectTool(catId, toolIdx){
+      const cat = RT_MAKEUP_CATEGORIES.find(c => c.id === catId);
+      if (!cat) return;
+      const tool = cat.tools[toolIdx];
+      if (!tool) return;
+      toolLabelEl.textContent = tool.label;
+      document.querySelectorAll('#rtMsSliderSlot .rt-ms-ctrl').forEach(el => el.classList.add('hidden'));
+      if (tool.key && RT_MAKEUP_KEY_TO_ID[tool.key]){
+        if (comingSoonEl) comingSoonEl.classList.add('hidden');
+        const wrapper = document.querySelector(`#rtMsSliderSlot .rt-ms-ctrl[data-key="${tool.key}"]`);
+        if (wrapper) wrapper.classList.remove('hidden');
+      } else {
+        if (comingSoonEl) comingSoonEl.classList.remove('hidden');
+      }
+      showLevel(3);
+    }
+
+    openBtn.addEventListener('click', () => {
+      normalToolbar.classList.add('hidden');
+      bar.classList.remove('hidden');
+      renderCategoryChips();
+      showLevel(1);
+      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+    });
+    document.getElementById('rtMsCloseBtn').addEventListener('click', () => {
+      bar.classList.add('hidden');
+      normalToolbar.classList.remove('hidden');
+    });
+    document.getElementById('rtMsBackBtn2').addEventListener('click', () => showLevel(1));
+    document.getElementById('rtMsBackBtn3').addEventListener('click', () => showLevel(2));
+  })();
+
   (function setupFloatingTopbar(){
     const topbar = document.getElementById('rtTopBar');
     if (!topbar) return;
@@ -12644,7 +12761,7 @@ if (document.getElementById('rtDrop')){
           // The panel the user was looking at just left Beauty Mode's
           // reachable set -- send them to Face (the closest equivalent
           // "Beauty" panel) instead of leaving an orphaned open panel.
-          const fallback = document.getElementById('rtAccordionFace');
+          const fallback = document.getElementById('rtAccordionLight');
           if (fallback) fallback.open = true;
         }
       }
