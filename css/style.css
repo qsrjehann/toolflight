@@ -1583,6 +1583,13 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 #rtStage .rt-tb-icon-btn:disabled{ opacity:.35; cursor:not-allowed; }
 #rtStage .rt-tb-icon-btn:not(:disabled):hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
 #rtStage .rt-tb-sep{ width:1px; height:22px; background:var(--card-border); flex:0 0 auto; margin:0 2px; }
+#rtStage .rt-tb-drag-handle{
+  flex:0 0 auto; width:20px; height:38px; display:flex; align-items:center; justify-content:center;
+  color:var(--ink-soft); cursor:grab; touch-action:none; margin-right:2px;
+}
+#rtStage .rt-tb-drag-handle svg{ width:14px; height:18px; }
+#rtStage .rt-topbar.rt-toolbar-dragging{ transition:none; }
+#rtStage .rt-toolbar-dragging .rt-tb-drag-handle{ cursor:grabbing; }
 
 /* ---- Beauty / Advanced mode toggle (UI evolution on the verified Phase 2 architecture) ---- */
 #rtStage .rt-mode-toggle{
@@ -1590,8 +1597,8 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   background:var(--card);
 }
 #rtStage .rt-mode-toggle-btn{
-  border:none; background:transparent; color:var(--ink-soft); font-size:12px; font-weight:700;
-  padding:7px 11px; border-radius:8px; cursor:pointer; white-space:nowrap;
+  border:none; background:transparent; color:var(--ink-soft); font-size:11.5px; font-weight:700;
+  padding:7px 9px; border-radius:8px; cursor:pointer; white-space:nowrap;
 }
 #rtStage .rt-mode-toggle-btn.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; }
 /* Advanced-only bottom-toolbar categories are simply hidden in Beauty Mode --
@@ -1606,6 +1613,7 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 }
 #rtStage .rt-tb-text-btn:hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
 #rtStage .rt-tb-text-btn.rt-tb-danger{ margin-left:auto; color:#E5484D; border-color:color-mix(in srgb, #E5484D 35%, var(--card-border)); }
+#rtStage .rt-tb-icon-btn.rt-tb-danger{ color:#E5484D; border-color:color-mix(in srgb, #E5484D 35%, var(--card-border)); }
 #rtStage .rt-tb-text-btn[aria-pressed="true"]{ background:var(--accent1); color:#fff; border-color:transparent; }
 
 #rtStage .rt-canvas-area{ margin-top:12px; }
