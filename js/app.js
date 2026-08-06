@@ -12814,6 +12814,9 @@ if (document.getElementById('rtDrop')){
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && rtSourceCanvas) rtRecoverCanvasIfNeeded();
   });
+  window.addEventListener('focus', () => {
+    if (rtSourceCanvas) rtRecoverCanvasIfNeeded();
+  });
 
   function rtUpdatePanelMaxHeight(){
     if (window.innerWidth >= 900){
