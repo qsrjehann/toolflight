@@ -11209,6 +11209,22 @@ if (document.getElementById('rtDrop')){
     return { key:'bgBlur', amount, priority: rtAiMagicPriorityFor(amount, complexity>0.6 && isolation>=0.5), reason: `Background Blur set to ${amount} because ${parts.join('; ')}.` };
   }
 
+  function rtDecideFaceBrighten(portraitIntel){
+    if (!portraitIntel || !portraitIntel.photometrics || portraitIntel.photometrics.brightness == null){
+      return { key:'faceBrighten', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Portrait could not be analyzed -- skipping Face Brightening.' };
+    }
+    const brightness = portraitIntel.photometrics.brightness;
+    // Unlike general exposure correction (which only fires when the
+    // whole photo measures dark), a modest face-brighten adds a natural
+    // "healthy glow" even on an already-decent photo -- this is the
+    // specific, visible improvement requested, not just "fix if broken."
+    if (brightness >= 0.75){
+      return { key:'faceBrighten', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason: `Face Brightening skipped -- portrait already measures bright (${Math.round(brightness*100)}%).` };
+    }
+    const amount = Math.round(rtClamp(18 + (0.5-brightness)*40, 10, 30));
+    return { key:'faceBrighten', amount, priority: rtAiMagicPriorityFor(amount, brightness<0.3), reason: `Face Brightening set to ${amount} for a natural, fresher look (measured brightness ${Math.round(brightness*100)}%).` };
+  }
+
   function rtDecideLightingCorrection(portraitIntel){
     if (!portraitIntel || !portraitIntel.photometrics || portraitIntel.photometrics.brightness == null){
       return { key:'exposure', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:'Portrait could not be analyzed -- skipping lighting correction.' };
@@ -11250,10 +11266,11 @@ if (document.getElementById('rtDrop')){
     }
     const sharpness = faceIntel.eyes.sharpnessScore;
     // Safety rule (this is the exact "already sharp eyes -> don't over
-    // enhance" example named in the spec).
-    const amount = Math.round(rtClamp((1-sharpness)*40, 0, 40));
+    // enhance" example named in the spec) -- but even sharp eyes get a
+    // small baseline lift for a natural, brighter look, not zero.
+    const amount = Math.round(rtClamp(8 + (1-sharpness)*38, 0, 45));
     const reason = sharpness > 0.65
-      ? `Eye Enhance kept low (${amount}) because eyes already measure sharp (${Math.round(sharpness*100)}%) -- avoiding over-enhancement.`
+      ? `Eye Enhance kept modest (${amount}) because eyes already measure sharp (${Math.round(sharpness*100)}%) -- a light natural lift, not over-enhancement.`
       : `Eye Enhance set to ${amount} because measured eye sharpness is ${Math.round(sharpness*100)}%.`;
     return { key:'eyeEnhance', amount, priority: rtAiMagicPriorityFor(amount, sharpness<0.3), reason };
   }
@@ -11285,9 +11302,9 @@ if (document.getElementById('rtDrop')){
       return { key:'lipEnhance', amount:0, priority:RT_AI_MAGIC_PRIORITY.SKIP, reason:`Lip Enhance skipped because Lip Visibility is insufficient (${Math.round(lipVis.value*100)}%).` };
     }
     const richness = faceIntel.lips.richnessScore;
-    const amount = Math.round(rtClamp((1-richness)*35, 0, 35));
+    const amount = Math.round(rtClamp(6 + (1-richness)*32, 0, 38));
     const reason = richness > 0.7
-      ? `Lip Enhance kept low (${amount}) because lip color already measures rich (${Math.round(richness*100)}%).`
+      ? `Lip Enhance kept modest (${amount}) because lip color already measures rich (${Math.round(richness*100)}%).`
       : `Lip Enhance set to ${amount} because measured lip color richness is ${Math.round(richness*100)}%.`;
     return { key:'lipEnhance', amount, priority: rtAiMagicPriorityFor(amount, richness<0.25), reason };
   }
@@ -11329,6 +11346,7 @@ if (document.getElementById('rtDrop')){
       rtDecideHairFlyaway(hairIntel, attrProfile),
       rtDecideBackgroundBlur(bgIntel, rtAdj.bgBlur),
       rtDecideLightingCorrection(portraitIntel),
+      rtDecideFaceBrighten(portraitIntel),
     ];
 
     const plan = {};
@@ -11568,7 +11586,7 @@ if (document.getElementById('rtDrop')){
     }
 
     const faceGroup = {};
-    ['skinSmooth','eyeEnhance','teethWhiten','lipEnhance'].forEach(k => { if (plan[k] !== undefined) faceGroup[k] = plan[k]; });
+    ['skinSmooth','eyeEnhance','teethWhiten','lipEnhance','faceBrighten'].forEach(k => { if (plan[k] !== undefined) faceGroup[k] = plan[k]; });
     const hairGroup = {};
     ['hairSmooth','hairTexture','hairShine','hairHealth','hairFlyaway'].forEach(k => { if (plan[k] !== undefined) hairGroup[k] = plan[k]; });
     const backgroundGroup = {};
@@ -11591,7 +11609,10 @@ if (document.getElementById('rtDrop')){
   // Deliberately shows NO technical summary, confidence, plan, or
   // before/after screen -- the result speaks for itself; comparison
   // remains available via the existing press-and-hold gesture, untouched.
+  let rtAiMagicRunning = false;
   async function rtRunAiMagicAutoApply(){
+    if (rtAiMagicRunning) return;
+    rtAiMagicRunning = true;
     const overlay = document.getElementById('rtAiMagicAnimOverlay');
     if (overlay) overlay.classList.remove('hidden');
     window.rtSuspendToolbarIdle = true;
@@ -11601,14 +11622,6 @@ if (document.getElementById('rtDrop')){
       const [result] = await Promise.all([rtRunAiMagic(), minDuration]); // analyzes (or reuses cache) and applies in one call
       if (result && result.applied){
         toast('\u2728 Your photo looks amazing!', 'ok');
-        // Auto-open Face panel (Half state) with the newly-applied
-        // values already visible on their sliders -- no extra clicks.
-        const faceAcc = document.getElementById('rtAccordionFace');
-        if (faceAcc){
-          document.querySelectorAll('#rtPanelSheet .pp-accordion[open]').forEach(a => { if (a !== faceAcc) a.open = false; });
-          faceAcc.open = true;
-          if (window.rtSetSheetState) window.rtSetSheetState('half', true);
-        }
       } else if (result && !result.applied){
         toast('Portrait already looks balanced \u2014 nothing strong to adjust.', 'ok');
       }
@@ -11618,6 +11631,7 @@ if (document.getElementById('rtDrop')){
       if (overlay) overlay.classList.add('hidden');
       window.rtSuspendToolbarIdle = false;
       if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+      rtAiMagicRunning = false;
     }
   }
 
@@ -13183,15 +13197,10 @@ if (document.getElementById('rtDrop')){
       rtBackgroundAnalyzeBtnEl.textContent = 'Analyze Background';
     }
   });
-  const rtAiMagicBtnEl = document.getElementById('rtAiMagicBtn');
 
-  if (rtAiMagicBtnEl) rtAiMagicBtnEl.addEventListener('click', async () => {
-    rtAiMagicBtnEl.disabled = true;
-    try{
-      await rtRunAiMagicAutoApply();
-    } finally {
-      rtAiMagicBtnEl.disabled = false;
-    }
+  const rtAiMagicAccordionEl = document.getElementById('rtAccordionAiMagic');
+  if (rtAiMagicAccordionEl) rtAiMagicAccordionEl.addEventListener('toggle', () => {
+    if (rtAiMagicAccordionEl.open) rtRunAiMagicAutoApply();
   });
   document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
   document.getElementById('rtMakeTransparentBtn').addEventListener('click', rtMakeLayerTransparent);
