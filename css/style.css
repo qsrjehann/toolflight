@@ -1695,6 +1695,44 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   border-top:1px solid var(--card-border);
   backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
 }
+/* Makeup Studio bar -- replaces the normal toolbar entirely (same fixed
+   position/height/background) rather than opening a panel, so the
+   canvas budget never changes when switching between them. */
+#rtStage .rt-makeup-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:7;
+  padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  background:var(--bg, var(--card)); background:color-mix(in srgb, var(--card) 92%, var(--bg, #fff) 8%);
+  border-top:1px solid var(--card-border);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+}
+#rtStage .rt-ms-level{ display:flex; align-items:center; gap:8px; }
+#rtStage .rt-ms-chips{
+  flex:1; display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; min-width:0;
+}
+#rtStage .rt-ms-chip{
+  flex:0 0 auto; border:1.5px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:999px; cursor:pointer; white-space:nowrap;
+  transition:transform 0.12s ease;
+}
+#rtStage .rt-ms-chip:active{ transform:scale(0.95); }
+#rtStage .rt-ms-close-btn{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  background:#dc2626; color:#fff; border:none; border-radius:999px; padding:10px 16px;
+  font-size:12.5px; font-weight:800; cursor:pointer; box-shadow:0 4px 14px -4px rgba(220,38,38,0.6);
+}
+#rtStage .rt-ms-close-btn svg{ width:15px; height:15px; }
+#rtStage .rt-ms-back-btn{
+  flex:0 0 auto; display:flex; align-items:center; gap:4px;
+  background:var(--card); color:var(--ink); border:1.5px solid var(--card-border); border-radius:999px;
+  padding:10px 14px; font-size:12.5px; font-weight:700; cursor:pointer;
+}
+#rtStage .rt-ms-back-btn svg{ width:16px; height:16px; }
+#rtStage #rtMsLevel3{ padding:0 2px; }
+#rtStage .rt-ms-tool-label{ flex:0 0 auto; font-size:12.5px; font-weight:700; color:var(--ink); max-width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#rtStage .rt-ms-slider-slot{ flex:1; min-width:0; display:flex; align-items:center; }
+#rtStage .rt-ms-ctrl{ width:100%; }
+#rtStage .rt-ms-ctrl input[type=range]{ width:100%; margin:0; }
+#rtStage .rt-ms-coming-soon{ font-size:12px; color:var(--ink-soft); line-height:1.4; }
 #rtStage .rt-bt-item{
   flex:1 0 auto; min-width:64px; display:flex; flex-direction:column; align-items:center; gap:3px;
   padding:7px 10px; border:none; background:transparent; color:var(--ink-soft);
@@ -1736,6 +1774,11 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 #rtStage .rt-bt-item-hero svg{ width:22px; height:22px; }
 #rtStage .rt-bt-item-hero[aria-selected="true"]{ color:#fff; background:linear-gradient(135deg, var(--accent1), var(--accent2)); filter:brightness(1.1); }
 #rtStage .rt-bt-item-hero:hover{ color:#fff; filter:brightness(1.08); }
+#rtStage .rt-bt-item-hero-makeup{
+  background:linear-gradient(135deg, #ec4899, #f43f5e);
+  box-shadow:0 0 0 1px color-mix(in srgb, #ec4899 35%, transparent), 0 4px 14px -4px color-mix(in srgb, #ec4899 55%, transparent);
+}
+#rtStage .rt-bt-item-hero-makeup[aria-selected="true"]{ background:linear-gradient(135deg, #ec4899, #f43f5e); filter:brightness(1.1); }
 
 /* (No mobile-only panel-sheet override needed anymore -- the base rule's
    max-height calc() and padding-bottom already account for the fixed
