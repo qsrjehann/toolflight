@@ -1874,14 +1874,15 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
   pointer-events:none;
 }
 .rt-ai-magic-sweep{
-  position:absolute; top:0; bottom:0; width:40%;
+  position:absolute; top:0; bottom:0; left:-45%; width:40%;
   background:linear-gradient(90deg, transparent, color-mix(in srgb, #fff 55%, transparent), transparent);
   animation:rtAiSweep 1.6s ease-in-out infinite;
   mix-blend-mode:overlay;
+  will-change:transform;
 }
 @keyframes rtAiSweep{
-  0%{ left:-45%; }
-  100%{ left:105%; }
+  0%{ transform:translateX(0); }
+  100%{ transform:translateX(375%); }
 }
 .rt-ai-magic-particles span{
   position:absolute; width:6px; height:6px; border-radius:50%;
