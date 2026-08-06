@@ -9,9 +9,9 @@
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#6D5EF5">
 <meta name="author" content="ToolFlight">
-<link rel="icon" href="assets/favicon.ico?v=20260806-1700" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-1700">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-1700">
+<link rel="icon" href="assets/favicon.ico?v=20260806-1800" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-1800">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-1800">
 <link rel="canonical" href="https://toolflight.com/ai-photo-retouch.html">
 
 <meta property="og:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
@@ -47,7 +47,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
-<link rel="stylesheet" href="css/style.css?v=20260806-1700">
+<link rel="stylesheet" href="css/style.css?v=20260806-1800">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -72,7 +72,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260806-1700" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260806-1800" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -127,6 +127,9 @@
 
       <div id="rtStage" class="hidden rt-shell">
         <div class="rt-topbar" id="rtTopBar">
+          <div class="rt-tb-drag-handle" id="rtTopbarDragHandle" aria-hidden="true" title="Drag to move">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+          </div>
           <div class="rt-mode-toggle" id="rtModeToggle" role="tablist" aria-label="Editor mode">
             <button type="button" class="rt-mode-toggle-btn active" data-mode="beauty" role="tab" aria-selected="true">Beauty</button>
             <button type="button" class="rt-mode-toggle-btn" data-mode="advanced" role="tab" aria-selected="false">Advanced</button>
@@ -139,9 +142,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10H11a5 5 0 0 0 0 10h6M21 10l-5-5M21 10l-5 5"/></svg>
           </button>
           <span class="rt-tb-sep"></span>
-          <button class="rt-tb-text-btn" id="rtFitScreenBtn" type="button">Fit</button>
-          <button class="rt-tb-text-btn rt-tb-danger" id="rtResetBtn" type="button">Reset</button>
-          <button class="rt-tb-text-btn" id="rtChangePhotoBtn" type="button" title="Load a different photo">New Photo</button>
+          <button class="rt-tb-icon-btn" id="rtFitScreenBtn" type="button" title="Fit to screen" aria-label="Fit to screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg>
+          </button>
+          <button class="rt-tb-icon-btn rt-tb-danger" id="rtResetBtn" type="button" title="Reset adjustments" aria-label="Reset adjustments">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          </button>
+          <button class="rt-tb-icon-btn" id="rtChangePhotoBtn" type="button" title="Load a different photo" aria-label="New photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 15l-5-4-4 3-3-2-6 4"/></svg>
+          </button>
         </div>
 
         <div class="rt-canvas-area">
@@ -516,7 +525,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-1700" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-1800" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -553,6 +562,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260806-1700"></script>
+<script defer src="js/app.js?v=20260806-1800"></script>
 </body>
 </html>
