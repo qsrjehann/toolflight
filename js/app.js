@@ -11543,52 +11543,6 @@ if (document.getElementById('rtDrop')){
     return recs;
   }
 
-  // ---- Analysis Orchestrator (Part 1 + Part 6) ----
-  // Computes analysis + recommendations + a proposed Beauty Plan.
-  // Applies NOTHING (Part 3). Stage messages are tied to real awaited
-  // calls, not artificial delays -- "Checking Lighting..." is the one
-  // exception, documented inline: photometrics/lighting data is
-  // computed AS PART OF the portrait-geometry call (there's no separate
-  // model for lighting in this architecture), so that message reflects
-  // the moment that data becomes available rather than a distinct
-  // awaited step of its own.
-  async function rtRunAiMagicAnalysis(){
-    const active = rtGetActiveLayer();
-    if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
-    if (!rtSourceCanvas){ toast('Upload a photo first, then tap AI Magic to get started.', 'ok'); return null; }
-    const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
-    const maxDim = 900;
-    let w = sw, h = sh;
-    if (Math.max(sw, sh) > maxDim){ const sc = maxDim/Math.max(sw, sh); w = Math.round(sw*sc); h = Math.round(sh*sc); }
-
-    const setStage = (text) => { const el = document.getElementById('rtAiMagicStage'); if (el) el.textContent = text; };
-
-    setStage('Analyzing Portrait\u2026');
-    await rtGetPortraitIntelligence(w, h); // real await -- portrait geometry, exposure/contrast/white-balance photometrics
-
-    setStage('Checking Lighting\u2026'); // see function comment above -- reflects data from the call just above, not a separate model
-    await new Promise(r => requestAnimationFrame(r)); // yield one frame so this message is actually seen, not an artificial wait
-
-    setStage('Detecting Skin\u2026');
-    await rtGetFaceIntelligence(w, h); // real await -- skin/eye/teeth/lip region analysis
-
-    setStage('Detecting Hair\u2026');
-    await rtGetHairIntelligence(w, h); // real await -- hair segmentation + intelligence
-
-    setStage('Preparing Beauty Plan\u2026');
-    const collection = await rtGenerateAiMagicPlanCollection(w, h); // real await -- Decision Engine runs here (also computes Background Intelligence internally)
-    const primary = collection[0];
-    const analysis = await rtGetPortraitAnalysisReport(w, h); // cache hit -- assembles the pieces already computed above
-
-    const recommendations = rtGenerateSmartRecommendations(analysis, primary.explanation);
-    const planDisplay = rtFormatBeautyPlan(primary.plan);
-
-    rtCachedAiMagicCollection = collection;
-    rtCachedAiMagicDims = { w, h };
-
-    return { analysis, recommendations, planDisplay, primary, collection };
-  }
-
   async function rtRunAiMagic(){
     const active = rtGetActiveLayer();
     if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
@@ -11626,11 +11580,44 @@ if (document.getElementById('rtDrop')){
       { face: faceGroup, hair: hairGroup, background: backgroundGroup, general: generalGroup },
       'AI Magic'
     );
-    if (applied){
-      const summary = Object.entries(plan).map(([k,v]) => `${k} +${v}`).join(', ');
-      toast('AI Magic applied: ' + summary, 'ok');
-    }
     return { collection, primary, applied };
+  }
+
+  // ---- Finalized AI Magic Experience ----
+  // Tap -> premium animation -> analyze -> auto-apply -> animation
+  // disappears -> edited photo visible -> Face panel auto-opens
+  // (Half state, canvas stays fully visible per the architecture fix)
+  // with sliders already pre-filled -> user fine-tunes naturally.
+  // Deliberately shows NO technical summary, confidence, plan, or
+  // before/after screen -- the result speaks for itself; comparison
+  // remains available via the existing press-and-hold gesture, untouched.
+  async function rtRunAiMagicAutoApply(){
+    const overlay = document.getElementById('rtAiMagicAnimOverlay');
+    if (overlay) overlay.classList.remove('hidden');
+    window.rtSuspendToolbarIdle = true;
+    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+    try{
+      const result = await rtRunAiMagic(); // analyzes (or reuses cache) and applies in one call
+      if (result && result.applied){
+        toast('\u2728 Your photo looks amazing!', 'ok');
+        // Auto-open Face panel (Half state) with the newly-applied
+        // values already visible on their sliders -- no extra clicks.
+        const faceAcc = document.getElementById('rtAccordionFace');
+        if (faceAcc){
+          document.querySelectorAll('#rtPanelSheet .pp-accordion[open]').forEach(a => { if (a !== faceAcc) a.open = false; });
+          faceAcc.open = true;
+          if (window.rtSetSheetState) window.rtSetSheetState('half', true);
+        }
+      } else if (result && !result.applied){
+        toast('Portrait already looks balanced \u2014 nothing strong to adjust.', 'ok');
+      }
+    } catch(err){
+      toast('AI Magic could not complete: ' + (err.message || 'unknown error'), 'err');
+    } finally {
+      if (overlay) overlay.classList.add('hidden');
+      window.rtSuspendToolbarIdle = false;
+      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
+    }
   }
 
   /* ============================================================
@@ -12293,7 +12280,6 @@ if (document.getElementById('rtDrop')){
     const topbar = document.getElementById('rtTopBar');
     if (!topbar) return;
     let idleTimer = null;
-    let dragging = false, dragCandidate = false, dragStartX = 0, dragStartY = 0, barStartLeft = 0, barStartTop = 0;
     window.rtSuspendToolbarIdle = false;
 
     // The site's own navbar is position:sticky at the true viewport top
@@ -12320,57 +12306,13 @@ if (document.getElementById('rtDrop')){
     }
     window.rtWakeFloatingToolbar = rtWakeFloatingToolbar;
 
-    topbar.addEventListener('pointerdown', (e) => {
-      if (window.innerWidth >= 900) return;
-      rtWakeFloatingToolbar();
-      if (e.target.closest('button, input, a')) return; // let buttons/inputs behave normally -- only the bar's own background is a drag/scroll candidate
-      dragCandidate = true;
-      dragging = false;
-      const rect = topbar.getBoundingClientRect();
-      barStartLeft = rect.left; barStartTop = rect.top;
-      dragStartX = e.clientX; dragStartY = e.clientY;
-      // Deliberately no preventDefault()/pointer capture here -- direction isn't known yet.
-      // Committing too early would block native horizontal scroll before we can tell the gesture apart from one.
-    });
-    topbar.addEventListener('pointermove', (e) => {
-      if (!dragCandidate) return;
-      const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
-      if (!dragging){
-        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // not enough movement yet to tell direction apart
-        if (Math.abs(dy) <= Math.abs(dx)){ dragCandidate = false; return; } // horizontal-dominant -- hand off to native pan-x scroll, never intercepted
-        // Vertical-dominant -- commit to repositioning the toolbar.
-        dragging = true;
-        topbar.classList.add('rt-toolbar-dragging');
-        topbar.style.width = topbar.getBoundingClientRect().width + 'px'; // pin width BEFORE releasing the right constraint below, or the bar reflows to its natural (viewport-exceeding) content width and breaks the drag math
-        topbar.style.right = 'auto';
-        try{ topbar.setPointerCapture(e.pointerId); }catch(err){}
-      }
-      e.preventDefault();
-      const maxLeft = Math.max(4, window.innerWidth - topbar.offsetWidth - 4);
-      const maxTop = Math.max(4, window.innerHeight - topbar.offsetHeight - 4);
-      const newLeft = rtClamp(barStartLeft + dx, 4, maxLeft);
-      const newTop = rtClamp(barStartTop + dy, rtMinTopbarY(), maxTop);
-      topbar.style.left = newLeft + 'px';
-      topbar.style.top = newTop + 'px';
-      topbar.style.right = 'auto';
-    });
-    function endDrag(){
-      dragCandidate = false;
-      if (!dragging) return;
-      dragging = false;
-      topbar.classList.remove('rt-toolbar-dragging');
-      // Snap to the nearest horizontal edge -- keeps whatever vertical position the user dropped it at.
-      const rect = topbar.getBoundingClientRect();
-      const centerX = rect.left + rect.width/2;
-      if (centerX < window.innerWidth/2){ topbar.style.left = '8px'; topbar.style.right = 'auto'; }
-      else { topbar.style.left = Math.max(4, window.innerWidth - rect.width - 8) + 'px'; }
-      rtWakeFloatingToolbar();
-    }
-    topbar.addEventListener('pointerup', endDrag);
-    topbar.addEventListener('pointercancel', endDrag);
-
-    // Any interaction anywhere in the editor wakes the toolbar -- taps,
-    // drags, pinches, zooms, opening a panel (Part 1's exact list).
+    // No custom drag-to-reposition -- real-device testing found the
+    // drag-vs-horizontal-scroll disambiguation unreliable in practice
+    // (both scroll and drag were reported broken). The toolbar floats
+    // at a fixed default position; all touch on it (including reaching
+    // overflowing buttons like New Photo) is handled entirely natively,
+    // with zero custom JS interception -- the simplest design that
+    // cannot conflict with itself.
     ['pointerdown','wheel'].forEach(ev => document.addEventListener(ev, rtWakeFloatingToolbar, { passive: true }));
     document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => acc.addEventListener('toggle', rtWakeFloatingToolbar));
     rtWakeFloatingToolbar();
@@ -13201,83 +13143,13 @@ if (document.getElementById('rtDrop')){
     }
   });
   const rtAiMagicBtnEl = document.getElementById('rtAiMagicBtn');
-  function rtRenderAiMagicResults(result){
-    const { analysis, recommendations, planDisplay } = result;
-    const recEl = document.getElementById('rtAiMagicRecommendations');
-    const planEl = document.getElementById('rtAiMagicPlan');
-    const resultsEl = document.getElementById('rtAiMagicResults');
-    if (!recEl || !planEl || !resultsEl) return;
-
-    recEl.innerHTML = '';
-    recommendations.forEach(rec => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:12.5px;';
-      const badgeColor = rec.confidence === 'High' ? 'var(--accent1)' : 'var(--ink-soft)';
-      const recText = document.createElement('span');
-      recText.style.flex = '1';
-      recText.textContent = rec.text;
-      const recBadge = document.createElement('span');
-      recBadge.style.cssText = `font-size:10.5px;font-weight:700;color:${badgeColor};white-space:nowrap;`;
-      recBadge.textContent = rec.confidence;
-      row.appendChild(recText); row.appendChild(recBadge);
-      recEl.appendChild(row);
-    });
-
-    planEl.innerHTML = '';
-    const planTitle = document.createElement('div');
-    planTitle.style.cssText = 'font-weight:700;margin-bottom:2px;';
-    planTitle.textContent = 'Proposed Beauty Plan';
-    planEl.appendChild(planTitle);
-    planDisplay.forEach(item => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;color:var(--ink-soft);';
-      const label = document.createElement('span'); label.textContent = item.label;
-      const level = document.createElement('span'); level.textContent = item.levelLabel;
-      row.appendChild(label); row.appendChild(level);
-      planEl.appendChild(row);
-    });
-    if (analysis.multiPersonNote){
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11.5px;color:var(--ink-soft);margin-top:4px;';
-      note.textContent = analysis.multiPersonNote;
-      planEl.appendChild(note);
-    }
-    resultsEl.classList.remove('hidden');
-  }
 
   if (rtAiMagicBtnEl) rtAiMagicBtnEl.addEventListener('click', async () => {
     rtAiMagicBtnEl.disabled = true;
-    document.getElementById('rtAiMagicResults').classList.add('hidden');
-    window.rtSuspendToolbarIdle = true;
-    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     try{
-      const result = await rtRunAiMagicAnalysis();
-      if (result) rtRenderAiMagicResults(result);
-    }catch(err){
-      toast('AI Magic could not complete: ' + (err.message || 'unknown error'), 'err');
+      await rtRunAiMagicAutoApply();
     } finally {
       rtAiMagicBtnEl.disabled = false;
-      document.getElementById('rtAiMagicStage').textContent = '';
-      window.rtSuspendToolbarIdle = false;
-      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
-    }
-  });
-  const rtApplyBeautyPlanBtnEl = document.getElementById('rtApplyBeautyPlanBtn');
-  if (rtApplyBeautyPlanBtnEl) rtApplyBeautyPlanBtnEl.addEventListener('click', async () => {
-    rtApplyBeautyPlanBtnEl.disabled = true;
-    rtApplyBeautyPlanBtnEl.textContent = 'Applying\u2026';
-    window.rtSuspendToolbarIdle = true;
-    if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
-    try{
-      await rtRunAiMagic(); // unchanged apply logic -- reuses the cached analysis from the step above
-      document.getElementById('rtAiMagicResults').classList.add('hidden');
-    }catch(err){
-      toast('Could not apply the Beauty Plan: ' + (err.message || 'unknown error'), 'err');
-    } finally {
-      rtApplyBeautyPlanBtnEl.disabled = false;
-      rtApplyBeautyPlanBtnEl.textContent = 'Apply Beauty Plan';
-      window.rtSuspendToolbarIdle = false;
-      if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     }
   });
   document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
