@@ -12312,6 +12312,7 @@ if (document.getElementById('rtDrop')){
     ]},
     { id:'eyes', label:'Eyes', tools:[
       { label:'Eye Enhancement', key:'eyeEnhance' },
+      { label:'Eye Color', key:null },
     ]},
     { id:'lips', label:'Lips', tools:[
       { label:'Lip Enhancement', key:'lipEnhance' },
@@ -12324,6 +12325,7 @@ if (document.getElementById('rtDrop')){
     { id:'hair', label:'Hair', tools:[
       { label:'Shine', key:'hairShine' },
       { label:'Smoothness', key:'hairSmooth' },
+      { label:'Hair Color', key:null },
     ]},
     { id:'beard', label:'Beard', tools:[ { label:'Beard Color', key:null } ]},
     { id:'eyebrows', label:'Eyebrows', tools:[ { label:'Shaping', key:null } ]},
