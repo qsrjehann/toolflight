@@ -9281,7 +9281,8 @@ if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.i
    ============================================================ */
 if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
-  let rtOriginalImageURL = null; // Blob URL of the original file -- survives canvas/GPU backing-store reclaim, used to rebuild rtSourceCanvas if it's ever found empty (see rtRecoverCanvasIfNeeded)
+  let rtOriginalImageBytes = null; // raw ArrayBuffer of the original file -- plain JS heap memory, no browser resource-registry dependency (unlike a Blob URL, which can be silently invalidated by the same memory pressure that clears canvases -- this was the real root cause of the false "recovered" result)
+  let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
   // (rtFaceLandmarks above) remains the source of truth for every
@@ -12475,8 +12476,8 @@ if (document.getElementById('rtDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
-    if (rtOriginalImageURL) URL.revokeObjectURL(rtOriginalImageURL); // release the previous photo's blob before replacing it
-    rtOriginalImageURL = URL.createObjectURL(f);
+    rtOriginalImageBytes = await f.arrayBuffer();
+    rtOriginalImageType = f.type;
     rtSourceCanvas = document.createElement('canvas');
     rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
     rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
@@ -12780,21 +12781,44 @@ if (document.getElementById('rtDrop')){
   // bytes in memory (not a rendering resource) and survives the same
   // memory pressure that clears canvases.
   async function rtRecoverCanvasIfNeeded(){
-    if (!rtSourceCanvas || !rtOriginalImageURL) return;
-    let lost = false;
+    if (!rtSourceCanvas || !rtOriginalImageBytes) return;
+    const canvasLooksLost = () => {
+      if (!rtSourceCanvas.width || !rtSourceCanvas.height) return true; // dimensions themselves can be reset, not just pixel content
+      try{
+        const px = rtSourceCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+        return (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0); // a real photo's corner is never fully transparent+black; JPEGs have no alpha channel at all
+      } catch(err){
+        return true; // can't read the canvas at all -- treat as lost rather than risk showing a blank photo silently
+      }
+    };
+    if (!canvasLooksLost()){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before
+    let tempUrl = null;
     try{
-      const px = rtSourceCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
-      lost = (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0); // a real photo's corner is never fully transparent+black; JPEGs have no alpha channel at all
-    } catch(err){
-      lost = true; // can't read the canvas at all -- treat as lost rather than risk showing a blank photo silently
-    }
-    if (!lost){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before
-    try{
+      // Build a FRESH Blob and Blob URL from the retained raw bytes every
+      // time -- never reuse a long-lived URL, which is exactly what
+      // silently failed before (its browser-registry entry can be
+      // invalidated by the same memory pressure that clears canvases,
+      // even though the JS string referencing it still looks valid).
+      const blob = new Blob([rtOriginalImageBytes], { type: rtOriginalImageType || 'image/jpeg' });
+      tempUrl = URL.createObjectURL(blob);
       const img = new Image();
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = rtOriginalImageURL; });
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
+      if (!img.naturalWidth || !img.naturalHeight) throw new Error('Decoded image has no dimensions');
+      // Restore dimensions explicitly, not just pixels -- these can be
+      // reset independently of pixel content under the same memory event.
+      rtSourceCanvas.width = img.naturalWidth;
+      rtSourceCanvas.height = img.naturalHeight;
       const ctx = rtSourceCanvas.getContext('2d');
       ctx.clearRect(0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
-      ctx.drawImage(img, 0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
+      ctx.drawImage(img, 0, 0);
+      // Verify the actual result before claiming success -- this is the
+      // core fix. The previous version trusted that a non-throwing
+      // drawImage meant real content was drawn; it didn't, which is
+      // exactly how a false "recovered" toast appeared over a still-black
+      // canvas. Re-sample after drawing, not just after deciding to draw.
+      const verifyPx = ctx.getImageData(0, 0, 1, 1).data;
+      const stillBlank = (verifyPx[0]===0 && verifyPx[1]===0 && verifyPx[2]===0 && verifyPx[3]===0);
+      if (stillBlank) throw new Error('Redraw completed but canvas still reads blank');
       // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
       // (set at load time), so it's already fixed by the redraw above.
       // Additional user-added layers (gradient/color fills) are not
@@ -12805,7 +12829,12 @@ if (document.getElementById('rtDrop')){
       renderRtPreview();
       toast('Photo recovered after the browser cleared it in the background.', 'ok');
     } catch(err){
-      toast('Could not recover the photo automatically -- please reload it.', 'err');
+      // Honest failure -- no false "recovered" claim. The most reliable
+      // path back to a working state is the same one the user already
+      // knows: pick the photo again via New Photo.
+      toast('The browser cleared this photo from memory and it could not be automatically restored. Please reload it using New Photo.', 'err');
+    } finally {
+      if (tempUrl) URL.revokeObjectURL(tempUrl); // this one-time, short-lived URL is safe to revoke immediately -- it never needs to outlive this single recovery attempt
     }
   }
   window.addEventListener('pageshow', (e) => {
@@ -13257,9 +13286,9 @@ if (document.getElementById('rtDrop')){
     }
   });
 
-  const rtAiMagicAccordionEl = document.getElementById('rtAccordionAiMagic');
-  if (rtAiMagicAccordionEl) rtAiMagicAccordionEl.addEventListener('toggle', () => {
-    if (rtAiMagicAccordionEl.open) rtRunAiMagicAutoApply();
+  const rtAutoCorrectionBtnEl = document.getElementById('rtAutoCorrectionBtn');
+  if (rtAutoCorrectionBtnEl) rtAutoCorrectionBtnEl.addEventListener('click', () => {
+    rtRunAiMagicAutoApply();
   });
   document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
   document.getElementById('rtMakeTransparentBtn').addEventListener('click', rtMakeLayerTransparent);
