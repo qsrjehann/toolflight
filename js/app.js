@@ -9281,6 +9281,7 @@ if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.i
    ============================================================ */
 if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
+  let rtOriginalImageURL = null; // Blob URL of the original file -- survives canvas/GPU backing-store reclaim, used to rebuild rtSourceCanvas if it's ever found empty (see rtRecoverCanvasIfNeeded)
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
   // (rtFaceLandmarks above) remains the source of truth for every
@@ -12257,10 +12258,12 @@ if (document.getElementById('rtDrop')){
      immediately cancels compare (see the pinch-start branch below), so
      the user never pinches while looking at the unedited original. */
   const rtCompareCanvasEl = document.getElementById('rtPreviewCanvas');
+  let rtCompareSnapshot = null;
   function rtShowOriginal(show){
     const canvas = document.getElementById('rtPreviewCanvas');
     if (show) canvas.getContext('2d').drawImage(rtSourceCanvas, 0, 0, canvas.width, canvas.height);
-    else renderRtPreview();
+    else if (rtCompareSnapshot) canvas.getContext('2d').drawImage(rtCompareSnapshot, 0, 0, canvas.width, canvas.height);
+    else renderRtPreview(); // fallback -- no snapshot captured for some reason, recompute as before
   }
   let rtCompareActive = false;
   function rtStartCompare(e){
@@ -12269,6 +12272,10 @@ if (document.getElementById('rtDrop')){
     if (rtCropEditMode) return; // don't interfere with crop handle dragging
     if (e.pointerType === 'touch' && e.isPrimary === false) return; // ignore secondary touch points (pinch)
     rtCompareActive = true;
+    const canvas = document.getElementById('rtPreviewCanvas');
+    rtCompareSnapshot = document.createElement('canvas');
+    rtCompareSnapshot.width = canvas.width; rtCompareSnapshot.height = canvas.height;
+    rtCompareSnapshot.getContext('2d').drawImage(canvas, 0, 0);
     rtShowOriginal(true);
     if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
   }
@@ -12276,6 +12283,7 @@ if (document.getElementById('rtDrop')){
     if (!rtCompareActive) return;
     rtCompareActive = false;
     rtShowOriginal(false);
+    rtCompareSnapshot = null; // release once restored -- don't hold an extra full-resolution canvas in memory while not comparing
   }
   rtCompareCanvasEl.addEventListener('pointerdown', rtStartCompare);
   rtCompareCanvasEl.addEventListener('pointerup', rtEndCompare);
@@ -12467,6 +12475,8 @@ if (document.getElementById('rtDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+    if (rtOriginalImageURL) URL.revokeObjectURL(rtOriginalImageURL); // release the previous photo's blob before replacing it
+    rtOriginalImageURL = URL.createObjectURL(f);
     rtSourceCanvas = document.createElement('canvas');
     rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
     rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
@@ -12759,21 +12769,50 @@ if (document.getElementById('rtDrop')){
   window.addEventListener('resize', rtUpdateCanvasMaxHeight);
   window.addEventListener('orientationchange', () => setTimeout(rtUpdateCanvasMaxHeight, 250));
 
-  // Defensive canvas-recovery: mobile browsers (especially Android
-  // Chrome under memory pressure) can discard a canvas's rendered pixel
-  // content when a tab is backgrounded, even though the JS-held source
-  // image data and adjustment state survive untouched. Re-render from
-  // that still-intact source whenever the tab becomes visible again --
-  // covers both a full bfcache restore (pageshow) and the more common
-  // "switched apps and came back" case on mobile, which is usually just
-  // a visibility change, not a full page restore. Matches the same
-  // established pattern already used by Passport/Background Remover
-  // elsewhere in this codebase.
+  // Real canvas-recovery: mobile browsers (especially Android Chrome
+  // under memory pressure) can discard a canvas's rendered pixel content
+  // when a tab is backgrounded -- and this can happen to rtSourceCanvas
+  // itself, not just the visible preview. Re-rendering from a source
+  // that's already lost does nothing (this was the flaw in the earlier
+  // version of this fix). The real fix: detect genuine pixel loss with a
+  // cheap single-pixel sample, and rebuild rtSourceCanvas from a
+  // separately-retained Blob URL of the original file, which is just
+  // bytes in memory (not a rendering resource) and survives the same
+  // memory pressure that clears canvases.
+  async function rtRecoverCanvasIfNeeded(){
+    if (!rtSourceCanvas || !rtOriginalImageURL) return;
+    let lost = false;
+    try{
+      const px = rtSourceCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+      lost = (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0); // a real photo's corner is never fully transparent+black; JPEGs have no alpha channel at all
+    } catch(err){
+      lost = true; // can't read the canvas at all -- treat as lost rather than risk showing a blank photo silently
+    }
+    if (!lost){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before
+    try{
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = rtOriginalImageURL; });
+      const ctx = rtSourceCanvas.getContext('2d');
+      ctx.clearRect(0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
+      ctx.drawImage(img, 0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
+      // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
+      // (set at load time), so it's already fixed by the redraw above.
+      // Additional user-added layers (gradient/color fills) are not
+      // recoverable this way if they were also cleared -- they aren't
+      // derived from the original photo -- but this covers the primary,
+      // most common case: a single Background layer, which is what these
+      // reports have all shown.
+      renderRtPreview();
+      toast('Photo recovered after the browser cleared it in the background.', 'ok');
+    } catch(err){
+      toast('Could not recover the photo automatically -- please reload it.', 'err');
+    }
+  }
   window.addEventListener('pageshow', (e) => {
-    if (e.persisted && rtSourceCanvas) renderRtPreview();
+    if (e.persisted && rtSourceCanvas) rtRecoverCanvasIfNeeded();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && rtSourceCanvas) renderRtPreview();
+    if (document.visibilityState === 'visible' && rtSourceCanvas) rtRecoverCanvasIfNeeded();
   });
 
   function rtUpdatePanelMaxHeight(){
