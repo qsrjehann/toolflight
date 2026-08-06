@@ -11597,7 +11597,8 @@ if (document.getElementById('rtDrop')){
     window.rtSuspendToolbarIdle = true;
     if (window.rtWakeFloatingToolbar) window.rtWakeFloatingToolbar();
     try{
-      const result = await rtRunAiMagic(); // analyzes (or reuses cache) and applies in one call
+      const minDuration = new Promise(r => setTimeout(r, 1100)); // the animation must always be visible long enough to register as "something happened" -- found via testing that real processing can finish in well under 100ms
+      const [result] = await Promise.all([rtRunAiMagic(), minDuration]); // analyzes (or reuses cache) and applies in one call
       if (result && result.applied){
         toast('\u2728 Your photo looks amazing!', 'ok');
         // Auto-open Face panel (Half state) with the newly-applied
@@ -12306,13 +12307,53 @@ if (document.getElementById('rtDrop')){
     }
     window.rtWakeFloatingToolbar = rtWakeFloatingToolbar;
 
-    // No custom drag-to-reposition -- real-device testing found the
-    // drag-vs-horizontal-scroll disambiguation unreliable in practice
-    // (both scroll and drag were reported broken). The toolbar floats
-    // at a fixed default position; all touch on it (including reaching
-    // overflowing buttons like New Photo) is handled entirely natively,
-    // with zero custom JS interception -- the simplest design that
-    // cannot conflict with itself.
+    // Drag-to-reposition is scoped to its own dedicated handle element
+    // (the grip-dots icon) -- completely separate from the scrollable
+    // button row, so there is no ambiguity between "scroll to see more
+    // buttons" and "drag to move the bar" the way earlier attempts had
+    // when both shared the same touch area.
+    const handle = document.getElementById('rtTopbarDragHandle');
+    if (handle){
+      let dragging = false, dragStartX = 0, dragStartY = 0, barStartLeft = 0, barStartTop = 0;
+      handle.addEventListener('pointerdown', (e) => {
+        if (window.innerWidth >= 900) return;
+        rtWakeFloatingToolbar();
+        dragging = true;
+        topbar.classList.add('rt-toolbar-dragging');
+        const rect = topbar.getBoundingClientRect();
+        barStartLeft = rect.left; barStartTop = rect.top;
+        topbar.style.width = rect.width + 'px'; // pin width before releasing the right constraint, or the bar reflows to its natural (viewport-exceeding) content width
+        topbar.style.right = 'auto';
+        dragStartX = e.clientX; dragStartY = e.clientY;
+        try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+        e.preventDefault();
+      });
+      handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+        const maxLeft = Math.max(4, window.innerWidth - topbar.offsetWidth - 4);
+        const maxTop = Math.max(4, window.innerHeight - topbar.offsetHeight - 4);
+        topbar.style.left = rtClamp(barStartLeft + dx, 4, maxLeft) + 'px';
+        topbar.style.top = rtClamp(barStartTop + dy, rtMinTopbarY(), maxTop) + 'px';
+      });
+      function endHandleDrag(){
+        if (!dragging) return;
+        dragging = false;
+        topbar.classList.remove('rt-toolbar-dragging');
+        const rect = topbar.getBoundingClientRect();
+        const centerX = rect.left + rect.width/2;
+        if (centerX < window.innerWidth/2){ topbar.style.left = '8px'; topbar.style.right = 'auto'; }
+        else { topbar.style.left = Math.max(4, window.innerWidth - rect.width - 8) + 'px'; }
+        rtWakeFloatingToolbar();
+      }
+      handle.addEventListener('pointerup', endHandleDrag);
+      handle.addEventListener('pointercancel', endHandleDrag);
+    }
+
+    // The button row itself has no custom touch interception -- native
+    // scroll reaches overflowing buttons reliably. Dragging is only
+    // possible via the dedicated handle above, never via the row.
     ['pointerdown','wheel'].forEach(ev => document.addEventListener(ev, rtWakeFloatingToolbar, { passive: true }));
     document.querySelectorAll('#rtPanelSheet .pp-accordion').forEach(acc => acc.addEventListener('toggle', rtWakeFloatingToolbar));
     rtWakeFloatingToolbar();
@@ -12659,7 +12700,7 @@ if (document.getElementById('rtDrop')){
     const navH = rtBottomNavHeight();
     const available = window.innerHeight - navH;
     const closed = 8; // just the handle bar, no content -- maximum canvas visibility
-    const halfPreferred = Math.min(Math.round(window.innerHeight * 0.42), 380);
+    const halfPreferred = Math.min(Math.round(window.innerHeight * 0.30), 280);
     const half = Math.max(closed + 60, Math.min(halfPreferred, available - 100));
     const expanded = Math.max(half + 40, available - 60);
     return { closed, half, expanded };
