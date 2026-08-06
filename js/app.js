@@ -12759,6 +12759,23 @@ if (document.getElementById('rtDrop')){
   window.addEventListener('resize', rtUpdateCanvasMaxHeight);
   window.addEventListener('orientationchange', () => setTimeout(rtUpdateCanvasMaxHeight, 250));
 
+  // Defensive canvas-recovery: mobile browsers (especially Android
+  // Chrome under memory pressure) can discard a canvas's rendered pixel
+  // content when a tab is backgrounded, even though the JS-held source
+  // image data and adjustment state survive untouched. Re-render from
+  // that still-intact source whenever the tab becomes visible again --
+  // covers both a full bfcache restore (pageshow) and the more common
+  // "switched apps and came back" case on mobile, which is usually just
+  // a visibility change, not a full page restore. Matches the same
+  // established pattern already used by Passport/Background Remover
+  // elsewhere in this codebase.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && rtSourceCanvas) renderRtPreview();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && rtSourceCanvas) renderRtPreview();
+  });
+
   function rtUpdatePanelMaxHeight(){
     if (window.innerWidth >= 900){
       const sheet = document.getElementById('rtPanelSheet');
