@@ -9,9 +9,9 @@
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#6D5EF5">
 <meta name="author" content="ToolFlight">
-<link rel="icon" href="assets/favicon.ico?v=20260806-4000" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-4000">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-4000">
+<link rel="icon" href="assets/favicon.ico?v=20260806-4100" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-4100">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-4100">
 <link rel="canonical" href="https://toolflight.com/ai-photo-retouch.html">
 
 <meta property="og:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
@@ -47,7 +47,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
-<link rel="stylesheet" href="css/style.css?v=20260806-4000">
+<link rel="stylesheet" href="css/style.css?v=20260806-4100">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -72,7 +72,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260806-4000" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260806-4100" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -477,7 +477,6 @@
               <div class="ctrl rt-ms-ctrl" data-key="faceBrighten"><input type="range" id="rtFaceBrighten" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="skinTone"><input type="range" id="rtSkinTone" min="-50" max="50" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="foundation"><input type="range" id="rtFoundation" min="0" max="100" value="0"></div>
-              <div class="ctrl rt-ms-ctrl" data-key="blush"><input type="range" id="rtBlush" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="eyeEnhance"><input type="range" id="rtEyeEnhance" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="teethWhiten"><input type="range" id="rtTeethWhiten" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="lipEnhance"><input type="range" id="rtLipEnhance" min="0" max="100" value="0"></div>
@@ -486,23 +485,50 @@
               <div class="ctrl rt-ms-ctrl" data-key="hairHealth"><input type="range" id="rtHairHealth" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="hairFlyaway"><input type="range" id="rtHairFlyaway" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="hairTexture"><input type="range" id="rtHairTexture" min="0" max="100" value="0"></div>
+              <div class="ctrl rt-ms-ctrl" data-key="mascaraIntensity"><input type="range" id="rtMascaraIntensity" min="0" max="100" value="0"></div>
               <div class="rt-ms-coming-soon hidden" id="rtMsComingSoon">This tool needs new capability that hasn't been built yet.</div>
               <div class="rt-ms-lipcolor hidden" id="rtMsLipColorPicker">
                 <div class="rt-ms-swatch-row">
                   <button type="button" class="rt-ms-swatch rt-ms-swatch-none" data-hex="" title="None" aria-label="No lip color"></button>
-                  <button type="button" class="rt-ms-swatch" data-hex="#B22222" style="background:#B22222;" title="Classic Red" aria-label="Classic Red"></button>
-                  <button type="button" class="rt-ms-swatch" data-hex="#C2506D" style="background:#C2506D;" title="Rose Pink" aria-label="Rose Pink"></button>
-                  <button type="button" class="rt-ms-swatch" data-hex="#8B3A5C" style="background:#8B3A5C;" title="Berry" aria-label="Berry"></button>
                   <button type="button" class="rt-ms-swatch" data-hex="#C08370" style="background:#C08370;" title="Nude" aria-label="Nude"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E8A0B4" style="background:#E8A0B4;" title="Pink" aria-label="Pink"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#C2506D" style="background:#C2506D;" title="Rose" aria-label="Rose"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#B22222" style="background:#B22222;" title="Red" aria-label="Red"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#7B1E1E" style="background:#7B1E1E;" title="Dark Red" aria-label="Dark Red"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#8B3A5C" style="background:#8B3A5C;" title="Berry" aria-label="Berry"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#6B3550" style="background:#6B3550;" title="Plum" aria-label="Plum"></button>
                   <button type="button" class="rt-ms-swatch" data-hex="#E2725B" style="background:#E2725B;" title="Coral" aria-label="Coral"></button>
-                  <button type="button" class="rt-ms-swatch" data-hex="#6B2737" style="background:#6B2737;" title="Deep Wine" aria-label="Deep Wine"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E8967A" style="background:#E8967A;" title="Peach" aria-label="Peach"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#7A4B3A" style="background:#7A4B3A;" title="Brown" aria-label="Brown"></button>
                 </div>
                 <input type="range" id="rtLipColorIntensity" min="0" max="100" value="0" style="width:100%;margin-top:6px;">
               </div>
               <div class="rt-ms-lipfinish hidden" id="rtMsLipFinishPicker">
                 <button type="button" class="rt-ms-finish-btn" data-finish="natural">Natural</button>
                 <button type="button" class="rt-ms-finish-btn" data-finish="matte">Matte</button>
+                <button type="button" class="rt-ms-finish-btn" data-finish="satin">Satin</button>
                 <button type="button" class="rt-ms-finish-btn" data-finish="gloss">Gloss</button>
+                <button type="button" class="rt-ms-finish-btn" data-finish="oil">Oil</button>
+              </div>
+              <div class="rt-ms-lipcolor hidden" id="rtMsLipLinerPicker">
+                <div class="rt-ms-swatch-row">
+                  <button type="button" class="rt-ms-swatch rt-ms-swatch-none" data-hex="" title="None" aria-label="No lip liner"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#C08370" style="background:#C08370;" title="Nude" aria-label="Nude"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E8A0B4" style="background:#E8A0B4;" title="Pink" aria-label="Pink"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#C2506D" style="background:#C2506D;" title="Rose" aria-label="Rose"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#7A4B3A" style="background:#7A4B3A;" title="Brown" aria-label="Brown"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#B22222" style="background:#B22222;" title="Red" aria-label="Red"></button>
+                </div>
+                <input type="range" id="rtLipLinerIntensity" min="0" max="100" value="0" style="width:100%;margin-top:6px;">
+              </div>
+              <div class="rt-ms-lipcolor hidden" id="rtMsBlushPicker">
+                <div class="rt-ms-swatch-row">
+                  <button type="button" class="rt-ms-swatch" data-hex="#E8967A" style="background:#E8967A;" title="Peach" aria-label="Peach"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E8A0B4" style="background:#E8A0B4;" title="Pink" aria-label="Pink"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E1828A" style="background:#E1828A;" title="Rose" aria-label="Rose"></button>
+                  <button type="button" class="rt-ms-swatch" data-hex="#E2725B" style="background:#E2725B;" title="Coral" aria-label="Coral"></button>
+                </div>
+                <input type="range" id="rtBlush" min="0" max="100" value="0" style="width:100%;margin-top:6px;">
               </div>
             </div>
           </div>
@@ -546,7 +572,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-4000" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-4100" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -583,6 +609,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260806-4000"></script>
+<script defer src="js/app.js?v=20260806-4100"></script>
 </body>
 </html>
