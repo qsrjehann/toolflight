@@ -9363,6 +9363,10 @@ if (document.getElementById('rtDrop')){
   };
 
   function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
+  function rtHexToRgb(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
+  }
 
   /* ---------- Face landmark detection (own loader, mirrors the pattern
      already used for passport/AI enhancer face detection, not a literal
@@ -9864,7 +9868,7 @@ if (document.getElementById('rtDrop')){
     }
     if (a.blush > 0){
       const mask = buildRtCheekMask(w, h, sw, sh);
-      const strength = Math.min(0.4, a.blush/100 * 0.4); // capped, and lower than before -- blush is a soft flush, not a visible tint
+      const strength = Math.min(0.5, a.blush/100 * 0.5); // capped -- blush is a flush, not a solid tint, but must still be clearly visible at full intensity
       const [br, bg, bb] = [225, 140, 138]; // natural rose tone
       for (let p=0; p<w*h; p++){
         const m = mask[p]*strength;
@@ -9883,7 +9887,7 @@ if (document.getElementById('rtDrop')){
     if (a.lipColorIntensity > 0 && a.lipColorHex){
       const mask = buildRtMouthMask(w, h, sw, sh, 1.3, 0.8); // slightly tighter than before -- combined with the per-pixel refinement below, reduces reliance on the ellipse's imprecise geometry alone
       const strength = Math.min(0.7, a.lipColorIntensity/100 * 0.7); // capped -- full replacement would erase natural lip texture/shading
-      const [cr, cg, cb] = hexToRgb(a.lipColorHex);
+      const [cr, cg, cb] = rtHexToRgb(a.lipColorHex);
       const finish = a.lipFinish || 'natural';
       for (let p=0; p<w*h; p++){
         let m = mask[p]*strength;
@@ -9893,21 +9897,26 @@ if (document.getElementById('rtDrop')){
         const lum = rtLuma(r0,g0,b0);
         const mx=Math.max(r0,g0,b0), mn=Math.min(r0,g0,b0);
         const sat = mx>0 ? (mx-mn)/mx : 0;
-        // Exclude teeth entirely -- same proven bright+low-saturation
-        // signature already validated in Teeth Whitening. A pixel that
-        // looks like teeth never gets lip color, regardless of where it
-        // falls inside the geometric mask (matters most on an open,
-        // smiling mouth, which the ellipse alone can't distinguish).
-        const teethLikelihood = rtClamp((lum-90)/80, 0, 1) * rtClamp(1 - sat/0.55, 0, 1);
-        if (teethLikelihood > 0.35) continue;
+        // Suppress teeth continuously rather than a hard cutoff -- tighter
+        // thresholds than Teeth Whitening's own (which is itself a soft
+        // multiplier, not a gate) since even pale natural lips can drift
+        // into a loose teeth-like range; requiring genuinely bright
+        // (>140) AND genuinely low-saturation (<0.35) avoids the bug
+        // found via real-device testing where a hard cutoff was zeroing
+        // out natural pale/light lips entirely, not just actual teeth.
+        const teethLikelihood = rtClamp((lum-140)/60, 0, 1) * rtClamp(1 - sat/0.35, 0, 1);
+        m *= (1 - teethLikelihood);
+        if (m <= 0.005) continue;
         // Suppress the effect on pixels that don't actually look like
         // lip tissue (lips read redder and more saturated than
         // surrounding skin) -- makes the effect hug the real lip
         // boundary instead of trusting the ellipse's edge precisely,
         // which is what caused bleeding onto skin at the mask border.
+        // Floor raised (0.35 -> 0.55): a false negative here (suppressing
+        // real lip pixels) is worse than minor over-application at the edge.
         const warmth = (r0 - (g0+b0)/2) / 255; // positive = reddish, as real lips are
         const lipLikelihood = rtClamp(warmth*3, 0, 1) * rtClamp(sat/0.25, 0, 1);
-        m *= Math.max(0.35, lipLikelihood); // floor keeps the mask center (already-confirmed lip pixels) from ever fully zeroing out
+        m *= Math.max(0.55, lipLikelihood);
         // Blend toward the chosen color while preserving the pixel's own
         // luminance (keeps natural lip shading/highlights instead of
         // flattening to a solid color block).
@@ -12558,6 +12567,11 @@ if (document.getElementById('rtDrop')){
       } else {
         if (comingSoonEl) comingSoonEl.classList.remove('hidden');
       }
+      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','blush'];
+      const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || tool.type === 'lipColor' || tool.type === 'lipFinish';
+      if (needsFace && !rtFaceLandmarks){
+        toast('No face detected in this photo \u2014 this tool needs a detected face to apply. Try a clearer, front-facing photo.', 'err');
+      }
       showLevel(3);
     }
 
@@ -12594,11 +12608,10 @@ if (document.getElementById('rtDrop')){
         const layer = rtGetActiveLayer();
         if (layer && layer.locked){ toast('This layer is locked.', 'err'); return; }
         rtAdj.lipColorHex = btn.dataset.hex || null;
-        // Choosing a color with the intensity still at 0 would be
-        // invisible and confusing -- give it a sensible starting value,
-        // matching how picking a color implies "apply some of it."
-        if (rtAdj.lipColorHex && rtAdj.lipColorIntensity <= 0) rtAdj.lipColorIntensity = 55;
-        if (!rtAdj.lipColorHex) rtAdj.lipColorIntensity = 0; // "None" swatch clears it entirely
+        // Always reset to a sensible default when a color is chosen --
+        // previously only did this if intensity was at 0, which let a
+        // stale value from a different color carry over confusingly.
+        rtAdj.lipColorIntensity = rtAdj.lipColorHex ? 55 : 0; // "None" swatch clears it entirely
         rtSyncLipColorUI();
         renderRtPreview();
         rtPushHistory('Lip Color');
@@ -12608,7 +12621,7 @@ if (document.getElementById('rtDrop')){
     if (rtLipColorIntensityEl){
       rtLipColorIntensityEl.addEventListener('input', () => {
         rtAdj.lipColorIntensity = +rtLipColorIntensityEl.value;
-        renderRtPreview();
+        rtDebouncedRender();
       });
       rtLipColorIntensityEl.addEventListener('change', () => rtPushHistory('Lip Color Intensity'));
     }
