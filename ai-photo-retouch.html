@@ -9,9 +9,9 @@
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="theme-color" content="#6D5EF5">
 <meta name="author" content="ToolFlight">
-<link rel="icon" href="assets/favicon.ico?v=20260806-3000" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-3000">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-3000">
+<link rel="icon" href="assets/favicon.ico?v=20260806-3400" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260806-3400">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260806-3400">
 <link rel="canonical" href="https://toolflight.com/ai-photo-retouch.html">
 
 <meta property="og:title" content="AI Photo Retouch & Beauty Editor — Free Online | ToolFlight">
@@ -47,7 +47,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
-<link rel="stylesheet" href="css/style.css?v=20260806-3000">
+<link rel="stylesheet" href="css/style.css?v=20260806-3400">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -72,7 +72,7 @@
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
-      <img src="assets/logo.svg?v=20260806-3000" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      <img src="assets/logo.svg?v=20260806-3400" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
       ToolFlight
     </a>
     <div class="nav-links mobile-hide">
@@ -281,25 +281,11 @@
         </details>
 
         <details class="pp-accordion" id="rtAccordionHair">
-          <summary class="pp-accordion-summary"><span class="pp-accordion-summary-left"><span class="pp-accordion-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4 0-7 3-7 7 0 3 1 4 1 6 0 2-1 3-1 3h3s1-2 1-4c0-1 1-2 1-2s1 4 3 4 3-4 3-4 1 1 1 2c0 2 1 4 1 4h3s-1-1-1-3c0-2 1-3 1-6 0-4-3-7-7-7z"/></svg></span><span class="pp-accordion-summary-title">Hair</span></span></summary>
-          <p class="editor-hint">Uses its own AI hair detection (a separate model from Face and Background) so these adjustments only ever affect hair pixels — never skin, ears, eyes, background, or clothes. First use downloads a small AI model (a few MB, cached after).</p>
-          <div class="qr-controls">
-            <div class="ctrl"><label for="rtHairHealth">Hair Repair: <span id="rtHairHealthVal">0</span></label><input type="range" id="rtHairHealth" min="0" max="100" value="0"></div>
-            <div class="ctrl"><label for="rtHairFlyaway">Flyaway Cleanup: <span id="rtHairFlyawayVal">0</span></label><input type="range" id="rtHairFlyaway" min="0" max="100" value="0"></div>
-          </div>
-
-          <div class="rt-advanced-only-section" style="margin-top:12px;">
-            <div class="rt-mask-box">
-              <div class="rt-mask-title" style="margin-bottom:6px;">Texture Enhancement</div>
-              <p class="editor-hint" style="margin-top:0;">Adapts to your hair's own measured Texture Score — already-detailed hair gets a gentler touch, smoother hair gets more, so strand definition looks natural instead of oversharpened.</p>
-              <div class="ctrl"><label for="rtHairTexture">Hair Texture: <span id="rtHairTextureVal">0</span></label><input type="range" id="rtHairTexture" min="0" max="100" value="0"></div>
-            </div>
-            <div class="rt-mask-box">
-              <div class="rt-mask-title" style="margin-bottom:6px;">Hair Intelligence (analysis only)</div>
-              <p class="editor-hint" style="margin-top:0;">Runs the Hair Intelligence Engine and shows what it measured — shine, texture, volume, frizz and flyaway detection all come from real pixel analysis. Curl-pattern and thickness classifications are only shown when confidence is high enough; otherwise this honestly says “Unknown” instead of guessing.</p>
-              <button type="button" class="btn btn-secondary" id="rtHairAnalyzeBtn" style="width:100%;">Analyze Hair</button>
-              <div id="rtHairAnalysisResults" style="margin-top:10px;font-size:12.5px;color:var(--ink);display:none;"></div>
-            </div>
+          <summary class="pp-accordion-summary"><span class="pp-accordion-summary-left"><span class="pp-accordion-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4 0-7 3-7 7 0 3 1 4 1 6 0 2-1 3-1 3h3s1-2 1-4c0-1 1-2 1-2s1 4 3 4 3-4 3-4 1 1 1 2c0 2 1 4 1 4h3s-1-1-1-3c0-2 1-3 1-6 0-4-3-7-7-7z"/></svg></span><span class="pp-accordion-summary-title">Hair Analysis</span></span></summary>
+          <div class="rt-mask-box">
+            <p class="editor-hint" style="margin-top:0;">Runs the Hair Intelligence Engine and shows what it measured — shine, texture, volume, frizz and flyaway detection all come from real pixel analysis. Curl-pattern and thickness classifications are only shown when confidence is high enough; otherwise this honestly says “Unknown” instead of guessing. Hair adjustment sliders (Shine, Smoothness, Repair, Flyaway Cleanup, Texture) live in Makeup Studio.</p>
+            <button type="button" class="btn btn-secondary" id="rtHairAnalyzeBtn" style="width:100%;">Analyze Hair</button>
+            <div id="rtHairAnalysisResults" style="margin-top:10px;font-size:12.5px;color:var(--ink);display:none;"></div>
           </div>
         </details>
 
@@ -436,9 +422,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
             <span>Background</span>
           </button>
-          <button class="rt-bt-item" type="button" data-target="rtAccordionHair" role="tab" aria-selected="false">
+          <button class="rt-bt-item" type="button" data-target="rtAccordionHair" data-advanced="true" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4 0-7 3-7 7 0 3 1 4 1 6 0 2-1 3-1 3h3s1-2 1-4c0-1 1-2 1-2s1 4 3 4 3-4 3-4 1 1 1 2c0 2 1 4 1 4h3s-1-1-1-3c0-2 1-3 1-6 0-4-3-7-7-7z"/></svg>
-            <span>Hair</span>
+            <span>Hair Analysis</span>
           </button>
           <button class="rt-bt-item" type="button" data-target="rtAccordionFilters" role="tab" aria-selected="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4l-6 7v5l-4 2v-7L4 8V4z"/></svg>
@@ -496,6 +482,9 @@
               <div class="ctrl rt-ms-ctrl" data-key="lipEnhance"><input type="range" id="rtLipEnhance" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="hairShine"><input type="range" id="rtHairShine" min="0" max="100" value="0"></div>
               <div class="ctrl rt-ms-ctrl" data-key="hairSmooth"><input type="range" id="rtHairSmooth" min="0" max="100" value="0"></div>
+              <div class="ctrl rt-ms-ctrl" data-key="hairHealth"><input type="range" id="rtHairHealth" min="0" max="100" value="0"></div>
+              <div class="ctrl rt-ms-ctrl" data-key="hairFlyaway"><input type="range" id="rtHairFlyaway" min="0" max="100" value="0"></div>
+              <div class="ctrl rt-ms-ctrl" data-key="hairTexture"><input type="range" id="rtHairTexture" min="0" max="100" value="0"></div>
               <div class="rt-ms-coming-soon hidden" id="rtMsComingSoon">This tool needs new capability that hasn't been built yet.</div>
             </div>
           </div>
@@ -539,7 +528,7 @@
   <div class="container">
     <div class="footer-grid">
       <div>
-        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-3000" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260806-3400" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
         <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
       </div>
       <div>
@@ -576,6 +565,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260806-3000"></script>
+<script defer src="js/app.js?v=20260806-3400"></script>
 </body>
 </html>
