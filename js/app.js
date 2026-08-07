@@ -12212,7 +12212,7 @@ if (document.getElementById('rtDrop')){
     toast('Reset to original.');
   };
 
-  document.getElementById('rtChangePhotoBtn').onclick = () => {
+  function rtReturnToUploadScreen(){
     document.getElementById('rtStage').classList.add('hidden');
     const uploadSectionEl = document.getElementById('rtUploadSection');
     if (uploadSectionEl) uploadSectionEl.classList.remove('hidden');
@@ -12224,7 +12224,8 @@ if (document.getElementById('rtDrop')){
     const inputEl = document.getElementById('rtInput');
     if (inputEl) inputEl.value = ''; // allows re-selecting the same file
     document.getElementById('rtUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  }
+  document.getElementById('rtChangePhotoBtn').onclick = rtReturnToUploadScreen;
 
   /* ---------- Filter presets: real slider combinations, not a separate
      rendering path -- applying a preset just sets rtAdj and goes through
@@ -12302,13 +12303,11 @@ if (document.getElementById('rtDrop')){
      lets AI Magic / export / any future dialog keep it fully visible
      regardless of idle time. */
   const RT_MAKEUP_CATEGORIES = [
-    { id:'skin', label:'Skin', tools:[
-      { label:'Smoothness', key:'skinSmooth' },
-      { label:'Glow', key:'faceBrighten' },
-      { label:'Tone', key:'skinTone' },
-    ]},
     { id:'face', label:'Face', tools:[
-      { label:'Brightness', key:'faceBrighten' },
+      { label:'Skin Smoothness', key:'skinSmooth' },
+      { label:'Skin Glow', key:'faceBrighten' },
+      { label:'Skin Tone', key:'skinTone' },
+      { label:'Face Brightness', key:'faceBrighten' },
     ]},
     { id:'eyes', label:'Eyes', tools:[
       { label:'Eye Enhancement', key:'eyeEnhance' },
@@ -12325,6 +12324,9 @@ if (document.getElementById('rtDrop')){
     { id:'hair', label:'Hair', tools:[
       { label:'Shine', key:'hairShine' },
       { label:'Smoothness', key:'hairSmooth' },
+      { label:'Repair', key:'hairHealth' },
+      { label:'Flyaway Cleanup', key:'hairFlyaway' },
+      { label:'Texture', key:'hairTexture' },
       { label:'Hair Color', key:null },
     ]},
     { id:'beard', label:'Beard', tools:[ { label:'Beard Color', key:null } ]},
@@ -12339,7 +12341,8 @@ if (document.getElementById('rtDrop')){
   const RT_MAKEUP_KEY_TO_ID = {
     skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone',
     eyeEnhance:'rtEyeEnhance', teethWhiten:'rtTeethWhiten', lipEnhance:'rtLipEnhance',
-    hairShine:'rtHairShine', hairSmooth:'rtHairSmooth',
+    hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
+    hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
   };
 
   (function setupMakeupStudio(){
@@ -12899,61 +12902,88 @@ if (document.getElementById('rtDrop')){
   // separately-retained Blob URL of the original file, which is just
   // bytes in memory (not a rendering resource) and survives the same
   // memory pressure that clears canvases.
+  let rtRecoveryInProgress = false;
   async function rtRecoverCanvasIfNeeded(){
     if (!rtSourceCanvas || !rtOriginalImageBytes) return;
-    const canvasLooksLost = () => {
-      if (!rtSourceCanvas.width || !rtSourceCanvas.height) return true; // dimensions themselves can be reset, not just pixel content
-      try{
-        const px = rtSourceCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
-        return (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0); // a real photo's corner is never fully transparent+black; JPEGs have no alpha channel at all
-      } catch(err){
-        return true; // can't read the canvas at all -- treat as lost rather than risk showing a blank photo silently
-      }
-    };
-    if (!canvasLooksLost()){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before
-    let tempUrl = null;
+    if (rtRecoveryInProgress) return; // pageshow/visibilitychange/focus can all fire within the same resume -- avoid running (and reporting) the same recovery attempt multiple times
+    rtRecoveryInProgress = true; // set immediately adjacent to the check above, before any other logic, so no interleaving window exists between them
     try{
-      // Build a FRESH Blob and Blob URL from the retained raw bytes every
-      // time -- never reuse a long-lived URL, which is exactly what
-      // silently failed before (its browser-registry entry can be
-      // invalidated by the same memory pressure that clears canvases,
-      // even though the JS string referencing it still looks valid).
-      const blob = new Blob([rtOriginalImageBytes], { type: rtOriginalImageType || 'image/jpeg' });
-      tempUrl = URL.createObjectURL(blob);
-      const img = new Image();
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
-      if (!img.naturalWidth || !img.naturalHeight) throw new Error('Decoded image has no dimensions');
-      // Restore dimensions explicitly, not just pixels -- these can be
-      // reset independently of pixel content under the same memory event.
-      rtSourceCanvas.width = img.naturalWidth;
-      rtSourceCanvas.height = img.naturalHeight;
-      const ctx = rtSourceCanvas.getContext('2d');
-      ctx.clearRect(0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
-      ctx.drawImage(img, 0, 0);
-      // Verify the actual result before claiming success -- this is the
-      // core fix. The previous version trusted that a non-throwing
-      // drawImage meant real content was drawn; it didn't, which is
-      // exactly how a false "recovered" toast appeared over a still-black
-      // canvas. Re-sample after drawing, not just after deciding to draw.
-      const verifyPx = ctx.getImageData(0, 0, 1, 1).data;
-      const stillBlank = (verifyPx[0]===0 && verifyPx[1]===0 && verifyPx[2]===0 && verifyPx[3]===0);
-      if (stillBlank) throw new Error('Redraw completed but canvas still reads blank');
-      // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
-      // (set at load time), so it's already fixed by the redraw above.
-      // Additional user-added layers (gradient/color fills) are not
-      // recoverable this way if they were also cleared -- they aren't
-      // derived from the original photo -- but this covers the primary,
-      // most common case: a single Background layer, which is what these
-      // reports have all shown.
-      renderRtPreview();
-      toast('Photo recovered after the browser cleared it in the background.', 'ok');
-    } catch(err){
-      // Honest failure -- no false "recovered" claim. The most reliable
-      // path back to a working state is the same one the user already
-      // knows: pick the photo again via New Photo.
-      toast('The browser cleared this photo from memory and it could not be automatically restored. Please reload it using New Photo.', 'err');
+      const canvasLooksLost = () => {
+        if (!rtSourceCanvas.width || !rtSourceCanvas.height) return true; // dimensions themselves can be reset, not just pixel content
+        try{
+          const px = rtSourceCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+          return (px[0]===0 && px[1]===0 && px[2]===0 && px[3]===0); // a real photo's corner is never fully transparent+black; JPEGs have no alpha channel at all
+        } catch(err){
+          return true; // can't read the canvas at all -- treat as lost rather than risk showing a blank photo silently
+        }
+      };
+      if (!canvasLooksLost()){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before; still covered by the outer finally below
+
+      const attemptRebuild = async () => {
+        let tempUrl = null;
+        try{
+          // Build a FRESH Blob and Blob URL from the retained raw bytes every
+          // time -- never reuse a long-lived URL, which is exactly what
+          // silently failed before (its browser-registry entry can be
+          // invalidated by the same memory pressure that clears canvases,
+          // even though the JS string referencing it still looks valid).
+          const blob = new Blob([rtOriginalImageBytes], { type: rtOriginalImageType || 'image/jpeg' });
+          tempUrl = URL.createObjectURL(blob);
+          const img = new Image();
+          await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
+          if (!img.naturalWidth || !img.naturalHeight) throw new Error('Decoded image has no dimensions');
+          // Restore dimensions explicitly, not just pixels -- these can be
+          // reset independently of pixel content under the same memory event.
+          rtSourceCanvas.width = img.naturalWidth;
+          rtSourceCanvas.height = img.naturalHeight;
+          const ctx = rtSourceCanvas.getContext('2d');
+          ctx.clearRect(0, 0, rtSourceCanvas.width, rtSourceCanvas.height);
+          ctx.drawImage(img, 0, 0);
+          // Verify the actual result before claiming success -- this is the
+          // core fix. The previous version trusted that a non-throwing
+          // drawImage meant real content was drawn; it didn't, which is
+          // exactly how a false "recovered" toast appeared over a still-black
+          // canvas. Re-sample after drawing, not just after deciding to draw.
+          const verifyPx = ctx.getImageData(0, 0, 1, 1).data;
+          const stillBlank = (verifyPx[0]===0 && verifyPx[1]===0 && verifyPx[2]===0 && verifyPx[3]===0);
+          if (stillBlank) throw new Error('Redraw completed but canvas still reads blank');
+          return true;
+        } catch(err){
+          return false;
+        } finally {
+          if (tempUrl) URL.revokeObjectURL(tempUrl); // this one-time, short-lived URL is safe to revoke immediately -- it never needs to outlive this single recovery attempt
+        }
+      };
+
+      let ok = await attemptRebuild();
+      if (!ok){
+        // One retry after a short delay -- covers the plausible case that
+        // the browser hasn't fully reactivated its own rendering/decoding
+        // pipeline in the first instant after the tab resumes.
+        await new Promise(r => setTimeout(r, 400));
+        ok = await attemptRebuild();
+      }
+      if (ok){
+        // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
+        // (set at load time), so it's already fixed by the rebuild above.
+        // Additional user-added layers (gradient/color fills) are not
+        // recoverable this way if they were also cleared -- they aren't
+        // derived from the original photo -- but this covers the primary,
+        // most common case: a single Background layer, which is what these
+        // reports have all shown.
+        renderRtPreview();
+        toast('Photo recovered after the browser cleared it in the background.', 'ok');
+      } else {
+        // Honest failure, twice confirmed -- no false "recovered" claim.
+        // Leaving the user on a broken checkerboard canvas with editing
+        // tools that have nothing to edit is worse than a clean restart,
+        // so return to the upload screen directly rather than only
+        // telling them where the button is.
+        toast('The browser cleared this photo from memory and it could not be restored. Please choose your photo again.', 'err');
+        rtReturnToUploadScreen();
+      }
     } finally {
-      if (tempUrl) URL.revokeObjectURL(tempUrl); // this one-time, short-lived URL is safe to revoke immediately -- it never needs to outlive this single recovery attempt
+      rtRecoveryInProgress = false;
     }
   }
   window.addEventListener('pageshow', (e) => {
