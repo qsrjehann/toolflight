@@ -862,6 +862,12 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 .pp-accordion-summary-icon{ display:inline-flex; flex:0 0 auto; margin-right:9px; color:var(--accent1-solid); }
 .pp-accordion-summary-icon svg{ width:18px; height:18px; }
 .pp-accordion-summary-title{ flex:1; }
+.rt-info-icon{
+  flex:0 0 auto; font-size:13px; color:var(--ink-soft); cursor:help;
+  width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%; margin-right:6px;
+}
+.rt-info-icon:hover, .rt-info-icon:focus-visible{ color:var(--accent1-solid); background:var(--card); outline:none; }
 .pp-accordion-summary::-webkit-details-marker{display:none;}
 .pp-accordion-summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:rotate(-45deg);transition:transform .15s;margin-right:4px;}
 .pp-accordion[open] > .pp-accordion-summary::after{transform:rotate(45deg);}
@@ -1733,6 +1739,24 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 #rtStage .rt-ms-ctrl{ width:100%; }
 #rtStage .rt-ms-ctrl input[type=range]{ width:100%; margin:0; }
 #rtStage .rt-ms-coming-soon{ font-size:12px; color:var(--ink-soft); line-height:1.4; }
+#rtStage .rt-ms-lipcolor{ width:100%; }
+#rtStage .rt-ms-swatch-row{ display:flex; gap:8px; align-items:center; }
+#rtStage .rt-ms-swatch{
+  width:26px; height:26px; border-radius:50%; border:2px solid var(--card-border);
+  cursor:pointer; flex:0 0 auto; padding:0;
+}
+#rtStage .rt-ms-swatch.active{ border-color:var(--accent1-solid); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent1) 30%, transparent); }
+#rtStage .rt-ms-swatch-none{
+  background:
+    linear-gradient(45deg, transparent 46%, #E5484D 48%, #E5484D 52%, transparent 54%),
+    var(--card);
+}
+#rtStage .rt-ms-lipfinish{ display:flex; gap:6px; width:100%; }
+#rtStage .rt-ms-finish-btn{
+  flex:1; border:1.5px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12px; font-weight:700; padding:9px 6px; border-radius:8px; cursor:pointer;
+}
+#rtStage .rt-ms-finish-btn.active{ background:linear-gradient(135deg, #ec4899, #f43f5e); color:#fff; border-color:transparent; }
 #rtStage .rt-bt-item{
   flex:1 0 auto; min-width:64px; display:flex; flex-direction:column; align-items:center; gap:3px;
   padding:7px 10px; border:none; background:transparent; color:var(--ink-soft);
