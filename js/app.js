@@ -9342,8 +9342,10 @@ if (document.getElementById('rtDrop')){
     skinSmooth:0, faceBrighten:0, skinTone:0, bgBlur:0,
     eyeEnhance:0, teethWhiten:0, lipEnhance:0,
     hairSmooth:0, hairShine:0, hairTexture:0, hairHealth:0, hairFlyaway:0,
-    foundation:0, blush:0,
+    foundation:0, blush:0, blushHex:'#E1828A',
     lipColorIntensity:0, lipColorHex:null, lipFinish:'natural',
+    lipLinerIntensity:0, lipLinerHex:null,
+    mascaraIntensity:0,
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -9359,7 +9361,7 @@ if (document.getElementById('rtDrop')){
     skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone', bgBlur:'rtBgBlur',
     eyeEnhance:'rtEyeEnhance', teethWhiten:'rtTeethWhiten', lipEnhance:'rtLipEnhance',
     hairSmooth:'rtHairSmooth', hairShine:'rtHairShine', hairTexture:'rtHairTexture', hairHealth:'rtHairHealth', hairFlyaway:'rtHairFlyaway',
-    foundation:'rtFoundation', blush:'rtBlush',
+    foundation:'rtFoundation', blush:'rtBlush', mascaraIntensity:'rtMascaraIntensity',
   };
 
   function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
@@ -9768,6 +9770,89 @@ if (document.getElementById('rtDrop')){
     return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.05)));
   }
 
+  function buildRtLipMask(w, h, sw, sh){
+    // Dedicated to Lip Color/Liner -- deliberately NOT reusing
+    // buildRtMouthMask above (shared with Teeth Whitening/Lip Enhancement,
+    // both already proven; changing it risks regressing them). Tighter
+    // vertical extent than the shared ellipse, which was loose enough to
+    // reach toward the chin/philtrum on wider mouths -- the real-device
+    // report that prompted this.
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask;
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    const mouthL = toPx(61), mouthR = toPx(291);
+    const mcx=(mouthL.x+mouthR.x)/2, mcy=(mouthL.y+mouthR.y)/2;
+    const mrx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * 1.15;
+    const ry = mrx * 0.42; // real lips read proportionally narrower vertically than the shared ellipse assumed
+    const y0=Math.max(0,Math.floor(mcy-ry)), y1=Math.min(h-1,Math.ceil(mcy+ry));
+    const x0=Math.max(0,Math.floor(mcx-mrx)), x1=Math.min(w-1,Math.ceil(mcx+mrx));
+    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+      const dx=(x-mcx)/mrx, dy=(y-mcy)/ry;
+      const d2 = dx*dx+dy*dy;
+      if (d2 <= 1) mask[y*w+x] = 1;
+    }
+    // Small, controlled feather strictly inside the lip boundary --
+    // narrow enough that it never meaningfully extends past the ellipse
+    // it's softening, unlike the wider blur used elsewhere.
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(mrx*0.06)));
+  }
+
+  function buildRtLipLinerMask(w, h, sw, sh){
+    // Ring-only mask -- Lip Liner must sit on the perimeter, not fill the
+    // lips. Built as the boundary band of the same tight lip ellipse
+    // above (distance-from-edge, not distance-from-center), rather than
+    // a second unrelated shape.
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask;
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    const mouthL = toPx(61), mouthR = toPx(291);
+    const mcx=(mouthL.x+mouthR.x)/2, mcy=(mouthL.y+mouthR.y)/2;
+    const mrx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * 1.15;
+    const ry = mrx * 0.42;
+    const bandWidth = 0.16; // ring thickness as a fraction of the ellipse radius
+    const y0=Math.max(0,Math.floor(mcy-ry)), y1=Math.min(h-1,Math.ceil(mcy+ry));
+    const x0=Math.max(0,Math.floor(mcx-mrx)), x1=Math.min(w-1,Math.ceil(mcx+mrx));
+    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+      const dx=(x-mcx)/mrx, dy=(y-mcy)/ry;
+      const d = Math.sqrt(dx*dx+dy*dy);
+      if (d <= 1 && d >= 1-bandWidth){
+        mask[y*w+x] = 1 - Math.abs(d - (1-bandWidth/2))/(bandWidth/2); // soft ramp within the ring, zero at both ring edges
+      }
+    }
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(mrx*0.03)));
+  }
+
+  function buildRtLashLineMask(w, h, sw, sh){
+    // Mascara -- restricted to a thin band along just the upper edge of
+    // the same eye-region ellipse buildRtEyeMask uses, not the whole eye.
+    // No dedicated eyelash landmarks are used here (none of this
+    // codebase's proven indices target lashes specifically); this is the
+    // conservative, localized approximation explicitly called for when
+    // exact segmentation isn't available -- a safe subset of the eye
+    // region rather than a guess that could spill onto eyelid/iris/skin.
+    const mask = new Float32Array(w*h);
+    if (!rtFaceLandmarks) return mask;
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
+    const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
+    const r = eyeDist * 0.20;
+    const leftEyeC = toPx(159), rightEyeC = toPx(386);
+    function stampBand(cxp, cyp, rr, ryScale){
+      const y0=Math.max(0,Math.floor(cyp-rr*ryScale)), y1=Math.min(h-1,Math.ceil(cyp));
+      const x0=Math.max(0,Math.floor(cxp-rr)), x1=Math.min(w-1,Math.ceil(cxp+rr));
+      for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+        const dx=(x-cxp)/rr, dy=(y-cyp)/(rr*ryScale);
+        const d2 = dx*dx+dy*dy;
+        // Only the upper half of the ellipse (dy<0, toward the lash
+        // line), and only its outer rim (d2 close to 1), not the eye interior.
+        if (dy <= 0 && d2 <= 1 && d2 >= 0.4) mask[y*w+x] = 1 - Math.abs(d2 - 0.7)/0.3;
+      }
+    }
+    stampBand(leftEyeC.x, leftEyeC.y - r*0.15, r*1.05, 0.7);
+    stampBand(rightEyeC.x, rightEyeC.y - r*0.15, r*1.05, 0.7);
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.03)));
+  }
+
   function buildRtCheekMask(w, h, sw, sh){
     const mask = new Float32Array(w*h);
     if (!rtFaceLandmarks) return mask;
@@ -9803,7 +9888,7 @@ if (document.getElementById('rtDrop')){
      a legitimate gentle whole-frame fallback). */
   function applyRtFaceAI(data, w, h, sw, sh){
     const a = rtAdj;
-    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0) return;
+    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0 && a.lipLinerIntensity <= 0 && a.mascaraIntensity <= 0) return;
     if (!rtFaceLandmarks) return;
     if (a.eyeEnhance > 0){
       const mask = buildRtEyeMask(w, h, sw, sh);
@@ -9869,7 +9954,7 @@ if (document.getElementById('rtDrop')){
     if (a.blush > 0){
       const mask = buildRtCheekMask(w, h, sw, sh);
       const strength = Math.min(0.5, a.blush/100 * 0.5); // capped -- blush is a flush, not a solid tint, but must still be clearly visible at full intensity
-      const [br, bg, bb] = [225, 140, 138]; // natural rose tone
+      const [br, bg, bb] = rtHexToRgb(a.blushHex || '#E1828A');
       for (let p=0; p<w*h; p++){
         const m = mask[p]*strength;
         if (m <= 0) continue;
@@ -9885,54 +9970,91 @@ if (document.getElementById('rtDrop')){
       }
     }
     if (a.lipColorIntensity > 0 && a.lipColorHex){
-      const mask = buildRtMouthMask(w, h, sw, sh, 1.3, 0.8); // slightly tighter than before -- combined with the per-pixel refinement below, reduces reliance on the ellipse's imprecise geometry alone
+      const mask = buildRtLipMask(w, h, sw, sh); // dedicated, tighter lip-only mask -- see buildRtLipMask for why this isn't the shared mouth mask
       const strength = Math.min(0.7, a.lipColorIntensity/100 * 0.7); // capped -- full replacement would erase natural lip texture/shading
       const [cr, cg, cb] = rtHexToRgb(a.lipColorHex);
       const finish = a.lipFinish || 'natural';
       for (let p=0; p<w*h; p++){
-        let m = mask[p]*strength;
+        const baseMaskVal = mask[p];
+        let m = baseMaskVal*strength;
         if (m <= 0) continue;
         const i = p*4;
         const r0=data[i], g0=data[i+1], b0=data[i+2];
         const lum = rtLuma(r0,g0,b0);
         const mx=Math.max(r0,g0,b0), mn=Math.min(r0,g0,b0);
         const sat = mx>0 ? (mx-mn)/mx : 0;
-        // Suppress teeth continuously rather than a hard cutoff -- tighter
-        // thresholds than Teeth Whitening's own (which is itself a soft
-        // multiplier, not a gate) since even pale natural lips can drift
-        // into a loose teeth-like range; requiring genuinely bright
-        // (>140) AND genuinely low-saturation (<0.35) avoids the bug
-        // found via real-device testing where a hard cutoff was zeroing
-        // out natural pale/light lips entirely, not just actual teeth.
+        // Suppress teeth continuously -- requires genuinely bright (>140)
+        // AND genuinely low-saturation (<0.35) to register, so pale
+        // natural lips aren't caught by it.
         const teethLikelihood = rtClamp((lum-140)/60, 0, 1) * rtClamp(1 - sat/0.35, 0, 1);
         m *= (1 - teethLikelihood);
         if (m <= 0.005) continue;
-        // Suppress the effect on pixels that don't actually look like
-        // lip tissue (lips read redder and more saturated than
-        // surrounding skin) -- makes the effect hug the real lip
-        // boundary instead of trusting the ellipse's edge precisely,
-        // which is what caused bleeding onto skin at the mask border.
-        // Floor raised (0.35 -> 0.55): a false negative here (suppressing
-        // real lip pixels) is worse than minor over-application at the edge.
-        const warmth = (r0 - (g0+b0)/2) / 255; // positive = reddish, as real lips are
+        // Suppress pixels that don't look like lip tissue (lips read
+        // redder/more saturated than skin) -- with the tighter geometric
+        // mask above already doing most of the containment work, this
+        // floor can be strict without risking the earlier pale-lip bug:
+        // the geometry itself now keeps the ellipse close to the real
+        // lip boundary, so pixels near the edge that fail this check are
+        // much more likely to genuinely be skin, not lip.
+        const warmth = (r0 - (g0+b0)/2) / 255;
         const lipLikelihood = rtClamp(warmth*3, 0, 1) * rtClamp(sat/0.25, 0, 1);
-        m *= Math.max(0.55, lipLikelihood);
-        // Blend toward the chosen color while preserving the pixel's own
-        // luminance (keeps natural lip shading/highlights instead of
-        // flattening to a solid color block).
+        m *= Math.max(0.25, lipLikelihood);
+        if (m <= 0.005) continue;
         const l = lum / 255;
         let r = rtClamp(cr*l*1.3, 0, 255), g = rtClamp(cg*l*1.3, 0, 255), b = rtClamp(cb*l*1.3, 0, 255);
         r = r0*(1-m) + r*m; g = g0*(1-m) + g*m; b = b0*(1-m) + b*m;
         if (finish === 'matte'){
-          // Flatten slightly: reduce saturation and any bright highlight point.
           const l2 = rtLuma(r,g,b);
           r = l2 + (r-l2)*0.85; g = l2 + (g-l2)*0.85; b = l2 + (b-l2)*0.85;
+        } else if (finish === 'satin'){
+          // Between matte and gloss -- a light, silky sheen, no localized highlight spot.
+          const l2 = rtLuma(r,g,b);
+          r = l2 + (r-l2)*1.05; g = l2 + (g-l2)*1.05; b = l2 + (b-l2)*1.05;
         } else if (finish === 'gloss'){
-          // Boost saturation and add a touch of brightness for a wet-shine look.
           const l2 = rtLuma(r,g,b);
           r = l2 + (r-l2)*1.15 + 6*m; g = l2 + (g-l2)*1.15 + 6*m; b = l2 + (b-l2)*1.15 + 6*m;
+        } else if (finish === 'oil'){
+          // Realistic hydrated shine -- a localized highlight concentrated
+          // where the mask value itself is highest (the lip's own center
+          // line, roughly where light would actually catch it), not a
+          // flat brightness wash over the whole lip area.
+          const l2 = rtLuma(r,g,b);
+          r = l2 + (r-l2)*1.1; g = l2 + (g-l2)*1.1; b = l2 + (b-l2)*1.1;
+          const highlightSpot = Math.max(0, baseMaskVal - 0.6) / 0.4; // only the innermost 40% of the mask's own falloff
+          const boost = highlightSpot * highlightSpot * 35 * strength;
+          r += boost; g += boost; b += boost;
         }
         data[i]=rtClamp(r,0,255); data[i+1]=rtClamp(g,0,255); data[i+2]=rtClamp(b,0,255);
+      }
+    }
+    if (a.lipLinerIntensity > 0 && a.lipLinerHex){
+      const mask = buildRtLipLinerMask(w, h, sw, sh); // ring-only, sits on the lip perimeter, never fills
+      const strength = Math.min(0.7, a.lipLinerIntensity/100 * 0.7);
+      const [cr, cg, cb] = rtHexToRgb(a.lipLinerHex);
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*strength;
+        if (m <= 0) continue;
+        const i = p*4;
+        const l = rtLuma(data[i], data[i+1], data[i+2]) / 255;
+        const r = rtClamp(cr*l*1.1, 0, 255), g = rtClamp(cg*l*1.1, 0, 255), b = rtClamp(cb*l*1.1, 0, 255);
+        data[i]   = rtClamp(data[i]*(1-m)   + r*m, 0, 255);
+        data[i+1] = rtClamp(data[i+1]*(1-m) + g*m, 0, 255);
+        data[i+2] = rtClamp(data[i+2]*(1-m) + b*m, 0, 255);
+      }
+    }
+    if (a.mascaraIntensity > 0){
+      const mask = buildRtLashLineMask(w, h, sw, sh); // thin band along just the upper eye contour, not the full eye
+      const strength = Math.min(0.6, a.mascaraIntensity/100 * 0.6); // capped -- real mascara darkens/thickens, it doesn't paint solid black
+      for (let p=0; p<w*h; p++){
+        const m = mask[p]*strength;
+        if (m <= 0) continue;
+        const i = p*4;
+        // Darken toward the pixel's own shadow tone rather than a flat
+        // black -- reads as thicker/darker lashes, not black paint.
+        const d = 1 - m*0.7;
+        data[i]   = rtClamp(data[i]*d, 0, 255);
+        data[i+1] = rtClamp(data[i+1]*d, 0, 255);
+        data[i+2] = rtClamp(data[i+2]*d, 0, 255);
       }
     }
   }
@@ -12350,6 +12472,8 @@ if (document.getElementById('rtDrop')){
     });
     if (window.rtSyncLipColorUI) window.rtSyncLipColorUI();
     if (window.rtSyncLipFinishUI) window.rtSyncLipFinishUI();
+    if (window.rtSyncLipLinerUI) window.rtSyncLipLinerUI();
+    if (window.rtSyncBlushUI) window.rtSyncBlushUI();
   }
 
 
@@ -12460,16 +12584,18 @@ if (document.getElementById('rtDrop')){
       { label:'Foundation', key:'foundation' },
       { label:'Skin Tone', key:'skinTone' },
       { label:'Glow', key:'faceBrighten' },
-      { label:'Blush', key:'blush' },
+      { label:'Blush', type:'blush' },
     ]},
     { id:'eyes', label:'Eyes', tools:[
       { label:'Eye Enhancement', key:'eyeEnhance' },
+      { label:'Mascara', key:'mascaraIntensity' },
       { label:'Eye Color', key:null },
     ]},
     { id:'lips', label:'Lips', tools:[
       { label:'Lip Enhancement', key:'lipEnhance' },
       { label:'Lip Color', type:'lipColor' },
       { label:'Finish', type:'lipFinish' },
+      { label:'Lip Liner', type:'lipLiner' },
     ]},
     { id:'teeth', label:'Teeth', tools:[
       { label:'Whitening', key:'teethWhiten' },
@@ -12495,7 +12621,7 @@ if (document.getElementById('rtDrop')){
     eyeEnhance:'rtEyeEnhance', teethWhiten:'rtTeethWhiten', lipEnhance:'rtLipEnhance',
     hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
     hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
-    foundation:'rtFoundation', blush:'rtBlush',
+    foundation:'rtFoundation', mascaraIntensity:'rtMascaraIntensity',
   };
 
   (function setupMakeupStudio(){
@@ -12553,22 +12679,30 @@ if (document.getElementById('rtDrop')){
       if (comingSoonEl) comingSoonEl.classList.add('hidden');
       const lipColorEl = document.getElementById('rtMsLipColorPicker');
       const lipFinishEl = document.getElementById('rtMsLipFinishPicker');
-      if (lipColorEl) lipColorEl.classList.add('hidden');
-      if (lipFinishEl) lipFinishEl.classList.add('hidden');
+      const lipLinerEl = document.getElementById('rtMsLipLinerPicker');
+      const blushEl = document.getElementById('rtMsBlushPicker');
+      [lipColorEl, lipFinishEl, lipLinerEl, blushEl].forEach(el => { if (el) el.classList.add('hidden'); });
       if (tool.type === 'lipColor'){
         if (lipColorEl) lipColorEl.classList.remove('hidden');
         rtSyncLipColorUI();
       } else if (tool.type === 'lipFinish'){
         if (lipFinishEl) lipFinishEl.classList.remove('hidden');
         rtSyncLipFinishUI();
+      } else if (tool.type === 'lipLiner'){
+        if (lipLinerEl) lipLinerEl.classList.remove('hidden');
+        rtSyncLipLinerUI();
+      } else if (tool.type === 'blush'){
+        if (blushEl) blushEl.classList.remove('hidden');
+        rtSyncBlushUI();
       } else if (tool.key && RT_MAKEUP_KEY_TO_ID[tool.key]){
         const wrapper = document.querySelector(`#rtMsSliderSlot .rt-ms-ctrl[data-key="${tool.key}"]`);
         if (wrapper) wrapper.classList.remove('hidden');
       } else {
         if (comingSoonEl) comingSoonEl.classList.remove('hidden');
       }
-      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','blush'];
-      const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || tool.type === 'lipColor' || tool.type === 'lipFinish';
+      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity'];
+      const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush'];
+      const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || FACE_DEPENDENT_TYPES.includes(tool.type);
       if (needsFace && !rtFaceLandmarks){
         toast('No face detected in this photo \u2014 this tool needs a detected face to apply. Try a clearer, front-facing photo.', 'err');
       }
@@ -12601,8 +12735,24 @@ if (document.getElementById('rtDrop')){
         btn.classList.toggle('active', btn.dataset.finish === (rtAdj.lipFinish || 'natural'));
       });
     }
+    function rtSyncLipLinerUI(){
+      document.querySelectorAll('#rtMsLipLinerPicker .rt-ms-swatch').forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.hex || null) === (rtAdj.lipLinerHex || null));
+      });
+      const intensityEl = document.getElementById('rtLipLinerIntensity');
+      if (intensityEl) intensityEl.value = rtAdj.lipLinerIntensity;
+    }
+    function rtSyncBlushUI(){
+      document.querySelectorAll('#rtMsBlushPicker .rt-ms-swatch').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.hex === (rtAdj.blushHex || '#E1828A'));
+      });
+      const intensityEl = document.getElementById('rtBlush');
+      if (intensityEl) intensityEl.value = rtAdj.blush;
+    }
     window.rtSyncLipColorUI = rtSyncLipColorUI;
     window.rtSyncLipFinishUI = rtSyncLipFinishUI;
+    window.rtSyncLipLinerUI = rtSyncLipLinerUI;
+    window.rtSyncBlushUI = rtSyncBlushUI;
     document.querySelectorAll('#rtMsLipColorPicker .rt-ms-swatch').forEach(btn => {
       btn.addEventListener('click', () => {
         const layer = rtGetActiveLayer();
@@ -12633,6 +12783,36 @@ if (document.getElementById('rtDrop')){
         rtSyncLipFinishUI();
         renderRtPreview();
         rtPushHistory('Lip Finish');
+      });
+    });
+    document.querySelectorAll('#rtMsLipLinerPicker .rt-ms-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layer = rtGetActiveLayer();
+        if (layer && layer.locked){ toast('This layer is locked.', 'err'); return; }
+        rtAdj.lipLinerHex = btn.dataset.hex || null;
+        rtAdj.lipLinerIntensity = rtAdj.lipLinerHex ? 50 : 0;
+        rtSyncLipLinerUI();
+        renderRtPreview();
+        rtPushHistory('Lip Liner');
+      });
+    });
+    const rtLipLinerIntensityEl = document.getElementById('rtLipLinerIntensity');
+    if (rtLipLinerIntensityEl){
+      rtLipLinerIntensityEl.addEventListener('input', () => {
+        rtAdj.lipLinerIntensity = +rtLipLinerIntensityEl.value;
+        rtDebouncedRender();
+      });
+      rtLipLinerIntensityEl.addEventListener('change', () => rtPushHistory('Lip Liner Intensity'));
+    }
+    document.querySelectorAll('#rtMsBlushPicker .rt-ms-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layer = rtGetActiveLayer();
+        if (layer && layer.locked){ toast('This layer is locked.', 'err'); return; }
+        rtAdj.blushHex = btn.dataset.hex;
+        rtAdj.blush = 50; // always reset to a predictable default on shade change, matching the same fix applied to Lip Color
+        rtSyncBlushUI();
+        renderRtPreview();
+        rtPushHistory('Blush Shade');
       });
     });
   })();
