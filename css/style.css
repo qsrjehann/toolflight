@@ -668,7 +668,7 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
     #fff;
 }
 .editor-stage-wrap canvas{display:block;touch-action:none;}
-#rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; }
+#rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .editor-stage-wrap.tool-brush canvas, .editor-stage-wrap.tool-eraser canvas{cursor:crosshair;}
 .editor-stage-wrap.tool-wand canvas{cursor:pointer;}
 .editor-stage-wrap.tool-polygon canvas, .editor-stage-wrap.tool-lasso canvas{cursor:crosshair;}
