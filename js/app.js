@@ -9352,7 +9352,7 @@ if (document.getElementById('rtDrop')){
     eyeColorHex:null, eyeColorIntensity:0,
     browDefinition:0,
     noseDefinition:0,
-    beautyMarkIntensity:0, beautyMarkSize:0,
+    beautyMarkIntensity:0, beautyMarkSize:0, beautyMarkPosition:'upperLip',
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -9780,56 +9780,108 @@ if (document.getElementById('rtDrop')){
     return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.05)));
   }
 
+  function fillPolygonMask(points, w, h){
+    // Standard scanline polygon fill -- rasterizes the actual detected
+    // contour shape (asymmetric, narrows at corners) rather than
+    // approximating it with an ellipse.
+    const mask = new Float32Array(w*h);
+    let minY = h, maxY = 0;
+    for (const p of points){ minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+    minY = Math.max(0, Math.floor(minY)); maxY = Math.min(h-1, Math.ceil(maxY));
+    for (let y = minY; y <= maxY; y++){
+      const xs = [];
+      for (let i = 0; i < points.length; i++){
+        const p1 = points[i], p2 = points[(i+1)%points.length];
+        if ((p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y)){
+          const t = (y - p1.y) / (p2.y - p1.y);
+          xs.push(p1.x + t*(p2.x - p1.x));
+        }
+      }
+      xs.sort((a,b)=>a-b);
+      for (let i = 0; i+1 < xs.length; i += 2){
+        const x0 = Math.max(0, Math.round(xs[i])), x1 = Math.min(w-1, Math.round(xs[i+1]));
+        for (let x = x0; x <= x1; x++) mask[y*w+x] = 1;
+      }
+    }
+    return mask;
+  }
+
+  function scalePolygonFromCentroid(points, factor){
+    let cx=0, cy=0;
+    for (const p of points){ cx += p.x; cy += p.y; }
+    cx /= points.length; cy /= points.length;
+    return points.map(p => ({ x: cx + (p.x-cx)*factor, y: cy + (p.y-cy)*factor }));
+  }
+
+  function stampPolylineBand(points, halfWidth, value, arr, w, h){
+    // Smooth continuous ribbon along a sequence of real landmark points
+    // -- segment-by-segment distance falloff, not discrete stamps at
+    // each point, which is what reads as separate blobs/stripes rather
+    // than a single soft contour line.
+    for (let s = 0; s+1 < points.length; s++){
+      const p0 = points[s], p1 = points[s+1];
+      const segLen = Math.hypot(p1.x-p0.x, p1.y-p0.y) || 1;
+      const steps = Math.max(1, Math.ceil(segLen / (halfWidth*0.5)));
+      for (let t = 0; t <= steps; t++){
+        const f = t/steps;
+        const px = p0.x + (p1.x-p0.x)*f, py = p0.y + (p1.y-p0.y)*f;
+        const x0=Math.max(0,Math.floor(px-halfWidth)), x1=Math.min(w-1,Math.ceil(px+halfWidth));
+        const y0=Math.max(0,Math.floor(py-halfWidth)), y1=Math.min(h-1,Math.ceil(py+halfWidth));
+        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+          const d2 = ((x-px)*(x-px)+(y-py)*(y-py))/(halfWidth*halfWidth);
+          if (d2 > 1) continue;
+          const v = (1-d2)*(1-d2)*value;
+          const idx = y*w+x;
+          if (v > arr[idx]) arr[idx] = v;
+        }
+      }
+    }
+  }
+
+  // Standard MediaPipe Face Mesh lip contour indices -- outer boundary
+  // (the actual visible lip edge, including its natural asymmetric shape
+  // and corner narrowing) and inner boundary (the mouth opening, which
+  // must be excluded from any lip fill so open-mouth/smiling photos
+  // don't get color on visible teeth/mouth interior).
+  const RT_OUTER_LIP_IDX = [61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146];
+  const RT_INNER_LIP_IDX = [78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95];
+
   function buildRtLipMask(w, h, sw, sh){
-    // Dedicated to Lip Color/Liner -- deliberately NOT reusing
-    // buildRtMouthMask above (shared with Teeth Whitening/Lip Enhancement,
-    // both already proven; changing it risks regressing them). Tighter
-    // vertical extent than the shared ellipse, which was loose enough to
-    // reach toward the chin/philtrum on wider mouths -- the real-device
-    // report that prompted this.
+    // Fill (outer contour) minus (inner contour) -- follows the actual
+    // detected lip shape rather than approximating with an ellipse,
+    // which is what produced the large, visibly wrong oval reported
+    // from real-device testing.
     const mask = new Float32Array(w*h);
     if (!rtFaceLandmarks) return mask;
-    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
+    const outer = RT_OUTER_LIP_IDX.map(toPx);
+    const inner = RT_INNER_LIP_IDX.map(toPx);
+    const outerFill = fillPolygonMask(outer, w, h);
+    const innerFill = fillPolygonMask(inner, w, h);
+    for (let p=0; p<w*h; p++) mask[p] = outerFill[p] > 0 && innerFill[p] === 0 ? 1 : 0;
+    // Small, controlled feather strictly inside/around the actual
+    // contour -- scaled to the lip's own measured width, not a fixed pixel count.
     const mouthL = toPx(61), mouthR = toPx(291);
-    const mcx=(mouthL.x+mouthR.x)/2, mcy=(mouthL.y+mouthR.y)/2;
-    const mrx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * 1.15;
-    const ry = mrx * 0.42; // real lips read proportionally narrower vertically than the shared ellipse assumed
-    const y0=Math.max(0,Math.floor(mcy-ry)), y1=Math.min(h-1,Math.ceil(mcy+ry));
-    const x0=Math.max(0,Math.floor(mcx-mrx)), x1=Math.min(w-1,Math.ceil(mcx+mrx));
-    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-      const dx=(x-mcx)/mrx, dy=(y-mcy)/ry;
-      const d2 = dx*dx+dy*dy;
-      if (d2 <= 1) mask[y*w+x] = 1;
-    }
-    // Small, controlled feather strictly inside the lip boundary --
-    // narrow enough that it never meaningfully extends past the ellipse
-    // it's softening, unlike the wider blur used elsewhere.
-    return boxBlurGray(mask, w, h, Math.max(1, Math.round(mrx*0.06)));
+    const lipWidth = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y);
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(lipWidth*0.03)));
   }
 
   function buildRtLipLinerMask(w, h, sw, sh){
-    // Ring-only mask -- Lip Liner must sit on the perimeter, not fill the
-    // lips. Built as the boundary band of the same tight lip ellipse
-    // above (distance-from-edge, not distance-from-center), rather than
-    // a second unrelated shape.
+    // Thin ring hugging the actual outer contour -- built as (slightly
+    // expanded outer polygon) minus (slightly shrunk outer polygon), so
+    // it follows the real lip boundary's shape (including corners and
+    // cupid's bow) instead of a generic ellipse ring, which is exactly
+    // what produced the oval-around-the-mouth bug from real-device testing.
     const mask = new Float32Array(w*h);
     if (!rtFaceLandmarks) return mask;
-    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+    function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
+    const outer = RT_OUTER_LIP_IDX.map(toPx);
+    const outerWide = fillPolygonMask(scalePolygonFromCentroid(outer, 1.06), w, h);
+    const outerNarrow = fillPolygonMask(scalePolygonFromCentroid(outer, 0.94), w, h);
+    for (let p=0; p<w*h; p++) mask[p] = (outerWide[p] > 0 && outerNarrow[p] === 0) ? 1 : 0;
     const mouthL = toPx(61), mouthR = toPx(291);
-    const mcx=(mouthL.x+mouthR.x)/2, mcy=(mouthL.y+mouthR.y)/2;
-    const mrx = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y)/2 * 1.15;
-    const ry = mrx * 0.42;
-    const bandWidth = 0.16; // ring thickness as a fraction of the ellipse radius
-    const y0=Math.max(0,Math.floor(mcy-ry)), y1=Math.min(h-1,Math.ceil(mcy+ry));
-    const x0=Math.max(0,Math.floor(mcx-mrx)), x1=Math.min(w-1,Math.ceil(mcx+mrx));
-    for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-      const dx=(x-mcx)/mrx, dy=(y-mcy)/ry;
-      const d = Math.sqrt(dx*dx+dy*dy);
-      if (d <= 1 && d >= 1-bandWidth){
-        mask[y*w+x] = 1 - Math.abs(d - (1-bandWidth/2))/(bandWidth/2); // soft ramp within the ring, zero at both ring edges
-      }
-    }
-    return boxBlurGray(mask, w, h, Math.max(1, Math.round(mrx*0.03)));
+    const lipWidth = Math.hypot(mouthR.x-mouthL.x, mouthR.y-mouthL.y);
+    return boxBlurGray(mask, w, h, Math.max(1, Math.round(lipWidth*0.015)));
   }
 
   function buildRtLashLineMask(w, h, sw, sh){
@@ -10068,114 +10120,119 @@ if (document.getElementById('rtDrop')){
       }
     }
     if (a.eyeColorIntensity > 0 && a.eyeColorHex){
-      // Small, conservative circle at the same eye-center anchors used
-      // elsewhere (no dedicated iris landmark exists in this codebase),
-      // refined by darkness so pixels that are actually white sclera --
-      // not iris -- are protected even if the circle isn't perfectly
-      // centered on every face.
-      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
-      const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
-      const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const leftEyeC = toPx(159), rightEyeC = toPx(386);
-      const irisR = eyeDist * 0.11;
+      // Eye-contour polygon (standard MediaPipe eye landmark indices)
+      // bounds the search area to the actual eye opening -- the effect
+      // can never reach eyelid/skin outside it, regardless of iris
+      // estimation, and the bound adapts to the eye's real detected
+      // size/shape rather than a fixed-radius circle.
+      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
+      const RT_RIGHT_EYE_IDX = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
+      const RT_LEFT_EYE_IDX = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
+      const rightEyeContour = RT_RIGHT_EYE_IDX.map(toPx);
+      const leftEyeContour = RT_LEFT_EYE_IDX.map(toPx);
+      const eyeOpenMask = new Float32Array(w*h);
+      const rightFill = fillPolygonMask(rightEyeContour, w, h);
+      const leftFill = fillPolygonMask(leftEyeContour, w, h);
+      for (let p=0; p<w*h; p++) eyeOpenMask[p] = Math.max(rightFill[p], leftFill[p]);
       const [cr, cg, cb] = rtHexToRgb(a.eyeColorHex);
       const strength = Math.min(0.6, a.eyeColorIntensity/100 * 0.6);
-      function tintIris(cxp, cyp){
-        const x0=Math.max(0,Math.floor(cxp-irisR)), x1=Math.min(w-1,Math.ceil(cxp+irisR));
-        const y0=Math.max(0,Math.floor(cyp-irisR)), y1=Math.min(h-1,Math.ceil(cyp+irisR));
-        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const dx=(x-cxp)/irisR, dy=(y-cyp)/irisR;
-          const d2=dx*dx+dy*dy;
-          if (d2 > 1) continue;
-          const i2 = (y*w+x)*4;
-          const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
-          // Sclera reads bright; only darker (iris/pupil-range) pixels are eligible.
-          const darkness = rtClamp((150-lum)/100, 0, 1);
-          if (darkness <= 0) continue;
-          const m = (1-d2) * strength * darkness;
-          if (m <= 0.005) continue;
-          const l = lum/255;
-          const r2 = rtClamp(cr*l*1.4, 0, 255), g2 = rtClamp(cg*l*1.4, 0, 255), b2 = rtClamp(cb*l*1.4, 0, 255);
-          data[i2]   = data[i2]*(1-m)   + r2*m;
-          data[i2+1] = data[i2+1]*(1-m) + g2*m;
-          data[i2+2] = data[i2+2]*(1-m) + b2*m;
-        }
+      for (let p=0, i2=0; p<w*h; p++, i2+=4){
+        if (eyeOpenMask[p] <= 0) continue;
+        const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
+        // Within the real eye-opening bound, still distinguish iris from
+        // sclera by darkness -- no dedicated iris-only landmark exists
+        // without iris refinement enabled, so this is the best available
+        // discriminator, now operating strictly inside the true eye
+        // boundary instead of a circle that could clip eyelid skin.
+        const darkness = rtClamp((150-lum)/100, 0, 1);
+        if (darkness <= 0) continue;
+        const m = strength * darkness;
+        if (m <= 0.005) continue;
+        const l = lum/255;
+        const r2 = rtClamp(cr*l*1.4, 0, 255), g2 = rtClamp(cg*l*1.4, 0, 255), b2 = rtClamp(cb*l*1.4, 0, 255);
+        data[i2]   = data[i2]*(1-m)   + r2*m;
+        data[i2+1] = data[i2+1]*(1-m) + g2*m;
+        data[i2+2] = data[i2+2]*(1-m) + b2*m;
       }
-      tintIris(leftEyeC.x, leftEyeC.y);
-      tintIris(rightEyeC.x, rightEyeC.y);
     }
     if (a.browDefinition > 0){
-      // Thin band offset above the same proven eye-center anchors --
-      // no dedicated eyebrow landmarks exist in this codebase, so this
-      // is a derived, conservative position rather than a guess.
-      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+      // Actual eyebrow contour polygon, not a generic band -- standard
+      // MediaPipe eyebrow landmark indices, same proven polygon-fill
+      // technique already validated for the lip masks.
+      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
+      const RT_RIGHT_BROW_IDX = [70,63,105,66,107,55,65,52,53,46];
+      const RT_LEFT_BROW_IDX = [300,293,334,296,336,285,295,282,283,276];
+      const rightBrow = RT_RIGHT_BROW_IDX.map(toPx);
+      const leftBrow = RT_LEFT_BROW_IDX.map(toPx);
+      const browMask = new Float32Array(w*h);
+      const rightFill = fillPolygonMask(rightBrow, w, h);
+      const leftFill = fillPolygonMask(leftBrow, w, h);
+      for (let p=0; p<w*h; p++) browMask[p] = Math.max(rightFill[p], leftFill[p]);
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const leftEyeC = toPx(159), rightEyeC = toPx(386);
+      const feathered = boxBlurGray(browMask, w, h, Math.max(1, Math.round(eyeDist*0.02)));
       const strength = Math.min(0.5, a.browDefinition/100 * 0.5);
-      function darkenBrow(cxp, cyp){
-        const rx = eyeDist*0.32, ry = eyeDist*0.09;
-        const by = cyp - eyeDist*0.20; // offset above the eye, toward the natural brow line
-        const x0=Math.max(0,Math.floor(cxp-rx)), x1=Math.min(w-1,Math.ceil(cxp+rx));
-        const y0=Math.max(0,Math.floor(by-ry)), y1=Math.min(h-1,Math.ceil(by+ry));
-        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const dx=(x-cxp)/rx, dy=(y-by)/ry;
-          const d2=dx*dx+dy*dy;
-          if (d2 > 1) continue;
-          const i2=(y*w+x)*4;
-          const m = (1-d2)*(1-d2) * strength;
-          if (m <= 0.005) continue;
-          const d = 1 - m*0.35; // darken/define rather than paint solid
-          data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
-        }
+      for (let p=0, i2=0; p<w*h; p++, i2+=4){
+        const m = feathered[p] * strength;
+        if (m <= 0.005) continue;
+        const d = 1 - m*0.35; // darken/define rather than paint solid
+        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
       }
-      darkenBrow(leftEyeC.x, leftEyeC.y);
-      darkenBrow(rightEyeC.x, rightEyeC.y);
     }
     if (a.noseDefinition > 0){
       // Subtle shading down the bridge sides for a definition/slimming
       // illusion -- explicitly NOT geometric reshaping, which this
-      // architecture can't do safely. A narrower, more focused version
-      // than Contour's nose-sides component, its own dedicated control.
+      // architecture can't do safely. Rebuilt to follow the actual
+      // nose bridge landmark chain (real points from between-eyes to
+      // tip) using the same polyline-band technique proven for Contour's
+      // jawline, rather than two fixed ellipse stamps.
       function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const noseTip = toPx(1);
-      const leftEyeC = toPx(159), rightEyeC = toPx(386);
+      // Standard MediaPipe nose bridge landmark chain, between-eyes to tip.
+      const RT_NOSE_BRIDGE_IDX = [6,197,195,5,4,1];
+      const bridge = RT_NOSE_BRIDGE_IDX.map(toPx);
       const strength = Math.min(0.3, a.noseDefinition/100 * 0.3); // capped -- shading illusion, not deformation
-      const bridgeTopY = (leftEyeC.y+rightEyeC.y)/2;
-      function shadeSide(sign){
-        const cx = noseTip.x + sign*eyeDist*0.075;
-        const rx = eyeDist*0.05, ry = (noseTip.y - bridgeTopY)*0.55;
-        const cy = (noseTip.y + bridgeTopY)/2;
-        const x0=Math.max(0,Math.floor(cx-rx)), x1=Math.min(w-1,Math.ceil(cx+rx));
-        const y0=Math.max(0,Math.floor(cy-ry)), y1=Math.min(h-1,Math.ceil(cy+ry));
-        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const dx=(x-cx)/rx, dy=(y-cy)/ry;
-          const d2=dx*dx+dy*dy;
-          if (d2 > 1) continue;
-          const i2=(y*w+x)*4;
-          const m = (1-d2)*(1-d2) * strength;
-          if (m <= 0.005) continue;
-          const d = 1 - m*0.4;
-          data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
-        }
+      const shadeMask = new Float32Array(w*h);
+      const sideOffset = eyeDist * 0.075;
+      const leftSide = bridge.map(p => ({ x: p.x - sideOffset, y: p.y }));
+      const rightSide = bridge.map(p => ({ x: p.x + sideOffset, y: p.y }));
+      stampPolylineBand(leftSide, eyeDist*0.05, 1, shadeMask, w, h);
+      stampPolylineBand(rightSide, eyeDist*0.05, 1, shadeMask, w, h);
+      const feathered = boxBlurGray(shadeMask, w, h, Math.max(1, Math.round(eyeDist*0.025)));
+      for (let p=0, i2=0; p<w*h; p++, i2+=4){
+        const m = feathered[p] * strength;
+        if (m <= 0.005) continue;
+        const d = 1 - m*0.4;
+        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
       }
-      shadeSide(-1); shadeSide(1);
     }
     if (a.beautyMarkIntensity > 0){
-      // Fixed, classic position (upper cheek, near the mouth corner)
-      // rather than user-placed touch coordinates -- avoids the risk of
-      // a coordinate-transform bug across this app's zoom/pan/crop
-      // system, which a beauty mark's small, precise size would make
-      // very easy to notice if it ever landed wrong.
+      // Landmark-relative placement with a choice of positions --
+      // avoids free touch-placement (the coordinate-transform risk
+      // across this app's zoom/pan/crop system, which a mark's small,
+      // precise size would make very easy to notice if it landed
+      // wrong), while still giving the user real choice via distinct
+      // anchor points rather than one fixed spot.
       function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const mouthR = toPx(291);
+      const mouthL = toPx(61), mouthR = toPx(291);
       const size = Math.max(1.5, eyeDist * 0.02 * (0.6 + (a.beautyMarkSize||50)/100));
       const strength = Math.min(0.8, a.beautyMarkIntensity/100 * 0.8);
-      const cx = mouthR.x + eyeDist*0.09, cy = mouthR.y - eyeDist*0.10;
+      const position = a.beautyMarkPosition || 'upperLip';
+      let cx, cy;
+      if (position === 'cheek'){
+        // Same cheek derivation already proven for Blush -- interpolated
+        // from eye-outer-corner and mouth-corner, nudged outward.
+        cx = mouthR.x + (rightEyeOuter.x - mouthR.x) * 0.55 + eyeDist * 0.12;
+        cy = mouthR.y + (rightEyeOuter.y - mouthR.y) * 0.55;
+      } else if (position === 'chin'){
+        const chin = toPx(152); // real detected chin point
+        cx = chin.x + eyeDist*0.06; cy = chin.y - eyeDist*0.10;
+      } else { // 'upperLip' -- classic position near the mouth corner
+        cx = mouthR.x + eyeDist*0.09; cy = mouthR.y - eyeDist*0.10;
+      }
       const x0=Math.max(0,Math.floor(cx-size-1)), x1=Math.min(w-1,Math.ceil(cx+size+1));
       const y0=Math.max(0,Math.floor(cy-size-1)), y1=Math.min(h-1,Math.ceil(cy+size+1));
       for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
@@ -10428,8 +10485,10 @@ if (document.getElementById('rtDrop')){
         }
         cheekHollow(leftEyeOuter, mouthL, -1);
         cheekHollow(rightEyeOuter, mouthR, 1);
-        // Jaw: soft shading along the lower few oval points near the chin.
-        ovalPts.slice(17, 24).forEach(p => stampSoft(p.x, p.y, eyeDist*0.16, eyeDist*0.12, 0.7, shadeMask));
+        // Jaw: continuous band following the actual detected oval
+        // points near the chin, not discrete stamps at each point --
+        // avoids a beaded/stripe look, reads as one soft contour line.
+        stampPolylineBand(ovalPts.slice(17, 25), eyeDist*0.11, 0.7, shadeMask, w, h);
         // Nose sides: small offsets left/right of the nose tip.
         stampSoft(noseTip.x - eyeDist*0.10, noseTip.y, eyeDist*0.07, eyeDist*0.16, 0.6, shadeMask);
         stampSoft(noseTip.x + eyeDist*0.10, noseTip.y, eyeDist*0.07, eyeDist*0.16, 0.6, shadeMask);
@@ -10451,15 +10510,18 @@ if (document.getElementById('rtDrop')){
         }
         cheekTop(leftEyeOuter, mouthL, -1);
         cheekTop(rightEyeOuter, mouthR, 1);
-        // Nose bridge: a narrow strip between the eyes and the tip.
-        const bridgeMidY = (leftEyeC.y + rightEyeC.y)/2 * 0.4 + noseTip.y * 0.6;
-        stampSoft(noseTip.x, bridgeMidY, eyeDist*0.06, eyeDist*0.22, 0.8, glowMask);
+        // Nose bridge: follows the actual bridge landmark chain (same
+        // real points used by the Nose tool), not an interpolated strip.
+        function toPxLocal(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+        const bridgeChain = [6,197,195,5,4].map(toPxLocal);
+        stampPolylineBand(bridgeChain, eyeDist*0.045, 0.8, glowMask, w, h);
         // Forehead center, between the brow line and the hairline point.
         const foreheadCy = (leftEyeC.y + rightEyeC.y)/2 * 0.5 + foreheadTop.y * 0.5;
         stampSoft((leftEyeC.x+rightEyeC.x)/2, foreheadCy, eyeDist*0.22, eyeDist*0.14, 0.6, glowMask);
-        // Cupid's bow, just above the mouth's upper edge.
-        const cupidCy = mouthL.y - eyeDist*0.06;
-        stampSoft((mouthL.x+mouthR.x)/2, cupidCy, eyeDist*0.10, eyeDist*0.06, 0.6, glowMask);
+        // Cupid's bow: the actual landmark 0 (precise upper-lip-center
+        // point), not an interpolation from the mouth corner's y-value.
+        const cupidPt = toPxLocal(0);
+        stampSoft(cupidPt.x, cupidPt.y - eyeDist*0.015, eyeDist*0.09, eyeDist*0.05, 0.6, glowMask);
         const blurred = boxBlurGray(glowMask, w, h, Math.max(2, Math.round(eyeDist*0.08)));
         const strength = Math.min(0.3, a.highlightIntensity/100 * 0.3); // capped -- makeup lighting, not a brightness slider
         for (let p=0, i=0; p<w*h; p++, i+=4){
@@ -10474,8 +10536,17 @@ if (document.getElementById('rtDrop')){
         // Deterministic hash-based placement, not Math.random() -- must
         // stay identical across re-renders (adjusting an unrelated
         // slider re-runs this same code) or the pattern would visibly
-        // jitter. Constrained to buildRtSkinMask's own mask, which
-        // already excludes eyes/nose/mouth.
+        // jitter. Constrained to buildRtSkinMask's own mask (excludes
+        // eyes/nose/mouth), plus an explicit eyebrow exclusion below
+        // using the same proven contour landmarks built for the
+        // Eyebrows tool -- the skin mask's eye-protection radius is
+        // centered at the eye, not confirmed to reliably cover the
+        // brow above it.
+        const RT_RIGHT_BROW_IDX2 = [70,63,105,66,107,55,65,52,53,46];
+        const RT_LEFT_BROW_IDX2 = [300,293,334,296,336,285,295,282,283,276];
+        function browToPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
+        const rightBrowFill = fillPolygonMask(RT_RIGHT_BROW_IDX2.map(browToPx), w, h);
+        const leftBrowFill = fillPolygonMask(RT_LEFT_BROW_IDX2.map(browToPx), w, h);
         function hash(x, y){ const s = Math.sin(x*127.1 + y*311.7) * 43758.5453; return s - Math.floor(s); }
         const density = 0.35 + (a.freckleIntensity/100)*0.4; // how many grid cells actually get a freckle
         const cell = Math.max(4, Math.round(eyeDist*0.045));
@@ -10490,6 +10561,7 @@ if (document.getElementById('rtDrop')){
             if (px<0||px>=w||py<0||py>=h) continue;
             const midx = py*w+px;
             if (mask[midx] < 0.5) continue; // stay inside the protected skin region
+            if (rightBrowFill[midx] > 0 || leftBrowFill[midx] > 0) continue; // explicit eyebrow exclusion
             const size = 0.8 + hash(gx+0.5, gy+0.5)*1.4; // varied size
             const opacity = (0.4 + hash(gx+0.9, gy+0.2)*0.6) * strength; // varied opacity
             const r2 = Math.max(1, Math.round(size));
@@ -12741,6 +12813,7 @@ if (document.getElementById('rtDrop')){
     if (window.rtSyncBlushUI) window.rtSyncBlushUI();
     if (window.rtSyncHairColorUI) window.rtSyncHairColorUI();
     if (window.rtSyncEyeColorUI) window.rtSyncEyeColorUI();
+    if (window.rtSyncBeautyMarkPositionUI) window.rtSyncBeautyMarkPositionUI();
   }
 
 
@@ -12881,7 +12954,7 @@ if (document.getElementById('rtDrop')){
     { id:'contour', label:'Contour', tools:[ { label:'Intensity', key:'contourIntensity' } ]},
     { id:'highlight', label:'Highlight', tools:[ { label:'Intensity', key:'highlightIntensity' } ]},
     { id:'freckles', label:'Freckles', tools:[ { label:'Intensity', key:'freckleIntensity' } ]},
-    { id:'beautymarks', label:'Beauty Marks', tools:[ { label:'Intensity', key:'beautyMarkIntensity' }, { label:'Size', key:'beautyMarkSize' } ]},
+    { id:'beautymarks', label:'Beauty Marks', tools:[ { label:'Intensity', key:'beautyMarkIntensity' }, { label:'Size', key:'beautyMarkSize' }, { label:'Position', type:'beautyMarkPosition' } ]},
   ];
   const RT_MAKEUP_KEY_TO_ID = {
     skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone',
@@ -12950,7 +13023,8 @@ if (document.getElementById('rtDrop')){
       const blushEl = document.getElementById('rtMsBlushPicker');
       const hairColorEl = document.getElementById('rtMsHairColorPicker');
       const eyeColorEl = document.getElementById('rtMsEyeColorPicker');
-      [lipColorEl, lipFinishEl, lipLinerEl, blushEl, hairColorEl, eyeColorEl].forEach(el => { if (el) el.classList.add('hidden'); });
+      const beautyMarkPosEl = document.getElementById('rtMsBeautyMarkPositionPicker');
+      [lipColorEl, lipFinishEl, lipLinerEl, blushEl, hairColorEl, eyeColorEl, beautyMarkPosEl].forEach(el => { if (el) el.classList.add('hidden'); });
       if (tool.type === 'lipColor'){
         if (lipColorEl) lipColorEl.classList.remove('hidden');
         rtSyncLipColorUI();
@@ -12969,6 +13043,9 @@ if (document.getElementById('rtDrop')){
       } else if (tool.type === 'eyeColor'){
         if (eyeColorEl) eyeColorEl.classList.remove('hidden');
         rtSyncEyeColorUI();
+      } else if (tool.type === 'beautyMarkPosition'){
+        if (beautyMarkPosEl) beautyMarkPosEl.classList.remove('hidden');
+        rtSyncBeautyMarkPositionUI();
       } else if (tool.key && RT_MAKEUP_KEY_TO_ID[tool.key]){
         const wrapper = document.querySelector(`#rtMsSliderSlot .rt-ms-ctrl[data-key="${tool.key}"]`);
         if (wrapper) wrapper.classList.remove('hidden');
@@ -12976,7 +13053,7 @@ if (document.getElementById('rtDrop')){
         if (comingSoonEl) comingSoonEl.classList.remove('hidden');
       }
       const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity','browDefinition','noseDefinition','contourIntensity','highlightIntensity','freckleIntensity','beautyMarkIntensity','beautyMarkSize'];
-      const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush','eyeColor'];
+      const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush','eyeColor','beautyMarkPosition'];
       const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || FACE_DEPENDENT_TYPES.includes(tool.type);
       if (needsFace && !rtFaceLandmarks){
         toast('No face detected in this photo \u2014 this tool needs a detected face to apply. Try a clearer, front-facing photo.', 'err');
@@ -13038,12 +13115,18 @@ if (document.getElementById('rtDrop')){
       const intensityEl = document.getElementById('rtEyeColorIntensity');
       if (intensityEl) intensityEl.value = rtAdj.eyeColorIntensity;
     }
+    function rtSyncBeautyMarkPositionUI(){
+      document.querySelectorAll('#rtMsBeautyMarkPositionPicker .rt-ms-finish-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.position === (rtAdj.beautyMarkPosition || 'upperLip'));
+      });
+    }
     window.rtSyncLipColorUI = rtSyncLipColorUI;
     window.rtSyncLipFinishUI = rtSyncLipFinishUI;
     window.rtSyncLipLinerUI = rtSyncLipLinerUI;
     window.rtSyncBlushUI = rtSyncBlushUI;
     window.rtSyncHairColorUI = rtSyncHairColorUI;
     window.rtSyncEyeColorUI = rtSyncEyeColorUI;
+    window.rtSyncBeautyMarkPositionUI = rtSyncBeautyMarkPositionUI;
     document.querySelectorAll('#rtMsLipColorPicker .rt-ms-swatch').forEach(btn => {
       btn.addEventListener('click', () => {
         const layer = rtGetActiveLayer();
@@ -13144,6 +13227,16 @@ if (document.getElementById('rtDrop')){
       });
       rtEyeColorIntensityEl.addEventListener('change', () => rtPushHistory('Eye Color Intensity'));
     }
+    document.querySelectorAll('#rtMsBeautyMarkPositionPicker .rt-ms-finish-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layer = rtGetActiveLayer();
+        if (layer && layer.locked){ toast('This layer is locked.', 'err'); return; }
+        rtAdj.beautyMarkPosition = btn.dataset.position;
+        rtSyncBeautyMarkPositionUI();
+        renderRtPreview();
+        rtPushHistory('Beauty Mark Position');
+      });
+    });
   })();
 
   (function setupFloatingTopbar(){
