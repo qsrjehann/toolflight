@@ -9282,6 +9282,57 @@ if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.i
 if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
   let rtOriginalImageBytes = null; // raw ArrayBuffer of the original file -- plain JS heap memory, no browser resource-registry dependency (unlike a Blob URL, which can be silently invalidated by the same memory pressure that clears canvases -- this was the real root cause of the false "recovered" result)
+  // Disk-backed fallback: plain JS heap memory (rtOriginalImageBytes
+  // above) is usually enough, but in genuinely severe memory pressure
+  // the whole page's heap can still be evicted. IndexedDB survives that
+  // case since it's backed by disk, not the page's live memory. Used
+  // only as a fallback when the in-memory bytes are themselves gone --
+  // never on the normal, fast path.
+  let rtIdbPromise = null;
+  function rtOpenIdb(){
+    if (rtIdbPromise) return rtIdbPromise;
+    rtIdbPromise = new Promise((resolve) => {
+      try{
+        const req = indexedDB.open('rt-photo-recovery', 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore('photo'); };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null); // fail silently -- this is a best-effort fallback, never a requirement
+      } catch(err){ resolve(null); }
+    });
+    return rtIdbPromise;
+  }
+  async function rtSaveOriginalToIdb(bytes, type){
+    try{
+      const db = await rtOpenIdb();
+      if (!db) return;
+      await new Promise((resolve) => {
+        const tx = db.transaction('photo', 'readwrite');
+        tx.objectStore('photo').put({ bytes, type }, 'current');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } catch(err){ /* best-effort -- never block the main load path on this */ }
+  }
+  async function rtLoadOriginalFromIdb(){
+    try{
+      const db = await rtOpenIdb();
+      if (!db) return null;
+      return await new Promise((resolve) => {
+        const tx = db.transaction('photo', 'readonly');
+        const req = tx.objectStore('photo').get('current');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch(err){ return null; }
+  }
+  async function rtClearOriginalFromIdb(){
+    try{
+      const db = await rtOpenIdb();
+      if (!db) return;
+      const tx = db.transaction('photo', 'readwrite');
+      tx.objectStore('photo').delete('current');
+    } catch(err){ /* best-effort */ }
+  }
   let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
@@ -9353,6 +9404,7 @@ if (document.getElementById('rtDrop')){
     browDefinition:0,
     noseDefinition:0,
     beautyMarkIntensity:0, beautyMarkSize:0, beautyMarkPosition:'upperLip',
+    beardIntensity:0,
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -9372,6 +9424,7 @@ if (document.getElementById('rtDrop')){
     freckleIntensity:'rtFreckleIntensity', contourIntensity:'rtContourIntensity', highlightIntensity:'rtHighlightIntensity',
     browDefinition:'rtBrowDefinition', noseDefinition:'rtNoseDefinition',
     beautyMarkIntensity:'rtBeautyMarkIntensity', beautyMarkSize:'rtBeautyMarkSize',
+    beardIntensity:'rtBeardIntensity',
   };
 
   function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
@@ -10135,7 +10188,7 @@ if (document.getElementById('rtDrop')){
       const leftFill = fillPolygonMask(leftEyeContour, w, h);
       for (let p=0; p<w*h; p++) eyeOpenMask[p] = Math.max(rightFill[p], leftFill[p]);
       const [cr, cg, cb] = rtHexToRgb(a.eyeColorHex);
-      const strength = Math.min(0.6, a.eyeColorIntensity/100 * 0.6);
+      const strength = Math.min(0.85, a.eyeColorIntensity/100 * 0.85); // raised from 0.6 -- the lower cap was too weak to read as a genuine color change, especially over naturally dark irises
       for (let p=0, i2=0; p<w*h; p++, i2+=4){
         if (eyeOpenMask[p] <= 0) continue;
         const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
@@ -10148,8 +10201,16 @@ if (document.getElementById('rtDrop')){
         if (darkness <= 0) continue;
         const m = strength * darkness;
         if (m <= 0.005) continue;
-        const l = lum/255;
-        const r2 = rtClamp(cr*l*1.4, 0, 255), g2 = rtClamp(cg*l*1.4, 0, 255), b2 = rtClamp(cb*l*1.4, 0, 255);
+        // Normalized shading, not a direct luminance multiply -- the
+        // previous formula (target * lum/255) crushed the result too
+        // dark for naturally dark/brown irises (the most common eye
+        // color), since a dark original pixel produced a dark, muddy
+        // blend that wouldn't read as the selected color at all. This
+        // guarantees a strong baseline brightness (>=0.65x) even for
+        // very dark original pixels, while still preserving relative
+        // highlight/shadow variation within the iris for texture.
+        const shadeFactor = rtClamp(0.65 + (lum/255)*0.7, 0.65, 1.35);
+        const r2 = rtClamp(cr*shadeFactor, 0, 255), g2 = rtClamp(cg*shadeFactor, 0, 255), b2 = rtClamp(cb*shadeFactor, 0, 255);
         data[i2]   = data[i2]*(1-m)   + r2*m;
         data[i2+1] = data[i2+1]*(1-m) + g2*m;
         data[i2+2] = data[i2+2]*(1-m) + b2*m;
@@ -10179,7 +10240,50 @@ if (document.getElementById('rtDrop')){
         data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
       }
     }
-    if (a.noseDefinition > 0){
+    if (a.beardIntensity > 0 && rtFaceLandmarks){
+      // Real texture-based detection, not a fixed painted shape: beard/
+      // stubble produces high local luminance variance (many small dark
+      // hairs against skin), while clean-shaven skin is comparatively
+      // smooth. Only pixels that are BOTH inside the landmark-defined
+      // lower-face region AND show genuine high-texture variance get
+      // enhanced -- this is what makes it fail gracefully on
+      // clean-shaven faces instead of assuming a beard is present.
+      function toPxB(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+      const leftEyeOuterB = toPxB(33), rightEyeOuterB = toPxB(263);
+      const eyeDistB = Math.hypot(rightEyeOuterB.x-leftEyeOuterB.x, rightEyeOuterB.y-leftEyeOuterB.y);
+      const ovalIdxB = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+      const ovalPtsB = ovalIdxB.map(toPxB);
+      const mouthLB = toPxB(61), mouthRB = toPxB(291);
+      // Candidate region: lower half of the face oval, below the mouth --
+      // where a beard would actually be, not the whole face.
+      const regionMask = new Float32Array(w*h);
+      const belowMouthY = Math.max(mouthLB.y, mouthRB.y);
+      ovalPtsB.forEach(p => { if (p.y > belowMouthY - eyeDistB*0.1) stampSoft(p.x, p.y, eyeDistB*0.22, eyeDistB*0.22, 1, regionMask); });
+      // Local luminance variance: box-blur(lum) and box-blur(lum^2), then Var = E[X^2] - E[X]^2.
+      const lumPlane = new Float32Array(w*h), lumSqPlane = new Float32Array(w*h);
+      for (let p=0, i2=0; p<w*h; p++, i2+=4){
+        const l = rtLuma(data[i2], data[i2+1], data[i2+2]);
+        lumPlane[p] = l; lumSqPlane[p] = l*l;
+      }
+      const vRadius = Math.max(1, Math.round(eyeDistB*0.02));
+      const meanLum = boxBlurGray(lumPlane, w, h, vRadius);
+      const meanLumSq = boxBlurGray(lumSqPlane, w, h, vRadius);
+      const strength = Math.min(0.45, a.beardIntensity/100 * 0.45); // capped -- enhancement, not a solid paint
+      for (let p=0, i2=0; p<w*h; p++, i2+=4){
+        if (regionMask[p] <= 0) continue;
+        const variance = Math.max(0, meanLumSq[p] - meanLum[p]*meanLum[p]);
+        // Threshold tuned so smooth skin (low variance) registers near
+        // zero and genuine stubble/hair texture (high local contrast)
+        // registers meaningfully -- this is the actual detection, not
+        // an assumption that facial hair is present.
+        const textureLikelihood = rtClamp((variance - 60) / 200, 0, 1);
+        const m = regionMask[p] * strength * textureLikelihood;
+        if (m <= 0.005) continue;
+        const d = 1 - m*0.5; // darken/define existing hair, don't paint a flat shape
+        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
+      }
+    }
+    if (a.noseDefinition > 0 && rtFaceLandmarks){
       // Subtle shading down the bridge sides for a definition/slimming
       // illusion -- explicitly NOT geometric reshaping, which this
       // architecture can't do safely. Rebuilt to follow the actual
@@ -10207,7 +10311,7 @@ if (document.getElementById('rtDrop')){
         data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
       }
     }
-    if (a.beautyMarkIntensity > 0){
+    if (a.beautyMarkIntensity > 0 && rtFaceLandmarks){
       // Landmark-relative placement with a choice of positions --
       // avoids free touch-placement (the coordinate-transform risk
       // across this app's zoom/pan/crop system, which a mark's small,
@@ -10373,7 +10477,7 @@ if (document.getElementById('rtDrop')){
   /* ---------- Skin smoothing / face brightening / skin tone (masked) ---------- */
   function applyRtSkinOps(data, w, h, sw, sh){
     const a = rtAdj;
-    if (a.skinSmooth <= 0 && a.faceBrighten <= 0 && a.skinTone === 0 && a.foundation <= 0 && a.contourIntensity <= 0 && a.highlightIntensity <= 0 && a.freckleIntensity <= 0) return;
+    if (a.skinSmooth <= 0 && a.faceBrighten <= 0 && a.skinTone === 0 && a.foundation <= 0 && a.contourIntensity <= 0 && a.highlightIntensity <= 0 && a.freckleIntensity <= 0 && a.beardIntensity <= 0) return;
     const mask = rtFaceLandmarks ? buildRtSkinMask(w, h, sw, sh) : new Float32Array(w*h).fill(0.5); // no face: gentle uniform fallback, disclosed to the user via rtFaceStatus
     if (a.skinSmooth > 0){
       const radius = Math.max(1, Math.round(a.skinSmooth/100 * 6));
@@ -12948,7 +13052,7 @@ if (document.getElementById('rtDrop')){
       { label:'Texture', key:'hairTexture' },
       { label:'Hair Color', type:'hairColor' },
     ]},
-    { id:'beard', label:'Beard', tools:[ { label:'Beard Color', key:null } ]},
+    { id:'beard', label:'Beard', tools:[ { label:'Definition', key:'beardIntensity' } ]},
     { id:'eyebrows', label:'Eyebrows', tools:[ { label:'Definition', key:'browDefinition' } ]},
     { id:'nose', label:'Nose', tools:[ { label:'Definition', key:'noseDefinition' } ]},
     { id:'contour', label:'Contour', tools:[ { label:'Intensity', key:'contourIntensity' } ]},
@@ -13052,7 +13156,7 @@ if (document.getElementById('rtDrop')){
       } else {
         if (comingSoonEl) comingSoonEl.classList.remove('hidden');
       }
-      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity','browDefinition','noseDefinition','contourIntensity','highlightIntensity','freckleIntensity','beautyMarkIntensity','beautyMarkSize'];
+      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity','browDefinition','noseDefinition','contourIntensity','highlightIntensity','freckleIntensity','beautyMarkIntensity','beautyMarkSize','beardIntensity'];
       const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush','eyeColor','beautyMarkPosition'];
       const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || FACE_DEPENDENT_TYPES.includes(tool.type);
       if (needsFace && !rtFaceLandmarks){
@@ -13416,6 +13520,7 @@ if (document.getElementById('rtDrop')){
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
     rtOriginalImageBytes = await f.arrayBuffer();
+    rtSaveOriginalToIdb(rtOriginalImageBytes, f.type); // fire-and-forget -- disk-backed fallback, never blocks loading
     rtOriginalImageType = f.type;
     rtSourceCanvas = document.createElement('canvas');
     rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
@@ -13648,7 +13753,15 @@ if (document.getElementById('rtDrop')){
     const previewCanvas = document.getElementById('rtPreviewCanvas');
     if (previewCanvas && previewCanvas.width && previewCanvas.height){
       const availW = wrap.clientWidth - 4;
-      const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width) * rtZoom;
+      // Deliberately NOT multiplied by rtZoom -- this is the container's
+      // own size at natural fit (zoom=1 baseline). Zoom-based display
+      // scaling is applied separately, on top of this space, by
+      // fitRtCanvasDisplay(). Multiplying here too meant a transient low
+      // zoom value could permanently shrink the wrap itself, since this
+      // function only re-runs on load/resize/orientation, not on zoom
+      // changes -- found via a real-device screenshot showing the canvas
+      // stuck tiny inside a large empty area.
+      const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width);
       if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
     }
     wrap.style.height = canvasH + 'px';
@@ -13721,10 +13834,24 @@ if (document.getElementById('rtDrop')){
   // memory pressure that clears canvases.
   let rtRecoveryInProgress = false;
   async function rtRecoverCanvasIfNeeded(){
-    if (!rtSourceCanvas || !rtOriginalImageBytes) return;
+    if (!rtSourceCanvas) return; // no canvas element at all -- nothing to recover into, and this isn't a full page reload scenario since rtSourceCanvas itself is gone
     if (rtRecoveryInProgress) return; // pageshow/visibilitychange/focus can all fire within the same resume -- avoid running (and reporting) the same recovery attempt multiple times
     rtRecoveryInProgress = true; // set immediately adjacent to the check above, before any other logic, so no interleaving window exists between them
     try{
+      if (!rtOriginalImageBytes){
+        // The in-memory bytes specifically are gone even though the
+        // canvas element itself survived (not a full page reload) --
+        // try repopulating from the disk-backed IndexedDB copy before
+        // giving up. This is the case the previous version couldn't
+        // handle at all: it returned immediately here with no attempt.
+        const idbEntry = await rtLoadOriginalFromIdb();
+        if (idbEntry && idbEntry.bytes){
+          rtOriginalImageBytes = idbEntry.bytes;
+          rtOriginalImageType = idbEntry.type || rtOriginalImageType;
+        } else {
+          return; // genuinely nothing to recover from
+        }
+      }
       const canvasLooksLost = () => {
         if (!rtSourceCanvas.width || !rtSourceCanvas.height) return true; // dimensions themselves can be reset, not just pixel content
         try{
@@ -13736,7 +13863,7 @@ if (document.getElementById('rtDrop')){
       };
       if (!canvasLooksLost()){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before; still covered by the outer finally below
 
-      const attemptRebuild = async () => {
+      const attemptRebuild = async (bytes, type) => {
         let tempUrl = null;
         try{
           // Build a FRESH Blob and Blob URL from the retained raw bytes every
@@ -13744,7 +13871,7 @@ if (document.getElementById('rtDrop')){
           // silently failed before (its browser-registry entry can be
           // invalidated by the same memory pressure that clears canvases,
           // even though the JS string referencing it still looks valid).
-          const blob = new Blob([rtOriginalImageBytes], { type: rtOriginalImageType || 'image/jpeg' });
+          const blob = new Blob([bytes], { type: type || 'image/jpeg' });
           tempUrl = URL.createObjectURL(blob);
           const img = new Image();
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
@@ -13772,13 +13899,23 @@ if (document.getElementById('rtDrop')){
         }
       };
 
-      let ok = await attemptRebuild();
+      let ok = await attemptRebuild(rtOriginalImageBytes, rtOriginalImageType);
       if (!ok){
         // One retry after a short delay -- covers the plausible case that
         // the browser hasn't fully reactivated its own rendering/decoding
         // pipeline in the first instant after the tab resumes.
         await new Promise(r => setTimeout(r, 400));
-        ok = await attemptRebuild();
+        ok = await attemptRebuild(rtOriginalImageBytes, rtOriginalImageType);
+      }
+      if (!ok){
+        // Genuine last resort: try the separate, disk-backed IndexedDB
+        // copy, in case the in-memory ArrayBuffer itself became
+        // unusable in a way the retry above couldn't fix.
+        const idbEntry = await rtLoadOriginalFromIdb();
+        if (idbEntry && idbEntry.bytes){
+          ok = await attemptRebuild(idbEntry.bytes, idbEntry.type);
+          if (ok){ rtOriginalImageBytes = idbEntry.bytes; rtOriginalImageType = idbEntry.type || rtOriginalImageType; }
+        }
       }
       if (ok){
         // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
@@ -13791,11 +13928,11 @@ if (document.getElementById('rtDrop')){
         renderRtPreview();
         toast('Photo recovered after the browser cleared it in the background.', 'ok');
       } else {
-        // Honest failure, twice confirmed -- no false "recovered" claim.
-        // Leaving the user on a broken checkerboard canvas with editing
-        // tools that have nothing to edit is worse than a clean restart,
-        // so return to the upload screen directly rather than only
-        // telling them where the button is.
+        // Honest failure, all avenues exhausted -- no false "recovered"
+        // claim. Leaving the user on a broken checkerboard canvas with
+        // editing tools that have nothing to edit is worse than a clean
+        // restart, so return to the upload screen directly rather than
+        // only telling them where the button is.
         toast('The browser cleared this photo from memory and it could not be restored. Please choose your photo again.', 'err');
         rtReturnToUploadScreen();
       }
