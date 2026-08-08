@@ -10173,11 +10173,20 @@ if (document.getElementById('rtDrop')){
       }
     }
     if (a.eyeColorIntensity > 0 && a.eyeColorHex){
-      // Eye-contour polygon (standard MediaPipe eye landmark indices)
-      // bounds the search area to the actual eye opening -- the effect
-      // can never reach eyelid/skin outside it, regardless of iris
-      // estimation, and the bound adapts to the eye's real detected
-      // size/shape rather than a fixed-radius circle.
+      // Layered containment, not a single broad region:
+      // 1) Eye-contour polygon bounds the absolute maximum extent (never
+      //    touches eyelid/skin outside the real eye opening).
+      // 2) A circular iris estimate, sized from the eye's own measured
+      //    HEIGHT (not width) -- anatomically the iris diameter
+      //    approximates the eye-opening height at normal aperture, while
+      //    the eye's width is frequently larger than the iris with
+      //    sclera visible at the inner/outer corners. Using the full
+      //    eye-contour width (the previous approach) let the color reach
+      //    that corner sclera, which is what the real-device screenshot
+      //    showed.
+      // 3) Darkness discrimination within the circle, as a final
+      //    per-pixel safety net (protects any stray bright pixel even
+      //    inside the circle, e.g. a corneal highlight).
       function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
       const RT_RIGHT_EYE_IDX = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
       const RT_LEFT_EYE_IDX = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
@@ -10187,19 +10196,46 @@ if (document.getElementById('rtDrop')){
       const rightFill = fillPolygonMask(rightEyeContour, w, h);
       const leftFill = fillPolygonMask(leftEyeContour, w, h);
       for (let p=0; p<w*h; p++) eyeOpenMask[p] = Math.max(rightFill[p], leftFill[p]);
+
+      function irisCircleMask(contour){
+        let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+        for (const p of contour){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+        const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+        const eyeHeight = maxY-minY;
+        const r = Math.max(2, eyeHeight * 0.62); // iris diameter approximates eye-opening height, with a small margin for natural coverage
+        const mask = new Float32Array(w*h);
+        const x0=Math.max(0,Math.floor(cx-r)), x1=Math.min(w-1,Math.ceil(cx+r));
+        const y0=Math.max(0,Math.floor(cy-r)), y1=Math.min(h-1,Math.ceil(cy+r));
+        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+          const dx=(x-cx)/r, dy=(y-cy)/r;
+          const d2 = dx*dx+dy*dy;
+          if (d2 <= 1){ const idx=y*w+x; const v=(1-d2*0.3); if(v>mask[idx]) mask[idx]=v; } // soft edge falloff -- natural iris boundary, not a hard-edged disc
+        }
+        return mask;
+      }
+      const rightIris = irisCircleMask(rightEyeContour);
+      const leftIris = irisCircleMask(leftEyeContour);
+      const irisMask = new Float32Array(w*h);
+      for (let p=0; p<w*h; p++) irisMask[p] = Math.max(rightIris[p], leftIris[p]);
+
       const [cr, cg, cb] = rtHexToRgb(a.eyeColorHex);
-      const strength = Math.min(0.85, a.eyeColorIntensity/100 * 0.85); // raised from 0.6 -- the lower cap was too weak to read as a genuine color change, especially over naturally dark irises
+      const strength = Math.min(0.85, a.eyeColorIntensity/100 * 0.85);
       for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        if (eyeOpenMask[p] <= 0) continue;
+        // Both the eye-contour bound AND the circular iris estimate must
+        // agree a pixel is eligible -- the circle is the primary
+        // constraint, the contour is a backstop that can only shrink it
+        // further, never expand it.
+        const geoMask = Math.min(eyeOpenMask[p], irisMask[p]);
+        if (geoMask <= 0) continue;
         const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
-        // Within the real eye-opening bound, still distinguish iris from
-        // sclera by darkness -- no dedicated iris-only landmark exists
-        // without iris refinement enabled, so this is the best available
-        // discriminator, now operating strictly inside the true eye
-        // boundary instead of a circle that could clip eyelid skin.
+        // Sclera and corneal highlights are bright -- protected even
+        // inside the circle. Pupil is very dark -- keep it dark and
+        // mostly untinted rather than fully recoloring it, which is
+        // what "pupil should remain natural/dark" requires.
         const darkness = rtClamp((150-lum)/100, 0, 1);
         if (darkness <= 0) continue;
-        const m = strength * darkness;
+        const pupilLikelihood = rtClamp((40-lum)/40, 0, 1); // very dark pixels are more likely pupil than iris
+        const m = strength * darkness * geoMask * (1 - pupilLikelihood*0.75);
         if (m <= 0.005) continue;
         // Normalized shading, not a direct luminance multiply -- the
         // previous formula (target * lum/255) crushed the result too
@@ -13066,6 +13102,10 @@ if (document.getElementById('rtDrop')){
     hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
     hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
     foundation:'rtFoundation', mascaraIntensity:'rtMascaraIntensity',
+    contourIntensity:'rtContourIntensity', highlightIntensity:'rtHighlightIntensity',
+    freckleIntensity:'rtFreckleIntensity', browDefinition:'rtBrowDefinition',
+    noseDefinition:'rtNoseDefinition', beautyMarkIntensity:'rtBeautyMarkIntensity',
+    beautyMarkSize:'rtBeautyMarkSize', beardIntensity:'rtBeardIntensity',
   };
 
   (function setupMakeupStudio(){
