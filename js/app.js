@@ -12879,8 +12879,18 @@ if (document.getElementById('rtDrop')){
     if (!canvas.width || !wrap) return;
     const availW = wrap.clientWidth - 4, availH = Math.max(80, wrap.clientHeight - 4); // the 280px floor once here is gone -- it predates the bottom-sheet system (this slice) and caused the canvas to overflow its wrap whenever the sheet legitimately needed the canvas smaller than that; the sheet system's own rtApplySheetHeightPx already enforces a sensible floor (120px)
     const fitScale = Math.min(1, availW/canvas.width, availH/canvas.height) * rtZoom;
-    canvas.style.width = Math.round(canvas.width*fitScale) + 'px';
-    canvas.style.height = Math.round(canvas.height*fitScale) + 'px';
+    const scaledW = canvas.width*fitScale, scaledH = canvas.height*fitScale;
+    canvas.style.width = Math.round(scaledW) + 'px';
+    canvas.style.height = Math.round(scaledH) + 'px';
+    // Pan offset -- clamped so the canvas can be dragged until its own
+    // edge reaches the wrap's edge, but never further (the image can
+    // never be lost entirely off-screen). At or below the wrap's natural
+    // fit size there's no excess to pan into, so this collapses to 0.
+    const maxOffsetX = Math.max(0, (scaledW - availW) / 2);
+    const maxOffsetY = Math.max(0, (scaledH - availH) / 2);
+    rtOffsetX = rtClamp(rtOffsetX, -maxOffsetX, maxOffsetX);
+    rtOffsetY = rtClamp(rtOffsetY, -maxOffsetY, maxOffsetY);
+    canvas.style.transform = `translate(${rtOffsetX}px, ${rtOffsetY}px)`;
   }
 
   async function renderRtPreview(){
@@ -13492,7 +13502,7 @@ if (document.getElementById('rtDrop')){
     fitRtCanvasDisplay();
   });
   document.getElementById('rtFitScreenBtn').onclick = () => {
-    rtZoom = 1;
+    rtZoom = 1; rtOffsetX = 0; rtOffsetY = 0;
     document.getElementById('rtZoomSlider').value = '100';
     document.getElementById('rtZoomVal').textContent = '100';
     fitRtCanvasDisplay();
@@ -13511,6 +13521,7 @@ if (document.getElementById('rtDrop')){
   // conceptual pattern already used in this project (distance/midpoint
   // tracking), scoped to this tool's own canvas element.
   let rtPinchStartDist=null, rtPinchStartZoom=1, rtLastTapTime=0, rtLastTapPos=null;
+  let rtPanStart=null, rtPanStartOffset=null, rtPanActive=false;
   const rtCanvasEl = document.getElementById('rtPreviewCanvas');
   rtCanvasEl.addEventListener('touchstart', (e) => {
     if (!rtSourceCanvas) return;
@@ -13518,6 +13529,7 @@ if (document.getElementById('rtDrop')){
     if (e.touches.length === 2){
       e.preventDefault();
       rtEndCompare(); // must never interfere with pinch zoom -- restore the edited view before pinch begins
+      rtPanActive = false; rtPanStart = null; // a second finger landing mid-pan hands off to pinch cleanly
       const [a,b] = e.touches;
       rtPinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
       rtPinchStartZoom = rtZoom;
@@ -13531,6 +13543,13 @@ if (document.getElementById('rtDrop')){
         rtLastTapPos = null; return;
       }
       rtLastTapTime = now; rtLastTapPos = { x:t.clientX, y:t.clientY };
+      // Track a potential pan start regardless of current zoom -- only
+      // actually pans in touchmove once zoom confirms there's excess
+      // image to drag into view, so a normal (non-zoomed) single-finger
+      // touch never gets hijacked.
+      rtPanStart = { x:t.clientX, y:t.clientY };
+      rtPanStartOffset = { x:rtOffsetX, y:rtOffsetY };
+      rtPanActive = false;
     }
   }, { passive:false });
   rtCanvasEl.addEventListener('touchmove', (e) => {
@@ -13542,9 +13561,22 @@ if (document.getElementById('rtDrop')){
       document.getElementById('rtZoomSlider').value = String(Math.round(rtZoom*100));
       document.getElementById('rtZoomVal').textContent = String(Math.round(rtZoom*100));
       fitRtCanvasDisplay();
+    } else if (e.touches.length === 1 && rtPanStart && rtZoom > 1.02){
+      // Only prevents default (blocking page scroll) once an actual pan
+      // is underway -- never on a plain tap or a non-zoomed swipe, which
+      // must keep scrolling the page normally.
+      e.preventDefault();
+      rtPanActive = true;
+      const t = e.touches[0];
+      rtOffsetX = rtPanStartOffset.x + (t.clientX - rtPanStart.x);
+      rtOffsetY = rtPanStartOffset.y + (t.clientY - rtPanStart.y);
+      fitRtCanvasDisplay(); // applies + clamps the new offset in one place, same function driving zoom's own display update
     }
   }, { passive:false });
-  rtCanvasEl.addEventListener('touchend', (e) => { if (e.touches.length < 2) rtPinchStartDist = null; });
+  rtCanvasEl.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) rtPinchStartDist = null;
+    if (e.touches.length === 0){ rtPanStart = null; rtPanActive = false; }
+  });
 
   /* ---------- Export: full source resolution, one render pipeline reused
      verbatim (not a second implementation) ---------- */
