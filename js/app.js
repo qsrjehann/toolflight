@@ -9333,6 +9333,55 @@ if (document.getElementById('rtDrop')){
       tx.objectStore('photo').delete('current');
     } catch(err){ /* best-effort */ }
   }
+  // Session state (rtAdj, zoom/pan) -- a separate, small key from the
+  // large photo bytes above, so it can be saved frequently without ever
+  // rewriting the photo data. This is what makes automatic restoration
+  // after a genuine page discard possible: the photo-bytes-only fallback
+  // above only helps a canvas that was cleared while the page itself
+  // stayed alive (rtSourceCanvas still exists in memory) -- it does
+  // nothing for a full reload, where every JS variable resets to its
+  // initial value before any user action has happened.
+  let rtSessionSaveTimer = null;
+  function rtSaveSessionStateNow(){
+    if (!rtSourceCanvas) return; // nothing active to persist
+    rtOpenIdb().then(db => {
+      if (!db) return;
+      try{
+        const tx = db.transaction('photo', 'readwrite');
+        tx.objectStore('photo').put({
+          adj: rtAdj, zoom: rtZoom, offsetX: rtOffsetX, offsetY: rtOffsetY,
+          savedAt: Date.now(),
+        }, 'state');
+      } catch(err){ /* best-effort */ }
+    });
+  }
+  function rtScheduleSessionSave(){
+    // Debounced -- called from rtPushHistory (an existing hook already
+    // fired once per meaningful edit commit, not per slider tick), so
+    // this never writes on every intermediate drag frame.
+    clearTimeout(rtSessionSaveTimer);
+    rtSessionSaveTimer = setTimeout(rtSaveSessionStateNow, 400);
+  }
+  async function rtLoadSessionStateFromIdb(){
+    try{
+      const db = await rtOpenIdb();
+      if (!db) return null;
+      return await new Promise((resolve) => {
+        const tx = db.transaction('photo', 'readonly');
+        const req = tx.objectStore('photo').get('state');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch(err){ return null; }
+  }
+  async function rtClearSessionStateFromIdb(){
+    try{
+      const db = await rtOpenIdb();
+      if (!db) return;
+      const tx = db.transaction('photo', 'readwrite');
+      tx.objectStore('photo').delete('state');
+    } catch(err){ /* best-effort */ }
+  }
   let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
@@ -13010,6 +13059,7 @@ if (document.getElementById('rtDrop')){
     const inputEl = document.getElementById('rtInput');
     if (inputEl) inputEl.value = ''; // allows re-selecting the same file
     document.getElementById('rtUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    rtClearOriginalFromIdb(); rtClearSessionStateFromIdb(); // explicit action -- intentionally replaces/clears the saved session, unlike normal backgrounding which must never touch it
   }
   document.getElementById('rtChangePhotoBtn').onclick = rtReturnToUploadScreen;
 
@@ -13606,6 +13656,86 @@ if (document.getElementById('rtDrop')){
   };
 
   /* ---------- Image loading ---------- */
+  async function rtRestoreSessionFromIdb(){
+    // Runs once at script startup, before the upload screen is shown.
+    // This is the missing case the existing recovery functions can't
+    // cover: they all require rtSourceCanvas to already exist in
+    // memory, which is impossible after a genuine page discard/reload
+    // (every JS variable resets to its initial value before any of this
+    // code has run). Checks IndexedDB directly instead.
+    try{
+      const photoEntry = await rtLoadOriginalFromIdb();
+      if (!photoEntry || !photoEntry.bytes) return false;
+      const stateEntry = await rtLoadSessionStateFromIdb();
+      const blob = new Blob([photoEntry.bytes], { type: photoEntry.type || 'image/jpeg' });
+      const tempUrl = URL.createObjectURL(blob);
+      let img;
+      try{
+        img = new Image();
+        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
+        if (!img.naturalWidth || !img.naturalHeight) throw new Error('invalid');
+      } catch(err){
+        URL.revokeObjectURL(tempUrl);
+        return false; // corrupted/unreadable saved session -- fail gracefully, fall through to the normal upload screen
+      }
+      URL.revokeObjectURL(tempUrl);
+      rtOriginalImageBytes = photoEntry.bytes;
+      rtOriginalImageType = photoEntry.type;
+      rtSourceCanvas = document.createElement('canvas');
+      rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
+      rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
+      rtBgCategoryMask = null; rtBgMaskDims = null;
+      rtHairCategoryMask = null; rtHairMaskDims = null;
+      // Restore the saved adjustment state -- never re-applied on top of
+      // an already-rendered image, since we're rendering once from the
+      // freshly rebuilt (unmodified) source canvas below. This is what
+      // prevents a double effect.
+      rtAdj = (stateEntry && stateEntry.adj) ? { ...RT_DEFAULTS, ...stateEntry.adj } : { ...RT_DEFAULTS };
+      rtLayerIdSeq = 1;
+      rtLayers = [{
+        id: rtLayerIdSeq++, name: 'Background', canvas: rtSourceCanvas,
+        visible: true, locked: false, opacity: 100, blendMode: 'normal',
+        adj: { ...rtAdj }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
+        mask: null, maskEnabled: true, maskVersion: 0,
+        healCanvas: null, healVersion: 0,
+        type: 'image', subjectMask: null, canvasVersion: 0,
+      }];
+      rtActiveLayerId = rtLayers[0].id;
+      rtApplyAdjustmentsToUI();
+      rtCrop = { active: false, rect: null, rotationQuarter: 0, straighten: 0, ratioKey: 'free' };
+      rtCloneSourcePoint = null; rtCloneOffset = null;
+      rtZoom = (stateEntry && typeof stateEntry.zoom === 'number') ? stateEntry.zoom : 1;
+      const zoomSliderEl = document.getElementById('rtZoomSlider'), zoomValEl = document.getElementById('rtZoomVal');
+      if (zoomSliderEl) zoomSliderEl.value = String(Math.round(rtZoom*100));
+      if (zoomValEl) zoomValEl.textContent = String(Math.round(rtZoom*100));
+      rtOffsetX = (stateEntry && typeof stateEntry.offsetX === 'number') ? stateEntry.offsetX : 0;
+      rtOffsetY = (stateEntry && typeof stateEntry.offsetY === 'number') ? stateEntry.offsetY : 0;
+      rtSyncCropControlsToState();
+      const uploadSectionEl = document.getElementById('rtUploadSection');
+      if (uploadSectionEl) uploadSectionEl.classList.add('hidden');
+      ['rtHeroSub', 'rtBackRow', 'rtMarketingSections', 'rtSiteFooter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+      document.getElementById('rtStage').classList.remove('hidden');
+      rtSetSheetState('closed', false);
+      rtResetHistory();
+      setTimeout(rtUpdateCanvasMaxHeight, 150);
+      setTimeout(rtUpdateCanvasMaxHeight, 400);
+      setTimeout(rtUpdateCanvasMaxHeight, 800);
+      setTimeout(rtUpdatePanelMaxHeight, 400);
+      const dimsEl = document.getElementById('rtOutputDims');
+      if (dimsEl) dimsEl.textContent = `${rtSourceCanvas.width}\u00d7${rtSourceCanvas.height}px (original resolution)`;
+      renderRtPreview(); // single render pass applying the restored rtAdj to the freshly rebuilt, unmodified source canvas
+      requestAnimationFrame(() => fitRtCanvasDisplay());
+      rtDetectFace(); // re-run face detection since it isn't persisted -- most effects will look correct immediately from the restored rtAdj regardless, landmark-dependent ones simply reactivate once this resolves
+      toast('Your editing session was restored.', 'ok');
+      return true;
+    } catch(err){
+      return false; // any unexpected failure here must never block the normal upload screen from showing
+    }
+  }
+
   async function loadRtImage(f){
     if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
@@ -13670,6 +13800,7 @@ if (document.getElementById('rtDrop')){
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     await loadRtImage(f);
   });
+  rtRestoreSessionFromIdb(); // fire on startup -- if a valid saved session exists, this replaces the default upload-screen state automatically; if not, it resolves to false and the page stays exactly as it already was
   document.addEventListener('paste', async (e) => {
     const drop = document.getElementById('rtDrop');
     if (drop.offsetParent === null) return;
@@ -14057,7 +14188,9 @@ if (document.getElementById('rtDrop')){
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && rtSourceCanvas) rtRecoverCanvasIfNeeded();
+    if (document.visibilityState === 'hidden') rtSaveSessionStateNow(); // catch the moment right before backgrounding -- don't rely on the debounce window alone
   });
+  window.addEventListener('pagehide', () => { rtSaveSessionStateNow(); }); // mobile browsers don't guarantee beforeunload; pagehide is the reliable one
   window.addEventListener('focus', () => {
     if (rtSourceCanvas) rtRecoverCanvasIfNeeded();
   });
@@ -14186,6 +14319,7 @@ if (document.getElementById('rtDrop')){
     rtHistoryIndex = rtHistory.length - 1;
     rtUpdateHistoryButtons();
     rtRenderHistoryPanel();
+    rtScheduleSessionSave();
   }
   function rtResetHistory(){
     rtSyncActiveLayerFromGlobals();
