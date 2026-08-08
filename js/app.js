@@ -9959,12 +9959,15 @@ if (document.getElementById('rtDrop')){
         const dx=(x-cxp)/rr, dy=(y-cyp)/(rr*ryScale);
         const d2 = dx*dx+dy*dy;
         // Only the upper half of the ellipse (dy<0, toward the lash
-        // line), and only its outer rim (d2 close to 1), not the eye interior.
-        if (dy <= 0 && d2 <= 1 && d2 >= 0.4) mask[y*w+x] = 1 - Math.abs(d2 - 0.7)/0.3;
+        // line), and only a narrow band right at its outer rim -- was
+        // wide enough (d2 0.4-1.0) to reach into the eyelid crease,
+        // which real-device screenshots showed as a visible dark/orange
+        // band above the actual lashes. Narrowed to hug just the edge.
+        if (dy <= 0 && d2 <= 1 && d2 >= 0.7) mask[y*w+x] = 1 - Math.abs(d2 - 0.85)/0.15;
       }
     }
-    stampBand(leftEyeC.x, leftEyeC.y - r*0.15, r*1.05, 0.7);
-    stampBand(rightEyeC.x, rightEyeC.y - r*0.15, r*1.05, 0.7);
+    stampBand(leftEyeC.x, leftEyeC.y - r*0.05, r*1.0, 0.42);
+    stampBand(rightEyeC.x, rightEyeC.y - r*0.05, r*1.0, 0.42);
     return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.03)));
   }
 
@@ -10209,7 +10212,7 @@ if (document.getElementById('rtDrop')){
         for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
           const dx=(x-cx)/r, dy=(y-cy)/r;
           const d2 = dx*dx+dy*dy;
-          if (d2 <= 1){ const idx=y*w+x; const v=(1-d2*0.3); if(v>mask[idx]) mask[idx]=v; } // soft edge falloff -- natural iris boundary, not a hard-edged disc
+          if (d2 <= 1){ const idx=y*w+x; const v=(1-d2)*(1-d2*0.5); if(v>mask[idx]) mask[idx]=v; } // fades fully to zero at the boundary, steeper than a simple (1-d2) -- keeps the circle's own edge tight now that the darkness threshold is more permissive
         }
         return mask;
       }
@@ -10232,8 +10235,16 @@ if (document.getElementById('rtDrop')){
         // inside the circle. Pupil is very dark -- keep it dark and
         // mostly untinted rather than fully recoloring it, which is
         // what "pupil should remain natural/dark" requires.
-        const darkness = rtClamp((150-lum)/100, 0, 1);
-        if (darkness <= 0) continue;
+        // Sclera is protected primarily by the geometric circle above,
+        // not this threshold -- so this can be generous rather than
+        // strict. The previous tight cutoff (lum<150, scaling to zero)
+        // excluded natural bright catchlight/highlight spots that real
+        // irises commonly have, leaving visible uncovered gaps in the
+        // result (confirmed directly from real-device screenshots
+        // showing partial iris coverage). A floor ensures even fairly
+        // bright iris pixels still get meaningful color rather than a
+        // hard gap; only genuinely sclera-bright pixels are minimized.
+        const darkness = rtClamp((215-lum)/170, 0.35, 1);
         const pupilLikelihood = rtClamp((40-lum)/40, 0, 1); // very dark pixels are more likely pupil than iris
         const m = strength * darkness * geoMask * (1 - pupilLikelihood*0.75);
         if (m <= 0.005) continue;
@@ -13786,12 +13797,30 @@ if (document.getElementById('rtDrop')){
     const bgRowHeight = bgRow ? bgRow.getBoundingClientRect().height : 36;
     return Math.max(200, toolbarTop - wrapTop - bgRowHeight - 20);
   }
-  function rtSetCanvasFixedHeight(){
+  function rtSetCanvasFixedHeight(retryCount){
+    retryCount = retryCount || 0;
     const wrap = document.getElementById('rtCanvasStageWrap');
     if (!wrap) return;
     if (window.innerWidth >= 900) { wrap.style.height = ''; wrap.style.maxHeight = ''; return; }
+    // Defensive validation: a transiently-collapsed ancestor (mid CSS
+    // transition, a container briefly display:none while another part
+    // of the UI swaps, etc.) can make clientWidth read as 0 for a single
+    // frame. If that invalid measurement is ever committed as the
+    // permanent wrap height, it gets clamped to this function's own
+    // 120px floor regardless of what the correct height actually is --
+    // and since this function only re-runs on load/resize/orientation,
+    // never on a timer, the canvas stays stuck tiny until one of those
+    // events happens to fire again. Retry on the next frame instead of
+    // committing a measurement that can't be trusted.
+    if (wrap.clientWidth <= 10 && retryCount < 6){
+      requestAnimationFrame(() => rtSetCanvasFixedHeight(retryCount + 1));
+      return;
+    }
     const h = rtCanvasFixedHeight();
-    if (h == null) return;
+    if (h == null || !isFinite(h) || h < 50){
+      if (retryCount < 6){ requestAnimationFrame(() => rtSetCanvasFixedHeight(retryCount + 1)); }
+      return;
+    }
     let canvasH = h;
     // Cap to what the actual image can use at the available width --
     // otherwise a width-constrained (portrait-oriented) photo gets a
@@ -13810,8 +13839,10 @@ if (document.getElementById('rtDrop')){
       // function only re-runs on load/resize/orientation, not on zoom
       // changes -- found via a real-device screenshot showing the canvas
       // stuck tiny inside a large empty area.
-      const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width);
-      if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
+      if (availW > 10){ // guard against the same transient-zero-width scenario reaching this second measurement
+        const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width);
+        if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
+      }
     }
     wrap.style.height = canvasH + 'px';
     wrap.style.maxHeight = canvasH + 'px';
