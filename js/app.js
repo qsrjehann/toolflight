@@ -10003,7 +10003,7 @@ if (document.getElementById('rtDrop')){
      a legitimate gentle whole-frame fallback). */
   function applyRtFaceAI(data, w, h, sw, sh){
     const a = rtAdj;
-    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0 && a.lipLinerIntensity <= 0 && a.mascaraIntensity <= 0 && a.eyeColorIntensity <= 0 && a.browDefinition <= 0 && a.noseDefinition <= 0 && a.beautyMarkIntensity <= 0) return;
+    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0 && a.lipLinerIntensity <= 0 && a.mascaraIntensity <= 0 && a.eyeColorIntensity <= 0 && a.browDefinition <= 0 && a.noseDefinition <= 0 && a.beautyMarkIntensity <= 0 && a.beardIntensity <= 0) return;
     if (!rtFaceLandmarks) return;
     if (a.eyeEnhance > 0){
       const mask = buildRtEyeMask(w, h, sw, sh);
@@ -10285,6 +10285,15 @@ if (document.getElementById('rtDrop')){
       // enhanced -- this is what makes it fail gracefully on
       // clean-shaven faces instead of assuming a beard is present.
       function toPxB(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+      function stampSoftB(cxp, cyp, rx, ry, value, arr){
+        const x0=Math.max(0,Math.floor(cxp-rx)), x1=Math.min(w-1,Math.ceil(cxp+rx));
+        const y0=Math.max(0,Math.floor(cyp-ry)), y1=Math.min(h-1,Math.ceil(cyp+ry));
+        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+          const dx=(x-cxp)/rx, dy=(y-cyp)/ry;
+          const d2=dx*dx+dy*dy;
+          if (d2<=1){ const v=(1-d2)*(1-d2)*value; const idx=y*w+x; if (v>arr[idx]) arr[idx]=v; }
+        }
+      }
       const leftEyeOuterB = toPxB(33), rightEyeOuterB = toPxB(263);
       const eyeDistB = Math.hypot(rightEyeOuterB.x-leftEyeOuterB.x, rightEyeOuterB.y-leftEyeOuterB.y);
       const ovalIdxB = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
@@ -10294,7 +10303,7 @@ if (document.getElementById('rtDrop')){
       // where a beard would actually be, not the whole face.
       const regionMask = new Float32Array(w*h);
       const belowMouthY = Math.max(mouthLB.y, mouthRB.y);
-      ovalPtsB.forEach(p => { if (p.y > belowMouthY - eyeDistB*0.1) stampSoft(p.x, p.y, eyeDistB*0.22, eyeDistB*0.22, 1, regionMask); });
+      ovalPtsB.forEach(p => { if (p.y > belowMouthY - eyeDistB*0.1) stampSoftB(p.x, p.y, eyeDistB*0.22, eyeDistB*0.22, 1, regionMask); });
       // Local luminance variance: box-blur(lum) and box-blur(lum^2), then Var = E[X^2] - E[X]^2.
       const lumPlane = new Float32Array(w*h), lumSqPlane = new Float32Array(w*h);
       for (let p=0, i2=0; p<w*h; p++, i2+=4){
