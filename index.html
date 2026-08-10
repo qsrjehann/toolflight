@@ -93,26 +93,58 @@
   </div>
 </nav>
 
-<div class="hero">
-  <div class="hero-orb orb1"></div>
-  <div class="hero-orb orb2"></div>
-  <span class="hero-badge"><span class="dot"></span> No signup · 100% free</span>
-  <h1>Free Online PDF, Image &amp; Everyday Tools</h1>
-  <p class="subtitle">Secure • Fast • Files Never Leave Your Device</p>
-  <a href="#tools" id="heroCta" class="cta-btn" style="text-decoration:none;">
-    Start using tools
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-  </a>
+<section class="hero-section">
+  <div class="hero-content">
+    <div class="hero-copy">
+      <h1>Stop Searching.<br><span class="grad">Start Creating.</span></h1>
+      <p class="hero-sub">Powerful tools for images, AI, PDFs, SEO, finance and more — all in one place, ready when you need them.</p>
+      
+      <div class="hero-search">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" placeholder="Search any tool..." id="heroSearch" class="search-input">
+        <button class="search-btn" aria-label="Search">🔍</button>
+      </div>
 
-  <div class="feature-strip">
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l2.4 7.4H22l-6 4.4 2.3 7.2L12 16.6 5.7 21l2.3-7.2-6-4.4h7.6z"/></svg></div><div class="fc-label">40+ Free Online Tools</div></div>
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div><div class="fc-label">Fast</div></div>
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg></div><div class="fc-label">Secure</div></div>
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div><div class="fc-label">Mobile Friendly</div></div>
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16v12H4zM8 20h8M12 16v4"/></svg></div><div class="fc-label">No Installation</div></div>
-    <div class="feature-chip"><div class="fc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="fc-label">Free Forever</div></div>
+      <div class="hero-ctas">
+        <a href="#tools" class="cta-primary">Explore All Tools →</a>
+        <a href="ai-tools.html" class="cta-secondary">Try AI Tools ✦</a>
+      </div>
+    </div>
+
+    <div class="hero-wall-container">
+      <div class="wall-scene" id="wallScene">
+        <div class="wall-glow"></div>
+        <div class="tool-wall" id="toolWall">
+          <div class="wall-row row1">
+            <div class="track track-ltr">
+              <!-- Row 1 - Moving Left -->
+            </div>
+          </div>
+          <div class="wall-row row2">
+            <div class="track track-rtl">
+              <!-- Row 2 - Moving Right -->
+            </div>
+          </div>
+          <div class="wall-row row3">
+            <div class="track track-ltr">
+              <!-- Row 3 - Moving Left -->
+            </div>
+          </div>
+          <div class="wall-row row4">
+            <div class="track track-rtl">
+              <!-- Row 4 - Moving Right -->
+            </div>
+          </div>
+          <div class="wall-row row5">
+            <div class="track track-ltr">
+              <!-- Row 5 - Moving Left -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+</section>
 
 <div class="container" id="tools">
   <div class="category-hub-grid">
@@ -234,6 +266,166 @@
 </div>
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script>
+// Tool configuration with real ToolFlight URLs
+const toolsConfig = [
+  // Row 1 - Mixed tools
+  { name: 'AI Image Upscaler', desc: 'Enhance quality', category: 'ai', icon: '✦', url: 'ai-image-upscaler.html' },
+  { name: 'Background Remover', desc: 'Remove backgrounds', category: 'image', icon: '◌', url: 'background-remover.html' },
+  { name: 'PDF Merger', desc: 'Combine PDFs', category: 'pdf', icon: '+', url: 'pdf-merge.html' },
+  { name: 'Image Compressor', desc: 'Reduce file size', category: 'image', icon: '⇩', url: 'image-compress.html' },
+  { name: 'Currency Converter', desc: 'Live exchange rates', category: 'finance', icon: '$', url: 'currency-converter.html' },
+  { name: 'Meta Tag Generator', desc: 'SEO metadata', category: 'seo', icon: '<>', url: 'meta-tag-generator.html' },
+  { name: 'BMI Calculator', desc: 'Quick health result', category: 'calc', icon: '⌗', url: 'bmi-calculator.html' },
+  { name: 'Unit Converter', desc: 'Length · Weight · More', category: 'conv', icon: '⇄', url: 'unit-converter.html' },
+  { name: 'QR Generator', desc: 'Create QR codes', category: 'seo', icon: '▦', url: 'qr-code-generator.html' },
+  { name: 'PDF Splitter', desc: 'Split pages easily', category: 'pdf', icon: '÷', url: 'pdf-split.html' },
+  { name: 'Image Crop', desc: 'Precise image crop', category: 'image', icon: '✂', url: 'image-crop.html' },
+  { name: 'Rotate & Flip', desc: 'Transform images', category: 'image', icon: '↻', url: 'rotate-flip.html' },
+  
+  // Row 2 - More diverse tools
+  { name: 'AI Photo Retouch', desc: 'Enhance your photos', category: 'ai', icon: '✦', url: 'ai-photo-retouch.html' },
+  { name: 'Percentage Calculator', desc: 'Calculate instantly', category: 'calc', icon: '%', url: 'percentage-calculator.html' },
+  { name: 'EMI Calculator', desc: 'Loan payment estimate', category: 'calc', icon: '₨', url: 'emi-calculator.html' },
+  { name: 'Watermark Tool', desc: 'Protect your images', category: 'image', icon: '◇', url: 'image-watermark.html' },
+  { name: 'PDF Compress', desc: 'Reduce PDF size', category: 'pdf', icon: '⊟', url: 'pdf-compress.html' },
+  { name: 'Keyword Generator', desc: 'AI keyword ideas', category: 'seo', icon: '⌕', url: 'ai-keyword-generator.html' },
+  { name: 'GST Calculator', desc: 'Tax calculations', category: 'finance', icon: '%', url: 'gst-calculator.html' },
+  { name: 'Age Calculator', desc: 'Exact age instantly', category: 'calc', icon: '⌛', url: 'age-calculator.html' },
+  { name: 'Discount Calculator', desc: 'Sale price instantly', category: 'finance', icon: '◢', url: 'discount-calculator.html' },
+  { name: 'Robots.txt Gen', desc: 'SEO robots file', category: 'seo', icon: '🤖', url: 'robots-txt-generator.html' },
+  { name: 'Scientific Calc', desc: 'Advanced math', category: 'calc', icon: 'Σ', url: 'scientific-calculator.html' },
+  { name: 'JPG to PNG', desc: 'Convert format', category: 'image', icon: '⇄', url: 'image-crop.html' },
+  
+  // Row 3 - Specialized tools
+  { name: 'AI Photo Enhancer', desc: 'Enhance your photos', category: 'ai', icon: '✨', url: 'ai-photo-enhancer.html' },
+  { name: 'Passport Photo Maker', desc: 'Official photos', category: 'image', icon: 'ID', url: 'passport-photo-maker.html' },
+  { name: 'PDF to Word', desc: 'Convert to Word', category: 'pdf', icon: '📄', url: 'pdf-to-word.html' },
+  { name: 'Word to PDF', desc: 'Convert to PDF', category: 'pdf', icon: '📕', url: 'word-to-pdf.html' },
+  { name: 'Image to PDF', desc: 'Images to PDF', category: 'image', icon: '📑', url: 'image-to-pdf.html' },
+  { name: 'PDF to Image', desc: 'Pages to images', category: 'pdf', icon: '🖼', url: 'pdf-to-image.html' },
+  { name: 'AI Email Writer', desc: 'Write emails fast', category: 'ai', icon: '✉', url: 'ai-email-writer.html' },
+  { name: 'Background Changer', desc: 'Change bg easily', category: 'image', icon: '🎨', url: 'background-changer.html' },
+  { name: 'Magic Eraser', desc: 'Remove objects', category: 'image', icon: '✂', url: 'magic-eraser.html' },
+  { name: 'AI OCR', desc: 'Extract text from images', category: 'ai', icon: '📸', url: 'ai-ocr.html' },
+  { name: 'Invoice Maker', desc: 'Professional invoices', category: 'finance', icon: '📋', url: 'invoice-maker.html' },
+  { name: 'Resume Builder', desc: 'Create resume', category: 'text', icon: '📄', url: 'resume-builder.html' },
+];
+
+// Split tools into 5 rows (alternating directions)
+const rowSize = Math.ceil(toolsConfig.length / 5);
+const rows = [
+  toolsConfig.slice(0, rowSize),
+  toolsConfig.slice(rowSize, rowSize * 2),
+  toolsConfig.slice(rowSize * 2, rowSize * 3),
+  toolsConfig.slice(rowSize * 3, rowSize * 4),
+  toolsConfig.slice(rowSize * 4),
+];
+
+// Render tool cards into the DOM
+function renderToolWall() {
+  rows.forEach((rowTools, rowIndex) => {
+    const rowNum = rowIndex + 1;
+    const trackElement = document.querySelector(`.row${rowNum} .track`);
+    if (!trackElement) return;
+    
+    // Duplicate tools for seamless infinite loop
+    const allTools = [...rowTools, ...rowTools];
+    
+    allTools.forEach(tool => {
+      const card = document.createElement('a');
+      card.href = tool.url;
+      card.className = `tool-card ${tool.category}`;
+      card.setAttribute('data-tool', tool.name);
+      card.innerHTML = `
+        <div class="tool-icon">${tool.icon}</div>
+        <div>
+          <div class="tool-name">${tool.name}</div>
+          <div class="tool-desc">${tool.desc}</div>
+        </div>
+      `;
+      
+      // Pause animation on hover
+      card.addEventListener('mouseenter', () => {
+        trackElement.style.animationPlayState = 'paused';
+      });
+      
+      card.addEventListener('mouseleave', () => {
+        trackElement.style.animationPlayState = 'running';
+      });
+      
+      // Touch support for mobile
+      card.addEventListener('touchstart', () => {
+        trackElement.style.animationPlayState = 'paused';
+      });
+      
+      card.addEventListener('touchend', () => {
+        setTimeout(() => {
+          trackElement.style.animationPlayState = 'running';
+        }, 150);
+      });
+      
+      trackElement.appendChild(card);
+    });
+  });
+}
+
+// 3D perspective based on mouse movement
+function setup3DPerspective() {
+  const scene = document.getElementById('wallScene');
+  const wall = document.getElementById('toolWall');
+  if (!scene || !wall) return;
+  
+  let tx = 0, ty = 0, cx = 0, cy = 0;
+  
+  scene.addEventListener('pointermove', (e) => {
+    const rect = scene.getBoundingClientRect();
+    tx = ((e.clientX - rect.left) / rect.width - 0.5) * 6;
+    ty = -((e.clientY - rect.top) / rect.height - 0.5) * 4;
+  });
+  
+  scene.addEventListener('pointerleave', () => {
+    tx = 0;
+    ty = 0;
+  });
+  
+  function animate() {
+    cx += (tx - cx) * 0.045;
+    cy += (ty - cy) * 0.045;
+    wall.style.transform = `rotateX(${8 + cy}deg) rotateY(${-8 + cx}deg) rotateZ(-1deg)`;
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+// Search functionality
+function setupSearch() {
+  const searchInput = document.getElementById('heroSearch');
+  if (!searchInput) return;
+  
+  searchInput.addEventListener('change', () => {
+    const query = searchInput.value.trim().toLowerCase();
+    if (!query) return;
+    
+    const tool = toolsConfig.find(t => 
+      t.name.toLowerCase().includes(query) || 
+      t.category.toLowerCase().includes(query)
+    );
+    
+    if (tool) {
+      window.location.href = tool.url;
+    }
+  });
+}
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+  renderToolWall();
+  setup3DPerspective();
+  setupSearch();
+});
+</script>
 
 <script defer src="js/app.js?v=20260801-2348"></script>
 </body>
