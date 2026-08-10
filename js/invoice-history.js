@@ -24,6 +24,18 @@ let firestoreFns = null;
 let editingInvoiceId = null; // null while creating a NEW invoice; set while editing an existing one
 let editingOriginalSnapshot = null; // the full pre-edit invoice, needed to compute inventory deltas correctly
 
+/* ==================================================================
+   Bridge for js/invoice-business.js's Dashboard tab (Phase 2). Read-only
+   accessors plus the one write action (refreshInvoices) the dashboard
+   needs to lazily load invoice data the same way the Invoices tab
+   already does -- no separate Firestore call, no duplicated logic.
+   ================================================================== */
+window.toolflightInvoiceHistory = {
+  getInvoices: () => invoices.slice(),
+  refreshInvoices: (businessId) => refreshInvoices(businessId),
+  formatMoney: (amount, currencyCode) => formatMoney(amount, currencyCode),
+};
+
 function $(id) { return document.getElementById(id); }
 function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
