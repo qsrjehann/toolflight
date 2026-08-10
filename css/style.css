@@ -203,8 +203,8 @@ a{color:inherit;}
   background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent)) !important;
   box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
 }
-.tool-name{font-size:13px;line-height:1.2;white-space:nowrap;color:var(--ink);font-weight:600;}
-.tool-desc{display:block;color:var(--ink-soft);font-size:9.5px;margin-top:2px;white-space:nowrap;}
+.tool-name{font-size:12px;line-height:1.15;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;overflow:hidden;}
+.tool-desc{display:block;color:var(--ink-soft);font-size:9px;margin-top:1px;white-space:normal;line-height:1.1;word-break:break-word;overflow:hidden;}
 
 /* Tool category colors */
 .tool-card.image{--accent:#2378ff;}
