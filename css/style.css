@@ -173,6 +173,9 @@ a{color:inherit;}
 .track{display:flex;gap:16px;flex:none;transform-style:preserve-3d;padding:0 16px;}
 .track-ltr{animation:moveLeft 42s linear infinite;}
 .track-rtl{animation:moveRight 45s linear infinite;}
+.row5 .track-ltr{animation:moveLeft 84s linear infinite;}
+
+/* Adjust row 5 animation to account for half the cards (4 tools vs 8) */
 @keyframes moveLeft{from{transform:translateX(0)}to{transform:translateX(-52%)}}
 @keyframes moveRight{from{transform:translateX(-52%)}to{transform:translateX(0)}}
 @media (prefers-reduced-motion:reduce){
@@ -181,7 +184,7 @@ a{color:inherit;}
 .tool-card{
   --accent:var(--accent1);width:180px;height:84px;flex:none;border-radius:18px;
   background:var(--card);border:1px solid var(--card-border);
-  display:flex;align-items:center;gap:14px;padding:0 18px;
+  display:flex;align-items:flex-start;gap:14px;padding:12px 18px;
   box-shadow:0 14px 28px var(--shadow),inset 0 1px color-mix(in srgb,#fff 30%,transparent);
   transform:translateZ(20px);transition:transform .25s cubic-bezier(.23,1,.320,1),box-shadow .25s ease;
   cursor:pointer;position:relative;overflow:hidden;text-decoration:none;
@@ -203,8 +206,8 @@ a{color:inherit;}
   background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent)) !important;
   box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
 }
-.tool-name{font-size:12px;line-height:1.15;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;overflow:hidden;}
-.tool-desc{display:block;color:var(--ink-soft);font-size:9px;margin-top:1px;white-space:normal;line-height:1.1;word-break:break-word;overflow:hidden;}
+.tool-name{font-size:12px;line-height:1.15;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;}
+.tool-desc{display:block;color:var(--ink-soft);font-size:9px;margin-top:1px;white-space:normal;line-height:1.1;word-break:break-word;}
 
 /* Tool category colors */
 .tool-card.image{--accent:#2378ff;}
