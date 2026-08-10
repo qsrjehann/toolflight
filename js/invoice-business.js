@@ -662,7 +662,7 @@ window.toolflightInvoiceBusiness = {
     businessProfile = await loadBusinessProfile(businessId);
     await refreshCustomersAndProducts();
     showBusinessArea();
-    switchBusinessTab("profile");
+    switchBusinessTab("dashboard");
   },
 };
 
@@ -673,14 +673,115 @@ function switchBusinessTab(tab) {
   document.querySelectorAll(".inv-business-tab[data-tab]").forEach(btn => {
     btn.classList.toggle("inv-business-tab--active", btn.dataset.tab === tab);
   });
-  hide("invTabProfile"); hide("invTabCustomers"); hide("invTabProducts"); hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam");
+  hide("invTabDashboard"); hide("invTabProfile"); hide("invTabCustomers"); hide("invTabProducts");
+  hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam"); hide("invTabSuppliers"); hide("invTabReports");
   show("invTab" + tab.charAt(0).toUpperCase() + tab.slice(1));
+  closeProfileMenu();
+  if (tab === "inventory") refreshInventoryTab(currentBusinessId);
+  if (tab === "dashboard") renderDashboard();
 }
 
 function showBusinessArea() {
-  hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError");
+  hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError"); hide("invAccountBar");
   show("invBusinessArea");
   if (businessProfile) fillBusinessForm(businessProfile);
+  updateShellProfileHeader();
+}
+
+function updateShellProfileHeader() {
+  const nameEl = $("invShellProfileName");
+  const bizEl = $("invShellProfileBiz");
+  const avatarEl = $("invShellProfileAvatar");
+  if (!nameEl || !bizEl || !avatarEl) return; // defensive -- these only exist inside invBusinessArea
+  const displayName = (currentUser && currentUser.email) ? currentUser.email : "Account";
+  const bizName = (businessProfile && businessProfile.name) ? businessProfile.name : "My Business";
+  nameEl.textContent = displayName;
+  bizEl.textContent = bizName;
+  avatarEl.textContent = displayName.charAt(0).toUpperCase();
+}
+
+function closeProfileMenu() {
+  const menu = $("invShellProfileMenu");
+  if (menu) menu.classList.add("hidden");
+}
+
+/* ==================================================================
+   Dashboard (Phase 2) -- overview built ONLY from data already loaded
+   elsewhere (customers/products in this module, invoices via the
+   invoice-history.js bridge). No invented numbers, no status field
+   that doesn't exist in the real invoice data shape.
+   ================================================================== */
+async function renderDashboard() {
+  const displayName = (currentUser && currentUser.email) ? currentUser.email.split("@")[0] : "there";
+  $("invDashGreeting").textContent = "Welcome back, " + displayName;
+  $("invDashGreetingSub").textContent = (businessProfile && businessProfile.name)
+    ? "Here's what's happening with " + businessProfile.name + "."
+    : "Here's what's happening with your business.";
+
+  $("invDashStatCustomers").textContent = String(customers.length);
+  $("invDashStatProducts").textContent = String(products.length);
+
+  // Low stock -- reuses the exact same fields/logic as the Inventory tab.
+  const lowStockProducts = products.filter(p => {
+    if (!p.inventoryTracking) return false;
+    const stock = p.stock != null ? p.stock : 0;
+    const threshold = p.lowStockThreshold || 0;
+    return stock <= threshold;
+  }).slice(0, 5);
+  const lowStockEl = $("invDashLowStock");
+  lowStockEl.innerHTML = lowStockProducts.length === 0
+    ? `<p class="inv-dash-empty">No low-stock products right now.</p>`
+    : lowStockProducts.map(p => `
+        <div class="inv-record-row">
+          <div class="inv-record-main">
+            <div class="inv-record-name">${escapeHtml(p.name || "")}</div>
+            <div class="inv-record-sub">Stock: ${p.stock != null ? p.stock : 0}${p.sku ? " · SKU: " + escapeHtml(p.sku) : ""}</div>
+          </div>
+        </div>`).join("");
+
+  // Invoices -- loaded lazily via invoice-history.js's bridge (same lazy
+  // pattern the Invoices tab itself already uses; the Dashboard just
+  // triggers the same refresh instead of duplicating the Firestore call).
+  if (window.toolflightInvoiceHistory && currentBusinessId) {
+    try {
+      await window.toolflightInvoiceHistory.refreshInvoices(currentBusinessId);
+    } catch (err) {
+      console.error("[invoice-business] dashboard: could not refresh invoices:", err);
+    }
+    const invoices = window.toolflightInvoiceHistory.getInvoices();
+    $("invDashStatInvoices").textContent = String(invoices.length);
+
+    const totalSales = invoices.reduce((sum, inv) => sum + Number((inv.totals && inv.totals.total) || 0), 0);
+    const currency = (businessProfile && businessProfile.defaultCurrency) ||
+      (invoices[0] && invoices[0].meta && invoices[0].meta.currency) || "USD";
+    $("invDashStatSales").textContent = window.toolflightInvoiceHistory.formatMoney(totalSales, currency);
+
+    const recent = invoices.slice().sort((a, b) => {
+      const at = (a.createdAt && a.createdAt.seconds) || 0;
+      const bt = (b.createdAt && b.createdAt.seconds) || 0;
+      return bt - at;
+    }).slice(0, 5);
+    const recentEl = $("invDashRecentInvoices");
+    recentEl.innerHTML = recent.length === 0
+      ? `<p class="inv-dash-empty">No invoices yet. Create your first one from Quick Actions.</p>`
+      : recent.map(inv => {
+          const number = escapeHtml((inv.meta && inv.meta.number) || "(no number)");
+          const date = escapeHtml((inv.meta && inv.meta.date) || "");
+          const customerName = escapeHtml((inv.customer && inv.customer.name) || "(no customer)");
+          const total = window.toolflightInvoiceHistory.formatMoney(inv.totals && inv.totals.total, inv.meta && inv.meta.currency);
+          return `
+            <div class="inv-record-row">
+              <div class="inv-record-main">
+                <div class="inv-record-name">${number} — ${customerName}</div>
+                <div class="inv-record-sub">${date} · ${total}</div>
+              </div>
+            </div>`;
+        }).join("");
+  } else {
+    $("invDashStatInvoices").textContent = "—";
+    $("invDashStatSales").textContent = "—";
+    $("invDashRecentInvoices").innerHTML = `<p class="inv-dash-empty">Invoices unavailable right now.</p>`;
+  }
 }
 
 async function openMyBusiness() {
@@ -696,15 +797,38 @@ async function openMyBusiness() {
     return;
   }
   showBusinessArea();
-  switchBusinessTab("profile");
+  switchBusinessTab("dashboard");
 }
 
 function initBusinessUI() {
   $("invMyBusinessBtn").addEventListener("click", openMyBusiness);
-  $("invBusinessBackBtn").addEventListener("click", () => {
+  $("invShellHomeBtn").addEventListener("click", () => {
     hide("invBusinessArea");
     show("invModeSelect");
+    if (currentUser) show("invAccountBar");
   });
+
+  // Profile/business dropdown -- toggle on the trigger, close on any
+  // outside click or Escape, and close automatically whenever a menu
+  // item is chosen (the item's own click handler, e.g. switchBusinessTab
+  // or logout, runs first via event bubbling before this listener).
+  $("invShellProfileTrigger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("invShellProfileMenu").classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    const menu = $("invShellProfileMenu");
+    if (!menu || menu.classList.contains("hidden")) return;
+    if (!menu.contains(e.target) && e.target !== $("invShellProfileTrigger")) closeProfileMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeProfileMenu();
+  });
+  $("invShellLogoutBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    $("invSignOutBtn").click();
+  });
+  $("invDashNewInvoiceBtn").addEventListener("click", () => $("invCreateInvoiceBtn").click());
 
   $("invStartSetupBtn").addEventListener("click", () => {
     hide("invSetupPrompt");
@@ -721,10 +845,7 @@ function initBusinessUI() {
   });
 
   document.querySelectorAll(".inv-business-tab[data-tab]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      switchBusinessTab(btn.dataset.tab);
-      if (btn.dataset.tab === "inventory") refreshInventoryTab(currentBusinessId);
-    });
+    btn.addEventListener("click", () => switchBusinessTab(btn.dataset.tab));
   });
 
   document.querySelectorAll(".inv-business-tab[data-stock-filter]").forEach(btn => {
