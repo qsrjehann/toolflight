@@ -109,8 +109,15 @@
 }
 .inv-record-name{ font-weight:700; font-size:13.5px; }
 .inv-record-sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
-.inv-record-actions{ display:flex; gap:6px; flex:0 0 auto; }
+.inv-record-main{ flex:1; min-width:0; }
+.inv-record-actions{ display:flex; gap:6px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; }
 .inv-record-amount{ font-weight:700; font-size:13px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+
+@media (max-width:520px){
+  .inv-record-row{ flex-direction:column; align-items:stretch; }
+  .inv-record-actions{ width:100%; justify-content:flex-start; }
+  .inv-record-actions .btn{ flex:1 1 auto; }
+}
 
 /* ---- Phase 2: account bar + auth modal ---- */
 .inv-account-bar{
@@ -393,5 +400,22 @@ html.dark .inv-sheet{ background:#171826; }
 .inv-tools-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 .inv-tool-cell{ display:flex; flex-direction:column; align-items:center; gap:7px; padding:13px 6px; border-radius:12px; background:var(--card); border:1px solid var(--card-border); cursor:pointer; text-align:center; }
 .inv-tool-cell span{ font-size:10.5px; font-weight:700; line-height:1.3; }
+
+/* ==========================================================================
+   Fix: the sitewide body{min-height:100vh} rule (style.css) forces the
+   whole page to always be at least one full viewport tall, regardless of
+   actual content. Longer business tabs (Dashboard, Customers, Products)
+   already exceed that on their own, so it's invisible there -- but on
+   short tabs (Inventory, especially with few products/movements) it
+   creates a large dead scroll area below the real content, before the
+   enforced 100vh floor, even though the fixed bottom nav (.inv-mobile-nav)
+   was already correctly visible without any scrolling needed. Scoped to
+   only apply while the business app is open, so every other page/tool
+   keeps its normal full-height background. Same :has()-scoped-override
+   pattern already used in style.css for the ecommerce editor and AI
+   Photo Retouch's own fixed-position UI (see style.css's .workspace:has(...)
+   rules) -- this is the same class of bug, same established fix. */
+body:has(#invBusinessArea:not(.hidden)){ min-height:auto; }
+
 
 
