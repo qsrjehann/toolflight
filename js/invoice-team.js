@@ -549,8 +549,8 @@ function initTeamUI() {
     else if (e.target.classList.contains("inv-team-revoke")) handleRevokeInvite(e.target.dataset.inviteId);
   });
 
-  const teamTabBtn = document.querySelector('.inv-business-tab[data-tab="team"]');
-  if (teamTabBtn) teamTabBtn.addEventListener("click", () => refreshTeam(window.toolflightInvoiceBusiness.getBusinessId()));
+  const teamTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="team"]');
+  teamTabBtns.forEach(btn => btn.addEventListener("click", () => refreshTeam(window.toolflightInvoiceBusiness.getBusinessId())));
 
   $("invAcceptBtn").addEventListener("click", handleAcceptInvite);
   $("invDeclineBtn").addEventListener("click", handleDeclineInvite);

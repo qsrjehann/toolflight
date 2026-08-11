@@ -512,8 +512,8 @@ function initHistoryUI() {
   // Refresh the invoice list whenever the Invoice History tab is opened --
   // piggybacks on the existing tab buttons rather than adding a second,
   // parallel tab-switching mechanism.
-  const invoicesTabBtn = document.querySelector('.inv-business-tab[data-tab="invoices"]');
-  if (invoicesTabBtn) invoicesTabBtn.addEventListener("click", switchToInvoicesTab);
+  const invoicesTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="invoices"]');
+  invoicesTabBtns.forEach(btn => btn.addEventListener("click", switchToInvoicesTab));
 
   onAuthChange((user) => {
     currentUser = user;
