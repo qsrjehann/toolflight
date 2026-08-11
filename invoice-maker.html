@@ -43,7 +43,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="css/style.css?v=20260802-0530">
-<link rel="stylesheet" href="css/invoice.css?v=20260802-1700">
+<link rel="stylesheet" href="css/invoice.css?v=20260811-1200">
 
 <script type="application/ld+json">
 {
@@ -242,31 +242,29 @@
 
   <!-- ===================== MY BUSINESS (App shell: header + toolbar + workspace) ===================== -->
   <div id="invBusinessArea" class="hidden">
-    <div class="inv-shell-header">
-      <button class="inv-shell-brand" id="invShellHomeBtn" type="button" title="Back to ToolFlight">
-        <span style="font-size:20px;">&larr;</span>
-        <span>
-          <div class="inv-shell-brand-name">ToolFlight</div>
-          <div class="inv-shell-brand-sub">My Business</div>
-        </span>
+    <div class="inv-app-topbar">
+      <button class="inv-app-brand" id="invShellHomeBtn" type="button" title="Back to ToolFlight">
+        <span style="font-size:16px;">&larr;</span>ToolFlight
       </button>
 
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button class="inv-shell-settings-btn" id="invShellSettingsBtn" type="button" title="Profile settings" aria-label="Profile settings">&#9776;</button>
+      <div class="inv-biz-chip">
+        <span class="inv-ibadge green"><span style="font-size:13px;">&#127970;</span></span>
+        <span class="inv-biz-chip-name" id="invShellProfileBiz">My Business</span>
+      </div>
 
+      <div class="inv-app-topbar-actions">
+        <button class="inv-shell-settings-btn" id="invShellSettingsBtn" type="button" title="My Profile" aria-label="My Profile" style="width:36px;height:36px;">&#9776;</button>
         <div class="inv-shell-profile">
           <button class="inv-shell-profile-trigger" id="invShellProfileTrigger" type="button">
             <span class="inv-shell-profile-avatar" id="invShellProfileAvatar">?</span>
-            <span>
-              <div class="inv-shell-profile-name" id="invShellProfileName">Account</div>
-              <div class="inv-shell-profile-biz" id="invShellProfileBiz">My Business</div>
-            </span>
             <span class="inv-shell-profile-caret">&#9662;</span>
           </button>
           <div class="inv-profile-menu hidden" id="invShellProfileMenu">
+            <div class="p-dropdown-head"><span class="p-dropdown-name" id="invShellProfileName">Account</span></div>
             <button class="inv-profile-menu-item" id="invShellMyProfileBtn" type="button">My Profile</button>
             <button class="inv-profile-menu-item inv-business-tab" data-tab="profile" type="button">Business Profile</button>
             <button class="inv-profile-menu-item inv-business-tab" data-tab="team" type="button">Team Members</button>
+            <button class="inv-profile-menu-item inv-business-tab" data-tab="profile" type="button">Settings</button>
             <div class="inv-profile-menu-divider"></div>
             <button class="inv-profile-menu-item" id="invShellAboutBtn" type="button">About &amp; FAQ</button>
             <div class="inv-profile-menu-divider"></div>
@@ -276,38 +274,57 @@
       </div>
     </div>
 
-    <div class="inv-toolbar">
-      <button class="inv-business-tab" data-tab="dashboard" type="button"><span class="inv-business-tab-icon">&#9635;</span><span>Dashboard</span></button>
-      <button class="inv-business-tab" data-tab="invoices" type="button"><span class="inv-business-tab-icon">&#128196;</span><span>Invoices</span></button>
-      <button class="inv-business-tab" data-tab="products" type="button"><span class="inv-business-tab-icon">&#128230;</span><span>Products</span></button>
-      <button class="inv-business-tab" data-tab="inventory" type="button"><span class="inv-business-tab-icon">&#128202;</span><span>Inventory</span></button>
-      <button class="inv-business-tab" data-tab="customers" type="button"><span class="inv-business-tab-icon">&#128101;</span><span>Customers</span></button>
-      <button class="inv-business-tab inv-business-tab--soon" data-tab="suppliers" type="button"><span class="inv-business-tab-icon">&#127981;</span><span>Suppliers</span></button>
-      <button class="inv-business-tab inv-business-tab--soon" data-tab="reports" type="button"><span class="inv-business-tab-icon">&#128200;</span><span>Reports</span></button>
-    </div>
+    <div class="inv-app-body">
+      <aside class="inv-sidebar" id="invSidebar">
+        <button class="inv-business-tab" data-tab="dashboard" type="button"><span class="inv-business-tab-icon">&#9635;</span><span>Dashboard</span></button>
+        <button class="inv-business-tab" data-tab="invoices" type="button"><span class="inv-business-tab-icon">&#128196;</span><span>Invoices</span></button>
+        <button class="inv-business-tab" data-tab="products" type="button"><span class="inv-business-tab-icon">&#128230;</span><span>Products</span></button>
+        <button class="inv-business-tab" data-tab="inventory" type="button"><span class="inv-business-tab-icon">&#128202;</span><span>Inventory</span></button>
+        <button class="inv-business-tab" data-tab="customers" type="button"><span class="inv-business-tab-icon">&#128101;</span><span>Customers</span></button>
+        <div class="inv-sidebar-sep"></div>
+        <button class="inv-business-tab inv-business-tab--soon" data-tab="suppliers" type="button"><span class="inv-business-tab-icon">&#127981;</span><span>Suppliers</span></button>
+        <button class="inv-business-tab inv-business-tab--soon" data-tab="expenses" type="button"><span class="inv-business-tab-icon">&#128181;</span><span>Expenses</span></button>
+        <button class="inv-business-tab inv-business-tab--soon" data-tab="payments" type="button"><span class="inv-business-tab-icon">&#128179;</span><span>Payments</span></button>
+        <button class="inv-business-tab inv-business-tab--soon" data-tab="reports" type="button"><span class="inv-business-tab-icon">&#128200;</span><span>Reports</span></button>
+        <button class="inv-business-tab inv-business-tab--soon" data-tab="accounting" type="button"><span class="inv-business-tab-icon">&#128290;</span><span>Accounting</span></button>
+        <div class="inv-sidebar-sep"></div>
+        <button class="inv-business-tab" data-tab="team" type="button"><span class="inv-business-tab-icon">&#128101;</span><span>Team</span></button>
+        <button class="inv-business-tab" data-tab="profile" type="button"><span class="inv-business-tab-icon">&#9881;</span><span>Settings</span></button>
+
+        <div class="inv-sidebar-footer">
+          <div class="inv-sidebar-footer-label">Quick Create</div>
+          <button class="btn btn-primary" id="invSidebarQuickCreateBtn" type="button" style="width:100%;justify-content:center;">+ Create New</button>
+        </div>
+      </aside>
+
+      <main class="inv-workspace" id="invWorkspace">
 
     <!-- ---- Dashboard tab (Phase 2, new): business overview built ONLY
          from data already loaded by invoice-business.js / the
          window.toolflightInvoiceHistory bridge -- no placeholder numbers. ---- -->
-    <div id="invTabDashboard" class="inv-business-panel hidden" style="max-width:960px;">
-      <div class="inv-dash-greeting" id="invDashGreeting">Welcome back</div>
-      <div class="inv-dash-greeting-sub" id="invDashGreetingSub">Here's what's happening with your business.</div>
+    <div id="invTabDashboard" class="inv-business-panel hidden" style="max-width:1080px;">
+      <div class="inv-dash-head-row">
+        <div>
+          <div class="inv-dash-greeting" id="invDashGreeting">Welcome back</div>
+          <div class="inv-dash-greeting-sub" id="invDashGreetingSub">Here's what's happening with your business.</div>
+        </div>
+      </div>
 
       <div class="inv-dash-stats">
         <div class="inv-dash-stat">
-          <div class="inv-dash-stat-label">Total Sales</div>
+          <div class="inv-dash-stat-top"><span class="inv-ibadge green"><span style="font-size:14px;">&#128200;</span></span><div class="inv-dash-stat-label">Total Sales</div></div>
           <div class="inv-dash-stat-value" id="invDashStatSales">—</div>
         </div>
         <div class="inv-dash-stat">
-          <div class="inv-dash-stat-label">Invoices</div>
+          <div class="inv-dash-stat-top"><span class="inv-ibadge blue"><span style="font-size:14px;">&#128196;</span></span><div class="inv-dash-stat-label">Invoices</div></div>
           <div class="inv-dash-stat-value" id="invDashStatInvoices">—</div>
         </div>
         <div class="inv-dash-stat">
-          <div class="inv-dash-stat-label">Customers</div>
+          <div class="inv-dash-stat-top"><span class="inv-ibadge purple"><span style="font-size:14px;">&#128101;</span></span><div class="inv-dash-stat-label">Customers</div></div>
           <div class="inv-dash-stat-value" id="invDashStatCustomers">—</div>
         </div>
         <div class="inv-dash-stat">
-          <div class="inv-dash-stat-label">Products</div>
+          <div class="inv-dash-stat-top"><span class="inv-ibadge orange"><span style="font-size:14px;">&#128230;</span></span><div class="inv-dash-stat-label">Products</div></div>
           <div class="inv-dash-stat-value" id="invDashStatProducts">—</div>
         </div>
       </div>
@@ -321,9 +338,10 @@
           <div class="inv-dash-card">
             <div class="inv-dash-card-head"><h3>Quick Actions</h3></div>
             <div class="inv-dash-quick-actions">
-              <button class="btn btn-primary" id="invDashNewInvoiceBtn" type="button">+ New Invoice</button>
-              <button class="btn btn-ghost inv-business-tab" data-tab="customers" type="button">+ New Customer</button>
-              <button class="btn btn-ghost inv-business-tab" data-tab="products" type="button">+ New Product</button>
+              <button class="inv-qa-btn green" id="invDashNewInvoiceBtn" type="button"><span class="inv-qi">&#128196;</span><span class="inv-qlbl">Create Invoice</span></button>
+              <button class="inv-qa-btn blue inv-business-tab" data-tab="customers" type="button"><span class="inv-qi">&#128101;</span><span class="inv-qlbl">Add Customer</span></button>
+              <button class="inv-qa-btn purple inv-business-tab" data-tab="products" type="button"><span class="inv-qi">&#128230;</span><span class="inv-qlbl">Add Product</span></button>
+              <button class="inv-qa-btn orange inv-business-tab" data-tab="expenses" type="button"><span class="inv-qi">&#128181;</span><span class="inv-qlbl">Record Expense</span></button>
             </div>
           </div>
         </div>
@@ -332,6 +350,17 @@
             <div class="inv-dash-card-head"><h3>Low Stock Alert</h3><a data-tab="inventory" class="inv-business-tab">View All</a></div>
             <div id="invDashLowStock"><p class="inv-dash-empty">Loading…</p></div>
           </div>
+        </div>
+      </div>
+
+      <div class="inv-dash-columns" style="margin-top:14px;">
+        <div class="inv-dash-card" style="margin-bottom:0;">
+          <div class="inv-chart-head"><h3 style="font-size:14.5px;font-weight:800;">Sales Overview</h3></div>
+          <div id="invDashSalesChart"><p class="inv-dash-empty">Loading…</p></div>
+        </div>
+        <div class="inv-dash-card" style="margin-bottom:0;">
+          <div class="inv-dash-card-head"><h3>Top Customers</h3><a data-tab="customers" class="inv-business-tab">View All</a></div>
+          <div id="invDashTopCustomers"><p class="inv-dash-empty">Loading…</p></div>
         </div>
       </div>
     </div>
@@ -398,6 +427,27 @@
         <p>Reports &amp; analytics aren't built yet. This tab is reserved for a future phase.</p>
       </div>
     </div>
+    <div id="invTabExpenses" class="inv-business-panel hidden">
+      <div class="inv-dash-soon">
+        <div class="inv-mode-icon">&#128181;</div>
+        <h3>Expenses -- Coming Soon</h3>
+        <p>Expense tracking isn't built yet. This tab is reserved for a future phase.</p>
+      </div>
+    </div>
+    <div id="invTabPayments" class="inv-business-panel hidden">
+      <div class="inv-dash-soon">
+        <div class="inv-mode-icon">&#128179;</div>
+        <h3>Payments -- Coming Soon</h3>
+        <p>Payment tracking isn't built yet. This tab is reserved for a future phase.</p>
+      </div>
+    </div>
+    <div id="invTabAccounting" class="inv-business-panel hidden">
+      <div class="inv-dash-soon">
+        <div class="inv-mode-icon">&#128290;</div>
+        <h3>Accounting -- Coming Soon</h3>
+        <p>Accounting tools aren't built yet. This tab is reserved for a future phase.</p>
+      </div>
+    </div>
 
     <!-- ---- Customers tab ---- -->
     <div id="invTabCustomers" class="inv-business-panel hidden">
@@ -462,6 +512,48 @@
       </div>
       <p class="inv-auth-error" id="invTeamError"></p>
       <div id="invTeamList" class="inv-record-list"></div>
+    </div>
+
+      </main>
+    </div>
+
+    <!-- ---- Mobile fixed bottom nav (hidden on desktop via CSS). Reuses
+         the exact same .inv-business-tab[data-tab] mechanism as the
+         sidebar -- invoice-team.js's and invoice-history.js's own
+         tab-click listeners keep working unchanged regardless of which
+         nav surface the click came from. ---- -->
+    <nav class="inv-mobile-nav">
+      <button class="inv-business-tab inv-business-tab--active" data-tab="dashboard" type="button"><span class="inv-business-tab-icon">&#8962;</span>Home</button>
+      <button class="inv-business-tab" data-tab="invoices" type="button"><span class="inv-business-tab-icon">&#128196;</span>Invoices</button>
+      <button class="inv-mobile-fab" id="invMobileFabBtn" type="button" aria-label="Create new">+</button>
+      <button class="inv-business-tab" data-tab="products" type="button"><span class="inv-business-tab-icon">&#128230;</span>Products</button>
+      <button class="inv-business-tab" id="invMobileMoreBtn" type="button"><span class="inv-business-tab-icon">&#8942;</span>More</button>
+    </nav>
+
+    <div class="inv-sheet-scrim" id="invSheetScrim"></div>
+
+    <div class="inv-sheet" id="invFabSheet">
+      <div class="inv-sheet-handle"></div>
+      <h3>Create New</h3>
+      <button class="inv-sheet-item" id="invFabNewInvoiceBtn" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128196;</span></span>Invoice</button>
+      <button class="inv-sheet-item inv-business-tab" data-tab="customers" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128101;</span></span>Customer</button>
+      <button class="inv-sheet-item inv-business-tab" data-tab="products" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128230;</span></span>Product</button>
+    </div>
+
+    <div class="inv-sheet" id="invAllToolsSheet" style="max-height:80vh;">
+      <div class="inv-sheet-handle"></div>
+      <h3>All Tools</h3>
+      <div class="inv-tools-grid">
+        <button class="inv-tool-cell inv-business-tab" data-tab="inventory" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128202;</span></span><span>Inventory</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="customers" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128101;</span></span><span>Customers</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="suppliers" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#127981;</span></span><span>Suppliers</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="expenses" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128181;</span></span><span>Expenses</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="payments" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128179;</span></span><span>Payments</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="reports" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128200;</span></span><span>Reports</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="accounting" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128290;</span></span><span>Accounting</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="team" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128101;</span></span><span>Team</span></button>
+        <button class="inv-tool-cell inv-business-tab" data-tab="profile" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#9881;</span></span><span>Settings</span></button>
+      </div>
     </div>
   </div>
 
@@ -810,9 +902,9 @@
 
 <script defer src="js/invoice.js?v=20260802-0530"></script>
 <script type="module" src="js/invoice-auth.js?v=20260802-1600"></script>
-<script type="module" src="js/invoice-business.js?v=20260802-1700"></script>
-<script type="module" src="js/invoice-history.js?v=20260802-1400"></script>
+<script type="module" src="js/invoice-business.js?v=20260811-1200"></script>
+<script type="module" src="js/invoice-history.js?v=20260811-1200"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script type="module" src="js/invoice-team.js?v=20260802-0530"></script>
+<script type="module" src="js/invoice-team.js?v=20260811-1200"></script>
 </body>
 </html>
