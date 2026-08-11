@@ -119,7 +119,7 @@ function readBusinessFormData() {
   return {
     name: $("invSetBizName").value.trim(),
     phone: $("invSetBizPhone").value.trim(),
-    email: $("invSetBizEmail").value.trim(),
+    email: currentUser ? currentUser.email : "",
     website: $("invSetBizWebsite").value.trim(),
     address: $("invSetBizAddress").value.trim(),
     defaultCurrency: currency,
@@ -139,7 +139,7 @@ function fillBusinessForm(profile) {
   if (!profile) return;
   $("invSetBizName").value = profile.name || "";
   $("invSetBizPhone").value = profile.phone || "";
-  $("invSetBizEmail").value = profile.email || "";
+  $("invSetBizEmail").value = currentUser ? currentUser.email : (profile.email || "");
   $("invSetBizWebsite").value = profile.website || "";
   $("invSetBizAddress").value = profile.address || "";
   const knownCurrencies = ["USD","EUR","GBP","INR","CAD","AUD","JPY","AED","PKR"];
@@ -285,8 +285,8 @@ function renderCustomersList(filterText) {
         <div class="inv-record-sub">${[c.company, c.email, c.phone].filter(Boolean).map(escapeHtml).join(" · ") || "&nbsp;"}</div>
       </div>
       <div class="inv-record-actions">
-        <button type="button" class="btn btn-ghost inv-record-edit" data-id="${c.id}">Edit</button>
-        <button type="button" class="btn btn-ghost inv-record-delete" data-id="${c.id}">Delete</button>
+        <button type="button" class="btn btn-warning inv-record-edit" data-id="${c.id}">Edit</button>
+        <button type="button" class="btn btn-danger inv-record-delete" data-id="${c.id}">Delete</button>
       </div>
     </div>
   `).join("");
@@ -550,8 +550,8 @@ function renderProductsList(filterText) {
       </div>
       <div class="inv-record-actions">
         ${p.inventoryTracking ? `<button type="button" class="btn btn-ghost inv-record-adjust-stock" data-id="${p.id}">Adjust Stock</button>` : ""}
-        <button type="button" class="btn btn-ghost inv-record-edit" data-id="${p.id}">Edit</button>
-        <button type="button" class="btn btn-ghost inv-record-delete" data-id="${p.id}">Delete</button>
+        <button type="button" class="btn btn-warning inv-record-edit" data-id="${p.id}">Edit</button>
+        <button type="button" class="btn btn-danger inv-record-delete" data-id="${p.id}">Delete</button>
       </div>
     </div>
   `).join("");
@@ -677,6 +677,7 @@ function switchBusinessTab(tab) {
   hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam"); hide("invTabSuppliers"); hide("invTabReports");
   show("invTab" + tab.charAt(0).toUpperCase() + tab.slice(1));
   closeProfileMenu();
+  window.scrollTo(0, 0);
   if (tab === "inventory") refreshInventoryTab(currentBusinessId);
   if (tab === "dashboard") renderDashboard();
 }

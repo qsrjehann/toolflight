@@ -279,7 +279,7 @@ function renderTeamList() {
           <div class="inv-record-sub">${isOwner ? "Owner" : escapeHtml(m.role || "custom")} · Active · ${escapeHtml(permissionSummary(m.permissions))}</div>
         </div>
         <div class="inv-record-actions">
-          ${(!isOwner && !isSelf) ? `<button type="button" class="btn btn-ghost inv-team-remove" data-uid="${m.uid}">Remove</button>` : ""}
+          ${(!isOwner && !isSelf) ? `<button type="button" class="btn btn-danger inv-team-remove" data-uid="${m.uid}">Remove</button>` : ""}
         </div>
       </div>
     `);

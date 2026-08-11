@@ -317,8 +317,8 @@ function renderHistoryList(filterText) {
         </div>
         <div class="inv-record-actions">
           <button type="button" class="btn btn-ghost inv-history-view" data-id="${inv.id}">View</button>
-          <button type="button" class="btn btn-ghost inv-history-edit" data-id="${inv.id}">Edit</button>
-          <button type="button" class="btn btn-ghost inv-history-delete" data-id="${inv.id}">Delete</button>
+          <button type="button" class="btn btn-warning inv-history-edit" data-id="${inv.id}">Edit</button>
+          <button type="button" class="btn btn-danger inv-history-delete" data-id="${inv.id}">Delete</button>
         </div>
       </div>
     `;
