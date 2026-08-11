@@ -26,7 +26,7 @@
    sandbox blocks the CDN it's served from. See the Phase 2 report for
    exactly what could and could not be verified. */
 
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig } from "./firebase-config.js?v=20260802-1600";
 
 function isFirebaseConfigured() {
   return Object.values(firebaseConfig).every(v => typeof v === "string" && !v.startsWith("REPLACE_WITH_REAL_"));
@@ -99,7 +99,6 @@ async function loadFirebase() {
         handleAccountExistsError(err);
       } else {
         console.error("[invoice-auth] redirect sign-in result failed:", err);
-        alert("[DIAGNOSTIC] Google redirect sign-in failed.\nCode: " + ((err && err.code) || "unknown") + "\nMessage: " + ((err && err.message) || String(err)));
       }
     }
 
@@ -139,17 +138,6 @@ function friendlyAuthError(err) {
     "auth/cancelled-popup-request": "The Google sign-in window was closed before finishing. Please try again.",
   };
   return map[code] || "Something went wrong. Please try again.";
-}
-
-// TEMPORARY DIAGNOSTIC (approved in chat -- remove once Google Sign-In
-// root cause is confirmed): appends the raw Firebase error code and
-// message to the friendly text, so the exact cause is visible on-screen
-// rather than only in a devtools console that may not be reachable on
-// the device being used to test.
-function diagnosticAuthError(err) {
-  const code = (err && err.code) || "no-code";
-  const message = (err && err.message) || String(err);
-  return friendlyAuthError(err) + " [DIAGNOSTIC: " + code + " -- " + message + "]";
 }
 
 /* ---------- Small DOM helpers ---------- */
@@ -238,11 +226,11 @@ async function handleGoogleSignIn() {
         // after the redirect back, handled by getRedirectResult() in
         // loadFirebase() above.
       } catch (redirectErr) {
-        setError("invSignInError", diagnosticAuthError(redirectErr));
+        setError("invSignInError", friendlyAuthError(redirectErr));
       }
       return;
     }
-    setError("invSignInError", diagnosticAuthError(err));
+    setError("invSignInError", friendlyAuthError(err));
   }
 }
 
