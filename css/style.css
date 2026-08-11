@@ -618,17 +618,100 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 
 .tool-card{position:relative;}
 
-.category-hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:36px 0;}
+.category-hub-grid{display:flex;flex-direction:column;gap:14px;max-width:760px;margin:36px auto;}
 .category-hub-card{
-  background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:24px;
-  text-decoration:none;color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
-  transition:transform .25s ease;display:block;
+  --accent:var(--accent1);
+  position:relative;display:flex;align-items:center;gap:16px;
+  background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:18px 20px 18px 26px;text-decoration:none;color:var(--ink);overflow:hidden;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:var(--shadow);
+  transition:transform .3s ease,box-shadow .3s ease,border-color .3s ease;
 }
-.category-hub-card:hover{transform:translateY(-5px);}
-.category-hub-card .tool-icon{margin-bottom:16px;}
-.category-hub-card h3{font-size:17px;margin:0 0 6px;font-weight:800;letter-spacing:-.01em;}
-.category-hub-card p{margin:0 0 12px;font-size:13px;color:var(--ink-soft);line-height:1.55;}
-.category-hub-card .cta-link{font-size:13px;font-weight:700;color:var(--accent1);display:inline-flex;align-items:center;gap:5px;}
+.category-hub-card::before{
+  content:"";position:absolute;left:8px;top:12px;bottom:12px;width:4px;border-radius:4px;
+  background:var(--accent);opacity:.85;
+}
+.category-hub-card:hover{
+  box-shadow:0 26px 44px var(--shadow),0 0 26px color-mix(in srgb,var(--accent) 22%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 30%,var(--card-border));
+}
+.category-hub-card .cat-icon{
+  flex:none;width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 55%,#fff) 0%,var(--accent) 55%,color-mix(in srgb,var(--accent) 80%,#000) 100%);
+  box-shadow:
+    0 10px 20px -6px color-mix(in srgb,var(--accent) 55%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 45%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 20%,transparent);
+  transition:transform .3s cubic-bezier(.23,1,.32,1),box-shadow .3s ease;
+}
+.category-hub-card .cat-icon svg{width:26px;height:26px;}
+.category-hub-card:hover .cat-icon{
+  transform:scale(1.05);
+  box-shadow:
+    0 12px 26px -6px color-mix(in srgb,var(--accent) 65%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 45%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 20%,transparent);
+}
+.category-hub-card .cat-content{flex:1 1 auto;min-width:0;}
+.category-hub-card h3{font-size:16.5px;margin:0 0 4px;font-weight:800;letter-spacing:-.01em;}
+.category-hub-card p{margin:0 0 10px;font-size:13px;color:var(--ink-soft);line-height:1.5;}
+.category-hub-card .cta-link{font-size:12.5px;font-weight:700;color:var(--accent);display:inline-flex;align-items:center;gap:5px;}
+.category-hub-card .cat-arrow{
+  flex:none;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--card-border));color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 6%,var(--card));
+  transition:transform .3s cubic-bezier(.23,1,.32,1),box-shadow .3s ease,background .3s ease;
+}
+.category-hub-card:hover .cat-arrow{
+  transform:translateX(3px) scale(1.06);
+  box-shadow:0 0 14px color-mix(in srgb,var(--accent) 40%,transparent);
+  background:color-mix(in srgb,var(--accent) 14%,var(--card));
+}
+
+/* Category accent colors */
+.category-hub-card.cat-pdf{--accent:#FF4D6D;}
+.category-hub-card.cat-image{--accent:#4E8BFF;}
+.category-hub-card.cat-calc{--accent:#FF9F1C;}
+.category-hub-card.cat-finance{--accent:#3B82F6;}
+.category-hub-card.cat-seo{--accent:#8B5CF6;}
+.category-hub-card.cat-ai{--accent:#EC4899;}
+.category-hub-card.cat-blog{--accent:#20C997;}
+.category-hub-card.cat-invoice{--accent:#06B6D4;}
+
+/* Dark mode: glass card + neon glow, same structure */
+html.dark .category-hub-card{
+  background:color-mix(in srgb,var(--accent) 5%,var(--card));
+  border-color:color-mix(in srgb,var(--accent) 22%,var(--card-border));
+}
+html.dark .category-hub-card::before{box-shadow:0 0 8px var(--accent);}
+html.dark .category-hub-card:hover{
+  box-shadow:0 26px 44px var(--shadow),0 0 34px color-mix(in srgb,var(--accent) 35%,transparent);
+}
+html.dark .category-hub-card .cat-icon{
+  box-shadow:
+    0 0 18px color-mix(in srgb,var(--accent) 55%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 35%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 30%,transparent);
+}
+html.dark .category-hub-card:hover .cat-icon{
+  box-shadow:
+    0 0 26px color-mix(in srgb,var(--accent) 70%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 35%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 30%,transparent);
+}
+html.dark .category-hub-card .cat-arrow{
+  background:color-mix(in srgb,var(--accent) 10%,var(--card));
+}
+
+@media (max-width:560px){
+  .category-hub-card{gap:12px;padding:14px 14px 14px 22px;}
+  .category-hub-card .cat-icon{width:48px;height:48px;border-radius:14px;}
+  .category-hub-card .cat-icon svg{width:22px;height:22px;}
+  .category-hub-card h3{font-size:15px;}
+  .category-hub-card p{font-size:12.5px;}
+  .category-hub-card .cat-arrow{width:34px;height:34px;}
+}
 
 .empty-state{
   text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:14px;
@@ -660,6 +743,13 @@ html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; heigh
 .tools-grid .tool-card.in-view, .category-hub-grid .category-hub-card.in-view{
   opacity:1;transform:translateY(0);
 }
+/* category-hub-card :hover/:active must win over the .in-view rule above for
+   the 'transform' property (both are specificity (0,3,0) - .category-hub-card
+   repeated intentionally to win the tie via source order) once a card has
+   settled into view, otherwise the entrance animation permanently cancels
+   the hover-lift interaction. */
+.category-hub-card.category-hub-card:hover{transform:translateY(-5px);}
+.category-hub-card.category-hub-card:active{transform:translateY(-2px) scale(.99);}
 
 /* ============ TASK: CALCULATORS ============ */
 .unit-toggle{display:flex;gap:6px;flex-wrap:wrap;}
