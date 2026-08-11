@@ -173,53 +173,66 @@ a{color:inherit;}
 .track{display:flex;gap:16px;flex:none;transform-style:preserve-3d;padding:0 16px;}
 .track-ltr{animation:moveLeft 42s linear infinite;}
 .track-rtl{animation:moveRight 45s linear infinite;}
-.row5 .track-ltr{animation:moveLeft 84s linear infinite;}
-
-/* Adjust row 5 animation to account for half the cards (4 tools vs 8) */
+/* Per-row animation-duration is overridden inline by JS (renderToolWall) to
+   keep a consistent pixels/second speed now that card widths are dynamic.
+   The values above are non-JS fallbacks only. */
 @keyframes moveLeft{from{transform:translateX(0)}to{transform:translateX(-52%)}}
 @keyframes moveRight{from{transform:translateX(-52%)}to{transform:translateX(0)}}
 @media (prefers-reduced-motion:reduce){
   .track-ltr,.track-rtl{animation:none;transform:translateX(0);}
 }
-.tool-card{
-  --accent:var(--accent1);width:180px;height:84px;flex:none;border-radius:18px;
+.tool-wall .tool-card{
+  --accent:var(--accent1);min-width:96px;max-width:210px;height:auto;min-height:64px;flex:none;border-radius:18px;
   background:var(--card);border:1px solid var(--card-border);
-  display:flex;align-items:flex-start;gap:14px;padding:12px 18px;
+  display:flex;align-items:center;gap:12px;padding:10px 16px;
   box-shadow:0 14px 28px var(--shadow),inset 0 1px color-mix(in srgb,#fff 30%,transparent);
   transform:translateZ(20px);transition:transform .25s cubic-bezier(.23,1,.320,1),box-shadow .25s ease;
   cursor:pointer;position:relative;overflow:hidden;text-decoration:none;
   color:inherit;
 }
-.tool-card::after{
+.tool-wall .tool-card::after{
   content:"";position:absolute;inset:auto 0 0;height:2.5px;
   background:var(--accent);opacity:.6;
 }
-.tool-card:hover{
+.tool-wall .tool-card:hover{
   transform:translateZ(45px) scale(1.03);
   box-shadow:0 24px 40px var(--shadow),0 0 20px color-mix(in srgb,var(--accent) 18%,transparent);
   z-index:40;
 }
-.tool-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-.tool-icon{
+.tool-wall .tool-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.tool-wall .tool-icon{
   width:48px;height:48px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:20px;font-weight:800;
-  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent)) !important;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent));
   box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
 }
-.tool-name{font-size:12px;line-height:1.15;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;}
-.tool-desc{display:block;color:var(--ink-soft);font-size:9px;margin-top:1px;white-space:normal;line-height:1.1;word-break:break-word;}
+.tool-wall .tool-name{font-size:12.5px;line-height:1.2;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;}
 
-/* Tool category colors */
-.tool-card.image{--accent:#2378ff;}
-.tool-card.ai{--accent:var(--accent2);}
-.tool-card.pdf{--accent:#ed5661;}
-.tool-card.calc{--accent:#e39a22;}
-.tool-card.conv{--accent:#18a982;}
-.tool-card.seo{--accent:#e88424;}
-.tool-card.finance{--accent:#2e7fe7;}
-.tool-card.text{--accent:#8a54d8;}
-.tool-card.video{--accent:#e64e77;}
-.tool-card.audio{--accent:#1aa69a;}
+/* Tool category colors (hero wall only) */
+.tool-wall .tool-card.image{--accent:#2378ff;}
+.tool-wall .tool-card.ai{--accent:var(--accent2);}
+.tool-wall .tool-card.pdf{--accent:#ed5661;}
+.tool-wall .tool-card.calc{--accent:#e39a22;}
+.tool-wall .tool-card.conv{--accent:#18a982;}
+.tool-wall .tool-card.seo{--accent:#e88424;}
+.tool-wall .tool-card.finance{--accent:#2e7fe7;}
+.tool-wall .tool-card.text{--accent:#8a54d8;}
+.tool-wall .tool-card.video{--accent:#e64e77;}
+.tool-wall .tool-card.audio{--accent:#1aa69a;}
+
+/* Dark mode: subtle neon glow on hero cards/icons, same layout/structure */
+html.dark .tool-wall .tool-card{
+  background:color-mix(in srgb, var(--accent) 8%, var(--card));
+  border-color:color-mix(in srgb, var(--accent) 35%, var(--card-border));
+  box-shadow:0 14px 28px var(--shadow),0 0 14px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+html.dark .tool-wall .tool-card:hover{
+  box-shadow:0 24px 40px var(--shadow),0 0 26px color-mix(in srgb,var(--accent) 45%,transparent);
+}
+html.dark .tool-wall .tool-icon{
+  box-shadow:0 0 16px color-mix(in srgb,var(--accent) 55%,transparent);
+}
+html.dark .tool-wall .tool-card::after{opacity:.9;box-shadow:0 0 8px var(--accent);}
 
 /* Responsive Design */
 @media (max-width:1024px){
@@ -245,10 +258,9 @@ a{color:inherit;}
   .tool-wall{height:380px;}
   .wall-row{height:70px;gap:10px;}
   .wall-row::before{background:linear-gradient(90deg,var(--bg1) 0%,transparent 12%,transparent 88%,var(--bg1) 100%);}
-  .tool-card{width:140px;height:65px;gap:10px;padding:0 12px;border-radius:12px;}
-  .tool-icon{width:36px;height:36px;font-size:16px;border-radius:10px;}
-  .tool-name{font-size:11px;}
-  .tool-desc{font-size:8px;}
+  .tool-wall .tool-card{min-width:78px;max-width:150px;min-height:52px;gap:8px;padding:8px 12px;border-radius:12px;}
+  .tool-wall .tool-icon{width:36px;height:36px;font-size:16px;border-radius:10px;}
+  .tool-wall .tool-name{font-size:11px;}
   .row1{top:10px;}
   .row2{top:80px;}
   .row3{top:150px;}
