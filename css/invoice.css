@@ -273,32 +273,25 @@ html.dark{ --sidebar-surface: #12131F; }
 .inv-ibadge.purple{ background:var(--cat-purple); } .inv-ibadge.orange{ background:var(--cat-orange); }
 .inv-ibadge.neutral{ background:var(--card); color:var(--ink-soft); border:1px solid var(--card-border); }
 
-/* ---- Top bar: brand + business identity chip + utility icons ---- */
-.inv-app-topbar{ display:flex; align-items:center; gap:14px; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--card-border); flex-wrap:wrap; }
-.inv-app-brand{
-  display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--card-border);
-  border-radius:11px; cursor:pointer; color:var(--ink); font-weight:800; font-size:13.5px; padding:8px 14px 8px 10px;
-  transition:background .12s ease, border-color .12s ease;
+/* ---- Top bar: compact back button + single consolidated menu ---- */
+.inv-app-topbar{ display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--card); border-bottom:1px solid var(--card-border); }
+.inv-app-brand-compact{
+  width:36px; height:36px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  background:var(--card); border:1px solid var(--card-border); border-radius:10px; cursor:pointer;
+  color:var(--ink); font-size:17px; font-weight:800; transition:background .12s ease, color .12s ease, border-color .12s ease;
 }
-.inv-app-brand:hover{ background:var(--accent1); color:#fff; border-color:var(--accent1); }
-.inv-app-brand .inv-brand-arrow{
-  display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%;
-  background:rgba(109,94,245,0.14); color:var(--accent1-solid); font-size:13px; flex:0 0 auto; transition:background .12s ease, color .12s ease;
-}
-.inv-app-brand:hover .inv-brand-arrow{ background:rgba(255,255,255,0.22); color:#fff; }
-html.dark .inv-app-brand .inv-brand-arrow{ color:#B4A9FF; }
-.inv-biz-chip{ display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--card-border); border-radius:11px; padding:6px 12px 6px 6px; cursor:default; }
-.inv-biz-chip .inv-ibadge{ width:26px; height:26px; }
-.inv-biz-chip .inv-biz-chip-name{ font-size:13px; font-weight:700; }
-.inv-app-topbar-actions{ margin-left:auto; display:flex; align-items:center; gap:9px; }
+.inv-app-brand-compact:hover{ background:var(--accent1); color:#fff; border-color:var(--accent1); }
 
-/* Re-skin the existing profile trigger to be avatar-only in the main
-   bar (email/name move into the dropdown -- see below) -- same IDs,
-   same JS, only appearance + child layout change. */
-.inv-shell-profile-trigger{ padding:6px; gap:0; }
-.inv-shell-profile-trigger .inv-shell-profile-name-wrap{ display:none; }
-.inv-profile-menu .p-dropdown-head{ display:flex; flex-direction:column; padding:10px 12px 12px; border-bottom:1px solid var(--card-border); margin-bottom:6px; }
+.inv-app-topbar-actions{ margin-left:auto; position:relative; display:flex; align-items:center; }
+
+/* Consolidated menu: identity block (avatar + name + business) at the
+   top, every account/business action below it -- one trigger, one menu,
+   instead of a separate business chip + avatar dropdown in the main bar. */
+.inv-profile-menu .p-dropdown-head{
+  display:flex; align-items:center; gap:10px; padding:10px 12px 12px; border-bottom:1px solid var(--card-border); margin-bottom:6px;
+}
 .inv-profile-menu .p-dropdown-head .p-dropdown-name{ font-size:13px; font-weight:800; }
+.inv-profile-menu .p-dropdown-head .p-dropdown-biz{ font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-top:1px; }
 
 /* ---- Body: sidebar + workspace ---- */
 .inv-app-body{ display:flex; align-items:stretch; }
