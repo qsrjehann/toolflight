@@ -340,10 +340,7 @@ function renderToolWall() {
       card.setAttribute('data-tool', tool.name);
       card.innerHTML = `
         <div class="tool-icon">${tool.icon}</div>
-        <div>
-          <div class="tool-name">${tool.name}</div>
-          <div class="tool-desc">${tool.desc}</div>
-        </div>
+        <div class="tool-name">${tool.name}</div>
       `;
       
       // Pause animation on hover
@@ -368,6 +365,19 @@ function renderToolWall() {
       
       trackElement.appendChild(card);
     });
+  });
+
+  // Normalize animation speed across all rows to a consistent px/second rate.
+  // Card widths are now dynamic (based on tool name length), so track widths
+  // differ per row; without this, rows with shorter names would visibly move
+  // faster than rows with longer names at the same animation duration.
+  const PIXELS_PER_SECOND = 38;
+  document.querySelectorAll('.wall-row .track').forEach(trackEl => {
+    const trackWidth = trackEl.scrollWidth;
+    if (!trackWidth) return;
+    const distance = trackWidth * 0.52; // matches the -52% keyframe distance
+    const duration = distance / PIXELS_PER_SECOND;
+    trackEl.style.animationDuration = `${duration.toFixed(2)}s`;
   });
 }
 
