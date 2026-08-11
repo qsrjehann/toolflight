@@ -43,7 +43,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="css/style.css?v=20260802-0530">
-<link rel="stylesheet" href="css/invoice.css?v=20260811-1200">
+<link rel="stylesheet" href="css/invoice.css?v=20260811-1500">
 
 <script type="application/ld+json">
 {
@@ -244,7 +244,7 @@
   <div id="invBusinessArea" class="hidden">
     <div class="inv-app-topbar">
       <button class="inv-app-brand" id="invShellHomeBtn" type="button" title="Back to ToolFlight">
-        <span style="font-size:16px;">&larr;</span>ToolFlight
+        <span class="inv-brand-arrow">&larr;</span>ToolFlight
       </button>
 
       <div class="inv-biz-chip">
@@ -306,63 +306,39 @@
       <div class="inv-dash-head-row">
         <div>
           <div class="inv-dash-greeting" id="invDashGreeting">Welcome back</div>
-          <div class="inv-dash-greeting-sub" id="invDashGreetingSub">Here's what's happening with your business.</div>
+          <div class="inv-dash-greeting-sub" id="invDashGreetingSub">Here's your business overview.</div>
         </div>
       </div>
 
       <div class="inv-dash-stats">
-        <div class="inv-dash-stat">
+        <div class="inv-dash-stat inv-business-tab" data-tab="invoices" style="cursor:pointer;">
           <div class="inv-dash-stat-top"><span class="inv-ibadge green"><span style="font-size:14px;">&#128200;</span></span><div class="inv-dash-stat-label">Total Sales</div></div>
           <div class="inv-dash-stat-value" id="invDashStatSales">—</div>
         </div>
-        <div class="inv-dash-stat">
+        <div class="inv-dash-stat inv-business-tab" data-tab="invoices" style="cursor:pointer;">
           <div class="inv-dash-stat-top"><span class="inv-ibadge blue"><span style="font-size:14px;">&#128196;</span></span><div class="inv-dash-stat-label">Invoices</div></div>
           <div class="inv-dash-stat-value" id="invDashStatInvoices">—</div>
         </div>
-        <div class="inv-dash-stat">
+        <div class="inv-dash-stat inv-business-tab" data-tab="customers" style="cursor:pointer;">
           <div class="inv-dash-stat-top"><span class="inv-ibadge purple"><span style="font-size:14px;">&#128101;</span></span><div class="inv-dash-stat-label">Customers</div></div>
           <div class="inv-dash-stat-value" id="invDashStatCustomers">—</div>
         </div>
-        <div class="inv-dash-stat">
+        <div class="inv-dash-stat inv-business-tab" data-tab="products" style="cursor:pointer;">
           <div class="inv-dash-stat-top"><span class="inv-ibadge orange"><span style="font-size:14px;">&#128230;</span></span><div class="inv-dash-stat-label">Products</div></div>
           <div class="inv-dash-stat-value" id="invDashStatProducts">—</div>
         </div>
       </div>
 
-      <div class="inv-dash-columns">
-        <div>
-          <div class="inv-dash-card">
-            <div class="inv-dash-card-head"><h3>Recent Invoices</h3><a data-tab="invoices" class="inv-business-tab">View All</a></div>
-            <div id="invDashRecentInvoices"><p class="inv-dash-empty">Loading…</p></div>
-          </div>
-          <div class="inv-dash-card">
-            <div class="inv-dash-card-head"><h3>Quick Actions</h3></div>
-            <div class="inv-dash-quick-actions">
-              <button class="inv-qa-btn green" id="invDashNewInvoiceBtn" type="button"><span class="inv-qi">&#128196;</span><span class="inv-qlbl">Create Invoice</span></button>
-              <button class="inv-qa-btn blue inv-business-tab" data-tab="customers" type="button"><span class="inv-qi">&#128101;</span><span class="inv-qlbl">Add Customer</span></button>
-              <button class="inv-qa-btn purple inv-business-tab" data-tab="products" type="button"><span class="inv-qi">&#128230;</span><span class="inv-qlbl">Add Product</span></button>
-              <button class="inv-qa-btn orange inv-business-tab" data-tab="expenses" type="button"><span class="inv-qi">&#128181;</span><span class="inv-qlbl">Record Expense</span></button>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="inv-dash-card">
-            <div class="inv-dash-card-head"><h3>Low Stock Alert</h3><a data-tab="inventory" class="inv-business-tab">View All</a></div>
-            <div id="invDashLowStock"><p class="inv-dash-empty">Loading…</p></div>
-          </div>
+      <div class="inv-dash-card">
+        <div class="inv-dash-card-head"><h3>Quick Actions</h3></div>
+        <div class="inv-dash-quick-actions">
+          <button class="inv-qa-btn green" id="invDashNewInvoiceBtn" type="button"><span class="inv-qi">&#128196;</span><span class="inv-qlbl">Create Invoice</span></button>
+          <button class="inv-qa-btn blue inv-business-tab" data-tab="customers" type="button"><span class="inv-qi">&#128101;</span><span class="inv-qlbl">Add Customer</span></button>
+          <button class="inv-qa-btn purple inv-business-tab" data-tab="products" type="button"><span class="inv-qi">&#128230;</span><span class="inv-qlbl">Add Product</span></button>
+          <button class="inv-qa-btn orange inv-business-tab" data-tab="expenses" type="button"><span class="inv-qi">&#128181;</span><span class="inv-qlbl">Record Expense</span></button>
         </div>
       </div>
-
-      <div class="inv-dash-columns" style="margin-top:14px;">
-        <div class="inv-dash-card" style="margin-bottom:0;">
-          <div class="inv-chart-head"><h3 style="font-size:14.5px;font-weight:800;">Sales Overview</h3></div>
-          <div id="invDashSalesChart"><p class="inv-dash-empty">Loading…</p></div>
-        </div>
-        <div class="inv-dash-card" style="margin-bottom:0;">
-          <div class="inv-dash-card-head"><h3>Top Customers</h3><a data-tab="customers" class="inv-business-tab">View All</a></div>
-          <div id="invDashTopCustomers"><p class="inv-dash-empty">Loading…</p></div>
-        </div>
-      </div>
+      <p class="editor-hint" style="margin-top:10px;">Recent invoices, low stock, and customer details now live in their own tabs -- use the sidebar (or More on mobile) to jump straight there.</p>
     </div>
 
     <!-- ---- Business Profile tab (unchanged from Phase 1 -- only its
@@ -614,6 +590,21 @@
 
   <!-- ===================== CUSTOMER EDIT MODAL ===================== -->
   <!-- ===================== MY PROFILE (personal user settings) MODAL ===================== -->
+  <div class="legal-modal" id="invAboutModal">
+    <div class="legal-box inv-auth-box" style="max-width:520px;">
+      <button class="legal-close" onclick="document.getElementById('invAboutModal').classList.remove('show')" type="button">&times;</button>
+      <h2>About &amp; FAQ</h2>
+      <div style="max-height:60vh;overflow-y:auto;margin-top:14px;">
+        <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">My Business is ToolFlight's invoicing and business-management workspace -- save your business details, customers, products, and invoices, and pick up right where you left off next time you sign in.</p>
+
+        <h3 style="font-size:14px;font-weight:800;margin:18px 0 8px;">Frequently Asked Questions</h3>
+        <div class="faq-item"><div class="faq-q">Is my business data private?<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Yes -- your business, customers, products, and invoices are only visible to you and anyone you've explicitly invited to your team.</div></div>
+        <div class="faq-item"><div class="faq-q">Can I invite my team?<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">Yes -- open Team Members from the profile menu to invite people and set their role and permissions.</div></div>
+        <div class="faq-item"><div class="faq-q">What happened to Suppliers, Expenses, Reports, and Accounting?<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">They're on the roadmap and shown in the sidebar so you know where they'll live, but they aren't built yet -- opening one shows an honest "coming soon" screen rather than fake data.</div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="legal-modal" id="invUserProfileModal">
     <div class="legal-box inv-auth-box">
       <button class="legal-close" onclick="document.getElementById('invUserProfileModal').classList.remove('show')" type="button">&times;</button>
@@ -902,7 +893,7 @@
 
 <script defer src="js/invoice.js?v=20260802-0530"></script>
 <script type="module" src="js/invoice-auth.js?v=20260802-1600"></script>
-<script type="module" src="js/invoice-business.js?v=20260811-1200"></script>
+<script type="module" src="js/invoice-business.js?v=20260811-1500"></script>
 <script type="module" src="js/invoice-history.js?v=20260811-1200"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script type="module" src="js/invoice-team.js?v=20260811-1200"></script>
