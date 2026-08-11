@@ -43,7 +43,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="css/style.css?v=20260802-0530">
-<link rel="stylesheet" href="css/invoice.css?v=20260802-1400">
+<link rel="stylesheet" href="css/invoice.css?v=20260802-1700">
 
 <script type="application/ld+json">
 {
@@ -89,7 +89,7 @@
 </nav>
 
 <div class="container" style="max-width:1080px;">
-  <div class="hero-sub">
+  <div class="hero-sub" id="invMarketingHero">
     <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
       <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a> / Invoice Maker
     </nav>
@@ -251,20 +251,27 @@
         </span>
       </button>
 
-      <div class="inv-shell-profile">
-        <button class="inv-shell-profile-trigger" id="invShellProfileTrigger" type="button">
-          <span class="inv-shell-profile-avatar" id="invShellProfileAvatar">?</span>
-          <span>
-            <div class="inv-shell-profile-name" id="invShellProfileName">Account</div>
-            <div class="inv-shell-profile-biz" id="invShellProfileBiz">My Business</div>
-          </span>
-          <span class="inv-shell-profile-caret">&#9662;</span>
-        </button>
-        <div class="inv-profile-menu hidden" id="invShellProfileMenu">
-          <button class="inv-profile-menu-item inv-business-tab" data-tab="profile" type="button">Business Profile</button>
-          <button class="inv-profile-menu-item inv-business-tab" data-tab="team" type="button">Team Members</button>
-          <div class="inv-profile-menu-divider"></div>
-          <button class="inv-profile-menu-item inv-profile-menu-item--danger" id="invShellLogoutBtn" type="button">Logout</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="inv-shell-settings-btn" id="invShellSettingsBtn" type="button" title="Profile settings" aria-label="Profile settings">&#9776;</button>
+
+        <div class="inv-shell-profile">
+          <button class="inv-shell-profile-trigger" id="invShellProfileTrigger" type="button">
+            <span class="inv-shell-profile-avatar" id="invShellProfileAvatar">?</span>
+            <span>
+              <div class="inv-shell-profile-name" id="invShellProfileName">Account</div>
+              <div class="inv-shell-profile-biz" id="invShellProfileBiz">My Business</div>
+            </span>
+            <span class="inv-shell-profile-caret">&#9662;</span>
+          </button>
+          <div class="inv-profile-menu hidden" id="invShellProfileMenu">
+            <button class="inv-profile-menu-item" id="invShellMyProfileBtn" type="button">My Profile</button>
+            <button class="inv-profile-menu-item inv-business-tab" data-tab="profile" type="button">Business Profile</button>
+            <button class="inv-profile-menu-item inv-business-tab" data-tab="team" type="button">Team Members</button>
+            <div class="inv-profile-menu-divider"></div>
+            <button class="inv-profile-menu-item" id="invShellAboutBtn" type="button">About &amp; FAQ</button>
+            <div class="inv-profile-menu-divider"></div>
+            <button class="inv-profile-menu-item inv-profile-menu-item--danger" id="invShellLogoutBtn" type="button">Logout</button>
+          </div>
         </div>
       </div>
     </div>
@@ -514,6 +521,21 @@
   </div>
 
   <!-- ===================== CUSTOMER EDIT MODAL ===================== -->
+  <!-- ===================== MY PROFILE (personal user settings) MODAL ===================== -->
+  <div class="legal-modal" id="invUserProfileModal">
+    <div class="legal-box inv-auth-box">
+      <button class="legal-close" onclick="document.getElementById('invUserProfileModal').classList.remove('show')" type="button">&times;</button>
+      <h2>My Profile</h2>
+      <div class="inv-field" style="margin-top:14px;"><label for="invProfileEmail">Email</label><input type="email" id="invProfileEmail" disabled></div>
+      <p class="editor-hint" style="margin-top:-6px;margin-bottom:10px;">Your email is your sign-in identity and can't be changed here.</p>
+      <div class="inv-field" style="margin-top:10px;"><label for="invProfileDisplayName">Full name</label><input type="text" id="invProfileDisplayName" placeholder="Your name"></div>
+      <div class="inv-field" style="margin-top:10px;"><label for="invProfilePhone">Phone</label><input type="text" id="invProfilePhone" placeholder="Optional"></div>
+      <p class="inv-auth-error" id="invProfileError"></p>
+      <p class="inv-auth-success" id="invProfileSuccess"></p>
+      <button class="btn btn-primary" id="invProfileSaveBtn" type="button" style="width:100%;margin-top:12px;">Save Profile</button>
+    </div>
+  </div>
+
   <div class="legal-modal" id="invCustomerModal">
     <div class="legal-box inv-auth-box">
       <button class="legal-close" onclick="document.getElementById('invCustomerModal').classList.remove('show')" type="button">&times;</button>
@@ -714,7 +736,7 @@
   </div>
 
   <!-- ===================== SEO CONTENT ===================== -->
-  <div style="margin-top:36px;padding-top:24px;border-top:1px solid var(--card-border);max-width:720px;">
+  <div id="invSeoContent" style="margin-top:36px;padding-top:24px;border-top:1px solid var(--card-border);max-width:720px;">
     <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the Invoice Maker</h2>
     <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">A free, no-signup way to create a professional invoice for a client or customer. Add your business details, the customer you're billing, and as many line items as the job needs — the subtotal, tax, discount, and total are calculated live as you type. When you're done, print the invoice directly or download it as a PDF. Everything happens in your browser; nothing is uploaded to a server, and your invoice isn't saved anywhere once you leave the page, so there's nothing to sign up for or clean up afterward.</p>
 
@@ -788,7 +810,7 @@
 
 <script defer src="js/invoice.js?v=20260802-0530"></script>
 <script type="module" src="js/invoice-auth.js?v=20260802-1600"></script>
-<script type="module" src="js/invoice-business.js?v=20260802-1400"></script>
+<script type="module" src="js/invoice-business.js?v=20260802-1700"></script>
 <script type="module" src="js/invoice-history.js?v=20260802-1400"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script type="module" src="js/invoice-team.js?v=20260802-0530"></script>
