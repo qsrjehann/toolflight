@@ -683,6 +683,7 @@ function switchBusinessTab(tab) {
 
 function showBusinessArea() {
   hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError"); hide("invAccountBar");
+  hide("invMarketingHero"); hide("invSeoContent");
   show("invBusinessArea");
   if (businessProfile) fillBusinessForm(businessProfile);
   updateShellProfileHeader();
@@ -703,6 +704,61 @@ function updateShellProfileHeader() {
 function closeProfileMenu() {
   const menu = $("invShellProfileMenu");
   if (menu) menu.classList.add("hidden");
+}
+
+/* ==================================================================
+   My Profile (personal user settings, Phase 3) -- separate from
+   Business Profile. Stored on users/{uid} (merge write, so the
+   existing primaryBusinessId field is never overwritten). Email is
+   intentionally never written here -- it's the sign-in identity and
+   changing it is a Firebase Auth operation, not a Firestore field.
+   ================================================================== */
+async function openUserProfileModal() {
+  closeProfileMenu();
+  setError("invProfileError", "");
+  $("invProfileSuccess").textContent = "";
+  $("invProfileEmail").value = currentUser ? currentUser.email : "";
+  $("invProfileDisplayName").value = "";
+  $("invProfilePhone").value = "";
+  $("invUserProfileModal").classList.add("show");
+  if (!currentUser) return;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    const snap = await fns.getDoc(fns.doc(db, "users", currentUser.uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      $("invProfileDisplayName").value = data.displayName || "";
+      $("invProfilePhone").value = data.phone || "";
+    }
+  } catch (err) {
+    console.error("[invoice-business] load user profile failed:", err);
+    setError("invProfileError", "Could not load your profile right now.");
+  }
+}
+
+async function handleSaveUserProfile() {
+  if (!currentUser) return;
+  const btn = $("invProfileSaveBtn");
+  const originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  setError("invProfileError", "");
+  $("invProfileSuccess").textContent = "";
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    await fns.setDoc(fns.doc(db, "users", currentUser.uid), {
+      displayName: $("invProfileDisplayName").value.trim(),
+      phone: $("invProfilePhone").value.trim(),
+    }, { merge: true });
+    $("invProfileSuccess").textContent = "Profile saved.";
+    updateShellProfileHeader();
+  } catch (err) {
+    console.error("[invoice-business] save user profile failed:", err);
+    setError("invProfileError", "Could not save right now. Please try again.");
+  } finally {
+    btn.disabled = false; btn.textContent = originalText;
+  }
 }
 
 /* ==================================================================
@@ -805,6 +861,7 @@ function initBusinessUI() {
   $("invShellHomeBtn").addEventListener("click", () => {
     hide("invBusinessArea");
     show("invModeSelect");
+    show("invMarketingHero"); show("invSeoContent");
     if (currentUser) show("invAccountBar");
   });
 
@@ -828,6 +885,17 @@ function initBusinessUI() {
     closeProfileMenu();
     $("invSignOutBtn").click();
   });
+  $("invShellSettingsBtn").addEventListener("click", openUserProfileModal);
+  $("invShellMyProfileBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    openUserProfileModal();
+  });
+  $("invShellAboutBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    show("invSeoContent");
+    $("invSeoContent").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("invProfileSaveBtn").addEventListener("click", handleSaveUserProfile);
   $("invDashNewInvoiceBtn").addEventListener("click", () => $("invCreateInvoiceBtn").click());
 
   $("invStartSetupBtn").addEventListener("click", () => {
