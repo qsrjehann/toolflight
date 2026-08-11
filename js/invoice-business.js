@@ -683,7 +683,7 @@ function switchBusinessTab(tab) {
 
 function showBusinessArea() {
   hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError"); hide("invAccountBar");
-  hide("invMarketingHero"); hide("invSeoContent");
+  hide("invMarketingHero"); hide("invSeoContent"); hide("invSiteFooter");
   show("invBusinessArea");
   if (businessProfile) fillBusinessForm(businessProfile);
   updateShellProfileHeader();
@@ -831,22 +831,22 @@ function initBusinessUI() {
   $("invShellHomeBtn").addEventListener("click", () => {
     hide("invBusinessArea");
     show("invModeSelect");
-    show("invMarketingHero"); show("invSeoContent");
+    show("invMarketingHero"); show("invSeoContent"); show("invSiteFooter");
     if (currentUser) show("invAccountBar");
   });
 
-  // Profile/business dropdown -- toggle on the trigger, close on any
-  // outside click or Escape, and close automatically whenever a menu
-  // item is chosen (the item's own click handler, e.g. switchBusinessTab
+  // Consolidated menu -- one trigger (invShellSettingsBtn), toggles on
+  // click, closes on any outside click, Escape, or once an item inside
+  // it is chosen (the item's own click handler, e.g. switchBusinessTab
   // or logout, runs first via event bubbling before this listener).
-  $("invShellProfileTrigger").addEventListener("click", (e) => {
+  $("invShellSettingsBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     $("invShellProfileMenu").classList.toggle("hidden");
   });
   document.addEventListener("click", (e) => {
     const menu = $("invShellProfileMenu");
     if (!menu || menu.classList.contains("hidden")) return;
-    if (!menu.contains(e.target) && e.target !== $("invShellProfileTrigger")) closeProfileMenu();
+    if (!menu.contains(e.target) && e.target !== $("invShellSettingsBtn")) closeProfileMenu();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeProfileMenu();
@@ -855,7 +855,6 @@ function initBusinessUI() {
     closeProfileMenu();
     $("invSignOutBtn").click();
   });
-  $("invShellSettingsBtn").addEventListener("click", openUserProfileModal);
   $("invShellMyProfileBtn").addEventListener("click", () => {
     closeProfileMenu();
     openUserProfileModal();
