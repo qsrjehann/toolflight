@@ -778,36 +778,19 @@ async function handleSaveUserProfile() {
    that doesn't exist in the real invoice data shape.
    ================================================================== */
 async function renderDashboard() {
-  const displayName = (currentUser && currentUser.email) ? currentUser.email.split("@")[0] : "there";
-  $("invDashGreeting").textContent = "Welcome back, " + displayName;
-  $("invDashGreetingSub").textContent = (businessProfile && businessProfile.name)
-    ? "Here's what's happening with " + businessProfile.name + "."
-    : "Here's what's happening with your business.";
+  const bizName = (businessProfile && businessProfile.name) ? businessProfile.name : "your business";
+  $("invDashGreeting").textContent = "Welcome back, " + bizName;
+  $("invDashGreetingSub").textContent = "Here's your business overview.";
 
   $("invDashStatCustomers").textContent = String(customers.length);
   $("invDashStatProducts").textContent = String(products.length);
 
-  // Low stock -- reuses the exact same fields/logic as the Inventory tab.
-  const lowStockProducts = products.filter(p => {
-    if (!p.inventoryTracking) return false;
-    const stock = p.stock != null ? p.stock : 0;
-    const threshold = p.lowStockThreshold || 0;
-    return stock <= threshold;
-  }).slice(0, 5);
-  const lowStockEl = $("invDashLowStock");
-  lowStockEl.innerHTML = lowStockProducts.length === 0
-    ? `<p class="inv-dash-empty">No low-stock products right now.</p>`
-    : lowStockProducts.map(p => `
-        <div class="inv-record-row">
-          <div class="inv-record-main">
-            <div class="inv-record-name">${escapeHtml(p.name || "")}</div>
-            <div class="inv-record-sub">Stock: ${p.stock != null ? p.stock : 0}${p.sku ? " · SKU: " + escapeHtml(p.sku) : ""}</div>
-          </div>
-        </div>`).join("");
-
   // Invoices -- loaded lazily via invoice-history.js's bridge (same lazy
   // pattern the Invoices tab itself already uses; the Dashboard just
   // triggers the same refresh instead of duplicating the Firestore call).
+  // Only the two invoice-derived stat numbers are needed here now --
+  // Recent Invoices/Top Customers/Sales Overview moved into their own
+  // tabs (Invoices/Customers), so this function no longer renders them.
   if (window.toolflightInvoiceHistory && currentBusinessId) {
     try {
       await window.toolflightInvoiceHistory.refreshInvoices(currentBusinessId);
@@ -821,99 +804,9 @@ async function renderDashboard() {
     const currency = (businessProfile && businessProfile.defaultCurrency) ||
       (invoices[0] && invoices[0].meta && invoices[0].meta.currency) || "USD";
     $("invDashStatSales").textContent = window.toolflightInvoiceHistory.formatMoney(totalSales, currency);
-
-    const recent = invoices.slice().sort((a, b) => {
-      const at = (a.createdAt && a.createdAt.seconds) || 0;
-      const bt = (b.createdAt && b.createdAt.seconds) || 0;
-      return bt - at;
-    }).slice(0, 5);
-    const recentEl = $("invDashRecentInvoices");
-    recentEl.innerHTML = recent.length === 0
-      ? `<p class="inv-dash-empty">No invoices yet. Create your first one from Quick Actions.</p>`
-      : recent.map(inv => {
-          const number = escapeHtml((inv.meta && inv.meta.number) || "(no number)");
-          const date = escapeHtml((inv.meta && inv.meta.date) || "");
-          const customerName = escapeHtml((inv.customer && inv.customer.name) || "(no customer)");
-          const total = window.toolflightInvoiceHistory.formatMoney(inv.totals && inv.totals.total, inv.meta && inv.meta.currency);
-          return `
-            <div class="inv-record-row">
-              <div class="inv-record-main">
-                <div class="inv-record-name">${number} — ${customerName}</div>
-                <div class="inv-record-sub">${date} · ${total}</div>
-              </div>
-            </div>`;
-        }).join("");
-
-    // Top Customers -- real invoice totals grouped by customer name.
-    // Same "invoices" array already loaded above; no extra Firestore call.
-    const byCustomer = {};
-    invoices.forEach(inv => {
-      const name = (inv.customer && inv.customer.name) || "(no customer)";
-      const total = Number((inv.totals && inv.totals.total) || 0);
-      byCustomer[name] = (byCustomer[name] || 0) + total;
-    });
-    const topCustomers = Object.keys(byCustomer)
-      .map(name => ({ name, total: byCustomer[name] }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-    const tcColors = ["green", "blue", "purple", "orange"];
-    const tcEl = $("invDashTopCustomers");
-    tcEl.innerHTML = topCustomers.length === 0
-      ? `<p class="inv-dash-empty">No customer sales yet.</p>`
-      : topCustomers.map((c, i) => `
-          <div class="inv-tc-row">
-            <span class="inv-tc-avatar inv-ibadge ${tcColors[i % tcColors.length]}">${escapeHtml(c.name.charAt(0).toUpperCase())}</span>
-            <div class="inv-record-main"><div class="inv-record-name">${escapeHtml(c.name)}</div></div>
-            <div class="inv-record-amount">${window.toolflightInvoiceHistory.formatMoney(c.total, currency)}</div>
-          </div>`).join("");
-
-    // Sales Overview -- real invoice totals for the last 7 calendar
-    // days (by createdAt), rendered as a small inline SVG line chart.
-    // No third-party charting library -- a handful of <path>/<circle>
-    // elements is all a 7-point line needs.
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push({ date: d, label: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), total: 0 });
-    }
-    invoices.forEach(inv => {
-      const seconds = inv.createdAt && inv.createdAt.seconds;
-      if (!seconds) return;
-      const invDate = new Date(seconds * 1000);
-      const match = days.find(d => d.date.toDateString() === invDate.toDateString());
-      if (match) match.total += Number((inv.totals && inv.totals.total) || 0);
-    });
-    const chartEl = $("invDashSalesChart");
-    const hasAnySales = days.some(d => d.total > 0);
-    if (!hasAnySales) {
-      chartEl.innerHTML = `<p class="inv-dash-empty">No sales in the last 7 days yet.</p>`;
-    } else {
-      const max = Math.max(...days.map(d => d.total), 1);
-      const w = 520, h = 140;
-      const stepX = w / (days.length - 1);
-      const coords = days.map((d, i) => [i * stepX, h - (d.total / max) * (h - 14) - 4]);
-      const path = coords.map((c, i) => (i === 0 ? "M" : "L") + c[0].toFixed(1) + "," + c[1].toFixed(1)).join(" ");
-      const area = path + ` L${w},${h} L0,${h} Z`;
-      const dots = coords.map(c => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3.5" fill="var(--cat-green)" stroke="var(--paper)" stroke-width="2"/>`).join("");
-      chartEl.innerHTML = `
-        <svg class="inv-chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-          <defs><linearGradient id="invSalesFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--cat-green)" stop-opacity="0.28"/>
-            <stop offset="100%" stop-color="var(--cat-green)" stop-opacity="0"/>
-          </linearGradient></defs>
-          <path d="${area}" fill="url(#invSalesFill)"/>
-          <path d="${path}" fill="none" stroke="var(--cat-green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-          ${dots}
-        </svg>
-        <div class="inv-chart-x-labels">${days.map(d => `<span>${d.label}</span>`).join("")}</div>`;
-    }
   } else {
     $("invDashStatInvoices").textContent = "—";
     $("invDashStatSales").textContent = "—";
-    $("invDashRecentInvoices").innerHTML = `<p class="inv-dash-empty">Invoices unavailable right now.</p>`;
-    $("invDashTopCustomers").innerHTML = `<p class="inv-dash-empty">Unavailable right now.</p>`;
-    $("invDashSalesChart").innerHTML = `<p class="inv-dash-empty">Unavailable right now.</p>`;
   }
 }
 
@@ -969,8 +862,10 @@ function initBusinessUI() {
   });
   $("invShellAboutBtn").addEventListener("click", () => {
     closeProfileMenu();
-    show("invSeoContent");
-    $("invSeoContent").scrollIntoView({ behavior: "smooth", block: "start" });
+    $("invAboutModal").classList.add("show");
+  });
+  document.querySelectorAll("#invAboutModal .faq-item .faq-q").forEach(q => {
+    q.addEventListener("click", () => q.closest(".faq-item").classList.toggle("open"));
   });
   $("invProfileSaveBtn").addEventListener("click", handleSaveUserProfile);
   $("invDashNewInvoiceBtn").addEventListener("click", () => $("invCreateInvoiceBtn").click());
