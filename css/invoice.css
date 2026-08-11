@@ -110,6 +110,7 @@
 .inv-record-name{ font-weight:700; font-size:13.5px; }
 .inv-record-sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
 .inv-record-actions{ display:flex; gap:6px; flex:0 0 auto; }
+.inv-record-amount{ font-weight:700; font-size:13px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
 
 /* ---- Phase 2: account bar + auth modal ---- */
 .inv-account-bar{
@@ -246,21 +247,147 @@
 .inv-dash-soon h3{ font-size:15px; font-weight:800; color:var(--ink); margin-bottom:6px; }
 .inv-dash-soon p{ font-size:13px; max-width:360px; margin:0 auto; line-height:1.6; }
 
-/* Mobile: turn the toolbar into a fixed bottom app-bar, the way a real
-   mobile business app would -- same markup/JS, only position + layout
-   change via CSS, so there's exactly one toolbar to keep in sync. */
+/* Small-screen spacing tweak, independent of the nav restructure below. */
 @media (max-width:720px){
-  .inv-toolbar{
-    position:fixed; left:0; right:0; bottom:0; z-index:30; margin:0;
-    border-radius:0; border-left:none; border-right:none; border-bottom:none;
-    padding:4px 2px calc(4px + env(safe-area-inset-bottom,0px));
-    justify-content:space-between; overflow-x:auto;
-  }
-  .inv-toolbar .inv-business-tab{
-    flex-direction:column; gap:2px; padding:6px 8px; font-size:9.5px; border-radius:10px;
-  }
-  .inv-toolbar .inv-business-tab-icon{ font-size:17px; }
-  #invBusinessArea{ padding-bottom:64px; } /* keep content clear of the fixed bottom bar */
   .inv-dash-columns{ gap:12px; }
 }
+
+/* ==========================================================================
+   Phase 3 -- Approved prototype integration: sidebar shell, colorful
+   category icons, redesigned Quick Actions, Sales Overview + Top
+   Customers, mobile fixed bottom nav with FAB + sheets.
+
+   Category colors are NEW tokens, scoped to this file only (this
+   stylesheet is already documented as isolated -- see the file header
+   comment). Nothing here touches style.css or any of the other 40+ tool
+   pages that share it.
+   ========================================================================== */
+:root{
+  --cat-green:#22C55E; --cat-blue:#3B82F6; --cat-purple:#8B5CF6; --cat-orange:#F59E0B;
+  --sidebar-surface: var(--paper);
+}
+html.dark{ --sidebar-surface: #12131F; }
+
+.inv-ibadge{ border-radius:10px; display:flex; align-items:center; justify-content:center; color:#fff; flex:0 0 auto; }
+.inv-ibadge.green{ background:var(--cat-green); } .inv-ibadge.blue{ background:var(--cat-blue); }
+.inv-ibadge.purple{ background:var(--cat-purple); } .inv-ibadge.orange{ background:var(--cat-orange); }
+.inv-ibadge.neutral{ background:var(--card); color:var(--ink-soft); border:1px solid var(--card-border); }
+
+/* ---- Top bar: brand + business identity chip + utility icons ---- */
+.inv-app-topbar{ display:flex; align-items:center; gap:14px; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--card-border); flex-wrap:wrap; }
+.inv-app-brand{ display:flex; align-items:center; gap:7px; background:none; border:none; cursor:pointer; color:inherit; font-weight:800; font-size:14.5px; padding:4px; }
+.inv-biz-chip{ display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--card-border); border-radius:11px; padding:6px 12px 6px 6px; cursor:default; }
+.inv-biz-chip .inv-ibadge{ width:26px; height:26px; }
+.inv-biz-chip .inv-biz-chip-name{ font-size:13px; font-weight:700; }
+.inv-app-topbar-actions{ margin-left:auto; display:flex; align-items:center; gap:9px; }
+
+/* Re-skin the existing profile trigger to be avatar-only in the main
+   bar (email/name move into the dropdown -- see below) -- same IDs,
+   same JS, only appearance + child layout change. */
+.inv-shell-profile-trigger{ padding:6px; gap:0; }
+.inv-shell-profile-trigger .inv-shell-profile-name-wrap{ display:none; }
+.inv-profile-menu .p-dropdown-head{ display:flex; flex-direction:column; padding:10px 12px 12px; border-bottom:1px solid var(--card-border); margin-bottom:6px; }
+.inv-profile-menu .p-dropdown-head .p-dropdown-name{ font-size:13px; font-weight:800; }
+
+/* ---- Body: sidebar + workspace ---- */
+.inv-app-body{ display:flex; align-items:stretch; }
+.inv-sidebar{ width:212px; flex:0 0 auto; background:var(--sidebar-surface); border-right:1px solid var(--card-border); padding:14px 10px; display:flex; flex-direction:column; }
+.inv-sidebar .inv-business-tab{
+  display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:10px; border:none; background:none;
+  color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; text-align:left; width:100%; margin-bottom:2px;
+}
+.inv-sidebar .inv-business-tab:hover{ background:var(--card); color:var(--ink); }
+.inv-sidebar .inv-business-tab--active{ background:rgba(109,94,245,0.12); color:var(--accent1-solid); font-weight:700; }
+html.dark .inv-sidebar .inv-business-tab--active{ color:#B4A9FF; }
+.inv-sidebar .inv-business-tab-icon{ font-size:15px; width:18px; text-align:center; }
+.inv-sidebar .inv-business-tab--soon{ opacity:0.6; }
+.inv-sidebar-sep{ height:1px; background:var(--card-border); margin:10px 4px; }
+.inv-sidebar-footer{ margin-top:auto; padding-top:10px; }
+.inv-sidebar-footer-label{ font-size:10.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; padding:0 6px 8px; opacity:0.75; }
+
+.inv-workspace{ flex:1; min-width:0; padding:22px 24px 40px; }
+@media (max-width:960px){ .inv-app-body{ flex-direction:column; } .inv-sidebar{ display:none; } }
+
+/* ---- Dashboard header row with date pill ---- */
+.inv-dash-head-row{ display:flex; align-items:flex-start; gap:14px; }
+.inv-dash-date-pill{ margin-left:auto; display:flex; align-items:center; gap:7px; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; }
+
+/* ---- Colorful stat cards ---- */
+.inv-dash-stat{ background:var(--card); border:1px solid var(--card-border); border-radius:16px; padding:15px; }
+.inv-dash-stat-top{ display:flex; align-items:center; gap:9px; margin-bottom:10px; }
+.inv-dash-stat-top .inv-ibadge{ width:30px; height:30px; }
+
+/* ---- Quick Actions: solid gradient, white text/icon -- THE dark-mode
+   fix, applied identically in both themes so it structurally can't
+   regress. No translucent/soft background is ever used here. ---- */
+.inv-dash-quick-actions{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+@media (max-width:640px){ .inv-dash-quick-actions{ grid-template-columns:1fr 1fr; } }
+.inv-qa-btn{
+  display:flex; align-items:center; gap:10px; padding:12px 13px; border-radius:13px; border:none; cursor:pointer;
+  color:#ffffff !important; text-align:left; box-shadow:0 6px 14px rgba(0,0,0,0.16);
+}
+.inv-qa-btn.green{ background:linear-gradient(155deg,#15803D,#0D4D28); }
+.inv-qa-btn.blue{ background:linear-gradient(155deg,#2563EB,#1D4ED8); }
+.inv-qa-btn.purple{ background:linear-gradient(155deg,#7C3AED,#5B21B6); }
+.inv-qa-btn.orange{ background:linear-gradient(155deg,#B45309,#8C3C06); }
+.inv-qa-btn .inv-qi{ width:32px; height:32px; border-radius:9px; background:rgba(255,255,255,0.22); display:flex; align-items:center; justify-content:center; flex:0 0 auto; font-size:15px; }
+.inv-qa-btn .inv-qlbl{ font-size:12.5px; font-weight:800; color:#fff !important; line-height:1.25; }
+
+/* ---- Sales Overview chart + Top Customers ---- */
+.inv-chart-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+.inv-chart-svg{ width:100%; height:150px; display:block; }
+.inv-chart-x-labels{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-soft); margin-top:4px; opacity:0.75; }
+.inv-tc-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--card-border); }
+.inv-tc-row:last-child{ border-bottom:none; }
+.inv-tc-avatar{ width:30px; height:30px; border-radius:50%; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+
+/* ==========================================================================
+   Mobile: fixed bottom nav (Home / Invoices / + / Products / More),
+   replacing the old full-toolbar-as-bottom-bar. Same underlying
+   .inv-business-tab[data-tab] mechanism for the 3 direct nav slots;
+   "More" opens a sheet listing every module (existing pattern extended,
+   not replaced).
+   ========================================================================== */
+.inv-mobile-nav{ display:none; }
+@media (max-width:960px){
+  .inv-mobile-nav{
+    display:flex; align-items:center; justify-content:space-around; position:fixed; left:0; right:0; bottom:0; z-index:30;
+    background:var(--card); backdrop-filter:blur(14px); border-top:1px solid var(--card-border);
+    padding:7px 6px calc(7px + env(safe-area-inset-bottom,0px));
+  }
+  .inv-mobile-nav .inv-business-tab{
+    display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; cursor:pointer;
+    color:var(--ink-soft); font-size:9.5px; font-weight:700; padding:4px 10px; border-radius:10px;
+  }
+  .inv-mobile-nav .inv-business-tab--active{ color:var(--accent1-solid); }
+  html.dark .inv-mobile-nav .inv-business-tab--active{ color:#B4A9FF; }
+  .inv-mobile-nav .inv-business-tab-icon{ font-size:17px; }
+  .inv-mobile-fab{
+    width:50px; height:50px; border-radius:50%; margin-top:-26px; border:4px solid var(--bg2);
+    background:linear-gradient(135deg,var(--accent1),var(--accent2)); color:#fff; font-size:22px; line-height:1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 20px rgba(109,94,245,0.4);
+  }
+  #invBusinessArea{ padding-bottom:78px; }
+}
+@media (min-width:961px){ .inv-mobile-nav{ display:none !important; } }
+
+/* ---- Mobile sheets (Create action sheet, All Tools sheet) ---- */
+.inv-sheet-scrim{ position:fixed; inset:0; background:rgba(10,10,20,0.45); z-index:60; opacity:0; pointer-events:none; transition:opacity .18s ease; }
+.inv-sheet-scrim.show{ opacity:1; pointer-events:auto; }
+.inv-sheet{
+  position:fixed; left:0; right:0; bottom:0; background:var(--paper); border-radius:20px 20px 0 0; z-index:70;
+  padding:8px 18px 22px; transform:translateY(100%); transition:transform .22s ease; box-shadow:0 -12px 40px rgba(0,0,0,0.25);
+  max-height:75vh; overflow-y:auto;
+}
+html.dark .inv-sheet{ background:#171826; }
+.inv-sheet.show{ transform:translateY(0); }
+.inv-sheet-handle{ width:36px; height:4px; border-radius:3px; background:var(--card-border); margin:6px auto 14px; }
+.inv-sheet h3{ font-size:14.5px; font-weight:800; margin-bottom:10px; }
+.inv-sheet-item{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:11px 4px; border:none; background:none; border-bottom:1px solid var(--card-border); font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+.inv-sheet-item:last-child{ border-bottom:none; }
+.inv-sheet-item .inv-ibadge{ width:36px; height:36px; }
+.inv-tools-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.inv-tool-cell{ display:flex; flex-direction:column; align-items:center; gap:7px; padding:13px 6px; border-radius:12px; background:var(--card); border:1px solid var(--card-border); cursor:pointer; text-align:center; }
+.inv-tool-cell span{ font-size:10.5px; font-weight:700; line-height:1.3; }
+
 
