@@ -178,6 +178,9 @@ if (document.getElementById('invModeSelect')) {
   }
 
   function initFieldBindings() {
+    if (window.populateCurrencySelect) {
+      window.populateCurrencySelect(document.getElementById('invCurrency'), { defaultCode: 'USD', customValue: 'CUSTOM', customLabel: 'Custom Currency' });
+    }
     bindField('invBizName', 'business.name');
     bindField('invBizEmail', 'business.email');
     bindField('invBizAddress', 'business.address');

@@ -213,8 +213,8 @@ function fillBusinessForm(profile) {
   $("invSetBizEmail").value = currentUser ? currentUser.email : (profile.email || "");
   $("invSetBizWebsite").value = profile.website || "";
   $("invSetBizAddress").value = profile.address || "";
-  const knownCurrencies = ["USD","EUR","GBP","INR","CAD","AUD","JPY","AED","PKR"];
-  if (profile.defaultCurrency && knownCurrencies.includes(profile.defaultCurrency)) {
+  const knownCurrencyCodes = window.TOOLFLIGHT_CURRENCIES.map(c => c.code);
+  if (profile.defaultCurrency && knownCurrencyCodes.includes(profile.defaultCurrency)) {
     $("invSetBizCurrency").value = profile.defaultCurrency;
     $("invSetBizCurrencyOtherWrap").style.display = "none";
   } else if (profile.defaultCurrency) {
@@ -391,13 +391,15 @@ async function listProducts(businessId) {
 }
 
 function readProductFormData() {
+  const currencySel = $("invProdFormCurrency").value;
+  const currency = currencySel === "OTHER" ? $("invProdFormCurrencyOther").value.trim().toUpperCase() : currencySel;
   return {
     name: $("invProdFormName").value.trim(),
     sku: $("invProdFormSku").value.trim(),
     description: $("invProdFormDescription").value.trim(),
     costPrice: $("invProdFormCost").value ? Number($("invProdFormCost").value) : null,
     sellingPrice: Number($("invProdFormPrice").value),
-    currency: $("invProdFormCurrency").value,
+    currency: currency,
     taxable: $("invProdFormTaxEnabled").checked,
     taxRate: Number($("invProdFormTaxRate").value) || 0,
     inventoryTracking: $("invProdFormInventoryTracking").checked,
@@ -417,7 +419,16 @@ function openProductModal(product) {
   $("invProdFormDescription").value = product ? product.description || "" : "";
   $("invProdFormCost").value = product && product.costPrice != null ? product.costPrice : "";
   $("invProdFormPrice").value = product ? product.sellingPrice || "" : "";
-  $("invProdFormCurrency").value = product ? product.currency || "USD" : (businessProfile ? businessProfile.defaultCurrency || "USD" : "USD");
+  const prodCurrency = product ? product.currency || "USD" : (businessProfile ? businessProfile.defaultCurrency || "USD" : "USD");
+  const knownCurrencyCodes = window.TOOLFLIGHT_CURRENCIES.map(c => c.code);
+  if (knownCurrencyCodes.includes(prodCurrency)) {
+    $("invProdFormCurrency").value = prodCurrency;
+    $("invProdFormCurrencyOtherWrap").style.display = "none";
+  } else {
+    $("invProdFormCurrency").value = "OTHER";
+    $("invProdFormCurrencyOther").value = prodCurrency;
+    $("invProdFormCurrencyOtherWrap").style.display = "";
+  }
   $("invProdFormTaxEnabled").checked = product ? !!product.taxable : false;
   $("invProdFormTaxRate").value = product ? product.taxRate || 0 : 0;
   $("invProdFormTaxRate").disabled = !(product && product.taxable);
@@ -1009,8 +1020,14 @@ function initBusinessUI() {
     });
   });
 
+  window.populateCurrencySelect($("invSetBizCurrency"), { defaultCode: "USD", customValue: "OTHER", customLabel: "Other (enter code below)" });
+  window.populateCurrencySelect($("invProdFormCurrency"), { defaultCode: "USD", customValue: "OTHER", customLabel: "Other (enter code below)" });
+
   $("invSetBizCurrency").addEventListener("change", (e) => {
     $("invSetBizCurrencyOtherWrap").style.display = e.target.value === "OTHER" ? "" : "none";
+  });
+  $("invProdFormCurrency").addEventListener("change", (e) => {
+    $("invProdFormCurrencyOtherWrap").style.display = e.target.value === "OTHER" ? "" : "none";
   });
   $("invSetTaxEnabled").addEventListener("change", (e) => {
     $("invSetTaxRate").disabled = !e.target.checked;
