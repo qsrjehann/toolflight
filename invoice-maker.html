@@ -43,7 +43,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="css/style.css?v=20260802-0530">
-<link rel="stylesheet" href="css/invoice.css?v=20260811-2300">
+<link rel="stylesheet" href="css/invoice.css?v=20260812-1000">
 
 <script type="application/ld+json">
 {
@@ -331,7 +331,7 @@
           <button class="inv-qa-btn orange inv-business-tab" data-tab="expenses" type="button"><span class="inv-qi">&#128181;</span><span class="inv-qlbl">Record Expense</span></button>
         </div>
       </div>
-      <p class="editor-hint" style="margin-top:10px;">Recent invoices, low stock, and customer details now live in their own tabs -- use the sidebar (or More on mobile) to jump straight there.</p>
+
     </div>
 
     <!-- ---- Business Profile tab (unchanged from Phase 1 -- only its
@@ -426,6 +426,7 @@
       </div>
       <p class="inv-auth-error" id="invCustomersError"></p>
       <div id="invCustomersList" class="inv-record-list"></div>
+      <div id="invCustomersPagination" class="inv-pagination"></div>
     </div>
 
     <!-- ---- Products tab ---- -->
@@ -436,6 +437,7 @@
       </div>
       <p class="inv-auth-error" id="invProductsError"></p>
       <div id="invProductsList" class="inv-record-list"></div>
+      <div id="invProductsPagination" class="inv-pagination"></div>
     </div>
 
     <!-- ---- Invoice History tab ---- -->
@@ -463,6 +465,7 @@
       </div>
       <p class="editor-hint" id="invInventoryEmptyNote"></p>
       <div id="invInventoryList" class="inv-record-list"></div>
+      <div id="invInventoryPagination" class="inv-pagination"></div>
       <h3 style="font-size:15px;font-weight:800;margin:26px 0 10px;">Recent Stock Movements</h3>
       <div id="invMovementsList" class="inv-record-list"></div>
     </div>
@@ -507,6 +510,7 @@
       <button class="inv-sheet-item" id="invFabNewInvoiceBtn" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128196;</span></span>Invoice</button>
       <button class="inv-sheet-item inv-business-tab" data-tab="customers" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128101;</span></span>Customer</button>
       <button class="inv-sheet-item inv-business-tab" data-tab="products" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128230;</span></span>Product</button>
+      <button class="inv-sheet-item inv-business-tab" data-tab="inventory" type="button"><span class="inv-ibadge neutral"><span style="font-size:15px;">&#128202;</span></span>Inventory</button>
     </div>
 
     <div class="inv-sheet" id="invAllToolsSheet" style="max-height:80vh;">
@@ -886,8 +890,8 @@
 
 <script defer src="js/invoice.js?v=20260802-0530"></script>
 <script type="module" src="js/invoice-auth.js?v=20260802-1600"></script>
-<script type="module" src="js/invoice-business.js?v=20260811-2300"></script>
-<script type="module" src="js/invoice-history.js?v=20260811-2200"></script>
+<script type="module" src="js/invoice-business.js?v=20260812-1000"></script>
+<script type="module" src="js/invoice-history.js?v=20260812-1000"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script type="module" src="js/invoice-team.js?v=20260811-2200"></script>
 </body>
