@@ -366,6 +366,84 @@
       <p class="inv-auth-error" id="invBizSetupError"></p>
       <p class="inv-auth-success" id="invBizSetupSuccess"></p>
       <button class="btn btn-success" id="invBizSetupSaveBtn" type="button" style="margin-top:6px;">Save Business Profile</button>
+
+      <div class="inv-dash-card hidden" id="invBackupSection" style="margin-top:24px;max-width:640px;">
+        <div class="inv-dash-card-head"><h3>Backup &amp; Restore</h3></div>
+        <p class="editor-hint">Keep a copy of your business data somewhere safe. You can use this file to restore your business if it's ever lost. Keep your backup file in a safe place -- anyone with access to it could use it to restore this business's data.</p>
+        <p class="editor-hint" id="invBackupLastInfo"></p>
+        <button class="btn btn-success" id="invCreateBackupBtn" type="button">Create Backup</button>
+        <div class="hidden" id="invBackupResult" style="margin-top:16px;">
+          <p style="font-weight:800;font-size:13.5px;margin-bottom:8px;">Backup Complete</p>
+          <div id="invBackupCounts" class="inv-record-list"></div>
+          <button class="btn btn-primary" id="invDownloadBackupBtn" type="button" style="margin-top:12px;">Download Backup</button>
+        </div>
+        <p class="inv-auth-error" id="invBackupError"></p>
+
+        <div style="margin-top:26px;padding-top:20px;border-top:1px solid var(--card-border);">
+          <h4 style="font-size:13.5px;font-weight:800;margin-bottom:8px;">Restore from Backup</h4>
+          <p class="editor-hint">Select a backup file to check it before restoring. Nothing is changed until you confirm.</p>
+          <input type="file" id="invRestoreFileInput" accept=".json,application/json" class="hidden">
+          <button class="btn btn-primary" id="invSelectBackupBtn" type="button">Select Backup File</button>
+          <p class="inv-auth-error" id="invRestoreError" style="margin-top:10px;"></p>
+
+          <div class="hidden" id="invRestorePreview" style="margin-top:18px;">
+            <div class="inv-dash-card" style="background:var(--paper);margin-bottom:0;">
+              <h3 style="font-size:14.5px;font-weight:800;margin-bottom:2px;">Restore Backup</h3>
+
+              <div style="margin:14px 0;">
+                <div class="editor-hint" style="margin-bottom:2px;">Business</div>
+                <div id="invRestoreBizName" style="font-weight:800;font-size:14px;"></div>
+              </div>
+              <div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:16px;">
+                <div><div class="editor-hint" style="margin-bottom:2px;">Backup created</div><div id="invRestoreCreatedAt" style="font-weight:700;font-size:13px;"></div></div>
+                <div><div class="editor-hint" style="margin-bottom:2px;">Backup version</div><div id="invRestoreVersion" style="font-weight:700;font-size:13px;"></div></div>
+              </div>
+
+              <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:8px;">Data to restore</div>
+              <div id="invRestoreCounts" class="inv-record-list"></div>
+
+              <div id="invRestoreChecklist" style="margin:16px 0;display:flex;flex-direction:column;gap:6px;font-size:12.5px;"></div>
+
+              <div style="background:rgba(180,83,9,0.10);border:1px solid rgba(180,83,9,0.3);border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.7;margin-bottom:16px;">
+                <strong>This backup will be restored into a new/empty business.</strong><br>
+                Your existing business will not be overwritten.<br>
+                Make sure you are restoring into the correct empty business.
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-ghost" id="invRestoreCancelBtn" type="button">Cancel</button>
+                <button class="btn btn-primary" id="invRestoreContinueBtn" type="button">Continue to Restore</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="hidden" id="invRestoreProgressBox" style="margin-top:18px;">
+            <div class="inv-dash-card" style="background:var(--paper);margin-bottom:0;">
+              <h3 style="font-size:14.5px;font-weight:800;margin-bottom:10px;">Restoring your business…</h3>
+              <p class="editor-hint">Please don't close this page while restore is in progress.</p>
+              <p id="invRestoreProgressText" style="font-weight:700;font-size:13px;margin-top:8px;">Starting…</p>
+            </div>
+          </div>
+
+          <div class="hidden" id="invRestoreResultSuccess" style="margin-top:18px;">
+            <div class="inv-dash-card" style="background:var(--paper);margin-bottom:0;">
+              <h3 style="font-size:14.5px;font-weight:800;color:var(--ok-solid);margin-bottom:10px;">&#10003; Restore completed successfully</h3>
+              <div id="invRestoreSuccessCounts" class="inv-record-list"></div>
+              <p class="editor-hint hidden" id="invRestoreReinviteNote" style="margin-top:14px;line-height:1.7;"></p>
+              <p class="editor-hint" style="margin-top:14px;">Your restored business is now open. Refresh the page to see it everywhere in the app.</p>
+              <button class="btn btn-ghost" id="invRestoreDismissSuccessBtn" type="button" style="margin-top:10px;">Done</button>
+            </div>
+          </div>
+
+          <div class="hidden" id="invRestoreResultFailure" style="margin-top:18px;">
+            <div class="inv-dash-card" style="background:var(--paper);margin-bottom:0;">
+              <h3 style="font-size:14.5px;font-weight:800;color:var(--err-solid);margin-bottom:10px;">Restore could not be completed</h3>
+              <p id="invRestoreFailureDetail" class="editor-hint" style="line-height:1.7;"></p>
+              <button class="btn btn-ghost" id="invRestoreDismissFailureBtn" type="button" style="margin-top:10px;">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ---- Suppliers / Reports: honest "coming soon" placeholders.
@@ -879,5 +957,6 @@
 <script type="module" src="js/invoice-history.js?v=20260812-1000"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script type="module" src="js/invoice-team.js?v=20260811-2200"></script>
+<script type="module" src="js/invoice-backup.js?v=20260812-2000"></script>
 </body>
 </html>
