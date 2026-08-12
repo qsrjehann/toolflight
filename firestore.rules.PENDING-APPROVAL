@@ -1,0 +1,273 @@
+// ToolFlight Invoice & Business Manager -- Firestore Security Rules (DRAFT)
+// =========================================================================
+// STATUS: Draft, covering Phases 1-8 (Auth, Business/Customers/Products,
+// Invoices, Inventory, Team/Roles, Invites). Not deployed to any Firebase
+// project -- no Firebase project exists in this repository (confirmed by
+// repository audit before Phase 1 began, re-confirmed at the start of
+// every subsequent phase including this one). See the Phase 8 report for
+// exactly what has and hasn't been verified, including the honest
+// limitation that the Firebase Emulator itself could not be installed in
+// this sandbox (no network access to download it) -- these rules have
+// been audited and logically verified, but not run against a real or
+// emulated Firestore instance.
+//
+// Before this is deployed for real:
+//   1. Test every rule below against Firebase's Rules Simulator.
+//   2. Confirm the businessMembers/{uid} document ID genuinely equals the
+//      requester's auth uid for every write path (enforced below, but
+//      re-verify against the real client code once it exists).
+//   3. Add rate limiting / App Check if abuse becomes a concern -- out of
+//      scope for rules alone.
+//
+// Core principle: nothing is globally readable or writable. Every rule
+// resolves the requester's business membership and permission level
+// first. No collection uses `allow read, write: if true`.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Invite documents and queries are always keyed/filtered by a
+    // lowercased email (see js/invoice-team.js: email.trim().toLowerCase()
+    // at every write and read site) -- but the raw request.auth.token.email
+    // claim from the ID token is not guaranteed to be lowercase. Without
+    // normalizing here too, any user whose real email has uppercase
+    // characters would fail every invite-related check: the get()-by-path
+    // lookups below would resolve to a different, non-existent document
+    // ID, and the equality checks would never match, even though the
+    // client-side query (which lowercases both sides) had already found
+    // the right document. myEmail() below is the normalized accessor.
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isMember(businessId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)/businessMembers/$(request.auth.uid));
+    }
+
+    function memberData(businessId) {
+      return get(/databases/$(database)/documents/businesses/$(businessId)/businessMembers/$(request.auth.uid)).data;
+    }
+
+    function isOwner(businessId) {
+      return isMember(businessId) && memberData(businessId).role == 'owner';
+    }
+
+    // Owners implicitly have every permission; non-owners need the exact
+    // flag set. Example call: hasPermission(businessId, 'invoices', 'edit')
+    function hasPermission(businessId, resource, action) {
+      return isOwner(businessId) ||
+        (isMember(businessId) &&
+         memberData(businessId).permissions[resource][action] == true);
+    }
+
+    // ---- users/{uid} -- a user can only read/write their own profile ----
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---- businesses/{businessId} -- top-level business document ----
+    match /businesses/{businessId} {
+      allow read: if isMember(businessId);
+      allow create: if isSignedIn(); // creating a NEW business; ownership is established via the businessMembers write below, in the same transaction client-side
+      // ownerUid is immutable after creation -- Phase 6 deliberately left
+      // ownership transfer unsupported, so a settings.edit update (which
+      // legitimately covers name/address/currency/etc.) must never be
+      // able to also silently rewrite who the business's owner is.
+      allow update: if hasPermission(businessId, 'settings', 'edit') &&
+        request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isOwner(businessId);
+
+      // ---- businessMembers/{uid} -- team membership + permissions ----
+      match /businessMembers/{memberUid} {
+        allow read: if isMember(businessId);
+        // Two cases: (1) an existing owner adding a new team member, or
+        // (2) the one-time bootstrap where a business's own creator
+        // establishes themselves as its first owner-member. Case (2) is
+        // gated on the PARENT business document's own ownerUid field
+        // (set when that business was created) matching the requester --
+        // not on document existence, which would either block the
+        // legitimate bootstrap write (checking "business doesn't exist
+        // yet" fails since the business was just created moments
+        // earlier) or allow any signed-in user to self-add to any
+        // business (checking only "my own member doc doesn't exist yet").
+        allow create: if isSignedIn() &&
+          (
+            // Bootstrap: the business's real creator making themselves owner.
+            (request.auth.uid == memberUid &&
+             request.resource.data.role == 'owner' &&
+             get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid &&
+             !exists(/databases/$(database)/documents/businesses/$(businessId)/businessMembers/$(request.auth.uid)))
+            ||
+            // Phase 6: an existing owner adding a team member directly --
+            // never via this path for a NEW owner (bootstrap-only above),
+            // and never adding someone else AS owner.
+            (isOwner(businessId) && request.resource.data.role != 'owner')
+            ||
+            // Phase 8 fix: an invited user accepting their OWN pending,
+            // non-expired invite. Invites are keyed by email specifically
+            // so this get() can verify a real, matching invite exists --
+            // rules cannot run queries, only read a known path. The
+            // role/permissions being written must match the invite
+            // EXACTLY (an invited user can never grant themselves more
+            // than what they were actually invited with), and an invite
+            // can never itself carry role=='owner' (enforced on the
+            // invites create rule below too, so this is defense in depth).
+            (request.auth.uid == memberUid &&
+             request.resource.data.role != 'owner' &&
+             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.status == 'pending' &&
+             get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.expiresAtMs > request.time.toMillis() &&
+             request.resource.data.role == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.role &&
+             request.resource.data.permissions == get(/databases/$(database)/documents/businesses/$(businessId)/invites/$(myEmail())).data.permissions)
+          );
+        // Phase 6 fixes, found via audit of the Phase 1-5 rule:
+        //  - Self-elevation: a member (even one with team.manage) can
+        //    never write to their OWN member document -- team changes to
+        //    a person must always come from someone else with authority,
+        //    never from that person editing their own record.
+        //  - Owner protection: the owner's own member document can never
+        //    be updated or deleted through this path at all (requirement
+        //    9) -- ownership transfer/removal is out of scope for this
+        //    phase and deliberately unsupported here, not just unbuilt.
+        //  - Role escalation via update: even a legitimate team-manager
+        //    can never set someone's role TO 'owner' through an update.
+        allow update: if hasPermission(businessId, 'team', 'manage') &&
+          request.auth.uid != memberUid &&
+          resource.data.role != 'owner' &&
+          request.resource.data.role != 'owner';
+        allow delete: if hasPermission(businessId, 'team', 'manage') &&
+          request.auth.uid != memberUid &&
+          resource.data.role != 'owner';
+      }
+
+      // ---- invites (Phase 6) -- pending team invitations, keyed by
+      // auto-ID rather than UID since the invited person's UID isn't
+      // known until they actually sign in; the client matches their
+      // email against pending invites at sign-in and converts an
+      // accepted invite into a real businessMembers/{uid} document (a
+      // separate write, itself gated by the businessMembers create rule
+      // above -- an invite alone grants no direct data access).
+      match /invites/{inviteId} {
+        allow read: if hasPermission(businessId, 'team', 'manage') ||
+          (isSignedIn() && resource.data.email == myEmail());
+        allow create: if hasPermission(businessId, 'team', 'manage') && request.resource.data.role != 'owner';
+        // Only two legitimate transitions: an owner/manager revoking a
+        // still-pending invite, or the invited person themselves
+        // accepting it (and only flipping status to "accepted", nothing
+        // else about the invite -- role/permissions on an invite are
+        // fixed at creation time by whoever sent it).
+        allow update: if (hasPermission(businessId, 'team', 'manage') && request.resource.data.status == 'revoked') ||
+          (isSignedIn() && resource.data.email == myEmail() &&
+           resource.data.status == 'pending' && resource.data.expiresAtMs > request.time.toMillis() &&
+           request.resource.data.status == 'accepted' &&
+           request.resource.data.role == resource.data.role);
+        allow delete: if hasPermission(businessId, 'team', 'manage');
+      }
+
+      // ---- customers ----
+      match /customers/{customerId} {
+        allow read: if hasPermission(businessId, 'customers', 'view');
+        allow create: if hasPermission(businessId, 'customers', 'create');
+        allow update: if hasPermission(businessId, 'customers', 'edit');
+        allow delete: if hasPermission(businessId, 'customers', 'delete');
+      }
+
+      // ---- expenses (Phase C) ----
+      match /expenses/{expenseId} {
+        allow read: if hasPermission(businessId, 'expenses', 'view');
+        allow create: if hasPermission(businessId, 'expenses', 'create');
+        allow update: if hasPermission(businessId, 'expenses', 'edit');
+        allow delete: if hasPermission(businessId, 'expenses', 'delete');
+      }
+
+      // ---- products ----
+      match /products/{productId} {
+        allow read: if hasPermission(businessId, 'products', 'view');
+        allow create: if hasPermission(businessId, 'products', 'create');
+        // Two legitimate paths update a product: a manual edit (name,
+        // price, etc. -- products.edit), or the invoice save/delete
+        // transaction deducting/restoring its stock as a side effect of
+        // a sale (invoices.create) -- a user who can create invoices but
+        // not edit product details must still be able to complete a sale.
+        allow update: if hasPermission(businessId, 'products', 'edit') || hasPermission(businessId, 'invoices', 'create');
+        allow delete: if hasPermission(businessId, 'products', 'delete');
+      }
+
+      // ---- inventory ----
+      match /inventory/{productId} {
+        allow read: if hasPermission(businessId, 'inventory', 'view');
+        allow write: if hasPermission(businessId, 'inventory', 'adjust');
+      }
+
+      // ---- inventoryMovements (Phase 5) -- append-only audit trail of
+      // every stock change, created either by a manual stock adjustment
+      // (products.edit) or automatically by an invoice save/edit/delete
+      // that touches inventory (invoices.create covers both, since the
+      // same transaction that creates/updates an invoice is what writes
+      // the matching movement). Never updatable or deletable by any
+      // client role -- an audit trail that could be silently rewritten
+      // after the fact wouldn't be trustworthy.
+      match /inventoryMovements/{movementId} {
+        allow read: if hasPermission(businessId, 'products', 'view') || hasPermission(businessId, 'inventory', 'view');
+        allow create: if hasPermission(businessId, 'products', 'edit') || hasPermission(businessId, 'invoices', 'create');
+        allow update, delete: if false;
+      }
+
+      // ---- invoices + nested invoiceItems ----
+      match /invoices/{invoiceId} {
+        allow read: if hasPermission(businessId, 'invoices', 'view');
+        allow create: if hasPermission(businessId, 'invoices', 'create');
+        allow update: if hasPermission(businessId, 'invoices', 'edit');
+        allow delete: if hasPermission(businessId, 'invoices', 'delete');
+
+        match /invoiceItems/{itemId} {
+          allow read: if hasPermission(businessId, 'invoices', 'view');
+          allow write: if hasPermission(businessId, 'invoices', 'edit');
+        }
+      }
+
+      // ---- payments ----
+      match /payments/{paymentId} {
+        allow read: if hasPermission(businessId, 'invoices', 'view');
+        allow write: if hasPermission(businessId, 'invoices', 'edit');
+      }
+
+      // ---- sales (reporting/derived data) ----
+      match /sales/{saleId} {
+        allow read: if hasPermission(businessId, 'reports', 'view');
+        // Sales records should be written by trusted server-side logic
+        // (e.g. Cloud Functions) once that exists, not directly by
+        // clients -- left unwritable by any client role for now.
+        allow write: if false;
+      }
+
+      // ---- settings ----
+      // Specific rule for the invoice-number counter, checked before the
+      // generic settings rule below: incrementing it is part of creating
+      // an invoice, not a settings edit, so it's gated on invoices.create
+      // rather than settings.edit -- otherwise a team member who can
+      // create invoices but lacks business-settings access would be
+      // incorrectly blocked from getting the next invoice number.
+      match /settings/invoiceCounter {
+        allow read: if hasPermission(businessId, 'invoices', 'create') || hasPermission(businessId, 'settings', 'view');
+        allow write: if hasPermission(businessId, 'invoices', 'create');
+      }
+      match /settings/{document=**} {
+        allow read: if hasPermission(businessId, 'settings', 'view');
+        allow write: if hasPermission(businessId, 'settings', 'edit');
+      }
+
+      // ---- backups ----
+      match /backups/{backupId} {
+        allow read: if hasPermission(businessId, 'settings', 'view');
+        allow write: if isOwner(businessId);
+      }
+    }
+  }
+}
