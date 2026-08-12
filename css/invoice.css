@@ -93,7 +93,7 @@
 }
 
 /* ---- Phase 3: My Business (tabs + customer/product lists) ---- */
-.inv-business-tabs{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+.inv-business-tabs{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; max-width:100%; }
 .inv-business-tabs .inv-business-tab{ flex:0 0 auto; white-space:nowrap; }
 .inv-business-tab{
   background:transparent; border:1px solid var(--card-border); border-radius:9px;
@@ -415,7 +415,7 @@ html.dark .inv-sheet{ background:#171826; }
    pattern already used in style.css for the ecommerce editor and AI
    Photo Retouch's own fixed-position UI (see style.css's .workspace:has(...)
    rules) -- this is the same class of bug, same established fix. */
-body:has(#invBusinessArea:not(.hidden)){ min-height:auto; }
+html:has(#invBusinessArea:not(.hidden)), body:has(#invBusinessArea:not(.hidden)){ min-height:auto; overflow-x:hidden; }
 
 /* Genuine yellow/gold Edit button -- distinct from the amber .btn-warning
    that was reading as brown. Uses dark text instead of white, since
