@@ -33,6 +33,77 @@ function hide(id) { $(id).classList.add("hidden"); }
 function setError(id, msg) { const el = $(id); if (el) el.textContent = msg || ""; }
 function setSuccess(id, msg) { const el = $(id); if (el) el.textContent = msg || ""; }
 
+/* ==================================================================
+   Shared pagination (Customers / Products / Inventory)
+   ==================================================================
+   Sorting and paging both happen on the array already held in memory
+   (customers/products/movements are already fully loaded by the
+   existing getDocs() calls -- unchanged). This layer only controls
+   what gets turned into DOM nodes: for N=1000 records it always
+   builds at most `pageSize` (<=100) row elements, never all 1000
+   with the rest hidden by CSS. */
+const paginationState = {
+  customers: { page: 1, pageSize: 20 },
+  products: { page: 1, pageSize: 20 },
+  inventory: { page: 1, pageSize: 20 },
+};
+
+function sortByName(arr, field) {
+  return arr.slice().sort((a, b) =>
+    String(a[field] || "").localeCompare(String(b[field] || ""), undefined, { sensitivity: "base", numeric: true })
+  );
+}
+
+/** Returns { pageItems, controlsHtml } -- slices `items` (already sorted
+    by the caller) to the current page for `key`, clamping the page
+    number if the list shrank (e.g. after a delete or a new search). */
+function paginate(key, items) {
+  const state = paginationState[key];
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
+  if (state.page > totalPages) state.page = totalPages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * state.pageSize;
+  const pageItems = items.slice(start, start + state.pageSize);
+  const startNum = total === 0 ? 0 : start + 1;
+  const endNum = Math.min(start + state.pageSize, total);
+
+  const sizeButtons = [10, 20, 50, 100].map(n => `
+    <button type="button" class="inv-page-size-btn${state.pageSize === n ? " inv-page-size-btn--active" : ""}" data-pkey="${key}" data-size="${n}">${n}</button>
+  `).join("");
+
+  const controlsHtml = total === 0 ? "" : `
+    <div class="inv-pagination-info">Showing ${startNum}–${endNum} of ${total}</div>
+    <div class="inv-pagination-row">
+      <div class="inv-pagination-sizes"><span class="inv-pagination-sizes-label">Per page:</span>${sizeButtons}</div>
+      <div class="inv-pagination-nav">
+        <button type="button" class="btn btn-outline inv-page-prev" data-pkey="${key}" ${state.page <= 1 ? "disabled" : ""}>&larr; Previous</button>
+        <span class="inv-pagination-page">Page ${state.page} of ${totalPages}</span>
+        <button type="button" class="btn btn-outline inv-page-next" data-pkey="${key}" ${state.page >= totalPages ? "disabled" : ""}>Next &rarr;</button>
+      </div>
+    </div>`;
+
+  return { pageItems, controlsHtml };
+}
+
+const paginationRenderers = {}; // key -> the render function to call again after a page/size change
+
+document.addEventListener("click", (e) => {
+  const sizeBtn = e.target.closest(".inv-page-size-btn");
+  const prevBtn = e.target.closest(".inv-page-prev");
+  const nextBtn = e.target.closest(".inv-page-next");
+  const btn = sizeBtn || prevBtn || nextBtn;
+  if (!btn) return;
+  const key = btn.dataset.pkey;
+  const state = paginationState[key];
+  if (!state) return;
+  if (sizeBtn) { state.pageSize = Number(sizeBtn.dataset.size); state.page = 1; }
+  if (prevBtn) state.page -= 1;
+  if (nextBtn) state.page += 1;
+  const renderFn = paginationRenderers[key];
+  if (renderFn) renderFn();
+});
+
 const NOT_CONFIGURED_MESSAGE = "Account features aren't fully set up yet. Quick Invoice (no account) works normally.";
 
 async function loadFirestoreFns() {
@@ -268,28 +339,33 @@ async function handleDeleteCustomer(customerId) {
 }
 
 function renderCustomersList(filterText) {
+  paginationRenderers.customers = () => renderCustomersList(filterText);
   const list = $("invCustomersList");
   const term = (filterText || "").trim().toLowerCase();
   const filtered = term
     ? customers.filter(c => (c.name||"").toLowerCase().includes(term) || (c.company||"").toLowerCase().includes(term) || (c.email||"").toLowerCase().includes(term))
     : customers;
+  const sorted = sortByName(filtered, "name");
 
-  if (filtered.length === 0) {
+  if (sorted.length === 0) {
     list.innerHTML = `<p class="editor-hint">${customers.length === 0 ? "No customers yet. Add your first one above." : "No customers match your search."}</p>`;
+    $("invCustomersPagination").innerHTML = "";
     return;
   }
-  list.innerHTML = filtered.map(c => `
+  const { pageItems, controlsHtml } = paginate("customers", sorted);
+  list.innerHTML = pageItems.map(c => `
     <div class="inv-record-row" data-id="${c.id}">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(c.name)}</div>
         <div class="inv-record-sub">${[c.company, c.email, c.phone].filter(Boolean).map(escapeHtml).join(" · ") || "&nbsp;"}</div>
       </div>
       <div class="inv-record-actions">
-        <button type="button" class="btn btn-warning inv-record-edit" data-id="${c.id}">Edit</button>
+        <button type="button" class="btn inv-btn-edit inv-record-edit" data-id="${c.id}">Edit</button>
         <button type="button" class="btn btn-danger inv-record-delete" data-id="${c.id}">Delete</button>
       </div>
     </div>
   `).join("");
+  $("invCustomersPagination").innerHTML = controlsHtml;
 }
 
 async function refreshCustomers() {
@@ -532,17 +608,21 @@ function stockStatusBadge(p) {
 }
 
 function renderProductsList(filterText) {
+  paginationRenderers.products = () => renderProductsList(filterText);
   const list = $("invProductsList");
   const term = (filterText || "").trim().toLowerCase();
   const filtered = term
     ? products.filter(p => (p.name||"").toLowerCase().includes(term) || (p.sku||"").toLowerCase().includes(term))
     : products;
+  const sorted = sortByName(filtered, "name");
 
-  if (filtered.length === 0) {
+  if (sorted.length === 0) {
     list.innerHTML = `<p class="editor-hint">${products.length === 0 ? "No products yet. Add your first one above." : "No products match your search."}</p>`;
+    $("invProductsPagination").innerHTML = "";
     return;
   }
-  list.innerHTML = filtered.map(p => `
+  const { pageItems, controlsHtml } = paginate("products", sorted);
+  list.innerHTML = pageItems.map(p => `
     <div class="inv-record-row" data-id="${p.id}">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(p.name)}</div>
@@ -550,11 +630,12 @@ function renderProductsList(filterText) {
       </div>
       <div class="inv-record-actions">
         ${p.inventoryTracking ? `<button type="button" class="btn btn-ghost inv-record-adjust-stock" data-id="${p.id}">Adjust Stock</button>` : ""}
-        <button type="button" class="btn btn-warning inv-record-edit" data-id="${p.id}">Edit</button>
+        <button type="button" class="btn inv-btn-edit inv-record-edit" data-id="${p.id}">Edit</button>
         <button type="button" class="btn btn-danger inv-record-delete" data-id="${p.id}">Delete</button>
       </div>
     </div>
   `).join("");
+  $("invProductsPagination").innerHTML = controlsHtml;
 }
 
 async function refreshProducts() {
@@ -584,17 +665,21 @@ function matchesStockFilter(p, filter) {
 }
 
 function renderInventoryList() {
+  paginationRenderers.inventory = renderInventoryList;
   const list = $("invInventoryList");
   const trackedProducts = products.filter(p => p.inventoryTracking);
   const filtered = trackedProducts.filter(p => matchesStockFilter(p, currentStockFilter));
+  const sorted = sortByName(filtered, "name");
 
   if (trackedProducts.length === 0) {
     $("invInventoryEmptyNote").textContent = "No products have inventory tracking enabled yet. Turn on \"Track inventory\" when adding or editing a product.";
     list.innerHTML = "";
+    $("invInventoryPagination").innerHTML = "";
     return;
   }
-  $("invInventoryEmptyNote").textContent = filtered.length === 0 ? "No products match this filter." : "";
-  list.innerHTML = filtered.map(p => `
+  $("invInventoryEmptyNote").textContent = sorted.length === 0 ? "No products match this filter." : "";
+  const { pageItems, controlsHtml } = paginate("inventory", sorted);
+  list.innerHTML = pageItems.map(p => `
     <div class="inv-record-row">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(p.name)}${p.sku ? " · SKU: " + escapeHtml(p.sku) : ""}</div>
@@ -602,6 +687,7 @@ function renderInventoryList() {
       </div>
     </div>
   `).join("");
+  $("invInventoryPagination").innerHTML = controlsHtml;
 }
 
 async function loadMovements(businessId) {
@@ -629,13 +715,17 @@ function renderMovementsList() {
 }
 
 async function refreshInventoryTab(businessId) {
-  if (!businessId) return;
+  if (!businessId) {
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Business isn't loaded yet -- please try again in a moment.</p>`;
+    return;
+  }
   try {
     movements = await loadMovements(businessId);
     renderInventoryList();
     renderMovementsList();
   } catch (err) {
     console.error("[invoice-business] load inventory/movements failed:", err);
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Could not load inventory right now. Please try again.</p>`;
   }
 }
 
@@ -675,10 +765,18 @@ function switchBusinessTab(tab) {
   });
   hide("invTabDashboard"); hide("invTabProfile"); hide("invTabCustomers"); hide("invTabProducts");
   hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam"); hide("invTabSuppliers"); hide("invTabReports");
+  hide("invTabExpenses"); hide("invTabPayments"); hide("invTabAccounting");
   show("invTab" + tab.charAt(0).toUpperCase() + tab.slice(1));
   closeProfileMenu();
   window.scrollTo(0, 0);
-  if (tab === "inventory") refreshInventoryTab(currentBusinessId);
+  if (tab === "inventory") {
+    // Show a placeholder the instant the tab opens -- refreshInventoryTab()
+    // below is async (a real Firestore fetch), and the panel must never
+    // sit empty while it's in flight, however briefly.
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Loading inventory…</p>`;
+    $("invMovementsList").innerHTML = "";
+    refreshInventoryTab(currentBusinessId);
+  }
   if (tab === "dashboard") renderDashboard();
 }
 
@@ -903,6 +1001,7 @@ function initBusinessUI() {
   document.querySelectorAll(".inv-business-tab[data-stock-filter]").forEach(btn => {
     btn.addEventListener("click", () => {
       currentStockFilter = btn.dataset.stockFilter;
+      paginationState.inventory.page = 1;
       document.querySelectorAll(".inv-business-tab[data-stock-filter]").forEach(b => {
         b.classList.toggle("inv-business-tab--active", b === btn);
       });
@@ -920,7 +1019,7 @@ function initBusinessUI() {
 
   $("invAddCustomerBtn").addEventListener("click", () => openCustomerModal(null));
   $("invCustFormSaveBtn").addEventListener("click", handleSaveCustomer);
-  $("invCustomerSearch").addEventListener("input", (e) => renderCustomersList(e.target.value));
+  $("invCustomerSearch").addEventListener("input", (e) => { paginationState.customers.page = 1; renderCustomersList(e.target.value); });
   $("invCustomersList").addEventListener("click", (e) => {
     const id = e.target.dataset.id;
     if (!id) return;
@@ -932,7 +1031,7 @@ function initBusinessUI() {
   $("invProdFormTaxEnabled").addEventListener("change", (e) => { $("invProdFormTaxRate").disabled = !e.target.checked; });
   $("invProdFormInventoryTracking").addEventListener("change", (e) => { $("invProdFormThresholdWrap").style.display = e.target.checked ? "" : "none"; });
   $("invProdFormSaveBtn").addEventListener("click", handleSaveProduct);
-  $("invProductSearch").addEventListener("input", (e) => renderProductsList(e.target.value));
+  $("invProductSearch").addEventListener("input", (e) => { paginationState.products.page = 1; renderProductsList(e.target.value); });
   $("invProductsList").addEventListener("click", (e) => {
     const id = e.target.dataset.id;
     if (!id) return;
