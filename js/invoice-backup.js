@@ -1047,6 +1047,13 @@ async function checkAndRunAutoBackup(businessId, profile) {
     const backup = await buildBackup(businessId, profile);
     await saveBackupToDrive(businessId, profile.name || "business", backup);
     await fns.updateDoc(fns.doc(db, "businesses", businessId), { lastAutoBackupAt: fns.serverTimestamp() });
+    // Same reasoning as handleToggleAutoBackup: keep the shared
+    // in-memory profile object in sync immediately. serverTimestamp()
+    // resolves on Firestore's side, not locally, so this is a
+    // reasonable client-side approximation (accurate to within the
+    // time this function took to run) rather than the exact server
+    // value -- fine for a "Last automatic backup: just now" display.
+    profile.lastAutoBackupAt = { toDate: () => new Date() };
     refreshAutoBackupStatusUI(businessId);
   } catch (err) {
     console.error("[invoice-backup] automatic daily backup failed (local backup remains available):", err);
@@ -1070,12 +1077,19 @@ function refreshAutoBackupStatusUI(businessId) {
 async function handleToggleAutoBackup(e) {
   const bridge = window.toolflightInvoiceBusiness;
   const businessId = bridge && bridge.getBusinessId();
+  const profile = bridge && bridge.getBusinessProfile();
   if (!businessId) { e.target.checked = !e.target.checked; return; }
   const enabled = e.target.checked;
   try {
     const db = getDb();
     const fns = await loadFirestoreFns();
     await fns.updateDoc(fns.doc(db, "businesses", businessId), { autoBackupEnabled: enabled });
+    // Keep the in-memory businessProfile object (shared by reference
+    // across the whole app via getBusinessProfile()) in sync with what
+    // was just written -- otherwise switching tabs and back reads the
+    // stale pre-toggle value and the checkbox visually reverts, even
+    // though Firestore itself is already correct.
+    if (profile) profile.autoBackupEnabled = enabled;
     if (enabled && !driveAccessToken) {
       setSuccessMsg("invDriveMsg", "Automatic backup is on. Connect Google Drive so it has somewhere to save to.");
     }
