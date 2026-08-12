@@ -422,6 +422,7 @@ function renderRestorePreview(backup) {
   `).join("");
 
   show("invRestorePreview");
+  $("invRestorePreview").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function resetRestoreUI() {
@@ -914,7 +915,13 @@ async function saveBackupToDrive(businessId, businessName, backup) {
 }
 
 async function listDriveBackupFiles() {
-  const q = encodeURIComponent(`name contains 'ToolFlight-Backup-' and trashed = false`);
+  // No name filter: drive.file scope already means this app can only
+  // ever see files it created itself, so every result here is already
+  // guaranteed to be a ToolFlight file -- a name filter isn't needed for
+  // correctness, and Drive's `contains` operator does prefix/tokenized
+  // matching (hyphens are token boundaries), which unreliably matched
+  // hyphenated filenames like this app's own. See regression notes.
+  const q = encodeURIComponent(`trashed = false`);
   const res = await driveFetch(`${DRIVE_API_BASE}/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&spaces=drive`, { method: "GET" });
   const json = await res.json();
   return json.files || [];
@@ -943,7 +950,7 @@ function updateDriveConnectionUI() {
 }
 
 async function handleConnectDrive() {
-  setError("invBackupError", "");
+  setError("invDriveMsg", "");
   const btn = $("invDriveConnectBtn");
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = "Connecting…";
@@ -960,7 +967,7 @@ async function handleConnectDrive() {
     updateDriveConnectionUI();
   } catch (err) {
     console.error("[invoice-backup] Google Drive connect failed:", err);
-    setError("invBackupError", "Could not connect Google Drive. Please try again.");
+    setError("invDriveMsg", "Could not connect Google Drive. Please try again.");
   } finally {
     btn.disabled = false;
     updateDriveConnectionUI();
@@ -972,22 +979,22 @@ async function handleBackupToDrive() {
   const bridge = window.toolflightInvoiceBusiness;
   const businessId = bridge && bridge.getBusinessId();
   const profile = bridge && bridge.getBusinessProfile();
-  setError("invBackupError", "");
-  if (!driveAccessToken) { setError("invBackupError", "Connect Google Drive to store automatic backups."); return; }
-  if (!businessId) { setError("invBackupError", "No business is loaded right now."); return; }
+  setError("invDriveMsg", "");
+  if (!driveAccessToken) { setError("invDriveMsg", "Connect Google Drive to store automatic backups."); return; }
+  if (!businessId) { setError("invDriveMsg", "No business is loaded right now."); return; }
 
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = "Saving to Drive…";
   try {
     const backup = await buildBackup(businessId, profile);
     await saveBackupToDrive(businessId, profile.name || "business", backup);
-    setSuccessMsg("invBackupError", "Your latest backup has been saved to Google Drive.");
+    setSuccessMsg("invDriveMsg", "Your latest backup has been saved to Google Drive.");
   } catch (err) {
     console.error("[invoice-backup] Drive backup failed:", err);
     if (String(err.message).includes("DRIVE_TOKEN_EXPIRED")) {
-      setError("invBackupError", "Google Drive permission expired. Please reconnect Google Drive.");
+      setError("invDriveMsg", "Google Drive permission expired. Please reconnect Google Drive.");
     } else {
-      setError("invBackupError", "Backup could not be uploaded. Your local backup is still available.");
+      setError("invDriveMsg", "Backup could not be uploaded. Your local backup is still available.");
     }
   } finally {
     btn.disabled = false; btn.textContent = original;
@@ -995,21 +1002,21 @@ async function handleBackupToDrive() {
 }
 
 async function handleRestoreFromDrive() {
-  setError("invRestoreError", "");
-  if (!driveAccessToken) { setError("invRestoreError", "Connect Google Drive first to restore from it."); return; }
+  setError("invDriveMsg", "");
+  if (!driveAccessToken) { setError("invDriveMsg", "Connect Google Drive first to restore from it."); return; }
   const btn = $("invDriveRestoreBtn");
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = "Checking Google Drive…";
   try {
     const files = await listDriveBackupFiles();
     if (files.length === 0) {
-      setError("invRestoreError", "No ToolFlight backups were found in your Google Drive.");
+      setError("invDriveMsg", "No ToolFlight backups were found in your Google Drive.");
       return;
     }
     const text = await downloadDriveFileContent(files[0].id);
     const result = validateBackup(text);
     if (!result.ok) {
-      setError("invRestoreError", result.error);
+      setError("invDriveMsg", result.error);
       console.error("[invoice-backup] Drive backup validation failed:", result.detail);
       return;
     }
@@ -1018,9 +1025,9 @@ async function handleRestoreFromDrive() {
   } catch (err) {
     console.error("[invoice-backup] Drive restore failed:", err);
     if (String(err.message).includes("DRIVE_TOKEN_EXPIRED")) {
-      setError("invRestoreError", "Google Drive permission expired. Please reconnect Google Drive.");
+      setError("invDriveMsg", "Google Drive permission expired. Please reconnect Google Drive.");
     } else {
-      setError("invRestoreError", "Could not read backups from Google Drive right now.");
+      setError("invDriveMsg", "Could not read backups from Google Drive right now.");
     }
   } finally {
     btn.disabled = false; btn.textContent = original;
@@ -1070,12 +1077,12 @@ async function handleToggleAutoBackup(e) {
     const fns = await loadFirestoreFns();
     await fns.updateDoc(fns.doc(db, "businesses", businessId), { autoBackupEnabled: enabled });
     if (enabled && !driveAccessToken) {
-      setSuccessMsg("invBackupError", "Automatic backup is on. Connect Google Drive so it has somewhere to save to.");
+      setSuccessMsg("invDriveMsg", "Automatic backup is on. Connect Google Drive so it has somewhere to save to.");
     }
   } catch (err) {
     console.error("[invoice-backup] could not update automatic backup setting:", err);
     e.target.checked = !enabled;
-    setError("invBackupError", "Could not update automatic backup right now.");
+    setError("invDriveMsg", "Could not update automatic backup right now.");
   }
 }
 
