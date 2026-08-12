@@ -27,7 +27,7 @@
    search that no client code writes to them, so backing them up would
    only ever produce empty arrays that look like real data but aren't. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-1600";
+import { onAuthChange, getDb, getAuthInstance } from "./invoice-auth.js?v=20260802-1600";
 
 function $(id) { return document.getElementById(id); }
 function show(id) { $(id).classList.remove("hidden"); }
@@ -813,6 +813,279 @@ function handleRestoreContinue() {
   runRestoreEngine(pendingRestoreBackup);
 }
 
+/* ==========================================================================
+   Increment #4 -- Google Drive backup/restore + Automatic Daily Backup.
+
+   ARCHITECTURE: Drive is just a different place to put/get the exact same
+   .toolflight-backup.json file Increment #1/#2 already produce and read.
+   buildBackup(), validateBackup(), and runRestoreEngine() are reused
+   completely unmodified -- a backup from Drive goes through the identical
+   validation and restore path as a locally-selected file.
+
+   SCOPE: https://www.googleapis.com/auth/drive.file only -- this grants
+   access ONLY to files this app itself creates, never the user's whole
+   Drive. Requesting it re-prompts Google's consent screen (an
+   "incremental authorization" on top of the existing Firebase Google
+   Sign-In, not a replacement for it) via a SEPARATE GoogleAuthProvider
+   instance from the one invoice-auth.js uses for normal sign-in, so
+   this can never interfere with that flow.
+
+   TOKEN HANDLING: the resulting Drive access token lives ONLY in the
+   driveAccessToken module variable below -- never written to Firestore,
+   never to localStorage/sessionStorage. This means Drive shows as "Not
+   connected" again after every page reload, by design: that is the
+   safe, explicit tradeoff of never persisting an OAuth token
+   client-side, and matches the requirement not to store one in
+   Firestore. Reconnecting is a single click.
+
+   FIRESTORE WRITES: only two new fields on the business document itself
+   (autoBackupEnabled: boolean, lastAutoBackupAt: Timestamp) -- both
+   already covered by the EXISTING businesses/{id} update rule
+   (hasPermission(businessId,'settings','edit') with ownerUid unchanged).
+   No rules change. No new collection. */
+
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
+const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3";
+const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let driveAccessToken = null; // in-memory ONLY -- see header note above
+let firebaseAuthFns = null;
+
+async function loadFirebaseAuthFns() {
+  if (firebaseAuthFns) return firebaseAuthFns;
+  firebaseAuthFns = await import("https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js");
+  return firebaseAuthFns;
+}
+
+function driveFileNameFor(businessName, businessId) {
+  // Full businessId (not truncated) -- guarantees zero collision risk
+  // between two different businesses, even ones with identical names.
+  return `ToolFlight-Backup-${slugify(businessName)}-${businessId}.toolflight.json`;
+}
+
+async function driveFetch(url, options) {
+  if (!driveAccessToken) throw new Error("DRIVE_NOT_CONNECTED");
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...(options && options.headers), Authorization: "Bearer " + driveAccessToken },
+  });
+  if (res.status === 401) {
+    driveAccessToken = null;
+    updateDriveConnectionUI();
+    throw new Error("DRIVE_TOKEN_EXPIRED");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error("Drive API error " + res.status + ": " + text.slice(0, 200));
+  }
+  return res;
+}
+
+async function findExistingDriveBackupFile(fileName) {
+  const q = encodeURIComponent(`name = '${fileName.replace(/'/g, "\\'")}' and trashed = false`);
+  const res = await driveFetch(`${DRIVE_API_BASE}/files?q=${q}&fields=files(id,name,modifiedTime)&spaces=drive`, { method: "GET" });
+  const json = await res.json();
+  return (json.files && json.files[0]) || null;
+}
+
+async function uploadDriveBackupContent(fileId, fileName, jsonText) {
+  const metadata = fileId ? { name: fileName } : { name: fileName, mimeType: "application/json" };
+  const boundary = "toolflight-boundary-" + Date.now();
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${jsonText}\r\n--${boundary}--`;
+  const url = fileId
+    ? `${DRIVE_UPLOAD_BASE}/files/${fileId}?uploadType=multipart`
+    : `${DRIVE_UPLOAD_BASE}/files?uploadType=multipart`;
+  const res = await driveFetch(url, {
+    method: fileId ? "PATCH" : "POST",
+    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  return res.json();
+}
+
+async function saveBackupToDrive(businessId, businessName, backup) {
+  const fileName = driveFileNameFor(businessName, businessId);
+  const existing = await findExistingDriveBackupFile(fileName);
+  const jsonText = JSON.stringify(backup);
+  await uploadDriveBackupContent(existing ? existing.id : null, fileName, jsonText);
+}
+
+async function listDriveBackupFiles() {
+  const q = encodeURIComponent(`name contains 'ToolFlight-Backup-' and trashed = false`);
+  const res = await driveFetch(`${DRIVE_API_BASE}/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&spaces=drive`, { method: "GET" });
+  const json = await res.json();
+  return json.files || [];
+}
+
+async function downloadDriveFileContent(fileId) {
+  const res = await driveFetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, { method: "GET" });
+  return res.text();
+}
+
+function updateDriveConnectionUI() {
+  const statusEl = $("invDriveStatus");
+  const connectBtn = $("invDriveConnectBtn");
+  if (!statusEl) return;
+  if (driveAccessToken) {
+    statusEl.textContent = "Connected";
+    statusEl.style.color = "var(--ok-solid)";
+    connectBtn.textContent = "Reconnect Google Drive";
+    show("invDriveActions");
+  } else {
+    statusEl.textContent = "Not connected";
+    statusEl.style.color = "var(--ink-soft)";
+    connectBtn.textContent = "Connect Google Drive";
+    hide("invDriveActions");
+  }
+}
+
+async function handleConnectDrive() {
+  setError("invBackupError", "");
+  const btn = $("invDriveConnectBtn");
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = "Connecting…";
+  try {
+    const authFns = await loadFirebaseAuthFns();
+    const auth = getAuthInstance();
+    if (!auth) throw new Error("Not signed in.");
+    const provider = new authFns.GoogleAuthProvider();
+    provider.addScope(DRIVE_SCOPE);
+    const result = await authFns.signInWithPopup(auth, provider);
+    const credential = authFns.GoogleAuthProvider.credentialFromResult(result);
+    if (!credential || !credential.accessToken) throw new Error("Google did not grant Drive access.");
+    driveAccessToken = credential.accessToken;
+    updateDriveConnectionUI();
+  } catch (err) {
+    console.error("[invoice-backup] Google Drive connect failed:", err);
+    setError("invBackupError", "Could not connect Google Drive. Please try again.");
+  } finally {
+    btn.disabled = false;
+    updateDriveConnectionUI();
+  }
+}
+
+async function handleBackupToDrive() {
+  const btn = $("invDriveBackupBtn");
+  const bridge = window.toolflightInvoiceBusiness;
+  const businessId = bridge && bridge.getBusinessId();
+  const profile = bridge && bridge.getBusinessProfile();
+  setError("invBackupError", "");
+  if (!driveAccessToken) { setError("invBackupError", "Connect Google Drive to store automatic backups."); return; }
+  if (!businessId) { setError("invBackupError", "No business is loaded right now."); return; }
+
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving to Drive…";
+  try {
+    const backup = await buildBackup(businessId, profile);
+    await saveBackupToDrive(businessId, profile.name || "business", backup);
+    setSuccessMsg("invBackupError", "Your latest backup has been saved to Google Drive.");
+  } catch (err) {
+    console.error("[invoice-backup] Drive backup failed:", err);
+    if (String(err.message).includes("DRIVE_TOKEN_EXPIRED")) {
+      setError("invBackupError", "Google Drive permission expired. Please reconnect Google Drive.");
+    } else {
+      setError("invBackupError", "Backup could not be uploaded. Your local backup is still available.");
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+async function handleRestoreFromDrive() {
+  setError("invRestoreError", "");
+  if (!driveAccessToken) { setError("invRestoreError", "Connect Google Drive first to restore from it."); return; }
+  const btn = $("invDriveRestoreBtn");
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = "Checking Google Drive…";
+  try {
+    const files = await listDriveBackupFiles();
+    if (files.length === 0) {
+      setError("invRestoreError", "No ToolFlight backups were found in your Google Drive.");
+      return;
+    }
+    const text = await downloadDriveFileContent(files[0].id);
+    const result = validateBackup(text);
+    if (!result.ok) {
+      setError("invRestoreError", result.error);
+      console.error("[invoice-backup] Drive backup validation failed:", result.detail);
+      return;
+    }
+    pendingRestoreBackup = result.backup;
+    renderRestorePreview(result.backup);
+  } catch (err) {
+    console.error("[invoice-backup] Drive restore failed:", err);
+    if (String(err.message).includes("DRIVE_TOKEN_EXPIRED")) {
+      setError("invRestoreError", "Google Drive permission expired. Please reconnect Google Drive.");
+    } else {
+      setError("invRestoreError", "Could not read backups from Google Drive right now.");
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+async function checkAndRunAutoBackup(businessId, profile) {
+  if (!profile || !profile.autoBackupEnabled) return;
+  if (!driveAccessToken) return;
+  const last = profile.lastAutoBackupAt;
+  const lastMs = last && typeof last.toDate === "function" ? last.toDate().getTime() : 0;
+  if (Date.now() - lastMs < AUTO_BACKUP_INTERVAL_MS) return;
+
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    const backup = await buildBackup(businessId, profile);
+    await saveBackupToDrive(businessId, profile.name || "business", backup);
+    await fns.updateDoc(fns.doc(db, "businesses", businessId), { lastAutoBackupAt: fns.serverTimestamp() });
+    refreshAutoBackupStatusUI(businessId);
+  } catch (err) {
+    console.error("[invoice-backup] automatic daily backup failed (local backup remains available):", err);
+  }
+}
+
+function refreshAutoBackupStatusUI(businessId) {
+  const bridge = window.toolflightInvoiceBusiness;
+  const profile = bridge && bridge.getBusinessProfile();
+  const toggle = $("invAutoBackupToggle");
+  const lastEl = $("invAutoBackupLast");
+  if (!toggle || !profile) return;
+  toggle.checked = !!profile.autoBackupEnabled;
+  if (profile.lastAutoBackupAt && typeof profile.lastAutoBackupAt.toDate === "function") {
+    lastEl.textContent = "Last automatic backup: " + profile.lastAutoBackupAt.toDate().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } else {
+    lastEl.textContent = "Last automatic backup: never yet.";
+  }
+}
+
+async function handleToggleAutoBackup(e) {
+  const bridge = window.toolflightInvoiceBusiness;
+  const businessId = bridge && bridge.getBusinessId();
+  if (!businessId) { e.target.checked = !e.target.checked; return; }
+  const enabled = e.target.checked;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    await fns.updateDoc(fns.doc(db, "businesses", businessId), { autoBackupEnabled: enabled });
+    if (enabled && !driveAccessToken) {
+      setSuccessMsg("invBackupError", "Automatic backup is on. Connect Google Drive so it has somewhere to save to.");
+    }
+  } catch (err) {
+    console.error("[invoice-backup] could not update automatic backup setting:", err);
+    e.target.checked = !enabled;
+    setError("invBackupError", "Could not update automatic backup right now.");
+  }
+}
+
+function setSuccessMsg(id, msg) {
+  const el = $(id);
+  if (!el) return;
+  el.style.color = "var(--ok-solid)";
+  el.textContent = msg;
+}
+
 function initBackupUI() {
   if (!$("invBackupSection")) return; // defensive -- only wire up if the HTML section actually exists
   $("invCreateBackupBtn").addEventListener("click", handleCreateBackup);
@@ -823,7 +1096,16 @@ function initBackupUI() {
   // multiple nav surfaces (sidebar, mobile "More" sheet, profile dropdown)
   // can all lead to the profile/settings tab.
   document.querySelectorAll('.inv-business-tab[data-tab="profile"]').forEach(btn => {
-    btn.addEventListener("click", refreshBackupSection);
+    btn.addEventListener("click", () => {
+      refreshBackupSection();
+      const bridge = window.toolflightInvoiceBusiness;
+      const businessId = bridge && bridge.getBusinessId();
+      const profile = bridge && bridge.getBusinessProfile();
+      if (businessId && profile) {
+        refreshAutoBackupStatusUI(businessId);
+        checkAndRunAutoBackup(businessId, profile);
+      }
+    });
   });
 
   // Increment #2 wiring -- file picker is a plain <input type="file">, so
@@ -836,6 +1118,13 @@ function initBackupUI() {
   $("invRestoreContinueBtn").addEventListener("click", handleRestoreContinue);
   $("invRestoreDismissSuccessBtn").addEventListener("click", () => { hide("invRestoreResultSuccess"); resetRestoreUI(); });
   $("invRestoreDismissFailureBtn").addEventListener("click", () => { hide("invRestoreResultFailure"); resetRestoreUI(); });
+
+  // Increment #4 wiring
+  $("invDriveConnectBtn").addEventListener("click", handleConnectDrive);
+  $("invDriveBackupBtn").addEventListener("click", handleBackupToDrive);
+  $("invDriveRestoreBtn").addEventListener("click", handleRestoreFromDrive);
+  $("invAutoBackupToggle").addEventListener("change", handleToggleAutoBackup);
+  updateDriveConnectionUI();
 
   onAuthChange((user) => {
     currentUser = user;
