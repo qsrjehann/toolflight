@@ -87,12 +87,13 @@ async function buildBackup(businessId, businessProfile) {
   const db = getDb();
   const fns = await loadFirestoreFns();
 
-  const [customers, products, inventoryMovements, invoices, businessMembers] = await Promise.all([
+  const [customers, products, inventoryMovements, invoices, businessMembers, expenses] = await Promise.all([
     fetchAllDocs(db, fns, businessId, "customers"),
     fetchAllDocs(db, fns, businessId, "products"),
     fetchAllDocs(db, fns, businessId, "inventoryMovements"),
     fetchAllDocs(db, fns, businessId, "invoices"),
     fetchAllDocs(db, fns, businessId, "businessMembers"),
+    fetchAllDocs(db, fns, businessId, "expenses"),
   ]);
 
   let invoiceCounter = null;
@@ -130,6 +131,7 @@ async function buildBackup(businessId, businessProfile) {
       inventoryMovements: inventoryMovements.length,
       invoices: invoices.length,
       businessMembers: businessMembers.length,
+      expenses: expenses.length,
     },
     data: {
       customers,
@@ -137,6 +139,7 @@ async function buildBackup(businessId, businessProfile) {
       inventoryMovements,
       invoices,
       businessMembers,
+      expenses,
       settings: { invoiceCounter },
     },
   };
@@ -377,6 +380,28 @@ function validateBackup(rawText) {
     return { ok: false, error: "The backup appears to be corrupted.", detail: "data.settings.invoiceCounter is present but not an object." };
   }
 
+  // Expenses (Phase C) -- optional for backward compatibility with
+  // every backup made before this feature existed. Absent entirely is
+  // valid (old backup, or a business with zero expenses); if present,
+  // it must be structurally correct like everything else.
+  if (parsed.data.expenses !== undefined) {
+    if (!Array.isArray(parsed.data.expenses)) {
+      return { ok: false, error: "The backup appears to be corrupted.", detail: "data.expenses is present but not an array." };
+    }
+    if (parsed.recordCounts.expenses !== undefined) {
+      if (typeof parsed.recordCounts.expenses !== "number") {
+        return { ok: false, error: "The backup appears to be corrupted.", detail: "recordCounts.expenses is not a number." };
+      }
+      if (parsed.data.expenses.length !== parsed.recordCounts.expenses) {
+        return { ok: false, error: "Record counts do not match the backup contents -- this file may be corrupted.", detail: "expenses: recordCounts says " + parsed.recordCounts.expenses + " but data has " + parsed.data.expenses.length + " records." };
+      }
+    }
+    for (const record of parsed.data.expenses) {
+      const err = validateRecordShape(record, "expenses");
+      if (err) return { ok: false, error: "Some records in this backup are malformed and can't be restored safely.", detail: err };
+    }
+  }
+
   return { ok: true, backup: parsed };
 }
 
@@ -403,6 +428,7 @@ function renderRestorePreview(backup) {
     ["Inventory movements", rc.inventoryMovements],
     ["Team members", rc.businessMembers],
   ];
+  if (rc.expenses !== undefined) rows.push(["Expenses", rc.expenses]);
   $("invRestoreCounts").innerHTML = rows.map(([label, count]) => `
     <div class="inv-record-row"><div class="inv-record-main"><div class="inv-record-name">${escapeHtml(label)}</div></div><div class="inv-record-amount num">${escapeHtml(String(count))}</div></div>
   `).join("");
@@ -598,6 +624,15 @@ async function verifyRestore(db, fns, businessId, backup) {
       mismatches.push({ collection: key, expected: backup.recordCounts[key], actual });
     }
   }
+  if (Array.isArray(backup.data.expenses) && backup.data.expenses.length > 0) {
+    try {
+      const countSnap = await fns.getCountFromServer(fns.collection(db, "businesses", businessId, "expenses"));
+      const actual = countSnap.data().count;
+      if (actual !== backup.recordCounts.expenses) mismatches.push({ collection: "expenses", expected: backup.recordCounts.expenses, actual });
+    } catch (err) {
+      mismatches.push({ collection: "expenses", expected: backup.recordCounts.expenses, actual: "could not read: " + err.message });
+    }
+  }
   return { ok: mismatches.length === 0, mismatches };
 }
 
@@ -678,6 +713,7 @@ function showRestoreSuccess(businessId, backup, teamToReinvite) {
     ["Inventory movements restored", rc.inventoryMovements],
     ["Invoices restored", rc.invoices],
   ];
+  if (rc.expenses !== undefined) rows.push(["Expenses restored", rc.expenses]);
   $("invRestoreSuccessCounts").innerHTML = rows.map(([label, count]) => `
     <div class="inv-record-row"><div class="inv-record-main"><div class="inv-record-name">${escapeHtml(label)}</div></div><div class="inv-record-amount num">${escapeHtml(String(count))}</div></div>
   `).join("");
@@ -771,6 +807,18 @@ async function runRestoreEngine(backup) {
       },
       (done, total) => updateRestoreProgress("Restoring invoices…", done, total),
       writtenTracker);
+
+    // Expenses (Phase C) -- optional: older backups won't have this
+    // field at all, and that's not an error, just nothing to restore.
+    // No ID remapping needed -- expense records don't reference any
+    // other collection.
+    if (Array.isArray(backup.data.expenses) && backup.data.expenses.length > 0) {
+      stageLabel = "restoring expenses.";
+      await writeBatchedCollection(db, fns, newBusinessId, "expenses", backup.data.expenses,
+        (record) => stripAndDeserialize(fns, record),
+        (done, total) => updateRestoreProgress("Restoring expenses…", done, total),
+        writtenTracker);
+    }
 
     stageLabel = "restoring settings.";
     if (backup.data.settings && backup.data.settings.invoiceCounter) {
