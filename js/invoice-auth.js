@@ -26,7 +26,7 @@
    sandbox blocks the CDN it's served from. See the Phase 2 report for
    exactly what could and could not be verified. */
 
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig } from "./firebase-config.js?v=20260802-1600";
 
 function isFirebaseConfigured() {
   return Object.values(firebaseConfig).every(v => typeof v === "string" && !v.startsWith("REPLACE_WITH_REAL_"));

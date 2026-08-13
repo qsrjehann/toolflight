@@ -32,10 +32,20 @@
    security boundary is firestore.rules, not this file. No Firebase
    Admin SDK credentials, service-account keys, or other genuine
    secrets belong in this file or anywhere else in this frontend --
-   none are present here. */
+   none are present here.
+
+   Key rotation note: the apiKey below was rotated after the previous
+   key leaked and was subsequently expired/revoked by Google
+   (auth/api-key-expired), which was the confirmed root cause of Google
+   Sign-In failing across every browser/domain tested. If Google Sign-In
+   (or any Firebase call) starts failing again with an
+   auth/api-key-expired or similar credential error, check this exact
+   file first before re-investigating OAuth client / authorized-domain
+   configuration -- those were all individually verified correct during
+   that investigation and were not the cause. */
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyAnXVQvMwHASnLk-CyoO-yVrA_aNC8WZmo",
+  apiKey: "AIzaSyC2PVmJfYoMofwsbWJcA7xU6qtBVbmWmaw",
   authDomain: "toolflight-invoice.firebaseapp.com",
   projectId: "toolflight-invoice",
   storageBucket: "toolflight-invoice.firebasestorage.app",

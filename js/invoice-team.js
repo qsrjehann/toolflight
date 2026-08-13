@@ -20,7 +20,7 @@
    this sandbox blocks the Firebase CDN outright. See the Phase 6 report
    for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0530";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-1600";
 import { emailjsConfig, isEmailjsConfigured } from "./emailjs-config.js?v=20260802-0530";
 
 let currentUser = null;
@@ -279,7 +279,7 @@ function renderTeamList() {
           <div class="inv-record-sub">${isOwner ? "Owner" : escapeHtml(m.role || "custom")} · Active · ${escapeHtml(permissionSummary(m.permissions))}</div>
         </div>
         <div class="inv-record-actions">
-          ${(!isOwner && !isSelf) ? `<button type="button" class="btn btn-ghost inv-team-remove" data-uid="${m.uid}">Remove</button>` : ""}
+          ${(!isOwner && !isSelf) ? `<button type="button" class="btn btn-danger inv-team-remove" data-uid="${m.uid}">Remove</button>` : ""}
         </div>
       </div>
     `);
@@ -549,8 +549,8 @@ function initTeamUI() {
     else if (e.target.classList.contains("inv-team-revoke")) handleRevokeInvite(e.target.dataset.inviteId);
   });
 
-  const teamTabBtn = document.querySelector('.inv-business-tab[data-tab="team"]');
-  if (teamTabBtn) teamTabBtn.addEventListener("click", () => refreshTeam(window.toolflightInvoiceBusiness.getBusinessId()));
+  const teamTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="team"]');
+  teamTabBtns.forEach(btn => btn.addEventListener("click", () => refreshTeam(window.toolflightInvoiceBusiness.getBusinessId())));
 
   $("invAcceptBtn").addEventListener("click", handleAcceptInvite);
   $("invDeclineBtn").addEventListener("click", handleDeclineInvite);

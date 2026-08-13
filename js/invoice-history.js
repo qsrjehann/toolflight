@@ -16,13 +16,25 @@
    exists and this sandbox blocks the Firebase CDN outright. See the
    Phase 4 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0530";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-1600";
 
 let currentUser = null;
 let invoices = []; // cached list for the currently loaded business
 let firestoreFns = null;
 let editingInvoiceId = null; // null while creating a NEW invoice; set while editing an existing one
 let editingOriginalSnapshot = null; // the full pre-edit invoice, needed to compute inventory deltas correctly
+
+/* ==================================================================
+   Bridge for js/invoice-business.js's Dashboard tab (Phase 2). Read-only
+   accessors plus the one write action (refreshInvoices) the dashboard
+   needs to lazily load invoice data the same way the Invoices tab
+   already does -- no separate Firestore call, no duplicated logic.
+   ================================================================== */
+window.toolflightInvoiceHistory = {
+  getInvoices: () => invoices.slice(),
+  refreshInvoices: (businessId) => refreshInvoices(businessId),
+  formatMoney: (amount, currencyCode) => formatMoney(amount, currencyCode),
+};
 
 function $(id) { return document.getElementById(id); }
 function show(id) { $(id).classList.remove("hidden"); }
@@ -305,8 +317,8 @@ function renderHistoryList(filterText) {
         </div>
         <div class="inv-record-actions">
           <button type="button" class="btn btn-ghost inv-history-view" data-id="${inv.id}">View</button>
-          <button type="button" class="btn btn-ghost inv-history-edit" data-id="${inv.id}">Edit</button>
-          <button type="button" class="btn btn-ghost inv-history-delete" data-id="${inv.id}">Delete</button>
+          <button type="button" class="btn inv-btn-edit inv-history-edit" data-id="${inv.id}">Edit</button>
+          <button type="button" class="btn btn-danger inv-history-delete" data-id="${inv.id}">Delete</button>
         </div>
       </div>
     `;
@@ -500,8 +512,8 @@ function initHistoryUI() {
   // Refresh the invoice list whenever the Invoice History tab is opened --
   // piggybacks on the existing tab buttons rather than adding a second,
   // parallel tab-switching mechanism.
-  const invoicesTabBtn = document.querySelector('.inv-business-tab[data-tab="invoices"]');
-  if (invoicesTabBtn) invoicesTabBtn.addEventListener("click", switchToInvoicesTab);
+  const invoicesTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="invoices"]');
+  invoicesTabBtns.forEach(btn => btn.addEventListener("click", switchToInvoicesTab));
 
   onAuthChange((user) => {
     currentUser = user;

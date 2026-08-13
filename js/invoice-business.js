@@ -16,7 +16,7 @@
    repository and this sandbox blocks the Firebase CDN outright. See
    the Phase 3 report for exactly what could and could not be verified. */
 
-import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-0530";
+import { onAuthChange, getDb } from "./invoice-auth.js?v=20260802-1600";
 
 let currentUser = null;
 let currentBusinessId = null;
@@ -24,6 +24,9 @@ let businessProfile = null;
 let customers = [];
 let products = [];
 let movements = [];
+let expenses = [];
+let expensesLoaded = false; // lazy-loaded on first Expenses tab open, like inventory movements
+let currentExpenseCategoryFilter = "";
 let currentStockFilter = "all";
 let firestoreFns = null; // set on first successful Firestore operation, via dynamic import
 
@@ -32,6 +35,78 @@ function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
 function setError(id, msg) { const el = $(id); if (el) el.textContent = msg || ""; }
 function setSuccess(id, msg) { const el = $(id); if (el) el.textContent = msg || ""; }
+
+/* ==================================================================
+   Shared pagination (Customers / Products / Inventory)
+   ==================================================================
+   Sorting and paging both happen on the array already held in memory
+   (customers/products/movements are already fully loaded by the
+   existing getDocs() calls -- unchanged). This layer only controls
+   what gets turned into DOM nodes: for N=1000 records it always
+   builds at most `pageSize` (<=100) row elements, never all 1000
+   with the rest hidden by CSS. */
+const paginationState = {
+  customers: { page: 1, pageSize: 20 },
+  products: { page: 1, pageSize: 20 },
+  inventory: { page: 1, pageSize: 20 },
+  expenses: { page: 1, pageSize: 20 },
+};
+
+function sortByName(arr, field) {
+  return arr.slice().sort((a, b) =>
+    String(a[field] || "").localeCompare(String(b[field] || ""), undefined, { sensitivity: "base", numeric: true })
+  );
+}
+
+/** Returns { pageItems, controlsHtml } -- slices `items` (already sorted
+    by the caller) to the current page for `key`, clamping the page
+    number if the list shrank (e.g. after a delete or a new search). */
+function paginate(key, items) {
+  const state = paginationState[key];
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
+  if (state.page > totalPages) state.page = totalPages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * state.pageSize;
+  const pageItems = items.slice(start, start + state.pageSize);
+  const startNum = total === 0 ? 0 : start + 1;
+  const endNum = Math.min(start + state.pageSize, total);
+
+  const sizeButtons = [10, 20, 50, 100].map(n => `
+    <button type="button" class="inv-page-size-btn${state.pageSize === n ? " inv-page-size-btn--active" : ""}" data-pkey="${key}" data-size="${n}">${n}</button>
+  `).join("");
+
+  const controlsHtml = total === 0 ? "" : `
+    <div class="inv-pagination-info">Showing ${startNum}–${endNum} of ${total}</div>
+    <div class="inv-pagination-row">
+      <div class="inv-pagination-sizes"><span class="inv-pagination-sizes-label">Per page:</span>${sizeButtons}</div>
+      <div class="inv-pagination-nav">
+        <button type="button" class="btn btn-outline inv-page-prev" data-pkey="${key}" ${state.page <= 1 ? "disabled" : ""}>&larr; Previous</button>
+        <span class="inv-pagination-page">Page ${state.page} of ${totalPages}</span>
+        <button type="button" class="btn btn-outline inv-page-next" data-pkey="${key}" ${state.page >= totalPages ? "disabled" : ""}>Next &rarr;</button>
+      </div>
+    </div>`;
+
+  return { pageItems, controlsHtml };
+}
+
+const paginationRenderers = {}; // key -> the render function to call again after a page/size change
+
+document.addEventListener("click", (e) => {
+  const sizeBtn = e.target.closest(".inv-page-size-btn");
+  const prevBtn = e.target.closest(".inv-page-prev");
+  const nextBtn = e.target.closest(".inv-page-next");
+  const btn = sizeBtn || prevBtn || nextBtn;
+  if (!btn) return;
+  const key = btn.dataset.pkey;
+  const state = paginationState[key];
+  if (!state) return;
+  if (sizeBtn) { state.pageSize = Number(sizeBtn.dataset.size); state.page = 1; }
+  if (prevBtn) state.page -= 1;
+  if (nextBtn) state.page += 1;
+  const renderFn = paginationRenderers[key];
+  if (renderFn) renderFn();
+});
 
 const NOT_CONFIGURED_MESSAGE = "Account features aren't fully set up yet. Quick Invoice (no account) works normally.";
 
@@ -119,7 +194,7 @@ function readBusinessFormData() {
   return {
     name: $("invSetBizName").value.trim(),
     phone: $("invSetBizPhone").value.trim(),
-    email: $("invSetBizEmail").value.trim(),
+    email: currentUser ? currentUser.email : "",
     website: $("invSetBizWebsite").value.trim(),
     address: $("invSetBizAddress").value.trim(),
     defaultCurrency: currency,
@@ -139,11 +214,11 @@ function fillBusinessForm(profile) {
   if (!profile) return;
   $("invSetBizName").value = profile.name || "";
   $("invSetBizPhone").value = profile.phone || "";
-  $("invSetBizEmail").value = profile.email || "";
+  $("invSetBizEmail").value = currentUser ? currentUser.email : (profile.email || "");
   $("invSetBizWebsite").value = profile.website || "";
   $("invSetBizAddress").value = profile.address || "";
-  const knownCurrencies = ["USD","EUR","GBP","INR","CAD","AUD","JPY","AED","PKR"];
-  if (profile.defaultCurrency && knownCurrencies.includes(profile.defaultCurrency)) {
+  const knownCurrencyCodes = window.TOOLFLIGHT_CURRENCIES.map(c => c.code);
+  if (profile.defaultCurrency && knownCurrencyCodes.includes(profile.defaultCurrency)) {
     $("invSetBizCurrency").value = profile.defaultCurrency;
     $("invSetBizCurrencyOtherWrap").style.display = "none";
   } else if (profile.defaultCurrency) {
@@ -268,28 +343,33 @@ async function handleDeleteCustomer(customerId) {
 }
 
 function renderCustomersList(filterText) {
+  paginationRenderers.customers = () => renderCustomersList(filterText);
   const list = $("invCustomersList");
   const term = (filterText || "").trim().toLowerCase();
   const filtered = term
     ? customers.filter(c => (c.name||"").toLowerCase().includes(term) || (c.company||"").toLowerCase().includes(term) || (c.email||"").toLowerCase().includes(term))
     : customers;
+  const sorted = sortByName(filtered, "name");
 
-  if (filtered.length === 0) {
+  if (sorted.length === 0) {
     list.innerHTML = `<p class="editor-hint">${customers.length === 0 ? "No customers yet. Add your first one above." : "No customers match your search."}</p>`;
+    $("invCustomersPagination").innerHTML = "";
     return;
   }
-  list.innerHTML = filtered.map(c => `
+  const { pageItems, controlsHtml } = paginate("customers", sorted);
+  list.innerHTML = pageItems.map(c => `
     <div class="inv-record-row" data-id="${c.id}">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(c.name)}</div>
         <div class="inv-record-sub">${[c.company, c.email, c.phone].filter(Boolean).map(escapeHtml).join(" · ") || "&nbsp;"}</div>
       </div>
       <div class="inv-record-actions">
-        <button type="button" class="btn btn-ghost inv-record-edit" data-id="${c.id}">Edit</button>
-        <button type="button" class="btn btn-ghost inv-record-delete" data-id="${c.id}">Delete</button>
+        <button type="button" class="btn inv-btn-edit inv-record-edit" data-id="${c.id}">Edit</button>
+        <button type="button" class="btn btn-danger inv-record-delete" data-id="${c.id}">Delete</button>
       </div>
     </div>
   `).join("");
+  $("invCustomersPagination").innerHTML = controlsHtml;
 }
 
 async function refreshCustomers() {
@@ -315,13 +395,15 @@ async function listProducts(businessId) {
 }
 
 function readProductFormData() {
+  const currencySel = $("invProdFormCurrency").value;
+  const currency = currencySel === "OTHER" ? $("invProdFormCurrencyOther").value.trim().toUpperCase() : currencySel;
   return {
     name: $("invProdFormName").value.trim(),
     sku: $("invProdFormSku").value.trim(),
     description: $("invProdFormDescription").value.trim(),
     costPrice: $("invProdFormCost").value ? Number($("invProdFormCost").value) : null,
     sellingPrice: Number($("invProdFormPrice").value),
-    currency: $("invProdFormCurrency").value,
+    currency: currency,
     taxable: $("invProdFormTaxEnabled").checked,
     taxRate: Number($("invProdFormTaxRate").value) || 0,
     inventoryTracking: $("invProdFormInventoryTracking").checked,
@@ -341,7 +423,16 @@ function openProductModal(product) {
   $("invProdFormDescription").value = product ? product.description || "" : "";
   $("invProdFormCost").value = product && product.costPrice != null ? product.costPrice : "";
   $("invProdFormPrice").value = product ? product.sellingPrice || "" : "";
-  $("invProdFormCurrency").value = product ? product.currency || "USD" : (businessProfile ? businessProfile.defaultCurrency || "USD" : "USD");
+  const prodCurrency = product ? product.currency || "USD" : (businessProfile ? businessProfile.defaultCurrency || "USD" : "USD");
+  const knownCurrencyCodes = window.TOOLFLIGHT_CURRENCIES.map(c => c.code);
+  if (knownCurrencyCodes.includes(prodCurrency)) {
+    $("invProdFormCurrency").value = prodCurrency;
+    $("invProdFormCurrencyOtherWrap").style.display = "none";
+  } else {
+    $("invProdFormCurrency").value = "OTHER";
+    $("invProdFormCurrencyOther").value = prodCurrency;
+    $("invProdFormCurrencyOtherWrap").style.display = "";
+  }
   $("invProdFormTaxEnabled").checked = product ? !!product.taxable : false;
   $("invProdFormTaxRate").value = product ? product.taxRate || 0 : 0;
   $("invProdFormTaxRate").disabled = !(product && product.taxable);
@@ -361,7 +452,11 @@ function openProductModal(product) {
     hide("invProdCurrentStockNote");
   }
 
-  $("invProdFormInventoryTracking").checked = product ? !!product.inventoryTracking : false;
+  // New products default to inventory tracking ON (per Phase B) -- the
+  // user can still explicitly turn it off before saving. Editing an
+  // existing product always loads its actual saved value; this default
+  // never overrides that.
+  $("invProdFormInventoryTracking").checked = product ? !!product.inventoryTracking : true;
   $("invProdFormThreshold").value = product ? product.lowStockThreshold || 0 : 0;
   $("invProdFormThresholdWrap").style.display = $("invProdFormInventoryTracking").checked ? "" : "none";
 
@@ -376,8 +471,8 @@ async function handleSaveProduct() {
   const initialStock = Number($("invProdFormQty").value) || 0;
   setError("invProdFormError", "");
 
-  if (!isNonEmpty(data.name)) { setError("invProdFormError", "Product name is required."); return; }
-  if (!isValidPrice(data.sellingPrice)) { setError("invProdFormError", "Enter a valid selling price."); return; }
+  if (!isNonEmpty(data.name)) { setError("invProdFormError", "Product name is required."); $("invProdFormName").focus(); return; }
+  if (!isValidPrice(data.sellingPrice)) { setError("invProdFormError", "Enter a valid selling price."); $("invProdFormPrice").focus(); return; }
   if (!editId && !isValidQty(initialStock)) { setError("invProdFormError", "Quantity cannot be negative."); return; }
   if (data.inventoryTracking && !isValidQty(data.lowStockThreshold)) { setError("invProdFormError", "Low-stock threshold cannot be negative."); return; }
   if (!getDb() || !currentBusinessId) { setError("invProdFormError", NOT_CONFIGURED_MESSAGE); return; }
@@ -428,6 +523,168 @@ async function handleDeleteProduct(productId) {
     console.error("[invoice-business] delete product failed:", err);
     setError("invProductsError", "Could not delete right now. Please try again.");
   }
+}
+
+/* ==================================================================
+   Expenses (Phase C)
+   ==================================================================
+   Same architecture as Customers/Products: businesses/{id}/expenses
+   subcollection, one document per expense. Lazy-loaded on first tab
+   open (like Inventory/Invoices/Team) rather than eagerly at business
+   sign-in, since expense history can grow large and there's no reason
+   to pay that cost before the user ever opens the tab. */
+
+const EXPENSE_CATEGORIES = ["Rent", "Utilities", "Salaries", "Transportation", "Office Supplies", "Marketing", "Internet / Phone", "Maintenance", "Purchases", "Other"];
+
+function todayDateString() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function readExpenseFormData() {
+  return {
+    title: $("invExpenseFormTitle").value.trim(),
+    category: $("invExpenseFormCategory").value,
+    amount: Number($("invExpenseFormAmount").value),
+    date: $("invExpenseFormDate").value,
+    paymentMethod: $("invExpenseFormPaymentMethod").value,
+    notes: $("invExpenseFormNotes").value.trim(),
+  };
+}
+
+function openExpenseModal(expense) {
+  $("invExpenseModalTitle").textContent = expense ? "Edit Expense" : "Add Expense";
+  $("invExpenseEditId").value = expense ? expense.id : "";
+  $("invExpenseFormTitle").value = expense ? expense.title || "" : "";
+  $("invExpenseFormCategory").value = expense ? expense.category || "Other" : "Other";
+  $("invExpenseFormAmount").value = expense ? expense.amount || "" : "";
+  $("invExpenseFormDate").value = expense ? expense.date || todayDateString() : todayDateString();
+  $("invExpenseFormPaymentMethod").value = expense ? expense.paymentMethod || "Cash" : "Cash";
+  $("invExpenseFormNotes").value = expense ? expense.notes || "" : "";
+  setError("invExpenseFormError", "");
+  $("invExpenseModal").classList.add("show");
+}
+
+async function handleSaveExpense() {
+  const btn = $("invExpenseFormSaveBtn");
+  const data = readExpenseFormData();
+  const editId = $("invExpenseEditId").value;
+  setError("invExpenseFormError", "");
+
+  if (!isNonEmpty(data.title)) { setError("invExpenseFormError", "Expense name is required."); $("invExpenseFormTitle").focus(); return; }
+  if (!isValidPrice(data.amount) || data.amount <= 0) { setError("invExpenseFormError", "Enter a valid amount."); $("invExpenseFormAmount").focus(); return; }
+  if (!isNonEmpty(data.date)) { setError("invExpenseFormError", "Date is required."); $("invExpenseFormDate").focus(); return; }
+  if (!getDb() || !currentBusinessId) { setError("invExpenseFormError", NOT_CONFIGURED_MESSAGE); return; }
+
+  const originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    if (editId) {
+      await fns.updateDoc(fns.doc(db, "businesses", currentBusinessId, "expenses", editId), data);
+    } else {
+      await fns.setDoc(fns.doc(fns.collection(db, "businesses", currentBusinessId, "expenses")), {
+        ...data, createdAt: fns.serverTimestamp(), createdByUid: currentUser ? currentUser.uid : null,
+      });
+    }
+    $("invExpenseModal").classList.remove("show");
+    await refreshExpenses();
+  } catch (err) {
+    console.error("[invoice-business] save expense failed:", err);
+    setError("invExpenseFormError", "Could not save right now. Please try again.");
+  } finally {
+    btn.disabled = false; btn.textContent = originalText;
+  }
+}
+
+async function handleDeleteExpense(expenseId) {
+  if (!confirm("Delete this expense? This cannot be undone.")) return;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    await fns.deleteDoc(fns.doc(db, "businesses", currentBusinessId, "expenses", expenseId));
+    await refreshExpenses();
+  } catch (err) {
+    console.error("[invoice-business] delete expense failed:", err);
+    setError("invExpensesError", "Could not delete right now. Please try again.");
+  }
+}
+
+async function refreshExpenses() {
+  if (!currentBusinessId) return;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    const snap = await fns.getDocs(fns.collection(db, "businesses", currentBusinessId, "expenses"));
+    expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    expensesLoaded = true;
+    renderExpensesSummary();
+    renderExpensesList($("invExpenseSearch") ? $("invExpenseSearch").value : "");
+  } catch (err) {
+    console.error("[invoice-business] load expenses failed:", err);
+    setError("invExpensesError", "Could not load expenses right now.");
+  }
+}
+
+/** Every number here comes directly from the `expenses` array just
+    loaded from Firestore -- never a hardcoded/assumed figure. Date
+    comparisons use the same "YYYY-MM-DD" string field expenses are
+    stored with, so no timezone-conversion ambiguity. */
+function renderExpensesSummary() {
+  const today = todayDateString();
+  const monthPrefix = today.slice(0, 7); // "YYYY-MM"
+  let total = 0, monthTotal = 0, todayTotal = 0;
+  expenses.forEach(e => {
+    const amt = Number(e.amount) || 0;
+    total += amt;
+    if (typeof e.date === "string" && e.date.startsWith(monthPrefix)) monthTotal += amt;
+    if (e.date === today) todayTotal += amt;
+  });
+  const currency = (businessProfile && businessProfile.defaultCurrency) || "USD";
+  const fmt = (n) => (window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.formatMoney(n, currency) : currency + " " + n.toFixed(2));
+  $("invExpensesStatTotal").textContent = fmt(total);
+  $("invExpensesStatMonth").textContent = fmt(monthTotal);
+  $("invExpensesStatToday").textContent = fmt(todayTotal);
+  $("invExpensesStatCount").textContent = String(expenses.length);
+}
+
+function renderExpensesList(filterText) {
+  paginationRenderers.expenses = () => renderExpensesList(filterText);
+  const list = $("invExpensesList");
+  const term = (filterText || "").trim().toLowerCase();
+  let filtered = currentExpenseCategoryFilter
+    ? expenses.filter(e => e.category === currentExpenseCategoryFilter)
+    : expenses;
+  if (term) {
+    filtered = filtered.filter(e => (e.title || "").toLowerCase().includes(term) || (e.category || "").toLowerCase().includes(term) || (e.notes || "").toLowerCase().includes(term));
+  }
+  // Most-recent-first -- the sensible default for a financial ledger
+  // (unlike Customers/Products, where A-Z is the useful default).
+  const sorted = filtered.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  if (sorted.length === 0) {
+    list.innerHTML = `<p class="editor-hint">${expenses.length === 0 ? "No expenses yet. Add your first one above." : "No expenses match your search/filter."}</p>`;
+    $("invExpensesPagination").innerHTML = "";
+    return;
+  }
+  const currency = (businessProfile && businessProfile.defaultCurrency) || "USD";
+  const fmt = (n) => (window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.formatMoney(n, currency) : currency + " " + Number(n).toFixed(2));
+  const { pageItems, controlsHtml } = paginate("expenses", sorted);
+  list.innerHTML = pageItems.map(e => `
+    <div class="inv-record-row" data-id="${e.id}">
+      <div class="inv-record-main">
+        <div class="inv-record-name">${escapeHtml(e.title)}</div>
+        <div class="inv-record-sub">${escapeHtml(e.date || "")} · ${escapeHtml(e.category || "Other")} · ${escapeHtml(e.paymentMethod || "")}</div>
+      </div>
+      <div class="inv-record-amount">${fmt(Number(e.amount) || 0)}</div>
+      <div class="inv-record-actions">
+        <button type="button" class="btn inv-btn-edit inv-expense-edit" data-id="${e.id}">Edit</button>
+        <button type="button" class="btn btn-danger inv-expense-delete" data-id="${e.id}">Delete</button>
+      </div>
+    </div>
+  `).join("");
+  $("invExpensesPagination").innerHTML = controlsHtml;
 }
 
 /* ==================================================================
@@ -532,17 +789,21 @@ function stockStatusBadge(p) {
 }
 
 function renderProductsList(filterText) {
+  paginationRenderers.products = () => renderProductsList(filterText);
   const list = $("invProductsList");
   const term = (filterText || "").trim().toLowerCase();
   const filtered = term
     ? products.filter(p => (p.name||"").toLowerCase().includes(term) || (p.sku||"").toLowerCase().includes(term))
     : products;
+  const sorted = sortByName(filtered, "name");
 
-  if (filtered.length === 0) {
+  if (sorted.length === 0) {
     list.innerHTML = `<p class="editor-hint">${products.length === 0 ? "No products yet. Add your first one above." : "No products match your search."}</p>`;
+    $("invProductsPagination").innerHTML = "";
     return;
   }
-  list.innerHTML = filtered.map(p => `
+  const { pageItems, controlsHtml } = paginate("products", sorted);
+  list.innerHTML = pageItems.map(p => `
     <div class="inv-record-row" data-id="${p.id}">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(p.name)}</div>
@@ -550,11 +811,12 @@ function renderProductsList(filterText) {
       </div>
       <div class="inv-record-actions">
         ${p.inventoryTracking ? `<button type="button" class="btn btn-ghost inv-record-adjust-stock" data-id="${p.id}">Adjust Stock</button>` : ""}
-        <button type="button" class="btn btn-ghost inv-record-edit" data-id="${p.id}">Edit</button>
-        <button type="button" class="btn btn-ghost inv-record-delete" data-id="${p.id}">Delete</button>
+        <button type="button" class="btn inv-btn-edit inv-record-edit" data-id="${p.id}">Edit</button>
+        <button type="button" class="btn btn-danger inv-record-delete" data-id="${p.id}">Delete</button>
       </div>
     </div>
   `).join("");
+  $("invProductsPagination").innerHTML = controlsHtml;
 }
 
 async function refreshProducts() {
@@ -584,17 +846,21 @@ function matchesStockFilter(p, filter) {
 }
 
 function renderInventoryList() {
+  paginationRenderers.inventory = renderInventoryList;
   const list = $("invInventoryList");
   const trackedProducts = products.filter(p => p.inventoryTracking);
   const filtered = trackedProducts.filter(p => matchesStockFilter(p, currentStockFilter));
+  const sorted = sortByName(filtered, "name");
 
   if (trackedProducts.length === 0) {
     $("invInventoryEmptyNote").textContent = "No products have inventory tracking enabled yet. Turn on \"Track inventory\" when adding or editing a product.";
     list.innerHTML = "";
+    $("invInventoryPagination").innerHTML = "";
     return;
   }
-  $("invInventoryEmptyNote").textContent = filtered.length === 0 ? "No products match this filter." : "";
-  list.innerHTML = filtered.map(p => `
+  $("invInventoryEmptyNote").textContent = sorted.length === 0 ? "No products match this filter." : "";
+  const { pageItems, controlsHtml } = paginate("inventory", sorted);
+  list.innerHTML = pageItems.map(p => `
     <div class="inv-record-row">
       <div class="inv-record-main">
         <div class="inv-record-name">${escapeHtml(p.name)}${p.sku ? " · SKU: " + escapeHtml(p.sku) : ""}</div>
@@ -602,6 +868,7 @@ function renderInventoryList() {
       </div>
     </div>
   `).join("");
+  $("invInventoryPagination").innerHTML = controlsHtml;
 }
 
 async function loadMovements(businessId) {
@@ -629,13 +896,17 @@ function renderMovementsList() {
 }
 
 async function refreshInventoryTab(businessId) {
-  if (!businessId) return;
+  if (!businessId) {
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Business isn't loaded yet -- please try again in a moment.</p>`;
+    return;
+  }
   try {
     movements = await loadMovements(businessId);
     renderInventoryList();
     renderMovementsList();
   } catch (err) {
     console.error("[invoice-business] load inventory/movements failed:", err);
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Could not load inventory right now. Please try again.</p>`;
   }
 }
 
@@ -662,7 +933,7 @@ window.toolflightInvoiceBusiness = {
     businessProfile = await loadBusinessProfile(businessId);
     await refreshCustomersAndProducts();
     showBusinessArea();
-    switchBusinessTab("profile");
+    switchBusinessTab("dashboard");
   },
 };
 
@@ -673,14 +944,154 @@ function switchBusinessTab(tab) {
   document.querySelectorAll(".inv-business-tab[data-tab]").forEach(btn => {
     btn.classList.toggle("inv-business-tab--active", btn.dataset.tab === tab);
   });
-  hide("invTabProfile"); hide("invTabCustomers"); hide("invTabProducts"); hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam");
+  hide("invTabDashboard"); hide("invTabProfile"); hide("invTabCustomers"); hide("invTabProducts");
+  hide("invTabInvoices"); hide("invTabInventory"); hide("invTabTeam"); hide("invTabSuppliers"); hide("invTabReports");
+  hide("invTabExpenses"); hide("invTabPayments"); hide("invTabAccounting");
   show("invTab" + tab.charAt(0).toUpperCase() + tab.slice(1));
+  closeProfileMenu();
+  window.scrollTo(0, 0);
+  if (tab === "inventory") {
+    // Show a placeholder the instant the tab opens -- refreshInventoryTab()
+    // below is async (a real Firestore fetch), and the panel must never
+    // sit empty while it's in flight, however briefly.
+    $("invInventoryList").innerHTML = `<p class="inv-dash-empty">Loading inventory…</p>`;
+    $("invMovementsList").innerHTML = "";
+    refreshInventoryTab(currentBusinessId);
+  }
+  if (tab === "expenses") {
+    $("invExpensesList").innerHTML = `<p class="inv-dash-empty">Loading expenses…</p>`;
+    refreshExpenses();
+  }
+  if (tab === "dashboard") renderDashboard();
 }
 
 function showBusinessArea() {
-  hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError");
+  hide("invModeSelect"); hide("invSetupPrompt"); hide("invGuestBuilder"); hide("invBusinessLookupError"); hide("invAccountBar");
+  hide("invMarketingHero"); hide("invSeoContent"); hide("invSiteFooter");
   show("invBusinessArea");
   if (businessProfile) fillBusinessForm(businessProfile);
+  updateShellProfileHeader();
+}
+
+function updateShellProfileHeader() {
+  const nameEl = $("invShellProfileName");
+  const bizEl = $("invShellProfileBiz");
+  const avatarEl = $("invShellProfileAvatar");
+  if (!nameEl || !bizEl || !avatarEl) return; // defensive -- these only exist inside invBusinessArea
+  const displayName = (currentUser && currentUser.email) ? currentUser.email : "Account";
+  const bizName = (businessProfile && businessProfile.name) ? businessProfile.name : "My Business";
+  nameEl.textContent = displayName;
+  bizEl.textContent = bizName;
+  avatarEl.textContent = displayName.charAt(0).toUpperCase();
+}
+
+function closeProfileMenu() {
+  const menu = $("invShellProfileMenu");
+  if (menu) menu.classList.add("hidden");
+}
+
+function openSheet(sheetId) {
+  closeAllSheets();
+  $(sheetId).classList.add("show");
+  $("invSheetScrim").classList.add("show");
+}
+function closeAllSheets() {
+  document.querySelectorAll(".inv-sheet.show").forEach(s => s.classList.remove("show"));
+  $("invSheetScrim").classList.remove("show");
+}
+
+/* ==================================================================
+   My Profile (personal user settings, Phase 3) -- separate from
+   Business Profile. Stored on users/{uid} (merge write, so the
+   existing primaryBusinessId field is never overwritten). Email is
+   intentionally never written here -- it's the sign-in identity and
+   changing it is a Firebase Auth operation, not a Firestore field.
+   ================================================================== */
+async function openUserProfileModal() {
+  closeProfileMenu();
+  setError("invProfileError", "");
+  $("invProfileSuccess").textContent = "";
+  $("invProfileEmail").value = currentUser ? currentUser.email : "";
+  $("invProfileDisplayName").value = "";
+  $("invProfilePhone").value = "";
+  $("invUserProfileModal").classList.add("show");
+  if (!currentUser) return;
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    const snap = await fns.getDoc(fns.doc(db, "users", currentUser.uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      $("invProfileDisplayName").value = data.displayName || "";
+      $("invProfilePhone").value = data.phone || "";
+    }
+  } catch (err) {
+    console.error("[invoice-business] load user profile failed:", err);
+    setError("invProfileError", "Could not load your profile right now.");
+  }
+}
+
+async function handleSaveUserProfile() {
+  if (!currentUser) return;
+  const btn = $("invProfileSaveBtn");
+  const originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  setError("invProfileError", "");
+  $("invProfileSuccess").textContent = "";
+  try {
+    const db = getDb();
+    const fns = await loadFirestoreFns();
+    await fns.setDoc(fns.doc(db, "users", currentUser.uid), {
+      displayName: $("invProfileDisplayName").value.trim(),
+      phone: $("invProfilePhone").value.trim(),
+    }, { merge: true });
+    $("invProfileSuccess").textContent = "Profile saved.";
+    updateShellProfileHeader();
+  } catch (err) {
+    console.error("[invoice-business] save user profile failed:", err);
+    setError("invProfileError", "Could not save right now. Please try again.");
+  } finally {
+    btn.disabled = false; btn.textContent = originalText;
+  }
+}
+
+/* ==================================================================
+   Dashboard (Phase 2) -- overview built ONLY from data already loaded
+   elsewhere (customers/products in this module, invoices via the
+   invoice-history.js bridge). No invented numbers, no status field
+   that doesn't exist in the real invoice data shape.
+   ================================================================== */
+async function renderDashboard() {
+  const bizName = (businessProfile && businessProfile.name) ? businessProfile.name : "your business";
+  $("invDashGreeting").textContent = "Welcome back, " + bizName;
+  $("invDashGreetingSub").textContent = "Here's your business overview.";
+
+  $("invDashStatCustomers").textContent = String(customers.length);
+  $("invDashStatProducts").textContent = String(products.length);
+
+  // Invoices -- loaded lazily via invoice-history.js's bridge (same lazy
+  // pattern the Invoices tab itself already uses; the Dashboard just
+  // triggers the same refresh instead of duplicating the Firestore call).
+  // Only the two invoice-derived stat numbers are needed here now --
+  // Recent Invoices/Top Customers/Sales Overview moved into their own
+  // tabs (Invoices/Customers), so this function no longer renders them.
+  if (window.toolflightInvoiceHistory && currentBusinessId) {
+    try {
+      await window.toolflightInvoiceHistory.refreshInvoices(currentBusinessId);
+    } catch (err) {
+      console.error("[invoice-business] dashboard: could not refresh invoices:", err);
+    }
+    const invoices = window.toolflightInvoiceHistory.getInvoices();
+    $("invDashStatInvoices").textContent = String(invoices.length);
+
+    const totalSales = invoices.reduce((sum, inv) => sum + Number((inv.totals && inv.totals.total) || 0), 0);
+    const currency = (businessProfile && businessProfile.defaultCurrency) ||
+      (invoices[0] && invoices[0].meta && invoices[0].meta.currency) || "USD";
+    $("invDashStatSales").textContent = window.toolflightInvoiceHistory.formatMoney(totalSales, currency);
+  } else {
+    $("invDashStatInvoices").textContent = "—";
+    $("invDashStatSales").textContent = "—";
+  }
 }
 
 async function openMyBusiness() {
@@ -696,14 +1107,62 @@ async function openMyBusiness() {
     return;
   }
   showBusinessArea();
-  switchBusinessTab("profile");
+  switchBusinessTab("dashboard");
 }
 
 function initBusinessUI() {
   $("invMyBusinessBtn").addEventListener("click", openMyBusiness);
-  $("invBusinessBackBtn").addEventListener("click", () => {
+  $("invShellHomeBtn").addEventListener("click", () => {
     hide("invBusinessArea");
     show("invModeSelect");
+    show("invMarketingHero"); show("invSeoContent"); show("invSiteFooter");
+    if (currentUser) show("invAccountBar");
+  });
+
+  // Consolidated menu -- one trigger (invShellSettingsBtn), toggles on
+  // click, closes on any outside click, Escape, or once an item inside
+  // it is chosen (the item's own click handler, e.g. switchBusinessTab
+  // or logout, runs first via event bubbling before this listener).
+  $("invShellSettingsBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("invShellProfileMenu").classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    const menu = $("invShellProfileMenu");
+    if (!menu || menu.classList.contains("hidden")) return;
+    if (!menu.contains(e.target) && e.target !== $("invShellSettingsBtn")) closeProfileMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeProfileMenu();
+  });
+  $("invShellLogoutBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    $("invSignOutBtn").click();
+  });
+  $("invShellMyProfileBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    openUserProfileModal();
+  });
+  $("invShellAboutBtn").addEventListener("click", () => {
+    closeProfileMenu();
+    $("invAboutModal").classList.add("show");
+  });
+  document.querySelectorAll("#invAboutModal .faq-item .faq-q").forEach(q => {
+    q.addEventListener("click", () => q.closest(".faq-item").classList.toggle("open"));
+  });
+  $("invProfileSaveBtn").addEventListener("click", handleSaveUserProfile);
+  $("invDashNewInvoiceBtn").addEventListener("click", () => $("invCreateInvoiceBtn").click());
+  $("invSidebarQuickCreateBtn").addEventListener("click", () => $("invCreateInvoiceBtn").click());
+  $("invFabNewInvoiceBtn").addEventListener("click", () => { closeAllSheets(); $("invCreateInvoiceBtn").click(); });
+
+  // Mobile sheets (Create New / All Tools) -- reuse the exact same
+  // .inv-business-tab[data-tab] navigation already wired above; a sheet
+  // just needs to close itself once a choice inside it is made.
+  $("invMobileFabBtn").addEventListener("click", () => openSheet("invFabSheet"));
+  $("invMobileMoreBtn").addEventListener("click", () => openSheet("invAllToolsSheet"));
+  $("invSheetScrim").addEventListener("click", closeAllSheets);
+  document.querySelectorAll("#invFabSheet [data-tab], #invAllToolsSheet [data-tab]").forEach(el => {
+    el.addEventListener("click", closeAllSheets);
   });
 
   $("invStartSetupBtn").addEventListener("click", () => {
@@ -721,15 +1180,13 @@ function initBusinessUI() {
   });
 
   document.querySelectorAll(".inv-business-tab[data-tab]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      switchBusinessTab(btn.dataset.tab);
-      if (btn.dataset.tab === "inventory") refreshInventoryTab(currentBusinessId);
-    });
+    btn.addEventListener("click", () => switchBusinessTab(btn.dataset.tab));
   });
 
   document.querySelectorAll(".inv-business-tab[data-stock-filter]").forEach(btn => {
     btn.addEventListener("click", () => {
       currentStockFilter = btn.dataset.stockFilter;
+      paginationState.inventory.page = 1;
       document.querySelectorAll(".inv-business-tab[data-stock-filter]").forEach(b => {
         b.classList.toggle("inv-business-tab--active", b === btn);
       });
@@ -737,8 +1194,14 @@ function initBusinessUI() {
     });
   });
 
+  window.populateCurrencySelect($("invSetBizCurrency"), { defaultCode: "USD", customValue: "OTHER", customLabel: "Other (enter code below)" });
+  window.populateCurrencySelect($("invProdFormCurrency"), { defaultCode: "USD", customValue: "OTHER", customLabel: "Other (enter code below)" });
+
   $("invSetBizCurrency").addEventListener("change", (e) => {
     $("invSetBizCurrencyOtherWrap").style.display = e.target.value === "OTHER" ? "" : "none";
+  });
+  $("invProdFormCurrency").addEventListener("change", (e) => {
+    $("invProdFormCurrencyOtherWrap").style.display = e.target.value === "OTHER" ? "" : "none";
   });
   $("invSetTaxEnabled").addEventListener("change", (e) => {
     $("invSetTaxRate").disabled = !e.target.checked;
@@ -747,7 +1210,7 @@ function initBusinessUI() {
 
   $("invAddCustomerBtn").addEventListener("click", () => openCustomerModal(null));
   $("invCustFormSaveBtn").addEventListener("click", handleSaveCustomer);
-  $("invCustomerSearch").addEventListener("input", (e) => renderCustomersList(e.target.value));
+  $("invCustomerSearch").addEventListener("input", (e) => { paginationState.customers.page = 1; renderCustomersList(e.target.value); });
   $("invCustomersList").addEventListener("click", (e) => {
     const id = e.target.dataset.id;
     if (!id) return;
@@ -759,7 +1222,7 @@ function initBusinessUI() {
   $("invProdFormTaxEnabled").addEventListener("change", (e) => { $("invProdFormTaxRate").disabled = !e.target.checked; });
   $("invProdFormInventoryTracking").addEventListener("change", (e) => { $("invProdFormThresholdWrap").style.display = e.target.checked ? "" : "none"; });
   $("invProdFormSaveBtn").addEventListener("click", handleSaveProduct);
-  $("invProductSearch").addEventListener("input", (e) => renderProductsList(e.target.value));
+  $("invProductSearch").addEventListener("input", (e) => { paginationState.products.page = 1; renderProductsList(e.target.value); });
   $("invProductsList").addEventListener("click", (e) => {
     const id = e.target.dataset.id;
     if (!id) return;
@@ -770,6 +1233,21 @@ function initBusinessUI() {
 
   $("invStockAdjustAmount").addEventListener("input", updateStockAdjustPreview);
   $("invStockAdjustSaveBtn").addEventListener("click", handleSaveStockAdjustment);
+
+  $("invAddExpenseBtn").addEventListener("click", () => openExpenseModal(null));
+  $("invExpenseFormSaveBtn").addEventListener("click", handleSaveExpense);
+  $("invExpenseSearch").addEventListener("input", (e) => { paginationState.expenses.page = 1; renderExpensesList(e.target.value); });
+  $("invExpenseCategoryFilter").addEventListener("change", (e) => {
+    currentExpenseCategoryFilter = e.target.value;
+    paginationState.expenses.page = 1;
+    renderExpensesList($("invExpenseSearch").value);
+  });
+  $("invExpensesList").addEventListener("click", (e) => {
+    const id = e.target.dataset.id;
+    if (!id) return;
+    if (e.target.classList.contains("inv-expense-edit")) openExpenseModal(expenses.find(x => x.id === id));
+    else if (e.target.classList.contains("inv-expense-delete")) handleDeleteExpense(id);
+  });
 
   let lastProcessedUid = null;
 
