@@ -1163,135 +1163,6 @@ if (document.getElementById('metaPreview')){
   updateMetaPreview();
 }
 
-/* ============ KEYWORD DENSITY CHECKER (seo-tools.html) ============ */
-if (document.getElementById('keywordDensityAnalyzeBtn')){
-  const stopWords = new Set([
-    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are',
-    'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but',
-    'by', 'can', 'could', 'did', 'do', 'does', 'doing', 'down', 'during', 'each', 'few', 'for',
-    'from', 'further', 'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself',
-    'him', 'himself', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'just',
-    'me', 'might', 'more', 'most', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once',
-    'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'same', 'she',
-    'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves',
-    'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until',
-    'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom',
-    'why', 'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves'
-  ]);
-
-  function updateLiveStats(){
-    const text = document.getElementById('keywordDensityText').value;
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    const chars = text.length;
-    const charsNoSpaces = text.replace(/\s/g, '').length;
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
-    const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 0).length;
-
-    document.getElementById('keywordDensityWordCount').textContent = words.length.toLocaleString();
-    document.getElementById('keywordDensityCharCount').textContent = chars.toLocaleString();
-    document.getElementById('keywordDensityCharCountNoSpaces').textContent = charsNoSpaces.toLocaleString();
-    document.getElementById('keywordDensitySentenceCount').textContent = Math.max(sentences, text.trim().length > 0 ? 1 : 0);
-    document.getElementById('keywordDensityParagraphCount').textContent = Math.max(paragraphs, text.trim().length > 0 ? 1 : 0);
-  }
-
-  document.getElementById('keywordDensityText').addEventListener('input', updateLiveStats);
-
-  function analyzeKeywordDensity(){
-    const text = document.getElementById('keywordDensityText').value.trim();
-    if (!text){
-      toast('Please paste some content to analyze.', 'err');
-      return;
-    }
-
-    const targetKeyword = document.getElementById('keywordDensityTargetKeyword').value.trim().toLowerCase();
-    const words = text.split(/\s+/).filter(w => w.length > 0);
-    const totalWords = words.length;
-
-    if (totalWords === 0){
-      toast('Please enter text to analyze.', 'err');
-      return;
-    }
-
-    let targetKeywordResult = '';
-    if (targetKeyword){
-      const keywordRegex = new RegExp('\\b' + targetKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
-      const matches = text.match(keywordRegex) || [];
-      const occurrences = matches.length;
-      const density = ((occurrences / totalWords) * 100).toFixed(2);
-      targetKeywordResult = `
-      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Target Keyword Analysis</h3>
-        <div class="row" style="gap:20px;margin:0;flex-wrap:wrap;">
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Keyword</span><span style="font-size:14px;font-weight:600;color:var(--ink);">"${targetKeyword}"</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Occurrences</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${occurrences}</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Density</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${density}%</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Status</span><span style="font-size:14px;font-weight:600;color:var(--ink);">${occurrences === 0 ? 'Not found' : density < 0.5 ? 'Low' : density < 2 ? 'Natural' : density < 5 ? 'Moderate' : 'High'}</span></div>
-        </div>
-      </div>`;
-    }
-
-    const wordFreq = {};
-    words.forEach(word => {
-      const cleaned = word.toLowerCase().replace(/[^\w]/g, '');
-      if (cleaned.length > 0 && !stopWords.has(cleaned)){
-        wordFreq[cleaned] = (wordFreq[cleaned] || 0) + 1;
-      }
-    });
-
-    const sortedWords = Object.entries(wordFreq)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20);
-
-    let topKeywordsTable = '<h3 style="font-size:16px;font-weight:700;margin:20px 0 12px;color:var(--ink);">Top Keywords</h3>';
-    topKeywordsTable += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">';
-    topKeywordsTable += '<thead style="border-bottom:2px solid var(--card-border);"><tr><th style="text-align:left;padding:8px;font-weight:700;color:var(--ink);">Keyword</th><th style="text-align:center;padding:8px;font-weight:700;color:var(--ink);">Count</th><th style="text-align:center;padding:8px;font-weight:700;color:var(--ink);">Density</th></tr></thead>';
-    topKeywordsTable += '<tbody>';
-    sortedWords.forEach(([word, count]) => {
-      const dens = ((count / totalWords) * 100).toFixed(2);
-      topKeywordsTable += `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:8px;color:var(--ink);">${word}</td><td style="text-align:center;padding:8px;color:var(--ink);">${count}</td><td style="text-align:center;padding:8px;color:var(--ink);">${dens}%</td></tr>`;
-    });
-    topKeywordsTable += '</tbody></table></div>';
-
-    const resultsHtml = `
-    <div style="margin-top:24px;">
-      <h2 style="font-size:18px;font-weight:800;margin:0 0 14px;color:var(--ink);">Analysis Results</h2>
-
-      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Content Overview</h3>
-        <div class="row" style="gap:20px;margin:0;flex-wrap:wrap;">
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Total Words</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${totalWords.toLocaleString()}</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Unique Keywords</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${Object.keys(wordFreq).length}</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Avg. Word Frequency</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${(Object.values(wordFreq).reduce((a, b) => a + b, 0) / Object.keys(wordFreq).length).toFixed(1)}</span></div>
-        </div>
-      </div>
-
-      ${targetKeywordResult}
-
-      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-        ${topKeywordsTable}
-      </div>
-
-      <div style="margin:20px 0;padding:16px;background:color-mix(in srgb, var(--warn-solid) 8%, var(--card));border-radius:12px;border:1px solid var(--card-border);">
-        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">SEO Content Guidance</h3>
-        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin:0;">Keyword density is only one small signal in SEO. Modern search engines prioritize user intent, content quality, and natural language over keyword percentages. Write primarily for your readers, use your keywords naturally, and include related terms and synonyms. There is no universal "correct" keyword density — focus on content that genuinely helps your audience.</p>
-      </div>
-    </div>`;
-
-    document.getElementById('keywordDensityResults').innerHTML = resultsHtml;
-  }
-
-  document.getElementById('keywordDensityAnalyzeBtn').onclick = analyzeKeywordDensity;
-
-  document.getElementById('keywordDensityClearBtn').onclick = () => {
-    document.getElementById('keywordDensityText').value = '';
-    document.getElementById('keywordDensityTargetKeyword').value = '';
-    document.getElementById('keywordDensityResults').innerHTML = '';
-    updateLiveStats();
-  };
-
-  updateLiveStats();
-}
-
 /* ============ PERCENTAGE CALCULATOR (calculators.html) ============ */
 if (document.getElementById('pctCalcBtn')){
   let pctMode = 'of';
@@ -9411,106 +9282,6 @@ if (legalModalEl) legalModalEl.addEventListener('click', (e) => { if (e.target.i
 if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
   let rtOriginalImageBytes = null; // raw ArrayBuffer of the original file -- plain JS heap memory, no browser resource-registry dependency (unlike a Blob URL, which can be silently invalidated by the same memory pressure that clears canvases -- this was the real root cause of the false "recovered" result)
-  // Disk-backed fallback: plain JS heap memory (rtOriginalImageBytes
-  // above) is usually enough, but in genuinely severe memory pressure
-  // the whole page's heap can still be evicted. IndexedDB survives that
-  // case since it's backed by disk, not the page's live memory. Used
-  // only as a fallback when the in-memory bytes are themselves gone --
-  // never on the normal, fast path.
-  let rtIdbPromise = null;
-  function rtOpenIdb(){
-    if (rtIdbPromise) return rtIdbPromise;
-    rtIdbPromise = new Promise((resolve) => {
-      try{
-        const req = indexedDB.open('rt-photo-recovery', 1);
-        req.onupgradeneeded = () => { req.result.createObjectStore('photo'); };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null); // fail silently -- this is a best-effort fallback, never a requirement
-      } catch(err){ resolve(null); }
-    });
-    return rtIdbPromise;
-  }
-  async function rtSaveOriginalToIdb(bytes, type){
-    try{
-      const db = await rtOpenIdb();
-      if (!db) return;
-      await new Promise((resolve) => {
-        const tx = db.transaction('photo', 'readwrite');
-        tx.objectStore('photo').put({ bytes, type }, 'current');
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
-      });
-    } catch(err){ /* best-effort -- never block the main load path on this */ }
-  }
-  async function rtLoadOriginalFromIdb(){
-    try{
-      const db = await rtOpenIdb();
-      if (!db) return null;
-      return await new Promise((resolve) => {
-        const tx = db.transaction('photo', 'readonly');
-        const req = tx.objectStore('photo').get('current');
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-    } catch(err){ return null; }
-  }
-  async function rtClearOriginalFromIdb(){
-    try{
-      const db = await rtOpenIdb();
-      if (!db) return;
-      const tx = db.transaction('photo', 'readwrite');
-      tx.objectStore('photo').delete('current');
-    } catch(err){ /* best-effort */ }
-  }
-  // Session state (rtAdj, zoom/pan) -- a separate, small key from the
-  // large photo bytes above, so it can be saved frequently without ever
-  // rewriting the photo data. This is what makes automatic restoration
-  // after a genuine page discard possible: the photo-bytes-only fallback
-  // above only helps a canvas that was cleared while the page itself
-  // stayed alive (rtSourceCanvas still exists in memory) -- it does
-  // nothing for a full reload, where every JS variable resets to its
-  // initial value before any user action has happened.
-  let rtSessionSaveTimer = null;
-  function rtSaveSessionStateNow(){
-    if (!rtSourceCanvas) return; // nothing active to persist
-    rtOpenIdb().then(db => {
-      if (!db) return;
-      try{
-        const tx = db.transaction('photo', 'readwrite');
-        tx.objectStore('photo').put({
-          adj: rtAdj, zoom: rtZoom, offsetX: rtOffsetX, offsetY: rtOffsetY,
-          savedAt: Date.now(),
-        }, 'state');
-      } catch(err){ /* best-effort */ }
-    });
-  }
-  function rtScheduleSessionSave(){
-    // Debounced -- called from rtPushHistory (an existing hook already
-    // fired once per meaningful edit commit, not per slider tick), so
-    // this never writes on every intermediate drag frame.
-    clearTimeout(rtSessionSaveTimer);
-    rtSessionSaveTimer = setTimeout(rtSaveSessionStateNow, 400);
-  }
-  async function rtLoadSessionStateFromIdb(){
-    try{
-      const db = await rtOpenIdb();
-      if (!db) return null;
-      return await new Promise((resolve) => {
-        const tx = db.transaction('photo', 'readonly');
-        const req = tx.objectStore('photo').get('state');
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-    } catch(err){ return null; }
-  }
-  async function rtClearSessionStateFromIdb(){
-    try{
-      const db = await rtOpenIdb();
-      if (!db) return;
-      const tx = db.transaction('photo', 'readwrite');
-      tx.objectStore('photo').delete('state');
-    } catch(err){ /* best-effort */ }
-  }
   let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
@@ -9581,8 +9352,7 @@ if (document.getElementById('rtDrop')){
     eyeColorHex:null, eyeColorIntensity:0,
     browDefinition:0,
     noseDefinition:0,
-    beautyMarkIntensity:0, beautyMarkSize:0, beautyMarkPosition:'upperLip',
-    beardIntensity:0,
+    beautyMarkIntensity:0, beautyMarkSize:0,
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -9602,7 +9372,6 @@ if (document.getElementById('rtDrop')){
     freckleIntensity:'rtFreckleIntensity', contourIntensity:'rtContourIntensity', highlightIntensity:'rtHighlightIntensity',
     browDefinition:'rtBrowDefinition', noseDefinition:'rtNoseDefinition',
     beautyMarkIntensity:'rtBeautyMarkIntensity', beautyMarkSize:'rtBeautyMarkSize',
-    beardIntensity:'rtBeardIntensity',
   };
 
   function rtClamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
@@ -10044,31 +9813,6 @@ if (document.getElementById('rtDrop')){
     return points.map(p => ({ x: cx + (p.x-cx)*factor, y: cy + (p.y-cy)*factor }));
   }
 
-  function stampPolylineBand(points, halfWidth, value, arr, w, h){
-    // Smooth continuous ribbon along a sequence of real landmark points
-    // -- segment-by-segment distance falloff, not discrete stamps at
-    // each point, which is what reads as separate blobs/stripes rather
-    // than a single soft contour line.
-    for (let s = 0; s+1 < points.length; s++){
-      const p0 = points[s], p1 = points[s+1];
-      const segLen = Math.hypot(p1.x-p0.x, p1.y-p0.y) || 1;
-      const steps = Math.max(1, Math.ceil(segLen / (halfWidth*0.5)));
-      for (let t = 0; t <= steps; t++){
-        const f = t/steps;
-        const px = p0.x + (p1.x-p0.x)*f, py = p0.y + (p1.y-p0.y)*f;
-        const x0=Math.max(0,Math.floor(px-halfWidth)), x1=Math.min(w-1,Math.ceil(px+halfWidth));
-        const y0=Math.max(0,Math.floor(py-halfWidth)), y1=Math.min(h-1,Math.ceil(py+halfWidth));
-        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const d2 = ((x-px)*(x-px)+(y-py)*(y-py))/(halfWidth*halfWidth);
-          if (d2 > 1) continue;
-          const v = (1-d2)*(1-d2)*value;
-          const idx = y*w+x;
-          if (v > arr[idx]) arr[idx] = v;
-        }
-      }
-    }
-  }
-
   // Standard MediaPipe Face Mesh lip contour indices -- outer boundary
   // (the actual visible lip edge, including its natural asymmetric shape
   // and corner narrowing) and inner boundary (the mouth opening, which
@@ -10137,15 +9881,12 @@ if (document.getElementById('rtDrop')){
         const dx=(x-cxp)/rr, dy=(y-cyp)/(rr*ryScale);
         const d2 = dx*dx+dy*dy;
         // Only the upper half of the ellipse (dy<0, toward the lash
-        // line), and only a narrow band right at its outer rim -- was
-        // wide enough (d2 0.4-1.0) to reach into the eyelid crease,
-        // which real-device screenshots showed as a visible dark/orange
-        // band above the actual lashes. Narrowed to hug just the edge.
-        if (dy <= 0 && d2 <= 1 && d2 >= 0.7) mask[y*w+x] = 1 - Math.abs(d2 - 0.85)/0.15;
+        // line), and only its outer rim (d2 close to 1), not the eye interior.
+        if (dy <= 0 && d2 <= 1 && d2 >= 0.4) mask[y*w+x] = 1 - Math.abs(d2 - 0.7)/0.3;
       }
     }
-    stampBand(leftEyeC.x, leftEyeC.y - r*0.05, r*1.0, 0.42);
-    stampBand(rightEyeC.x, rightEyeC.y - r*0.05, r*1.0, 0.42);
+    stampBand(leftEyeC.x, leftEyeC.y - r*0.15, r*1.05, 0.7);
+    stampBand(rightEyeC.x, rightEyeC.y - r*0.15, r*1.05, 0.7);
     return boxBlurGray(mask, w, h, Math.max(1, Math.round(eyeDist*0.03)));
   }
 
@@ -10184,7 +9925,7 @@ if (document.getElementById('rtDrop')){
      a legitimate gentle whole-frame fallback). */
   function applyRtFaceAI(data, w, h, sw, sh){
     const a = rtAdj;
-    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0 && a.lipLinerIntensity <= 0 && a.mascaraIntensity <= 0 && a.eyeColorIntensity <= 0 && a.browDefinition <= 0 && a.noseDefinition <= 0 && a.beautyMarkIntensity <= 0 && a.beardIntensity <= 0) return;
+    if (a.eyeEnhance <= 0 && a.teethWhiten <= 0 && a.lipEnhance <= 0 && a.blush <= 0 && a.lipColorIntensity <= 0 && a.lipLinerIntensity <= 0 && a.mascaraIntensity <= 0 && a.eyeColorIntensity <= 0 && a.browDefinition <= 0 && a.noseDefinition <= 0 && a.beautyMarkIntensity <= 0) return;
     if (!rtFaceLandmarks) return;
     if (a.eyeEnhance > 0){
       const mask = buildRtEyeMask(w, h, sw, sh);
@@ -10354,223 +10095,114 @@ if (document.getElementById('rtDrop')){
       }
     }
     if (a.eyeColorIntensity > 0 && a.eyeColorHex){
-      // Layered containment, not a single broad region:
-      // 1) Eye-contour polygon bounds the absolute maximum extent (never
-      //    touches eyelid/skin outside the real eye opening).
-      // 2) A circular iris estimate, sized from the eye's own measured
-      //    HEIGHT (not width) -- anatomically the iris diameter
-      //    approximates the eye-opening height at normal aperture, while
-      //    the eye's width is frequently larger than the iris with
-      //    sclera visible at the inner/outer corners. Using the full
-      //    eye-contour width (the previous approach) let the color reach
-      //    that corner sclera, which is what the real-device screenshot
-      //    showed.
-      // 3) Darkness discrimination within the circle, as a final
-      //    per-pixel safety net (protects any stray bright pixel even
-      //    inside the circle, e.g. a corneal highlight).
-      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
-      const RT_RIGHT_EYE_IDX = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
-      const RT_LEFT_EYE_IDX = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
-      const rightEyeContour = RT_RIGHT_EYE_IDX.map(toPx);
-      const leftEyeContour = RT_LEFT_EYE_IDX.map(toPx);
-      const eyeOpenMask = new Float32Array(w*h);
-      const rightFill = fillPolygonMask(rightEyeContour, w, h);
-      const leftFill = fillPolygonMask(leftEyeContour, w, h);
-      for (let p=0; p<w*h; p++) eyeOpenMask[p] = Math.max(rightFill[p], leftFill[p]);
-
-      function irisCircleMask(contour){
-        let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-        for (const p of contour){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
-        const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
-        const eyeHeight = maxY-minY;
-        const r = Math.max(2, eyeHeight * 0.62); // iris diameter approximates eye-opening height, with a small margin for natural coverage
-        const mask = new Float32Array(w*h);
-        const x0=Math.max(0,Math.floor(cx-r)), x1=Math.min(w-1,Math.ceil(cx+r));
-        const y0=Math.max(0,Math.floor(cy-r)), y1=Math.min(h-1,Math.ceil(cy+r));
-        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const dx=(x-cx)/r, dy=(y-cy)/r;
-          const d2 = dx*dx+dy*dy;
-          if (d2 <= 1){ const idx=y*w+x; const v=(1-d2)*(1-d2*0.5); if(v>mask[idx]) mask[idx]=v; } // fades fully to zero at the boundary, steeper than a simple (1-d2) -- keeps the circle's own edge tight now that the darkness threshold is more permissive
-        }
-        return mask;
-      }
-      const rightIris = irisCircleMask(rightEyeContour);
-      const leftIris = irisCircleMask(leftEyeContour);
-      const irisMask = new Float32Array(w*h);
-      for (let p=0; p<w*h; p++) irisMask[p] = Math.max(rightIris[p], leftIris[p]);
-
+      // Small, conservative circle at the same eye-center anchors used
+      // elsewhere (no dedicated iris landmark exists in this codebase),
+      // refined by darkness so pixels that are actually white sclera --
+      // not iris -- are protected even if the circle isn't perfectly
+      // centered on every face.
+      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
+      const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
+      const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
+      const leftEyeC = toPx(159), rightEyeC = toPx(386);
+      const irisR = eyeDist * 0.11;
       const [cr, cg, cb] = rtHexToRgb(a.eyeColorHex);
-      const strength = Math.min(0.85, a.eyeColorIntensity/100 * 0.85);
-      for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        // Both the eye-contour bound AND the circular iris estimate must
-        // agree a pixel is eligible -- the circle is the primary
-        // constraint, the contour is a backstop that can only shrink it
-        // further, never expand it.
-        const geoMask = Math.min(eyeOpenMask[p], irisMask[p]);
-        if (geoMask <= 0) continue;
-        const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
-        // Sclera and corneal highlights are bright -- protected even
-        // inside the circle. Pupil is very dark -- keep it dark and
-        // mostly untinted rather than fully recoloring it, which is
-        // what "pupil should remain natural/dark" requires.
-        // Sclera is protected primarily by the geometric circle above,
-        // not this threshold -- so this can be generous rather than
-        // strict. The previous tight cutoff (lum<150, scaling to zero)
-        // excluded natural bright catchlight/highlight spots that real
-        // irises commonly have, leaving visible uncovered gaps in the
-        // result (confirmed directly from real-device screenshots
-        // showing partial iris coverage). A floor ensures even fairly
-        // bright iris pixels still get meaningful color rather than a
-        // hard gap; only genuinely sclera-bright pixels are minimized.
-        const darkness = rtClamp((215-lum)/170, 0.35, 1);
-        const pupilLikelihood = rtClamp((40-lum)/40, 0, 1); // very dark pixels are more likely pupil than iris
-        const m = strength * darkness * geoMask * (1 - pupilLikelihood*0.75);
-        if (m <= 0.005) continue;
-        // Normalized shading, not a direct luminance multiply -- the
-        // previous formula (target * lum/255) crushed the result too
-        // dark for naturally dark/brown irises (the most common eye
-        // color), since a dark original pixel produced a dark, muddy
-        // blend that wouldn't read as the selected color at all. This
-        // guarantees a strong baseline brightness (>=0.65x) even for
-        // very dark original pixels, while still preserving relative
-        // highlight/shadow variation within the iris for texture.
-        const shadeFactor = rtClamp(0.65 + (lum/255)*0.7, 0.65, 1.35);
-        const r2 = rtClamp(cr*shadeFactor, 0, 255), g2 = rtClamp(cg*shadeFactor, 0, 255), b2 = rtClamp(cb*shadeFactor, 0, 255);
-        data[i2]   = data[i2]*(1-m)   + r2*m;
-        data[i2+1] = data[i2+1]*(1-m) + g2*m;
-        data[i2+2] = data[i2+2]*(1-m) + b2*m;
+      const strength = Math.min(0.6, a.eyeColorIntensity/100 * 0.6);
+      function tintIris(cxp, cyp){
+        const x0=Math.max(0,Math.floor(cxp-irisR)), x1=Math.min(w-1,Math.ceil(cxp+irisR));
+        const y0=Math.max(0,Math.floor(cyp-irisR)), y1=Math.min(h-1,Math.ceil(cyp+irisR));
+        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+          const dx=(x-cxp)/irisR, dy=(y-cyp)/irisR;
+          const d2=dx*dx+dy*dy;
+          if (d2 > 1) continue;
+          const i2 = (y*w+x)*4;
+          const lum = rtLuma(data[i2],data[i2+1],data[i2+2]);
+          // Sclera reads bright; only darker (iris/pupil-range) pixels are eligible.
+          const darkness = rtClamp((150-lum)/100, 0, 1);
+          if (darkness <= 0) continue;
+          const m = (1-d2) * strength * darkness;
+          if (m <= 0.005) continue;
+          const l = lum/255;
+          const r2 = rtClamp(cr*l*1.4, 0, 255), g2 = rtClamp(cg*l*1.4, 0, 255), b2 = rtClamp(cb*l*1.4, 0, 255);
+          data[i2]   = data[i2]*(1-m)   + r2*m;
+          data[i2+1] = data[i2+1]*(1-m) + g2*m;
+          data[i2+2] = data[i2+2]*(1-m) + b2*m;
+        }
       }
+      tintIris(leftEyeC.x, leftEyeC.y);
+      tintIris(rightEyeC.x, rightEyeC.y);
     }
     if (a.browDefinition > 0){
-      // Actual eyebrow contour polygon, not a generic band -- standard
-      // MediaPipe eyebrow landmark indices, same proven polygon-fill
-      // technique already validated for the lip masks.
-      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
-      const RT_RIGHT_BROW_IDX = [70,63,105,66,107,55,65,52,53,46];
-      const RT_LEFT_BROW_IDX = [300,293,334,296,336,285,295,282,283,276];
-      const rightBrow = RT_RIGHT_BROW_IDX.map(toPx);
-      const leftBrow = RT_LEFT_BROW_IDX.map(toPx);
-      const browMask = new Float32Array(w*h);
-      const rightFill = fillPolygonMask(rightBrow, w, h);
-      const leftFill = fillPolygonMask(leftBrow, w, h);
-      for (let p=0; p<w*h; p++) browMask[p] = Math.max(rightFill[p], leftFill[p]);
+      // Thin band offset above the same proven eye-center anchors --
+      // no dedicated eyebrow landmarks exist in this codebase, so this
+      // is a derived, conservative position rather than a guess.
+      function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const feathered = boxBlurGray(browMask, w, h, Math.max(1, Math.round(eyeDist*0.02)));
+      const leftEyeC = toPx(159), rightEyeC = toPx(386);
       const strength = Math.min(0.5, a.browDefinition/100 * 0.5);
-      for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        const m = feathered[p] * strength;
-        if (m <= 0.005) continue;
-        const d = 1 - m*0.35; // darken/define rather than paint solid
-        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
-      }
-    }
-    if (a.beardIntensity > 0 && rtFaceLandmarks){
-      // Real texture-based detection, not a fixed painted shape: beard/
-      // stubble produces high local luminance variance (many small dark
-      // hairs against skin), while clean-shaven skin is comparatively
-      // smooth. Only pixels that are BOTH inside the landmark-defined
-      // lower-face region AND show genuine high-texture variance get
-      // enhanced -- this is what makes it fail gracefully on
-      // clean-shaven faces instead of assuming a beard is present.
-      function toPxB(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
-      function stampSoftB(cxp, cyp, rx, ry, value, arr){
+      function darkenBrow(cxp, cyp){
+        const rx = eyeDist*0.32, ry = eyeDist*0.09;
+        const by = cyp - eyeDist*0.20; // offset above the eye, toward the natural brow line
         const x0=Math.max(0,Math.floor(cxp-rx)), x1=Math.min(w-1,Math.ceil(cxp+rx));
-        const y0=Math.max(0,Math.floor(cyp-ry)), y1=Math.min(h-1,Math.ceil(cyp+ry));
+        const y0=Math.max(0,Math.floor(by-ry)), y1=Math.min(h-1,Math.ceil(by+ry));
         for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
-          const dx=(x-cxp)/rx, dy=(y-cyp)/ry;
+          const dx=(x-cxp)/rx, dy=(y-by)/ry;
           const d2=dx*dx+dy*dy;
-          if (d2<=1){ const v=(1-d2)*(1-d2)*value; const idx=y*w+x; if (v>arr[idx]) arr[idx]=v; }
+          if (d2 > 1) continue;
+          const i2=(y*w+x)*4;
+          const m = (1-d2)*(1-d2) * strength;
+          if (m <= 0.005) continue;
+          const d = 1 - m*0.35; // darken/define rather than paint solid
+          data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
         }
       }
-      const leftEyeOuterB = toPxB(33), rightEyeOuterB = toPxB(263);
-      const eyeDistB = Math.hypot(rightEyeOuterB.x-leftEyeOuterB.x, rightEyeOuterB.y-leftEyeOuterB.y);
-      const ovalIdxB = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-      const ovalPtsB = ovalIdxB.map(toPxB);
-      const mouthLB = toPxB(61), mouthRB = toPxB(291);
-      // Candidate region: lower half of the face oval, below the mouth --
-      // where a beard would actually be, not the whole face.
-      const regionMask = new Float32Array(w*h);
-      const belowMouthY = Math.max(mouthLB.y, mouthRB.y);
-      ovalPtsB.forEach(p => { if (p.y > belowMouthY - eyeDistB*0.1) stampSoftB(p.x, p.y, eyeDistB*0.22, eyeDistB*0.22, 1, regionMask); });
-      // Local luminance variance: box-blur(lum) and box-blur(lum^2), then Var = E[X^2] - E[X]^2.
-      const lumPlane = new Float32Array(w*h), lumSqPlane = new Float32Array(w*h);
-      for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        const l = rtLuma(data[i2], data[i2+1], data[i2+2]);
-        lumPlane[p] = l; lumSqPlane[p] = l*l;
-      }
-      const vRadius = Math.max(1, Math.round(eyeDistB*0.02));
-      const meanLum = boxBlurGray(lumPlane, w, h, vRadius);
-      const meanLumSq = boxBlurGray(lumSqPlane, w, h, vRadius);
-      const strength = Math.min(0.45, a.beardIntensity/100 * 0.45); // capped -- enhancement, not a solid paint
-      for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        if (regionMask[p] <= 0) continue;
-        const variance = Math.max(0, meanLumSq[p] - meanLum[p]*meanLum[p]);
-        // Threshold tuned so smooth skin (low variance) registers near
-        // zero and genuine stubble/hair texture (high local contrast)
-        // registers meaningfully -- this is the actual detection, not
-        // an assumption that facial hair is present.
-        const textureLikelihood = rtClamp((variance - 60) / 200, 0, 1);
-        const m = regionMask[p] * strength * textureLikelihood;
-        if (m <= 0.005) continue;
-        const d = 1 - m*0.5; // darken/define existing hair, don't paint a flat shape
-        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
-      }
+      darkenBrow(leftEyeC.x, leftEyeC.y);
+      darkenBrow(rightEyeC.x, rightEyeC.y);
     }
-    if (a.noseDefinition > 0 && rtFaceLandmarks){
+    if (a.noseDefinition > 0){
       // Subtle shading down the bridge sides for a definition/slimming
       // illusion -- explicitly NOT geometric reshaping, which this
-      // architecture can't do safely. Rebuilt to follow the actual
-      // nose bridge landmark chain (real points from between-eyes to
-      // tip) using the same polyline-band technique proven for Contour's
-      // jawline, rather than two fixed ellipse stamps.
+      // architecture can't do safely. A narrower, more focused version
+      // than Contour's nose-sides component, its own dedicated control.
       function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      // Standard MediaPipe nose bridge landmark chain, between-eyes to tip.
-      const RT_NOSE_BRIDGE_IDX = [6,197,195,5,4,1];
-      const bridge = RT_NOSE_BRIDGE_IDX.map(toPx);
+      const noseTip = toPx(1);
+      const leftEyeC = toPx(159), rightEyeC = toPx(386);
       const strength = Math.min(0.3, a.noseDefinition/100 * 0.3); // capped -- shading illusion, not deformation
-      const shadeMask = new Float32Array(w*h);
-      const sideOffset = eyeDist * 0.075;
-      const leftSide = bridge.map(p => ({ x: p.x - sideOffset, y: p.y }));
-      const rightSide = bridge.map(p => ({ x: p.x + sideOffset, y: p.y }));
-      stampPolylineBand(leftSide, eyeDist*0.05, 1, shadeMask, w, h);
-      stampPolylineBand(rightSide, eyeDist*0.05, 1, shadeMask, w, h);
-      const feathered = boxBlurGray(shadeMask, w, h, Math.max(1, Math.round(eyeDist*0.025)));
-      for (let p=0, i2=0; p<w*h; p++, i2+=4){
-        const m = feathered[p] * strength;
-        if (m <= 0.005) continue;
-        const d = 1 - m*0.4;
-        data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
+      const bridgeTopY = (leftEyeC.y+rightEyeC.y)/2;
+      function shadeSide(sign){
+        const cx = noseTip.x + sign*eyeDist*0.075;
+        const rx = eyeDist*0.05, ry = (noseTip.y - bridgeTopY)*0.55;
+        const cy = (noseTip.y + bridgeTopY)/2;
+        const x0=Math.max(0,Math.floor(cx-rx)), x1=Math.min(w-1,Math.ceil(cx+rx));
+        const y0=Math.max(0,Math.floor(cy-ry)), y1=Math.min(h-1,Math.ceil(cy+ry));
+        for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
+          const dx=(x-cx)/rx, dy=(y-cy)/ry;
+          const d2=dx*dx+dy*dy;
+          if (d2 > 1) continue;
+          const i2=(y*w+x)*4;
+          const m = (1-d2)*(1-d2) * strength;
+          if (m <= 0.005) continue;
+          const d = 1 - m*0.4;
+          data[i2]=rtClamp(data[i2]*d,0,255); data[i2+1]=rtClamp(data[i2+1]*d,0,255); data[i2+2]=rtClamp(data[i2+2]*d,0,255);
+        }
       }
+      shadeSide(-1); shadeSide(1);
     }
-    if (a.beautyMarkIntensity > 0 && rtFaceLandmarks){
-      // Landmark-relative placement with a choice of positions --
-      // avoids free touch-placement (the coordinate-transform risk
-      // across this app's zoom/pan/crop system, which a mark's small,
-      // precise size would make very easy to notice if it landed
-      // wrong), while still giving the user real choice via distinct
-      // anchor points rather than one fixed spot.
+    if (a.beautyMarkIntensity > 0){
+      // Fixed, classic position (upper cheek, near the mouth corner)
+      // rather than user-placed touch coordinates -- avoids the risk of
+      // a coordinate-transform bug across this app's zoom/pan/crop
+      // system, which a beauty mark's small, precise size would make
+      // very easy to notice if it ever landed wrong.
       function toPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
       const leftEyeOuter = toPx(33), rightEyeOuter = toPx(263);
       const eyeDist = Math.hypot(rightEyeOuter.x-leftEyeOuter.x, rightEyeOuter.y-leftEyeOuter.y);
-      const mouthL = toPx(61), mouthR = toPx(291);
+      const mouthR = toPx(291);
       const size = Math.max(1.5, eyeDist * 0.02 * (0.6 + (a.beautyMarkSize||50)/100));
       const strength = Math.min(0.8, a.beautyMarkIntensity/100 * 0.8);
-      const position = a.beautyMarkPosition || 'upperLip';
-      let cx, cy;
-      if (position === 'cheek'){
-        // Same cheek derivation already proven for Blush -- interpolated
-        // from eye-outer-corner and mouth-corner, nudged outward.
-        cx = mouthR.x + (rightEyeOuter.x - mouthR.x) * 0.55 + eyeDist * 0.12;
-        cy = mouthR.y + (rightEyeOuter.y - mouthR.y) * 0.55;
-      } else if (position === 'chin'){
-        const chin = toPx(152); // real detected chin point
-        cx = chin.x + eyeDist*0.06; cy = chin.y - eyeDist*0.10;
-      } else { // 'upperLip' -- classic position near the mouth corner
-        cx = mouthR.x + eyeDist*0.09; cy = mouthR.y - eyeDist*0.10;
-      }
+      const cx = mouthR.x + eyeDist*0.09, cy = mouthR.y - eyeDist*0.10;
       const x0=Math.max(0,Math.floor(cx-size-1)), x1=Math.min(w-1,Math.ceil(cx+size+1));
       const y0=Math.max(0,Math.floor(cy-size-1)), y1=Math.min(h-1,Math.ceil(cy+size+1));
       for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){
@@ -10711,7 +10343,7 @@ if (document.getElementById('rtDrop')){
   /* ---------- Skin smoothing / face brightening / skin tone (masked) ---------- */
   function applyRtSkinOps(data, w, h, sw, sh){
     const a = rtAdj;
-    if (a.skinSmooth <= 0 && a.faceBrighten <= 0 && a.skinTone === 0 && a.foundation <= 0 && a.contourIntensity <= 0 && a.highlightIntensity <= 0 && a.freckleIntensity <= 0 && a.beardIntensity <= 0) return;
+    if (a.skinSmooth <= 0 && a.faceBrighten <= 0 && a.skinTone === 0 && a.foundation <= 0 && a.contourIntensity <= 0 && a.highlightIntensity <= 0 && a.freckleIntensity <= 0) return;
     const mask = rtFaceLandmarks ? buildRtSkinMask(w, h, sw, sh) : new Float32Array(w*h).fill(0.5); // no face: gentle uniform fallback, disclosed to the user via rtFaceStatus
     if (a.skinSmooth > 0){
       const radius = Math.max(1, Math.round(a.skinSmooth/100 * 6));
@@ -10823,10 +10455,8 @@ if (document.getElementById('rtDrop')){
         }
         cheekHollow(leftEyeOuter, mouthL, -1);
         cheekHollow(rightEyeOuter, mouthR, 1);
-        // Jaw: continuous band following the actual detected oval
-        // points near the chin, not discrete stamps at each point --
-        // avoids a beaded/stripe look, reads as one soft contour line.
-        stampPolylineBand(ovalPts.slice(17, 25), eyeDist*0.11, 0.7, shadeMask, w, h);
+        // Jaw: soft shading along the lower few oval points near the chin.
+        ovalPts.slice(17, 24).forEach(p => stampSoft(p.x, p.y, eyeDist*0.16, eyeDist*0.12, 0.7, shadeMask));
         // Nose sides: small offsets left/right of the nose tip.
         stampSoft(noseTip.x - eyeDist*0.10, noseTip.y, eyeDist*0.07, eyeDist*0.16, 0.6, shadeMask);
         stampSoft(noseTip.x + eyeDist*0.10, noseTip.y, eyeDist*0.07, eyeDist*0.16, 0.6, shadeMask);
@@ -10848,18 +10478,15 @@ if (document.getElementById('rtDrop')){
         }
         cheekTop(leftEyeOuter, mouthL, -1);
         cheekTop(rightEyeOuter, mouthR, 1);
-        // Nose bridge: follows the actual bridge landmark chain (same
-        // real points used by the Nose tool), not an interpolated strip.
-        function toPxLocal(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*sw*(w/sw), y: lm.y*sh*(h/sh) }; }
-        const bridgeChain = [6,197,195,5,4].map(toPxLocal);
-        stampPolylineBand(bridgeChain, eyeDist*0.045, 0.8, glowMask, w, h);
+        // Nose bridge: a narrow strip between the eyes and the tip.
+        const bridgeMidY = (leftEyeC.y + rightEyeC.y)/2 * 0.4 + noseTip.y * 0.6;
+        stampSoft(noseTip.x, bridgeMidY, eyeDist*0.06, eyeDist*0.22, 0.8, glowMask);
         // Forehead center, between the brow line and the hairline point.
         const foreheadCy = (leftEyeC.y + rightEyeC.y)/2 * 0.5 + foreheadTop.y * 0.5;
         stampSoft((leftEyeC.x+rightEyeC.x)/2, foreheadCy, eyeDist*0.22, eyeDist*0.14, 0.6, glowMask);
-        // Cupid's bow: the actual landmark 0 (precise upper-lip-center
-        // point), not an interpolation from the mouth corner's y-value.
-        const cupidPt = toPxLocal(0);
-        stampSoft(cupidPt.x, cupidPt.y - eyeDist*0.015, eyeDist*0.09, eyeDist*0.05, 0.6, glowMask);
+        // Cupid's bow, just above the mouth's upper edge.
+        const cupidCy = mouthL.y - eyeDist*0.06;
+        stampSoft((mouthL.x+mouthR.x)/2, cupidCy, eyeDist*0.10, eyeDist*0.06, 0.6, glowMask);
         const blurred = boxBlurGray(glowMask, w, h, Math.max(2, Math.round(eyeDist*0.08)));
         const strength = Math.min(0.3, a.highlightIntensity/100 * 0.3); // capped -- makeup lighting, not a brightness slider
         for (let p=0, i=0; p<w*h; p++, i+=4){
@@ -10874,17 +10501,8 @@ if (document.getElementById('rtDrop')){
         // Deterministic hash-based placement, not Math.random() -- must
         // stay identical across re-renders (adjusting an unrelated
         // slider re-runs this same code) or the pattern would visibly
-        // jitter. Constrained to buildRtSkinMask's own mask (excludes
-        // eyes/nose/mouth), plus an explicit eyebrow exclusion below
-        // using the same proven contour landmarks built for the
-        // Eyebrows tool -- the skin mask's eye-protection radius is
-        // centered at the eye, not confirmed to reliably cover the
-        // brow above it.
-        const RT_RIGHT_BROW_IDX2 = [70,63,105,66,107,55,65,52,53,46];
-        const RT_LEFT_BROW_IDX2 = [300,293,334,296,336,285,295,282,283,276];
-        function browToPx(i){ const lm = rtFaceLandmarks[i]; return { x: lm.x*w, y: lm.y*h }; }
-        const rightBrowFill = fillPolygonMask(RT_RIGHT_BROW_IDX2.map(browToPx), w, h);
-        const leftBrowFill = fillPolygonMask(RT_LEFT_BROW_IDX2.map(browToPx), w, h);
+        // jitter. Constrained to buildRtSkinMask's own mask, which
+        // already excludes eyes/nose/mouth.
         function hash(x, y){ const s = Math.sin(x*127.1 + y*311.7) * 43758.5453; return s - Math.floor(s); }
         const density = 0.35 + (a.freckleIntensity/100)*0.4; // how many grid cells actually get a freckle
         const cell = Math.max(4, Math.round(eyeDist*0.045));
@@ -10899,7 +10517,6 @@ if (document.getElementById('rtDrop')){
             if (px<0||px>=w||py<0||py>=h) continue;
             const midx = py*w+px;
             if (mask[midx] < 0.5) continue; // stay inside the protected skin region
-            if (rightBrowFill[midx] > 0 || leftBrowFill[midx] > 0) continue; // explicit eyebrow exclusion
             const size = 0.8 + hash(gx+0.5, gy+0.5)*1.4; // varied size
             const opacity = (0.4 + hash(gx+0.9, gy+0.2)*0.6) * strength; // varied opacity
             const r2 = Math.max(1, Math.round(size));
@@ -13057,18 +12674,8 @@ if (document.getElementById('rtDrop')){
     if (!canvas.width || !wrap) return;
     const availW = wrap.clientWidth - 4, availH = Math.max(80, wrap.clientHeight - 4); // the 280px floor once here is gone -- it predates the bottom-sheet system (this slice) and caused the canvas to overflow its wrap whenever the sheet legitimately needed the canvas smaller than that; the sheet system's own rtApplySheetHeightPx already enforces a sensible floor (120px)
     const fitScale = Math.min(1, availW/canvas.width, availH/canvas.height) * rtZoom;
-    const scaledW = canvas.width*fitScale, scaledH = canvas.height*fitScale;
-    canvas.style.width = Math.round(scaledW) + 'px';
-    canvas.style.height = Math.round(scaledH) + 'px';
-    // Pan offset -- clamped so the canvas can be dragged until its own
-    // edge reaches the wrap's edge, but never further (the image can
-    // never be lost entirely off-screen). At or below the wrap's natural
-    // fit size there's no excess to pan into, so this collapses to 0.
-    const maxOffsetX = Math.max(0, (scaledW - availW) / 2);
-    const maxOffsetY = Math.max(0, (scaledH - availH) / 2);
-    rtOffsetX = rtClamp(rtOffsetX, -maxOffsetX, maxOffsetX);
-    rtOffsetY = rtClamp(rtOffsetY, -maxOffsetY, maxOffsetY);
-    canvas.style.transform = `translate(${rtOffsetX}px, ${rtOffsetY}px)`;
+    canvas.style.width = Math.round(canvas.width*fitScale) + 'px';
+    canvas.style.height = Math.round(canvas.height*fitScale) + 'px';
   }
 
   async function renderRtPreview(){
@@ -13161,7 +12768,6 @@ if (document.getElementById('rtDrop')){
     if (window.rtSyncBlushUI) window.rtSyncBlushUI();
     if (window.rtSyncHairColorUI) window.rtSyncHairColorUI();
     if (window.rtSyncEyeColorUI) window.rtSyncEyeColorUI();
-    if (window.rtSyncBeautyMarkPositionUI) window.rtSyncBeautyMarkPositionUI();
   }
 
 
@@ -13188,7 +12794,6 @@ if (document.getElementById('rtDrop')){
     const inputEl = document.getElementById('rtInput');
     if (inputEl) inputEl.value = ''; // allows re-selecting the same file
     document.getElementById('rtUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    rtClearOriginalFromIdb(); rtClearSessionStateFromIdb(); // explicit action -- intentionally replaces/clears the saved session, unlike normal backgrounding which must never touch it
   }
   document.getElementById('rtChangePhotoBtn').onclick = rtReturnToUploadScreen;
 
@@ -13297,13 +12902,13 @@ if (document.getElementById('rtDrop')){
       { label:'Texture', key:'hairTexture' },
       { label:'Hair Color', type:'hairColor' },
     ]},
-    { id:'beard', label:'Beard', tools:[ { label:'Definition', key:'beardIntensity' } ]},
+    { id:'beard', label:'Beard', tools:[ { label:'Beard Color', key:null } ]},
     { id:'eyebrows', label:'Eyebrows', tools:[ { label:'Definition', key:'browDefinition' } ]},
     { id:'nose', label:'Nose', tools:[ { label:'Definition', key:'noseDefinition' } ]},
     { id:'contour', label:'Contour', tools:[ { label:'Intensity', key:'contourIntensity' } ]},
     { id:'highlight', label:'Highlight', tools:[ { label:'Intensity', key:'highlightIntensity' } ]},
     { id:'freckles', label:'Freckles', tools:[ { label:'Intensity', key:'freckleIntensity' } ]},
-    { id:'beautymarks', label:'Beauty Marks', tools:[ { label:'Intensity', key:'beautyMarkIntensity' }, { label:'Size', key:'beautyMarkSize' }, { label:'Position', type:'beautyMarkPosition' } ]},
+    { id:'beautymarks', label:'Beauty Marks', tools:[ { label:'Intensity', key:'beautyMarkIntensity' }, { label:'Size', key:'beautyMarkSize' } ]},
   ];
   const RT_MAKEUP_KEY_TO_ID = {
     skinSmooth:'rtSkinSmooth', faceBrighten:'rtFaceBrighten', skinTone:'rtSkinTone',
@@ -13311,10 +12916,6 @@ if (document.getElementById('rtDrop')){
     hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
     hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
     foundation:'rtFoundation', mascaraIntensity:'rtMascaraIntensity',
-    contourIntensity:'rtContourIntensity', highlightIntensity:'rtHighlightIntensity',
-    freckleIntensity:'rtFreckleIntensity', browDefinition:'rtBrowDefinition',
-    noseDefinition:'rtNoseDefinition', beautyMarkIntensity:'rtBeautyMarkIntensity',
-    beautyMarkSize:'rtBeautyMarkSize', beardIntensity:'rtBeardIntensity',
   };
 
   (function setupMakeupStudio(){
@@ -13376,8 +12977,7 @@ if (document.getElementById('rtDrop')){
       const blushEl = document.getElementById('rtMsBlushPicker');
       const hairColorEl = document.getElementById('rtMsHairColorPicker');
       const eyeColorEl = document.getElementById('rtMsEyeColorPicker');
-      const beautyMarkPosEl = document.getElementById('rtMsBeautyMarkPositionPicker');
-      [lipColorEl, lipFinishEl, lipLinerEl, blushEl, hairColorEl, eyeColorEl, beautyMarkPosEl].forEach(el => { if (el) el.classList.add('hidden'); });
+      [lipColorEl, lipFinishEl, lipLinerEl, blushEl, hairColorEl, eyeColorEl].forEach(el => { if (el) el.classList.add('hidden'); });
       if (tool.type === 'lipColor'){
         if (lipColorEl) lipColorEl.classList.remove('hidden');
         rtSyncLipColorUI();
@@ -13396,17 +12996,14 @@ if (document.getElementById('rtDrop')){
       } else if (tool.type === 'eyeColor'){
         if (eyeColorEl) eyeColorEl.classList.remove('hidden');
         rtSyncEyeColorUI();
-      } else if (tool.type === 'beautyMarkPosition'){
-        if (beautyMarkPosEl) beautyMarkPosEl.classList.remove('hidden');
-        rtSyncBeautyMarkPositionUI();
       } else if (tool.key && RT_MAKEUP_KEY_TO_ID[tool.key]){
         const wrapper = document.querySelector(`#rtMsSliderSlot .rt-ms-ctrl[data-key="${tool.key}"]`);
         if (wrapper) wrapper.classList.remove('hidden');
       } else {
         if (comingSoonEl) comingSoonEl.classList.remove('hidden');
       }
-      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity','browDefinition','noseDefinition','contourIntensity','highlightIntensity','freckleIntensity','beautyMarkIntensity','beautyMarkSize','beardIntensity'];
-      const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush','eyeColor','beautyMarkPosition'];
+      const FACE_DEPENDENT_KEYS = ['eyeEnhance','teethWhiten','lipEnhance','mascaraIntensity','browDefinition','noseDefinition','contourIntensity','highlightIntensity','freckleIntensity','beautyMarkIntensity','beautyMarkSize'];
+      const FACE_DEPENDENT_TYPES = ['lipColor','lipFinish','lipLiner','blush','eyeColor'];
       const needsFace = FACE_DEPENDENT_KEYS.includes(tool.key) || FACE_DEPENDENT_TYPES.includes(tool.type);
       if (needsFace && !rtFaceLandmarks){
         toast('No face detected in this photo \u2014 this tool needs a detected face to apply. Try a clearer, front-facing photo.', 'err');
@@ -13468,18 +13065,12 @@ if (document.getElementById('rtDrop')){
       const intensityEl = document.getElementById('rtEyeColorIntensity');
       if (intensityEl) intensityEl.value = rtAdj.eyeColorIntensity;
     }
-    function rtSyncBeautyMarkPositionUI(){
-      document.querySelectorAll('#rtMsBeautyMarkPositionPicker .rt-ms-finish-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.position === (rtAdj.beautyMarkPosition || 'upperLip'));
-      });
-    }
     window.rtSyncLipColorUI = rtSyncLipColorUI;
     window.rtSyncLipFinishUI = rtSyncLipFinishUI;
     window.rtSyncLipLinerUI = rtSyncLipLinerUI;
     window.rtSyncBlushUI = rtSyncBlushUI;
     window.rtSyncHairColorUI = rtSyncHairColorUI;
     window.rtSyncEyeColorUI = rtSyncEyeColorUI;
-    window.rtSyncBeautyMarkPositionUI = rtSyncBeautyMarkPositionUI;
     document.querySelectorAll('#rtMsLipColorPicker .rt-ms-swatch').forEach(btn => {
       btn.addEventListener('click', () => {
         const layer = rtGetActiveLayer();
@@ -13580,16 +13171,6 @@ if (document.getElementById('rtDrop')){
       });
       rtEyeColorIntensityEl.addEventListener('change', () => rtPushHistory('Eye Color Intensity'));
     }
-    document.querySelectorAll('#rtMsBeautyMarkPositionPicker .rt-ms-finish-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const layer = rtGetActiveLayer();
-        if (layer && layer.locked){ toast('This layer is locked.', 'err'); return; }
-        rtAdj.beautyMarkPosition = btn.dataset.position;
-        rtSyncBeautyMarkPositionUI();
-        renderRtPreview();
-        rtPushHistory('Beauty Mark Position');
-      });
-    });
   })();
 
   (function setupFloatingTopbar(){
@@ -13681,7 +13262,7 @@ if (document.getElementById('rtDrop')){
     fitRtCanvasDisplay();
   });
   document.getElementById('rtFitScreenBtn').onclick = () => {
-    rtZoom = 1; rtOffsetX = 0; rtOffsetY = 0;
+    rtZoom = 1;
     document.getElementById('rtZoomSlider').value = '100';
     document.getElementById('rtZoomVal').textContent = '100';
     fitRtCanvasDisplay();
@@ -13700,7 +13281,6 @@ if (document.getElementById('rtDrop')){
   // conceptual pattern already used in this project (distance/midpoint
   // tracking), scoped to this tool's own canvas element.
   let rtPinchStartDist=null, rtPinchStartZoom=1, rtLastTapTime=0, rtLastTapPos=null;
-  let rtPanStart=null, rtPanStartOffset=null, rtPanActive=false;
   const rtCanvasEl = document.getElementById('rtPreviewCanvas');
   rtCanvasEl.addEventListener('touchstart', (e) => {
     if (!rtSourceCanvas) return;
@@ -13708,7 +13288,6 @@ if (document.getElementById('rtDrop')){
     if (e.touches.length === 2){
       e.preventDefault();
       rtEndCompare(); // must never interfere with pinch zoom -- restore the edited view before pinch begins
-      rtPanActive = false; rtPanStart = null; // a second finger landing mid-pan hands off to pinch cleanly
       const [a,b] = e.touches;
       rtPinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
       rtPinchStartZoom = rtZoom;
@@ -13722,13 +13301,6 @@ if (document.getElementById('rtDrop')){
         rtLastTapPos = null; return;
       }
       rtLastTapTime = now; rtLastTapPos = { x:t.clientX, y:t.clientY };
-      // Track a potential pan start regardless of current zoom -- only
-      // actually pans in touchmove once zoom confirms there's excess
-      // image to drag into view, so a normal (non-zoomed) single-finger
-      // touch never gets hijacked.
-      rtPanStart = { x:t.clientX, y:t.clientY };
-      rtPanStartOffset = { x:rtOffsetX, y:rtOffsetY };
-      rtPanActive = false;
     }
   }, { passive:false });
   rtCanvasEl.addEventListener('touchmove', (e) => {
@@ -13740,22 +13312,9 @@ if (document.getElementById('rtDrop')){
       document.getElementById('rtZoomSlider').value = String(Math.round(rtZoom*100));
       document.getElementById('rtZoomVal').textContent = String(Math.round(rtZoom*100));
       fitRtCanvasDisplay();
-    } else if (e.touches.length === 1 && rtPanStart && rtZoom > 1.02){
-      // Only prevents default (blocking page scroll) once an actual pan
-      // is underway -- never on a plain tap or a non-zoomed swipe, which
-      // must keep scrolling the page normally.
-      e.preventDefault();
-      rtPanActive = true;
-      const t = e.touches[0];
-      rtOffsetX = rtPanStartOffset.x + (t.clientX - rtPanStart.x);
-      rtOffsetY = rtPanStartOffset.y + (t.clientY - rtPanStart.y);
-      fitRtCanvasDisplay(); // applies + clamps the new offset in one place, same function driving zoom's own display update
     }
   }, { passive:false });
-  rtCanvasEl.addEventListener('touchend', (e) => {
-    if (e.touches.length < 2) rtPinchStartDist = null;
-    if (e.touches.length === 0){ rtPanStart = null; rtPanActive = false; }
-  });
+  rtCanvasEl.addEventListener('touchend', (e) => { if (e.touches.length < 2) rtPinchStartDist = null; });
 
   /* ---------- Export: full source resolution, one render pipeline reused
      verbatim (not a second implementation) ---------- */
@@ -13785,93 +13344,12 @@ if (document.getElementById('rtDrop')){
   };
 
   /* ---------- Image loading ---------- */
-  async function rtRestoreSessionFromIdb(){
-    // Runs once at script startup, before the upload screen is shown.
-    // This is the missing case the existing recovery functions can't
-    // cover: they all require rtSourceCanvas to already exist in
-    // memory, which is impossible after a genuine page discard/reload
-    // (every JS variable resets to its initial value before any of this
-    // code has run). Checks IndexedDB directly instead.
-    try{
-      const photoEntry = await rtLoadOriginalFromIdb();
-      if (!photoEntry || !photoEntry.bytes) return false;
-      const stateEntry = await rtLoadSessionStateFromIdb();
-      const blob = new Blob([photoEntry.bytes], { type: photoEntry.type || 'image/jpeg' });
-      const tempUrl = URL.createObjectURL(blob);
-      let img;
-      try{
-        img = new Image();
-        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
-        if (!img.naturalWidth || !img.naturalHeight) throw new Error('invalid');
-      } catch(err){
-        URL.revokeObjectURL(tempUrl);
-        return false; // corrupted/unreadable saved session -- fail gracefully, fall through to the normal upload screen
-      }
-      URL.revokeObjectURL(tempUrl);
-      rtOriginalImageBytes = photoEntry.bytes;
-      rtOriginalImageType = photoEntry.type;
-      rtSourceCanvas = document.createElement('canvas');
-      rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
-      rtSourceCanvas.getContext('2d').drawImage(img, 0, 0);
-      rtBgCategoryMask = null; rtBgMaskDims = null;
-      rtHairCategoryMask = null; rtHairMaskDims = null;
-      // Restore the saved adjustment state -- never re-applied on top of
-      // an already-rendered image, since we're rendering once from the
-      // freshly rebuilt (unmodified) source canvas below. This is what
-      // prevents a double effect.
-      rtAdj = (stateEntry && stateEntry.adj) ? { ...RT_DEFAULTS, ...stateEntry.adj } : { ...RT_DEFAULTS };
-      rtLayerIdSeq = 1;
-      rtLayers = [{
-        id: rtLayerIdSeq++, name: 'Background', canvas: rtSourceCanvas,
-        visible: true, locked: false, opacity: 100, blendMode: 'normal',
-        adj: { ...rtAdj }, faceLandmarks: null, bgMask: null, bgMaskDims: null, hairMask: null, hairMaskDims: null, hairIntelligence: null, hairIntelligenceDims: null,
-        mask: null, maskEnabled: true, maskVersion: 0,
-        healCanvas: null, healVersion: 0,
-        type: 'image', subjectMask: null, canvasVersion: 0,
-      }];
-      rtActiveLayerId = rtLayers[0].id;
-      rtApplyAdjustmentsToUI();
-      rtCrop = { active: false, rect: null, rotationQuarter: 0, straighten: 0, ratioKey: 'free' };
-      rtCloneSourcePoint = null; rtCloneOffset = null;
-      rtZoom = (stateEntry && typeof stateEntry.zoom === 'number') ? stateEntry.zoom : 1;
-      const zoomSliderEl = document.getElementById('rtZoomSlider'), zoomValEl = document.getElementById('rtZoomVal');
-      if (zoomSliderEl) zoomSliderEl.value = String(Math.round(rtZoom*100));
-      if (zoomValEl) zoomValEl.textContent = String(Math.round(rtZoom*100));
-      rtOffsetX = (stateEntry && typeof stateEntry.offsetX === 'number') ? stateEntry.offsetX : 0;
-      rtOffsetY = (stateEntry && typeof stateEntry.offsetY === 'number') ? stateEntry.offsetY : 0;
-      rtSyncCropControlsToState();
-      const uploadSectionEl = document.getElementById('rtUploadSection');
-      if (uploadSectionEl) uploadSectionEl.classList.add('hidden');
-      ['rtHeroSub', 'rtBackRow', 'rtMarketingSections', 'rtSiteFooter'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('hidden');
-      });
-      document.getElementById('rtStage').classList.remove('hidden');
-      rtSetSheetState('closed', false);
-      rtResetHistory();
-      setTimeout(rtUpdateCanvasMaxHeight, 150);
-      setTimeout(rtUpdateCanvasMaxHeight, 400);
-      setTimeout(rtUpdateCanvasMaxHeight, 800);
-      setTimeout(rtUpdatePanelMaxHeight, 400);
-      const dimsEl = document.getElementById('rtOutputDims');
-      if (dimsEl) dimsEl.textContent = `${rtSourceCanvas.width}\u00d7${rtSourceCanvas.height}px (original resolution)`;
-      renderRtPreview(); // single render pass applying the restored rtAdj to the freshly rebuilt, unmodified source canvas
-      requestAnimationFrame(() => fitRtCanvasDisplay());
-      rtDetectFace(); // re-run face detection since it isn't persisted -- most effects will look correct immediately from the restored rtAdj regardless, landmark-dependent ones simply reactivate once this resolves
-      toast('Your editing session was restored.', 'ok');
-      return true;
-    } catch(err){
-      return false; // any unexpected failure here must never block the normal upload screen from showing
-    }
-  }
-
   async function loadRtImage(f){
     if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
     rtOriginalImageBytes = await f.arrayBuffer();
-    rtSaveOriginalToIdb(rtOriginalImageBytes, f.type); // fire-and-forget -- disk-backed fallback, never blocks loading
     rtOriginalImageType = f.type;
     rtSourceCanvas = document.createElement('canvas');
     rtSourceCanvas.width = img.naturalWidth; rtSourceCanvas.height = img.naturalHeight;
@@ -13929,7 +13407,6 @@ if (document.getElementById('rtDrop')){
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     await loadRtImage(f);
   });
-  rtRestoreSessionFromIdb(); // fire on startup -- if a valid saved session exists, this replaces the default upload-screen state automatically; if not, it resolves to false and the page stays exactly as it already was
   document.addEventListener('paste', async (e) => {
     const drop = document.getElementById('rtDrop');
     if (drop.offsetParent === null) return;
@@ -14089,30 +13566,12 @@ if (document.getElementById('rtDrop')){
     const bgRowHeight = bgRow ? bgRow.getBoundingClientRect().height : 36;
     return Math.max(200, toolbarTop - wrapTop - bgRowHeight - 20);
   }
-  function rtSetCanvasFixedHeight(retryCount){
-    retryCount = retryCount || 0;
+  function rtSetCanvasFixedHeight(){
     const wrap = document.getElementById('rtCanvasStageWrap');
     if (!wrap) return;
     if (window.innerWidth >= 900) { wrap.style.height = ''; wrap.style.maxHeight = ''; return; }
-    // Defensive validation: a transiently-collapsed ancestor (mid CSS
-    // transition, a container briefly display:none while another part
-    // of the UI swaps, etc.) can make clientWidth read as 0 for a single
-    // frame. If that invalid measurement is ever committed as the
-    // permanent wrap height, it gets clamped to this function's own
-    // 120px floor regardless of what the correct height actually is --
-    // and since this function only re-runs on load/resize/orientation,
-    // never on a timer, the canvas stays stuck tiny until one of those
-    // events happens to fire again. Retry on the next frame instead of
-    // committing a measurement that can't be trusted.
-    if (wrap.clientWidth <= 10 && retryCount < 6){
-      requestAnimationFrame(() => rtSetCanvasFixedHeight(retryCount + 1));
-      return;
-    }
     const h = rtCanvasFixedHeight();
-    if (h == null || !isFinite(h) || h < 50){
-      if (retryCount < 6){ requestAnimationFrame(() => rtSetCanvasFixedHeight(retryCount + 1)); }
-      return;
-    }
+    if (h == null) return;
     let canvasH = h;
     // Cap to what the actual image can use at the available width --
     // otherwise a width-constrained (portrait-oriented) photo gets a
@@ -14123,18 +13582,8 @@ if (document.getElementById('rtDrop')){
     const previewCanvas = document.getElementById('rtPreviewCanvas');
     if (previewCanvas && previewCanvas.width && previewCanvas.height){
       const availW = wrap.clientWidth - 4;
-      // Deliberately NOT multiplied by rtZoom -- this is the container's
-      // own size at natural fit (zoom=1 baseline). Zoom-based display
-      // scaling is applied separately, on top of this space, by
-      // fitRtCanvasDisplay(). Multiplying here too meant a transient low
-      // zoom value could permanently shrink the wrap itself, since this
-      // function only re-runs on load/resize/orientation, not on zoom
-      // changes -- found via a real-device screenshot showing the canvas
-      // stuck tiny inside a large empty area.
-      if (availW > 10){ // guard against the same transient-zero-width scenario reaching this second measurement
-        const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width);
-        if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
-      }
+      const neededHeightForWidth = availW * (previewCanvas.height / previewCanvas.width) * rtZoom;
+      if (neededHeightForWidth > 0) canvasH = Math.min(canvasH, Math.max(120, neededHeightForWidth + 4));
     }
     wrap.style.height = canvasH + 'px';
     wrap.style.maxHeight = canvasH + 'px';
@@ -14206,24 +13655,10 @@ if (document.getElementById('rtDrop')){
   // memory pressure that clears canvases.
   let rtRecoveryInProgress = false;
   async function rtRecoverCanvasIfNeeded(){
-    if (!rtSourceCanvas) return; // no canvas element at all -- nothing to recover into, and this isn't a full page reload scenario since rtSourceCanvas itself is gone
+    if (!rtSourceCanvas || !rtOriginalImageBytes) return;
     if (rtRecoveryInProgress) return; // pageshow/visibilitychange/focus can all fire within the same resume -- avoid running (and reporting) the same recovery attempt multiple times
     rtRecoveryInProgress = true; // set immediately adjacent to the check above, before any other logic, so no interleaving window exists between them
     try{
-      if (!rtOriginalImageBytes){
-        // The in-memory bytes specifically are gone even though the
-        // canvas element itself survived (not a full page reload) --
-        // try repopulating from the disk-backed IndexedDB copy before
-        // giving up. This is the case the previous version couldn't
-        // handle at all: it returned immediately here with no attempt.
-        const idbEntry = await rtLoadOriginalFromIdb();
-        if (idbEntry && idbEntry.bytes){
-          rtOriginalImageBytes = idbEntry.bytes;
-          rtOriginalImageType = idbEntry.type || rtOriginalImageType;
-        } else {
-          return; // genuinely nothing to recover from
-        }
-      }
       const canvasLooksLost = () => {
         if (!rtSourceCanvas.width || !rtSourceCanvas.height) return true; // dimensions themselves can be reset, not just pixel content
         try{
@@ -14235,7 +13670,7 @@ if (document.getElementById('rtDrop')){
       };
       if (!canvasLooksLost()){ renderRtPreview(); return; } // cheap path -- nothing was actually lost, just re-render as before; still covered by the outer finally below
 
-      const attemptRebuild = async (bytes, type) => {
+      const attemptRebuild = async () => {
         let tempUrl = null;
         try{
           // Build a FRESH Blob and Blob URL from the retained raw bytes every
@@ -14243,7 +13678,7 @@ if (document.getElementById('rtDrop')){
           // silently failed before (its browser-registry entry can be
           // invalidated by the same memory pressure that clears canvases,
           // even though the JS string referencing it still looks valid).
-          const blob = new Blob([bytes], { type: type || 'image/jpeg' });
+          const blob = new Blob([rtOriginalImageBytes], { type: rtOriginalImageType || 'image/jpeg' });
           tempUrl = URL.createObjectURL(blob);
           const img = new Image();
           await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = tempUrl; });
@@ -14271,23 +13706,13 @@ if (document.getElementById('rtDrop')){
         }
       };
 
-      let ok = await attemptRebuild(rtOriginalImageBytes, rtOriginalImageType);
+      let ok = await attemptRebuild();
       if (!ok){
         // One retry after a short delay -- covers the plausible case that
         // the browser hasn't fully reactivated its own rendering/decoding
         // pipeline in the first instant after the tab resumes.
         await new Promise(r => setTimeout(r, 400));
-        ok = await attemptRebuild(rtOriginalImageBytes, rtOriginalImageType);
-      }
-      if (!ok){
-        // Genuine last resort: try the separate, disk-backed IndexedDB
-        // copy, in case the in-memory ArrayBuffer itself became
-        // unusable in a way the retry above couldn't fix.
-        const idbEntry = await rtLoadOriginalFromIdb();
-        if (idbEntry && idbEntry.bytes){
-          ok = await attemptRebuild(idbEntry.bytes, idbEntry.type);
-          if (ok){ rtOriginalImageBytes = idbEntry.bytes; rtOriginalImageType = idbEntry.type || rtOriginalImageType; }
-        }
+        ok = await attemptRebuild();
       }
       if (ok){
         // rtLayers[0].canvas is the SAME object reference as rtSourceCanvas
@@ -14300,11 +13725,11 @@ if (document.getElementById('rtDrop')){
         renderRtPreview();
         toast('Photo recovered after the browser cleared it in the background.', 'ok');
       } else {
-        // Honest failure, all avenues exhausted -- no false "recovered"
-        // claim. Leaving the user on a broken checkerboard canvas with
-        // editing tools that have nothing to edit is worse than a clean
-        // restart, so return to the upload screen directly rather than
-        // only telling them where the button is.
+        // Honest failure, twice confirmed -- no false "recovered" claim.
+        // Leaving the user on a broken checkerboard canvas with editing
+        // tools that have nothing to edit is worse than a clean restart,
+        // so return to the upload screen directly rather than only
+        // telling them where the button is.
         toast('The browser cleared this photo from memory and it could not be restored. Please choose your photo again.', 'err');
         rtReturnToUploadScreen();
       }
@@ -14317,9 +13742,7 @@ if (document.getElementById('rtDrop')){
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && rtSourceCanvas) rtRecoverCanvasIfNeeded();
-    if (document.visibilityState === 'hidden') rtSaveSessionStateNow(); // catch the moment right before backgrounding -- don't rely on the debounce window alone
   });
-  window.addEventListener('pagehide', () => { rtSaveSessionStateNow(); }); // mobile browsers don't guarantee beforeunload; pagehide is the reliable one
   window.addEventListener('focus', () => {
     if (rtSourceCanvas) rtRecoverCanvasIfNeeded();
   });
@@ -14448,7 +13871,6 @@ if (document.getElementById('rtDrop')){
     rtHistoryIndex = rtHistory.length - 1;
     rtUpdateHistoryButtons();
     rtRenderHistoryPanel();
-    rtScheduleSessionSave();
   }
   function rtResetHistory(){
     rtSyncActiveLayerFromGlobals();
