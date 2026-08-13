@@ -1163,6 +1163,135 @@ if (document.getElementById('metaPreview')){
   updateMetaPreview();
 }
 
+/* ============ KEYWORD DENSITY CHECKER (seo-tools.html) ============ */
+if (document.getElementById('keywordDensityAnalyzeBtn')){
+  const stopWords = new Set([
+    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are',
+    'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but',
+    'by', 'can', 'could', 'did', 'do', 'does', 'doing', 'down', 'during', 'each', 'few', 'for',
+    'from', 'further', 'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself',
+    'him', 'himself', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'just',
+    'me', 'might', 'more', 'most', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once',
+    'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'same', 'she',
+    'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves',
+    'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until',
+    'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom',
+    'why', 'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves'
+  ]);
+
+  function updateLiveStats(){
+    const text = document.getElementById('keywordDensityText').value;
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+    const chars = text.length;
+    const charsNoSpaces = text.replace(/\s/g, '').length;
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+    const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 0).length;
+
+    document.getElementById('keywordDensityWordCount').textContent = words.length.toLocaleString();
+    document.getElementById('keywordDensityCharCount').textContent = chars.toLocaleString();
+    document.getElementById('keywordDensityCharCountNoSpaces').textContent = charsNoSpaces.toLocaleString();
+    document.getElementById('keywordDensitySentenceCount').textContent = Math.max(sentences, text.trim().length > 0 ? 1 : 0);
+    document.getElementById('keywordDensityParagraphCount').textContent = Math.max(paragraphs, text.trim().length > 0 ? 1 : 0);
+  }
+
+  document.getElementById('keywordDensityText').addEventListener('input', updateLiveStats);
+
+  function analyzeKeywordDensity(){
+    const text = document.getElementById('keywordDensityText').value.trim();
+    if (!text){
+      toast('Please paste some content to analyze.', 'err');
+      return;
+    }
+
+    const targetKeyword = document.getElementById('keywordDensityTargetKeyword').value.trim().toLowerCase();
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    const totalWords = words.length;
+
+    if (totalWords === 0){
+      toast('Please enter text to analyze.', 'err');
+      return;
+    }
+
+    let targetKeywordResult = '';
+    if (targetKeyword){
+      const keywordRegex = new RegExp('\\b' + targetKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
+      const matches = text.match(keywordRegex) || [];
+      const occurrences = matches.length;
+      const density = ((occurrences / totalWords) * 100).toFixed(2);
+      targetKeywordResult = `
+      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
+        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Target Keyword Analysis</h3>
+        <div class="row" style="gap:20px;margin:0;flex-wrap:wrap;">
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Keyword</span><span style="font-size:14px;font-weight:600;color:var(--ink);">"${targetKeyword}"</span></div>
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Occurrences</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${occurrences}</span></div>
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Density</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${density}%</span></div>
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Status</span><span style="font-size:14px;font-weight:600;color:var(--ink);">${occurrences === 0 ? 'Not found' : density < 0.5 ? 'Low' : density < 2 ? 'Natural' : density < 5 ? 'Moderate' : 'High'}</span></div>
+        </div>
+      </div>`;
+    }
+
+    const wordFreq = {};
+    words.forEach(word => {
+      const cleaned = word.toLowerCase().replace(/[^\w]/g, '');
+      if (cleaned.length > 0 && !stopWords.has(cleaned)){
+        wordFreq[cleaned] = (wordFreq[cleaned] || 0) + 1;
+      }
+    });
+
+    const sortedWords = Object.entries(wordFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20);
+
+    let topKeywordsTable = '<h3 style="font-size:16px;font-weight:700;margin:20px 0 12px;color:var(--ink);">Top Keywords</h3>';
+    topKeywordsTable += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">';
+    topKeywordsTable += '<thead style="border-bottom:2px solid var(--card-border);"><tr><th style="text-align:left;padding:8px;font-weight:700;color:var(--ink);">Keyword</th><th style="text-align:center;padding:8px;font-weight:700;color:var(--ink);">Count</th><th style="text-align:center;padding:8px;font-weight:700;color:var(--ink);">Density</th></tr></thead>';
+    topKeywordsTable += '<tbody>';
+    sortedWords.forEach(([word, count]) => {
+      const dens = ((count / totalWords) * 100).toFixed(2);
+      topKeywordsTable += `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:8px;color:var(--ink);">${word}</td><td style="text-align:center;padding:8px;color:var(--ink);">${count}</td><td style="text-align:center;padding:8px;color:var(--ink);">${dens}%</td></tr>`;
+    });
+    topKeywordsTable += '</tbody></table></div>';
+
+    const resultsHtml = `
+    <div style="margin-top:24px;">
+      <h2 style="font-size:18px;font-weight:800;margin:0 0 14px;color:var(--ink);">Analysis Results</h2>
+
+      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
+        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Content Overview</h3>
+        <div class="row" style="gap:20px;margin:0;flex-wrap:wrap;">
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Total Words</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${totalWords.toLocaleString()}</span></div>
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Unique Keywords</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${Object.keys(wordFreq).length}</span></div>
+          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Avg. Word Frequency</span><span style="font-size:18px;font-weight:700;color:var(--ink);">${(Object.values(wordFreq).reduce((a, b) => a + b, 0) / Object.keys(wordFreq).length).toFixed(1)}</span></div>
+        </div>
+      </div>
+
+      ${targetKeywordResult}
+
+      <div style="margin:20px 0;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
+        ${topKeywordsTable}
+      </div>
+
+      <div style="margin:20px 0;padding:16px;background:color-mix(in srgb, var(--warn-solid) 8%, var(--card));border-radius:12px;border:1px solid var(--card-border);">
+        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">SEO Content Guidance</h3>
+        <p style="font-size:13px;color:var(--ink-soft);line-height:1.7;margin:0;">Keyword density is only one small signal in SEO. Modern search engines prioritize user intent, content quality, and natural language over keyword percentages. Write primarily for your readers, use your keywords naturally, and include related terms and synonyms. There is no universal "correct" keyword density — focus on content that genuinely helps your audience.</p>
+      </div>
+    </div>`;
+
+    document.getElementById('keywordDensityResults').innerHTML = resultsHtml;
+  }
+
+  document.getElementById('keywordDensityAnalyzeBtn').onclick = analyzeKeywordDensity;
+
+  document.getElementById('keywordDensityClearBtn').onclick = () => {
+    document.getElementById('keywordDensityText').value = '';
+    document.getElementById('keywordDensityTargetKeyword').value = '';
+    document.getElementById('keywordDensityResults').innerHTML = '';
+    updateLiveStats();
+  };
+
+  updateLiveStats();
+}
+
 /* ============ PERCENTAGE CALCULATOR (calculators.html) ============ */
 if (document.getElementById('pctCalcBtn')){
   let pctMode = 'of';
