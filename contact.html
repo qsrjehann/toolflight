@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>Contact ToolFlight — Support & Professional Image Editing Services</title>
 <meta name="description" content="Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
@@ -18,9 +19,24 @@
 <meta name="twitter:title" content="Contact ToolFlight — Support & Professional Image Editing Services">
 <meta name="twitter:description" content="Contact ToolFlight for questions, bug reports, custom tool requests, or professional image editing services.">
 
+<script>
+/* Runs synchronously, before CSS or body paint -- the only way to avoid a
+   flash of the wrong theme, since an external script (even with defer)
+   always executes after the DOM is parsed. Prefers a saved user choice over
+   the OS-level prefers-color-scheme, so a manual theme selection survives
+   navigating between ToolFlight's pages instead of resetting on every load. */
+(function(){
+  try{
+    var saved = localStorage.getItem('toolflight_theme');
+    var isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) document.documentElement.classList.add('dark');
+  }catch(e){}
+})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=20260813-1600">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -202,6 +218,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js"></script>
+<script defer src="js/app.js?v=20260813-1600"></script>
 </body>
 </html>
