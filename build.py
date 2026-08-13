@@ -191,7 +191,6 @@ ICON_CURRENCY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 ICON_LOAN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M2 11h20M6 15h4"/></svg>'
 ICON_META = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg>'
 ICON_KEYWORDS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>'
-ICON_KEYWORD_DENSITY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="6" y="14" width="2" height="4"/><rect x="11" y="11" width="2" height="7"/><rect x="16" y="8" width="2" height="10"/></svg>'
 ICON_ROBOTS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.3" fill="currentColor" stroke="none"/><path d="M9 18h6"/></svg>'
 ICON_GST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l3 3v17H6z"/><path d="M9 12l6 6M15 12l-6 6"/></svg>'
 ICON_SCIENTIFIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 7h8M7 12h1M11 12h1M15 12h1M7 16h1M11 16h1M15 16h1"/></svg>'
@@ -3926,15 +3925,14 @@ finance_body = f"""<div class="hero-sub">
 
 # ============ SEO TOOLS ============
 seo_body = f"""<div class="hero-sub">
-  <span class="hero-badge"><span class="dot"></span> 5 free SEO &amp; web tools</span>
+  <span class="hero-badge"><span class="dot"></span> 4 free SEO &amp; web tools</span>
   <h1>SEO &amp; Web Tools</h1>
-  <p class="subtitle">Keyword research, density analysis, QR codes, robots.txt, and meta tags for site owners — free, private, no signup. Each one has its own page.</p>
+  <p class="subtitle">Keyword research, QR codes, robots.txt, and meta tags for site owners — free, private, no signup. Each one has its own page.</p>
 </div>
 
 <div class="container">
   <div class="category-hub-grid">
     {category_hub_card("ai-keyword-generator.html", ICON_KEYWORDS, "AI Keyword Generator", "AI-assisted keyword research: 20 keyword and content-idea categories.", cta="Open tool")}
-    {category_hub_card("keyword-density-checker.html", ICON_KEYWORD_DENSITY, "Keyword Density Checker", "Analyze keyword usage and density in your content.", cta="Open tool")}
     {category_hub_card("qr-code-generator.html", ICON_QR, "QR Generator", "Custom colors, size, and PNG or SVG export.", cta="Open tool")}
     {category_hub_card("robots-txt-generator.html", ICON_ROBOTS, "Robots.txt Generator", "Build a valid robots.txt with allow/disallow rules and a sitemap line.", cta="Open tool")}
     {category_hub_card("meta-tag-generator.html", ICON_META, "Meta Tag Generator", "Title, description, canonical, Open Graph, and Twitter Card tags.", cta="Open tool")}
@@ -4037,30 +4035,6 @@ META_FORM = """<div class="view-title"><h2>Generate Meta Tags</h2></div>
         <button class="btn btn-primary" id="metaCopyBtn" style="flex:1;">Copy</button>
         <button class="btn btn-success" id="metaDownloadBtn">Download HTML</button>
       </div>"""
-
-KEYWORD_DENSITY_FORM = """<div class="view-title"><h2>Analyze Your Content</h2></div>
-      <span class="field-label">Paste your content</span>
-      <textarea id="keywordDensityText" placeholder="Paste your article, blog post, or any text here..." style="min-height:200px;width:100%;padding:12px;border:1px solid var(--card-border);border-radius:12px;font-family:monospace;font-size:13px;resize:vertical;background:var(--card);color:var(--ink);"></textarea>
-
-      <div style="margin-top:16px;padding:12px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-        <div class="row" style="gap:20px;margin:0;">
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Words</span><span id="keywordDensityWordCount" style="font-size:18px;font-weight:700;color:var(--ink);">—</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Characters</span><span id="keywordDensityCharCount" style="font-size:18px;font-weight:700;color:var(--ink);">—</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Characters (no spaces)</span><span id="keywordDensityCharCountNoSpaces" style="font-size:18px;font-weight:700;color:var(--ink);">—</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Sentences</span><span id="keywordDensitySentenceCount" style="font-size:18px;font-weight:700;color:var(--ink);">—</span></div>
-          <div><span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Paragraphs</span><span id="keywordDensityParagraphCount" style="font-size:18px;font-weight:700;color:var(--ink);">—</span></div>
-        </div>
-      </div>
-
-      <span class="field-label" style="margin-top:16px;">Target keyword (optional)</span>
-      <input type="text" id="keywordDensityTargetKeyword" placeholder="e.g., 'web design' or 'SEO'">
-
-      <div class="row" style="margin-top:18px;">
-        <button class="btn btn-primary" id="keywordDensityAnalyzeBtn" type="button" style="flex:1;">Analyze</button>
-        <button class="btn btn-ghost" id="keywordDensityClearBtn" type="button" style="flex:0;min-width:auto;">Clear</button>
-      </div>
-
-      <div id="keywordDensityResults" style="margin-top:24px;"></div>"""
 
 GKW_FORM = """<div class="view-title"><h2>Enter Your Topic</h2></div>
       <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;margin-bottom:14px;line-height:1.6;">Generates keyword ideas using template-based expansion, entirely in your browser. Metrics (volume, CPC, competition, difficulty) are <strong>AI-estimated for ideation</strong>, not live data from any paid keyword-research platform — there's no backend or API on this site to pull real numbers from. Use this to brainstorm broadly, then verify final picks in your search console or preferred keyword tool.</p>
@@ -4299,19 +4273,6 @@ AEW_FORM = """<div class="view-title"><h2>Compose Your Email</h2></div>
       </div>"""
 
 SEO_TOOLS = [
-    {"slug":"keyword-density-checker","name":"Keyword Density Checker","desc":"Analyze keyword density and content statistics for SEO optimization.",
-     "subtitle":"Analyze keyword usage, density, and top keywords in your content.",
-     "meta":"Free online keyword density checker. Analyze word frequency, keyword density, and content statistics. Identify top keywords and check target keyword density.",
-     "category":"UtilitiesApplication","form":KEYWORD_DENSITY_FORM,
-     "intro":"Understanding how often your keywords appear in your content is a small part of SEO. Keyword Density Checker analyzes your text to show word frequency, keyword density percentages, and top keywords — entirely in your browser, nothing sent anywhere.",
-     "features":["Analyze keyword density for target phrases","Automatic top 10–20 keyword extraction","Case-insensitive keyword matching","Content statistics: words, characters, sentences, paragraphs"],
-     "benefits":["Client-side processing — your text never leaves your browser","No account required, no daily limits","Works with articles, blog posts, and any text up to several MB"],
-     "how_to":"Paste your content, optionally enter a target keyword, and click Analyze. The tool shows your content's overall statistics, your target keyword's density (if provided), and the most-used keywords in your text.",
-     "faq":[("What's a good keyword density?","There's no universal 'correct' keyword density — it depends on your content, audience, and search intent. Writing for humans first, and using keywords naturally, is more important than hitting a specific percentage."),
-            ("Why does my keyword not show a result?","Make sure the keyword appears as a standalone word or complete phrase in your text. Partial matches (e.g., 'car' inside 'carpet') are not counted."),
-            ("Does this work with multi-word phrases?","Yes. Type your phrase exactly as you want it counted — 'web design' will count that phrase as a single target, not 'web' and 'design' separately.")],
-     "related":["meta-tag-generator","robots-txt-generator"]},
-
     {"slug":"qr-code-generator","name":"QR Generator","desc":"Custom colors, size, and PNG or SVG export.",
      "subtitle":"Generate a custom QR code with adjustable colors, size, and PNG or SVG export.",
      "meta":"Free online QR code generator. Create a custom QR code with adjustable foreground/background colors, size, and PNG or SVG export.",

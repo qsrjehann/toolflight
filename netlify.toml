@@ -9,22 +9,6 @@
 [build]
   publish = "."
 
-# Netlify's secrets scanner flags the Firebase Web apiKey in
-# js/firebase-config.js ("AIza..." looks like a Google API key). It is a
-# false positive here: Firebase Web config values are public identifiers
-# that ship to every browser by design -- they identify the project, they
-# do not authorize access. The real authorization boundary is
-# firestore.rules (plus API-key restrictions in the Google Cloud Console),
-# exactly as documented at the top of js/firebase-config.js.
-#
-# Scoped to that one file (and the build-agent scratch dir, which is not
-# deployed content) rather than disabling smart detection site-wide, so
-# scanning still protects every other file. Genuine secrets -- Firebase
-# Admin SDK credentials, service-account keys -- must never live in this
-# frontend, and none do.
-[build.environment]
-  SECRETS_SCAN_OMIT_PATHS = "js/firebase-config.js,.netlify/**"
-
 # Baseline security headers, worth having now that this site handles
 # real authentication and business data (Invoice Maker), not just
 # stateless client-side tools. These are defense-in-depth on top of --
