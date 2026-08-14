@@ -43,20 +43,38 @@
 })();
 /* Same reasoning, for the homepage hero's animated tool-wall: nested 3D
    transforms (perspective + preserve-3d + translateZ) animating on ~70
-   elements at once is exactly the kind of workload that flashes, blanks
-   out content, or drops frames on older/non-standard rendering engines
-   (UC Browser being the specifically reported case) and on devices under
-   memory/data pressure. Detected and applied before paint, same as the
-   theme class above, so there's no flash between a 3D-then-flattened
-   state -- CSS below reads this class to render a simple, light 2D
-   scrolling fallback instead of the 3D wall from the very first frame. */
+   elements at once, combined with color-mix()-based backgrounds, is
+   exactly the kind of workload that flashes, blanks out content, or drops
+   frames on older/non-standard rendering engines and on devices under
+   memory/data pressure.
+
+   UA-string sniffing for this was tried and did not reliably work: UC
+   Browser and other alternative browsers are well documented to disguise
+   their user agent as standard Chrome specifically so websites don't
+   treat them differently, which would make substring-matching for
+   "UCBrowser" silently never fire on exactly the browsers it needs to
+   catch.
+
+   This uses real feature detection instead: CSS.supports() asks the
+   actual rendering engine's own parser whether it understands each
+   feature the 3D wall depends on. This cannot be spoofed the way a UA
+   string can, and it fails safe -- any engine this script doesn't
+   recognize, is too old to have CSS.supports() at all, or simply
+   answers "no" to any of these checks gets the simple, guaranteed-
+   compatible 2D version by default. The 3D treatment is only added on
+   top for engines that positively prove they support every piece of it.
+   Applied before paint, same as the theme class above, so there's no
+   flash between a 3D-then-flattened state. */
 (function(){
   try{
-    var ua = navigator.userAgent || '';
-    var isUCBrowser = /UCBrowser|UCWEB|UCMobile/i.test(ua);
+    var el = document.documentElement;
+    var supports3D = !!(window.CSS && CSS.supports &&
+      CSS.supports('transform-style', 'preserve-3d') &&
+      CSS.supports('perspective', '1200px') &&
+      CSS.supports('background', 'color-mix(in srgb, red 50%, blue)'));
     var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     var lowPerf = !!(conn && (conn.saveData || /2g/.test(conn.effectiveType || '')));
-    if (isUCBrowser || lowPerf) document.documentElement.classList.add('hero-flat');
+    if (supports3D && !lowPerf) el.classList.add('hero-3d');
   }catch(e){}
 })();
 </script>
@@ -431,13 +449,14 @@ function renderToolWall() {
 
 // 3D perspective based on mouse movement
 function setup3DPerspective() {
-  // Matches the CSS fallback: on browsers/devices flagged as likely to
-  // render nested 3D compositing poorly, html.hero-flat is already set
-  // (synchronously, before paint) and CSS forces transform:none on the
-  // wall -- so this loop would just burn a requestAnimationFrame every
-  // frame, forever, writing a transform that CSS immediately overrides.
-  // Skipping it entirely removes that permanent per-frame cost.
-  if (document.documentElement.classList.contains('hero-flat')) return;
+  // Matches the CSS: the 3D wall (and this loop that drives its tilt) only
+  // exists when html.hero-3d is present, which JS only adds after
+  // CSS.supports() positively confirms the engine understands every
+  // feature involved (see the <head> script). Any engine that doesn't get
+  // that class already renders transform:none via CSS regardless -- so
+  // running this loop for it would just burn a requestAnimationFrame
+  // every frame, forever, writing a transform nothing ever displays.
+  if (!document.documentElement.classList.contains('hero-3d')) return;
   const scene = document.getElementById('wallScene');
   const wall = document.getElementById('toolWall');
   if (!scene || !wall) return;
