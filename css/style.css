@@ -135,31 +135,41 @@ a{color:inherit;}
 .hero-wall-container{position:relative;height:100%;min-height:500px;display:flex;align-items:center;}
 .wall-scene{
   position:relative;width:100%;height:100%;min-height:500px;
-  perspective:1200px;display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;
   overflow:hidden;border-radius:36px;
 }
+html.hero-3d .wall-scene{ perspective:1200px; }
 .wall-glow{
   position:absolute;width:85%;height:85%;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(109,94,245,.14),transparent 68%);
   background:radial-gradient(ellipse,color-mix(in srgb,var(--accent1) 18%,transparent),transparent 68%);
   filter:blur(32px);pointer-events:none;z-index:1;
 }
 .tool-wall{
-  position:relative;width:110%;height:650px;transform-style:preserve-3d;
-  transform:rotateX(8deg) rotateY(-8deg) rotateZ(-1deg) translateZ(0);
-  transition:transform .15s ease-out;z-index:2;
+  position:relative;width:110%;height:650px;transform-style:flat;transform:none;z-index:2;
+}
+html.hero-3d .tool-wall{
+  transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-8deg) rotateZ(-1deg) translateZ(0);
+  transition:transform .15s ease-out;
 }
 .tool-wall::before{
   content:"";position:absolute;left:4%;right:4%;top:7%;bottom:7%;
   border-radius:36px;
+  background:rgba(109,94,245,.05);
   background:linear-gradient(145deg,color-mix(in srgb,var(--accent1) 8%,transparent),color-mix(in srgb,var(--accent1) 2%,transparent));
+  border:1px solid var(--card-border);
   border:1px solid color-mix(in srgb,var(--card-border) 80%,transparent);
+  pointer-events:none;
+}
+html.hero-3d .tool-wall::before{
   box-shadow:inset 0 0 60px color-mix(in srgb,var(--accent1) 4%,transparent);
-  transform:translateZ(-80px);pointer-events:none;
+  transform:translateZ(-80px);
 }
 .wall-row{
   position:absolute;left:-10%;width:120%;height:110px;display:flex;align-items:center;gap:16px;
-  transform-style:preserve-3d;will-change:transform;
+  transform-style:flat;will-change:auto;
 }
+html.hero-3d .wall-row{ transform-style:preserve-3d;will-change:transform; }
 .wall-row::before{
   content:"";position:absolute;left:0;right:0;height:100%;pointer-events:none;
   background:linear-gradient(90deg,var(--bg1) 0%,transparent 10%,transparent 90%,var(--bg1) 100%);
@@ -170,7 +180,8 @@ a{color:inherit;}
 .row3{top:260px;}
 .row4{top:378px;}
 .row5{top:496px;}
-.track{display:flex;gap:16px;flex:none;transform-style:preserve-3d;padding:0 16px;}
+.track{display:flex;gap:16px;flex:none;transform-style:flat;padding:0 16px;}
+html.hero-3d .track{ transform-style:preserve-3d; }
 .track-ltr{animation:moveLeft 42s linear infinite;}
 .track-rtl{animation:moveRight 45s linear infinite;}
 /* Per-row animation-duration is overridden inline by JS (renderToolWall) to
@@ -181,37 +192,26 @@ a{color:inherit;}
 @media (prefers-reduced-motion:reduce){
   .track-ltr,.track-rtl{animation:none;transform:translateX(0);}
 }
-/* Progressive-enhancement fallback for browsers/devices where nested 3D
-   compositing (perspective + preserve-3d + translateZ, animating on ~70
-   elements at once) is known or likely to flash, blank out content, or
-   drop frames -- UC Browser specifically, plus general low-performance
-   signals. html.hero-flat is set synchronously in <head>, before paint,
-   so there's no flash between a 3D-then-flattened state. The horizontal
-   scroll itself (translateX keyframes) is untouched and still runs --
-   only the 3D layering is removed, since that's the expensive/fragile
-   part, not the scroll. */
-html.hero-flat .wall-scene{ perspective:none; }
-html.hero-flat .tool-wall{ transform-style:flat; transform:none; transition:none; }
-html.hero-flat .tool-wall::before{ transform:none; }
-html.hero-flat .wall-row{ transform-style:flat; will-change:auto; }
-html.hero-flat .track{ transform-style:flat; }
-html.hero-flat .tool-wall .tool-card{ transform:none; transition:box-shadow .25s ease; width:170px; overflow:visible; }
-html.hero-flat .tool-wall .tool-card:hover{ transform:none; }
 .tool-wall .tool-card{
-  --accent:var(--accent1);min-width:96px;max-width:210px;height:auto;min-height:64px;flex:none;border-radius:18px;
+  --accent:var(--accent1);width:170px;height:auto;min-height:64px;flex:none;border-radius:18px;
   background:var(--card);border:1px solid var(--card-border);
   display:flex;align-items:center;gap:12px;padding:10px 16px;
   box-shadow:0 14px 28px rgba(20,15,50,.12);
+  transform:none;transition:box-shadow .25s ease;
+  cursor:pointer;position:relative;overflow:visible;text-decoration:none;
+  color:inherit;
+}
+html.hero-3d .tool-wall .tool-card{
+  min-width:96px;max-width:210px;width:auto;overflow:hidden;
   box-shadow:0 14px 28px var(--shadow),inset 0 1px color-mix(in srgb,#fff 30%,transparent);
   transform:translateZ(20px);transition:transform .25s cubic-bezier(.23,1,.320,1),box-shadow .25s ease;
-  cursor:pointer;position:relative;overflow:hidden;text-decoration:none;
-  color:inherit;
 }
 .tool-wall .tool-card::after{
   content:"";position:absolute;inset:auto 0 0;height:2.5px;
   background:var(--accent);opacity:.6;
 }
-.tool-wall .tool-card:hover{
+.tool-wall .tool-card:hover{ transform:none; }
+html.hero-3d .tool-wall .tool-card:hover{
   transform:translateZ(45px) scale(1.03);
   box-shadow:0 24px 40px var(--shadow),0 0 20px color-mix(in srgb,var(--accent) 18%,transparent);
   z-index:40;
@@ -221,8 +221,10 @@ html.hero-flat .tool-wall .tool-card:hover{ transform:none; }
   width:48px;height:48px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:20px;font-weight:800;
   background:var(--accent);
-  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent));
   box-shadow:0 8px 16px rgba(0,0,0,.18);
+}
+html.hero-3d .tool-wall .tool-icon{
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent));
   box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
 }
 .tool-wall .tool-name{font-size:12.5px;line-height:1.2;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;}
