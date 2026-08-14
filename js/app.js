@@ -19,6 +19,21 @@ if (themeToggleBtn) themeToggleBtn.onclick = () => {
   try{ localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light'); }catch(e){}
 };
 applyTheme();
+/* Back/forward-cache safety net: bfcache restores the page's DOM from an
+   in-memory snapshot without re-running any script (including this one and
+   the inline <head> initializer). If the theme was changed on a different
+   page in the meantime, a bfcache-restored page can keep showing its old
+   'dark' class even though localStorage now holds a different value. Re-sync
+   from the current saved value whenever the page is (re)shown; a normal load
+   already matches, so this is a no-op outside the bfcache-restore case. */
+window.addEventListener('pageshow', function(e){
+  if (!e.persisted) return;
+  try{
+    const saved = localStorage.getItem(THEME_KEY);
+    isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }catch(err){}
+  applyTheme();
+});
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
