@@ -2096,7 +2096,27 @@ if (document.getElementById('aiRemoveDrop')){
   let segmenterLoadPromise = null;
   let aiSourceImg = null;
   let aiResultCanvas = null;
-  const loadImgAi = loadImageFromFile;
+  // EXIF-orientation-safe image load, used only for this tool's uploads.
+  // See the detailed reasoning where this is wired in below (loadImgAi).
+  function loadImageExifSafe(file){
+    return new Promise((resolve) => {
+      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve); return; }
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
+        const c = document.createElement('canvas');
+        c.width = bitmap.width; c.height = bitmap.height;
+        c.getContext('2d').drawImage(bitmap, 0, 0);
+        if (bitmap.close) bitmap.close();
+        c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
+        resolve(c);
+      }).catch(() => {
+        // createImageBitmap or the orientation option isn't supported here --
+        // fall back to the exact path every other ToolFlight image tool uses,
+        // so this can only ever improve correctness, never regress it.
+        loadImageFromFile(file).then(resolve);
+      });
+    });
+  }
+  const loadImgAi = loadImageExifSafe;
 
   function setAiStatus(state, message){
     const el = document.getElementById('aiModelStatus');
@@ -3153,7 +3173,14 @@ if (document.getElementById('bgChangerDrop')){
   })();
 
   setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
-    const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
+    const isPngOrWebp = (file) => {
+      if (file.type === 'image/png' || file.type === 'image/webp') return true;
+      // MIME-type reporting for a genuinely valid file is inconsistent across
+      // mobile browsers/OS share-sheets -- fall back to the filename extension
+      // rather than silently rejecting a real PNG/WEBP the browser mis-labeled.
+      return /\.(png|webp)$/i.test(file.name || '');
+    };
+    const f = files.find(isPngOrWebp);
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
     try{
       const img = await loadImgBg(f);
@@ -12960,6 +12987,18 @@ if (document.getElementById('rtDrop')){
     hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
     hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
     foundation:'rtFoundation', mascaraIntensity:'rtMascaraIntensity',
+    // The 7 entries below all have complete, working pixel-processing
+    // implementations already (see RT_ID_MAP near the rtAdj definitions,
+    // and the drawing code that reads a.noseDefinition/a.contourIntensity/
+    // a.highlightIntensity/a.freckleIntensity/a.browDefinition/
+    // a.beautyMarkIntensity/a.beautyMarkSize) -- this map was simply never
+    // updated to match, so selectTool()'s existence check below failed and
+    // fell through to the "coming soon" placeholder even though the real
+    // control (queried by data-key, not through this map) was ready to show.
+    freckleIntensity:'rtFreckleIntensity', contourIntensity:'rtContourIntensity',
+    highlightIntensity:'rtHighlightIntensity', browDefinition:'rtBrowDefinition',
+    noseDefinition:'rtNoseDefinition', beautyMarkIntensity:'rtBeautyMarkIntensity',
+    beautyMarkSize:'rtBeautyMarkSize',
   };
 
   (function setupMakeupStudio(){
