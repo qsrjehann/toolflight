@@ -2326,7 +2326,16 @@ if (document.getElementById('aiRemoveDrop')){
     pushHistory();
     renderComposite();
 
-    aiViewZoom = 1; fitAiCanvasDisplay();
+    // Deferred (not called synchronously): on a slow connection or a layout
+    // that hasn't fully settled yet, viewport.clientWidth/clientHeight can
+    // be measured before the surrounding page has finished reflowing,
+    // producing a stale fit that's never recalculated afterward (only
+    // window 'resize' re-triggers fitAiCanvasDisplay, which many mobile
+    // layout shifts -- e.g. a toolbar finishing its own layout -- never
+    // fire). Double rAF waits for the next two painted frames, by which
+    // point the workspace viewport's real size is reliably available.
+    aiViewZoom = 1;
+    requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
     setTool('brush');
   }
 
@@ -2503,6 +2512,24 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('aiViewCenterBtn').onclick = () => { fitAiCanvasDisplay(); };
   document.getElementById('aiFloatFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
   window.addEventListener('resize', () => { if (document.getElementById('aiEditCanvas').width) fitAiCanvasDisplay(); });
+  // Belt-and-braces for the same class of bug the deferred rAF calls above
+  // address: catches layout shifts that don't fire a window 'resize' event
+  // at all (e.g. sibling content finishing its own reflow on a slow
+  // connection, virtual keyboard show/hide, orientation change on some
+  // browsers). Scoped to this tool's own viewport only.
+  if (typeof ResizeObserver !== 'undefined'){
+    const aiViewportEl = document.getElementById('aiWorkspaceViewport');
+    if (aiViewportEl){
+      let aiResizeRaf = null;
+      new ResizeObserver(() => {
+        if (aiResizeRaf) cancelAnimationFrame(aiResizeRaf);
+        aiResizeRaf = requestAnimationFrame(() => {
+          const c = document.getElementById('aiEditCanvas');
+          if (c && c.width) fitAiCanvasDisplay();
+        });
+      }).observe(aiViewportEl);
+    }
+  }
 
   const AI_CATEGORY_ACCORDIONS = {
     edit: ['aiAccordionEdit'],
@@ -2894,7 +2921,9 @@ if (document.getElementById('aiRemoveDrop')){
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
-        aiViewZoom = 1; fitAiCanvasDisplay(); setTool('brush');
+        aiViewZoom = 1;
+        requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
+        setTool('brush');
         banner.classList.add('hidden');
         toast('Previous session restored.');
       }catch(err){
