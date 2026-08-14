@@ -19,6 +19,21 @@ if (themeToggleBtn) themeToggleBtn.onclick = () => {
   try{ localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light'); }catch(e){}
 };
 applyTheme();
+/* Back/forward-cache safety net: bfcache restores the page's DOM from an
+   in-memory snapshot without re-running any script (including this one and
+   the inline <head> initializer). If the theme was changed on a different
+   page in the meantime, a bfcache-restored page can keep showing its old
+   'dark' class even though localStorage now holds a different value. Re-sync
+   from the current saved value whenever the page is (re)shown; a normal load
+   already matches, so this is a no-op outside the bfcache-restore case. */
+window.addEventListener('pageshow', function(e){
+  if (!e.persisted) return;
+  try{
+    const saved = localStorage.getItem(THEME_KEY);
+    isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }catch(err){}
+  applyTheme();
+});
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
@@ -2311,7 +2326,16 @@ if (document.getElementById('aiRemoveDrop')){
     pushHistory();
     renderComposite();
 
-    aiViewZoom = 1; fitAiCanvasDisplay();
+    // Deferred (not called synchronously): on a slow connection or a layout
+    // that hasn't fully settled yet, viewport.clientWidth/clientHeight can
+    // be measured before the surrounding page has finished reflowing,
+    // producing a stale fit that's never recalculated afterward (only
+    // window 'resize' re-triggers fitAiCanvasDisplay, which many mobile
+    // layout shifts -- e.g. a toolbar finishing its own layout -- never
+    // fire). Double rAF waits for the next two painted frames, by which
+    // point the workspace viewport's real size is reliably available.
+    aiViewZoom = 1;
+    requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
     setTool('brush');
   }
 
@@ -2488,6 +2512,24 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('aiViewCenterBtn').onclick = () => { fitAiCanvasDisplay(); };
   document.getElementById('aiFloatFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
   window.addEventListener('resize', () => { if (document.getElementById('aiEditCanvas').width) fitAiCanvasDisplay(); });
+  // Belt-and-braces for the same class of bug the deferred rAF calls above
+  // address: catches layout shifts that don't fire a window 'resize' event
+  // at all (e.g. sibling content finishing its own reflow on a slow
+  // connection, virtual keyboard show/hide, orientation change on some
+  // browsers). Scoped to this tool's own viewport only.
+  if (typeof ResizeObserver !== 'undefined'){
+    const aiViewportEl = document.getElementById('aiWorkspaceViewport');
+    if (aiViewportEl){
+      let aiResizeRaf = null;
+      new ResizeObserver(() => {
+        if (aiResizeRaf) cancelAnimationFrame(aiResizeRaf);
+        aiResizeRaf = requestAnimationFrame(() => {
+          const c = document.getElementById('aiEditCanvas');
+          if (c && c.width) fitAiCanvasDisplay();
+        });
+      }).observe(aiViewportEl);
+    }
+  }
 
   const AI_CATEGORY_ACCORDIONS = {
     edit: ['aiAccordionEdit'],
@@ -2879,7 +2921,9 @@ if (document.getElementById('aiRemoveDrop')){
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
-        aiViewZoom = 1; fitAiCanvasDisplay(); setTool('brush');
+        aiViewZoom = 1;
+        requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
+        setTool('brush');
         banner.classList.add('hidden');
         toast('Previous session restored.');
       }catch(err){
@@ -12916,6 +12960,18 @@ if (document.getElementById('rtDrop')){
     hairShine:'rtHairShine', hairSmooth:'rtHairSmooth', hairHealth:'rtHairHealth',
     hairFlyaway:'rtHairFlyaway', hairTexture:'rtHairTexture',
     foundation:'rtFoundation', mascaraIntensity:'rtMascaraIntensity',
+    // The 7 entries below all have complete, working pixel-processing
+    // implementations already (see RT_ID_MAP near the rtAdj definitions,
+    // and the drawing code that reads a.noseDefinition/a.contourIntensity/
+    // a.highlightIntensity/a.freckleIntensity/a.browDefinition/
+    // a.beautyMarkIntensity/a.beautyMarkSize) -- this map was simply never
+    // updated to match, so selectTool()'s existence check below failed and
+    // fell through to the "coming soon" placeholder even though the real
+    // control (queried by data-key, not through this map) was ready to show.
+    freckleIntensity:'rtFreckleIntensity', contourIntensity:'rtContourIntensity',
+    highlightIntensity:'rtHighlightIntensity', browDefinition:'rtBrowDefinition',
+    noseDefinition:'rtNoseDefinition', beautyMarkIntensity:'rtBeautyMarkIntensity',
+    beautyMarkSize:'rtBeautyMarkSize',
   };
 
   (function setupMakeupStudio(){
