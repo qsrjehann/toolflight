@@ -181,6 +181,22 @@ a{color:inherit;}
 @media (prefers-reduced-motion:reduce){
   .track-ltr,.track-rtl{animation:none;transform:translateX(0);}
 }
+/* Progressive-enhancement fallback for browsers/devices where nested 3D
+   compositing (perspective + preserve-3d + translateZ, animating on ~70
+   elements at once) is known or likely to flash, blank out content, or
+   drop frames -- UC Browser specifically, plus general low-performance
+   signals. html.hero-flat is set synchronously in <head>, before paint,
+   so there's no flash between a 3D-then-flattened state. The horizontal
+   scroll itself (translateX keyframes) is untouched and still runs --
+   only the 3D layering is removed, since that's the expensive/fragile
+   part, not the scroll. */
+html.hero-flat .wall-scene{ perspective:none; }
+html.hero-flat .tool-wall{ transform-style:flat; transform:none; transition:none; }
+html.hero-flat .tool-wall::before{ transform:none; }
+html.hero-flat .wall-row{ transform-style:flat; will-change:auto; }
+html.hero-flat .track{ transform-style:flat; }
+html.hero-flat .tool-wall .tool-card{ transform:none; transition:box-shadow .25s ease; }
+html.hero-flat .tool-wall .tool-card:hover{ transform:none; }
 .tool-wall .tool-card{
   --accent:var(--accent1);min-width:96px;max-width:210px;height:auto;min-height:64px;flex:none;border-radius:18px;
   background:var(--card);border:1px solid var(--card-border);
@@ -1996,6 +2012,68 @@ html.dark .category-hub-card .cat-arrow{
 #rtStage .rt-bt-item-hero svg{ width:22px; height:22px; }
 #rtStage .rt-bt-item-hero[aria-selected="true"]{ color:#fff; background:linear-gradient(135deg, var(--accent1), var(--accent2)); filter:brightness(1.1); }
 #rtStage .rt-bt-item-hero:hover{ color:#fff; filter:brightness(1.08); }
+
+/* ---- Makeup Studio panel (rtMakeupBar) ----
+   This entire panel's CSS was missing from the stylesheet -- every class
+   below is created/referenced by js/app.js (~line 12943) but had no
+   matching rule anywhere, so every chip/button rendered as an unstyled
+   native <button>. Styled to match this tool's existing visual language:
+   panel surface matches .rt-panel-sheet, pill buttons match
+   .rt-tb-text-btn/.rt-bt-item, swatches match .bg-swatch. */
+#rtStage .rt-makeup-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:16;
+  background:var(--epe-shell-surface); border-top-left-radius:20px; border-top-right-radius:20px;
+  border-top:1px solid var(--card-border);
+  box-shadow:0 -12px 32px -14px rgba(20,15,50,0.28);
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  max-height:60vh; max-height:60dvh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+#rtStage .rt-ms-level{ display:flex; align-items:flex-start; gap:10px; }
+#rtStage .rt-ms-chips{ flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-chip{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-chip:hover{ background:color-mix(in srgb, var(--accent1) 10%, var(--card)); }
+#rtStage .rt-ms-chip.active,
+#rtStage .rt-ms-chip[aria-selected="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
+#rtStage .rt-ms-close-btn,
+#rtStage .rt-ms-back-btn{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  border:1px solid var(--card-border); background:transparent; color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 12px; border-radius:10px; cursor:pointer;
+}
+#rtStage .rt-ms-close-btn svg,
+#rtStage .rt-ms-back-btn svg{ width:16px; height:16px; flex:none; }
+#rtStage .rt-ms-tool-label{ font-size:14px; font-weight:800; color:var(--ink); flex:1 1 auto; align-self:center; }
+#rtStage .rt-ms-slider-slot{ display:flex; flex-direction:column; gap:14px; margin-top:12px; width:100%; }
+#rtStage .rt-ms-ctrl{ display:flex; flex-direction:column; gap:6px; }
+#rtStage .rt-ms-ctrl input[type="range"]{ width:100%; accent-color:var(--accent1-solid, var(--accent1)); }
+#rtStage .rt-ms-coming-soon{
+  font-size:13px; color:var(--ink-soft); background:var(--card); border:1px dashed var(--card-border);
+  border-radius:12px; padding:16px; text-align:center;
+}
+#rtStage .rt-ms-swatch-row{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-swatch{
+  width:36px; height:36px; border-radius:9px; border:2px solid var(--card-border); cursor:pointer; padding:0;
+}
+#rtStage .rt-ms-swatch[data-hex=""],
+#rtStage .rt-ms-swatch-none{
+  background:
+    linear-gradient(45deg, transparent 48%, #E5484D 49%, #E5484D 51%, transparent 52%),
+    var(--card);
+}
+#rtStage .rt-ms-lipfinish{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-finish-btn{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-finish-btn.active,
+#rtStage .rt-ms-finish-btn[aria-pressed="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
 
 /* (No mobile-only panel-sheet override needed anymore -- the base rule's
    max-height calc() and padding-bottom already account for the fixed
