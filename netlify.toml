@@ -39,3 +39,47 @@
     Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
     # camera=(self) is required for Passport Photo Maker's camera-capture
     # feature; everything else stays default-denied.
+
+# Block server-side/developer files that have no place in the public site.
+# build.py (445KB Python build script), pending Firestore rules, and all
+# Markdown documentation files are development artifacts only. Returning 404
+# means they cannot be read or harvested by bots even if they appear in a
+# directory listing.
+[[redirects]]
+  from = "/build.py"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/firestore.rules"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/firestore.rules.PENDING-APPROVAL"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/*.md"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/*.py"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/firestore.indexes.json"
+  to = "/404.html"
+  status = 404
+
+# Security header: Content-Security-Policy (permissive to allow CDN scripts,
+# Firebase, Google Fonts, ONNX Runtime WASM, and Netlify Forms; tightened
+# just enough to block inline script injection from XSS without breaking any
+# existing tool)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com; worker-src 'self' blob:; frame-ancestors 'none';"
