@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolFlight income percentile dataset (schema v2)",
+  "type": "object",
+  "required": [
+    "metadata",
+    "world",
+    "ppp",
+    "currency_ppp",
+    "distributions"
+  ],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "dataset",
+        "version",
+        "demo",
+        "source",
+        "sourceUrl",
+        "pppBasis",
+        "generatedAt"
+      ],
+      "properties": {
+        "dataset": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "demo": {
+          "type": "boolean",
+          "description": "true = synthetic UI fixture; the app shows a warning banner and watermark"
+        },
+        "source": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "income_definition": {
+          "type": "string"
+        },
+        "currency_conversion": {
+          "type": "string"
+        },
+        "global_method": {
+          "type": "string"
+        },
+        "interpolation": {
+          "type": "string"
+        },
+        "world_population": {
+          "type": "number"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sourceUrl": {
+          "type": "string"
+        },
+        "referenceYear": {
+          "type": "string"
+        },
+        "pppBasis": {
+          "type": "string"
+        },
+        "incomeDefinition": {
+          "type": "string"
+        },
+        "methodology": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "countries": {
+          "type": "integer"
+        }
+      }
+    },
+    "world": {
+      "type": "object",
+      "required": [
+        "thresholds"
+      ],
+      "properties": {
+        "thresholds": {
+          "type": "array",
+          "minItems": 99,
+          "maxItems": 99,
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "description": "Global income thresholds p1..p99, international $ per person per day, ascending"
+        },
+        "welfare_type": {
+          "type": "string"
+        }
+      }
+    },
+    "ppp": {
+      "type": "object",
+      "description": "ISO 3166-1 alpha-2 economy -> LCU per international dollar (PA.NUS.PRVT.PP, 2021 ICP). PPP is a property of the economy, not the currency.",
+      "additionalProperties": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    },
+    "distributions": {
+      "type": "object",
+      "description": "ISO 3166-1 alpha-2 -> country distribution. ABSENCE of a key means the economy has no comparable data and the UI must show the worldwide-only fallback \u2014 never pad this object.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "thresholds"
+        ],
+        "properties": {
+          "thresholds": {
+            "type": "array",
+            "minItems": 99,
+            "maxItems": 99,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "survey year"
+          },
+          "welfare_type": {
+            "type": "string",
+            "description": "income | consumption | synthetic"
+          },
+          "population": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "currency_ppp": {
+      "type": "object",
+      "description": "ISO 4217 currency -> representative issuing-economy PPP factor, used (and disclosed as approximate) when the entered currency is not the selected country's own.",
+      "additionalProperties": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    }
+  }
+}
