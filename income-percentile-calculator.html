@@ -1220,18 +1220,38 @@ function drawShareCard(){
   function drawStat(px,label,topPct,tint){
     glassPanel(ctx,px,panelY,panelW,panelH,24,
       tint.top,tint.bottom,tint.border,tint.highlight);
+
+    // Big, low-opacity flag/globe watermark filling most of the panel —
+    // this is the emotional/shareable touch: a large national flag behind
+    // your own stats reads as pride at a glance, which is what actually
+    // drives people to post it. Clipped to the panel so it never bleeds
+    // past the rounded corners or collides with the "download PNG" edge.
+    ctx.save();
+    roundRect(ctx,px,panelY,panelW,panelH,24); ctx.clip();
+    ctx.globalAlpha=tint.watermarkOpacity;
+    ctx.font=Math.round(panelW*0.62)+"px "+FONT;
+    ctx.textAlign="center";
+    ctx.fillText(tint.icon, px+panelW/2, panelY+panelH*0.64);
+    ctx.globalAlpha=1;
+    ctx.restore();
+
     const cx=px+panelW/2;
     // measure first (without drawing) so the whole icon+label+number block
     // can be vertically centered in the panel instead of pinned to the top
     const labelSize=fitFontSize(ctx,label,maxTextW,"700",28,16);
     const pctText="TOP "+topPct+"%";
     const pctSize=fitFontSize(ctx,pctText,maxTextW,"800",120,52);
-    const iconH=40, gap1=22, gap2=26;
+    const iconH=68, gap1=20, gap2=26;
     const blockH=iconH+gap1+labelSize+gap2+pctSize;
     let y=panelY+(panelH-blockH)/2+iconH*0.8;
 
-    ctx.fillStyle=tint.text; ctx.font="40px "+FONT;
+    // small crisp flag/globe up top — bigger than before so it reads
+    // clearly even as a thumbnail on WhatsApp/Instagram
+    ctx.shadowColor="rgba(0,0,0,0.35)"; ctx.shadowBlur=10; ctx.shadowOffsetY=2;
+    ctx.font=iconH+"px "+FONT;
     ctx.fillText(tint.icon, cx, y);
+    ctx.shadowColor="transparent"; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+
     y+=gap1+labelSize*0.8;
     ctx.fillStyle=tint.text; ctx.font=`700 ${labelSize}px ${FONT}`;
     ctx.fillText(label, cx, y);
@@ -1242,10 +1262,10 @@ function drawShareCard(){
 
   const blueTint={top:"rgba(37,99,235,0.22)",bottom:"rgba(37,99,235,0.06)",
     border:"rgba(120,160,255,0.35)",highlight:"rgba(147,197,253,0.28)",
-    text:"#BFD3FF",accent:"#7EA6F5",icon:"🌍"};
+    text:"#BFD3FF",accent:"#7EA6F5",icon:"🌍",watermarkOpacity:0.14};
   const greenTint={top:"rgba(22,163,74,0.22)",bottom:"rgba(22,163,74,0.06)",
     border:"rgba(120,220,160,0.35)",highlight:"rgba(134,239,172,0.26)",
-    text:"#BFF0D4",accent:"#5FD897",icon:flagEmoji(r.iso)};
+    text:"#BFF0D4",accent:"#5FD897",icon:flagEmoji(r.iso),watermarkOpacity:0.20};
 
   drawStat(innerX,"WORLDWIDE",wTop,blueTint);
   if(has){
