@@ -85,7 +85,29 @@
   #ipcApp{scroll-behavior:auto}
   #ipcApp *, #ipcApp *::before, #ipcApp *::after{animation-duration:.001s !important;transition-duration:.001s !important}
 }
-#ipcApp{background:var(--ipc-bg);color:var(--ipc-ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+#ipcApp{background:transparent;color:var(--ipc-ink);line-height:1.55;-webkit-font-smoothing:antialiased;transition:color .3s ease}
+/* Dark-mode sync: the site toggles a single html.dark class (see the inline
+   head script + js/app.js applyTheme()); this widget was previously styled
+   with static light-only tokens that never responded to that class, which is
+   why toggling appeared to "do nothing" here even though the button itself
+   worked site-wide. Overriding the same --ipc-* custom properties under
+   html.dark keeps every component (cards, inputs, combobox, gauges, FAQ)
+   in sync with the rest of ToolFlight automatically. */
+html.dark #ipcApp{
+  --ipc-blue-soft:rgba(37,99,235,.16); --ipc-green-soft:rgba(22,163,74,.16);
+  --ipc-amber-bg:rgba(180,131,0,.16); --ipc-amber-line:rgba(211,166,63,.4); --ipc-amber-ink:#F2C568;
+  --ipc-ink:#F1F1F8; --ipc-ink-2:#C9D0E6; --ipc-muted:#9CA3C4; --ipc-line:rgba(255,255,255,.14);
+  --ipc-card:rgba(255,255,255,.06);
+  --ipc-shadow:0 20px 45px -20px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+html.dark #ipcApp .combo-panel{background:#181B2C;}
+html.dark #ipcApp .input,html.dark #ipcApp .select,html.dark #ipcApp .combo-toggle{background:rgba(255,255,255,.04);color:var(--ipc-ink);}
+html.dark #ipcApp .seg{background:rgba(255,255,255,.06);}
+html.dark #ipcApp .btn-ghost{background:rgba(255,255,255,.04);}
+html.dark #ipcApp .unavailable{background:rgba(255,255,255,.03);}
+html.dark #ipcApp .demo-banner .box{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35);color:#FCA5A5;}
+html.dark #ipcApp .share-icons button{background:rgba(255,255,255,.04);}
 #ipcApp a{color:var(--ipc-blue);text-decoration:none}
 #ipcApp a:hover{text-decoration:underline}
 #ipcApp button{font-family:inherit;cursor:pointer}
@@ -1120,63 +1142,137 @@ $("tryAgainBtn").addEventListener("click", ()=>{
 
 /* ---------- 7. Share card (Canvas) ---------- */
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+// Shrinks font size until `text` fits within maxWidth (never truncates —
+// the whole point of this pass is that share-card text is always fully
+// readable, including long country names like "Bosnia and Herzegovina").
+function fitFontSize(ctx,text,maxWidth,weight,startPx,minPx){
+  let size=startPx;
+  ctx.font=`${weight} ${size}px ${FONT}`;
+  while(ctx.measureText(text).width>maxWidth && size>minPx){
+    size-=2; ctx.font=`${weight} ${size}px ${FONT}`;
+  }
+  return size;
+}
+
+// Soft "frosted glass" panel: tinted gradient fill, hairline border, and a
+// diagonal highlight clipped to the rounded shape — a look canvas can render
+// crisply at any output size, unlike photoreal glass/gem textures.
+function glassPanel(ctx,x,y,w,h,r,top,bottom,border,highlight){
+  const g=ctx.createLinearGradient(x,y,x,y+h);
+  g.addColorStop(0,top); g.addColorStop(1,bottom);
+  roundRect(ctx,x,y,w,h,r); ctx.fillStyle=g; ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle=border; ctx.stroke();
+  ctx.save();
+  roundRect(ctx,x,y,w,h,r); ctx.clip();
+  const hi=ctx.createRadialGradient(x+w*0.28,y+h*0.12,4,x+w*0.28,y+h*0.12,w*0.75);
+  hi.addColorStop(0,highlight); hi.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=hi; ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+
 function drawShareCard(){
   const r=state.lastResult; if(!r) return;
   const cv=$("cardCanvas"), ctx=cv.getContext("2d");
   const W=1080, H=1080;
+  ctx.clearRect(0,0,W,H); ctx.textBaseline="alphabetic";
+
   // background
-  const g=ctx.createLinearGradient(0,0,W,H);
-  g.addColorStop(0,"#0B1B33"); g.addColorStop(1,"#132A4E");
-  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  // subtle grid dots
-  ctx.fillStyle="rgba(255,255,255,0.04)";
-  for(let x=60;x<W;x+=90)for(let y=60;y<H;y+=90){ctx.beginPath();ctx.arc(x,y,3,0,7);ctx.fill();}
-  // brand
-  ctx.fillStyle="#fff"; ctx.font="700 44px "+FONT; ctx.textAlign="left";
-  ctx.fillText("✈ ToolFlight", 80, 120);
-  // title
+  const bg=ctx.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0,"#0B1B33"); bg.addColorStop(1,"#132A4E");
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // scattered sparkle dots (deterministic — same seed every render, so the
+  // card looks identical if generated twice for the same result)
+  let seed=42; const rnd=()=>{seed=(seed*9301+49297)%233280; return seed/233280;};
+  for(let i=0;i<46;i++){
+    const x=rnd()*W, y=rnd()*H, rad=rnd()*1.8+0.4;
+    ctx.globalAlpha=rnd()*0.35+0.08;
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // brand — centered
   ctx.textAlign="center";
-  ctx.fillStyle="#8FA6C9"; ctx.font="600 40px "+FONT; ctx.letterSpacing="6px";
-  ctx.fillText("MY INCOME RANK", W/2, 240);
+  ctx.fillStyle="#fff"; ctx.font="700 42px "+FONT;
+  ctx.fillText("✈ ToolFlight", W/2, 92);
+
+  // outer glass frame holding everything
+  const frameX=64, frameY=150, frameW=W-128, frameH=780;
+  glassPanel(ctx,frameX,frameY,frameW,frameH,32,
+    "rgba(255,255,255,0.10)","rgba(255,255,255,0.03)",
+    "rgba(255,255,255,0.16)","rgba(255,255,255,0.14)");
+
+  // title
+  ctx.fillStyle="#9FB3D9"; ctx.font="600 32px "+FONT; ctx.letterSpacing="5px";
+  ctx.fillText("MY INCOME RANK", W/2, frameY+70);
   ctx.letterSpacing="0px";
 
   const wTop=topPercent(r.world);
   const has=r.country!==null, cTop=has?topPercent(r.country):null;
-  const colW = has ? W/2 : W;
+  const padOuter=28, gap=has?20:0;
+  const innerX=frameX+padOuter, innerW=frameW-padOuter*2;
+  const panelY=frameY+110, panelH=frameH-260;
+  const panelW=has?(innerW-gap)/2:innerW;
+  const maxTextW=panelW-56; // safe inner padding so text never touches the panel edge
 
-  // world column
-  ctx.fillStyle="#7EA6F5"; ctx.font="700 34px "+FONT;
-  ctx.fillText("🌍 WORLDWIDE", colW/2, 420);
-  ctx.fillStyle="#5B8DEF"; ctx.font="800 150px "+FONT;
-  ctx.fillText("TOP "+wTop+"%", colW/2, 590);
+  function drawStat(px,label,topPct,tint){
+    glassPanel(ctx,px,panelY,panelW,panelH,24,
+      tint.top,tint.bottom,tint.border,tint.highlight);
+    const cx=px+panelW/2;
+    // measure first (without drawing) so the whole icon+label+number block
+    // can be vertically centered in the panel instead of pinned to the top
+    const labelSize=fitFontSize(ctx,label,maxTextW,"700",28,16);
+    const pctText="TOP "+topPct+"%";
+    const pctSize=fitFontSize(ctx,pctText,maxTextW,"800",120,52);
+    const iconH=40, gap1=22, gap2=26;
+    const blockH=iconH+gap1+labelSize+gap2+pctSize;
+    let y=panelY+(panelH-blockH)/2+iconH*0.8;
 
+    ctx.fillStyle=tint.text; ctx.font="40px "+FONT;
+    ctx.fillText(tint.icon, cx, y);
+    y+=gap1+labelSize*0.8;
+    ctx.fillStyle=tint.text; ctx.font=`700 ${labelSize}px ${FONT}`;
+    ctx.fillText(label, cx, y);
+    y+=gap2+pctSize*0.85;
+    ctx.fillStyle=tint.accent; ctx.font=`800 ${pctSize}px ${FONT}`;
+    ctx.fillText(pctText, cx, y);
+  }
+
+  const blueTint={top:"rgba(37,99,235,0.22)",bottom:"rgba(37,99,235,0.06)",
+    border:"rgba(120,160,255,0.35)",highlight:"rgba(147,197,253,0.28)",
+    text:"#BFD3FF",accent:"#7EA6F5",icon:"🌍"};
+  const greenTint={top:"rgba(22,163,74,0.22)",bottom:"rgba(22,163,74,0.06)",
+    border:"rgba(120,220,160,0.35)",highlight:"rgba(134,239,172,0.26)",
+    text:"#BFF0D4",accent:"#5FD897",icon:flagEmoji(r.iso)};
+
+  drawStat(innerX,"WORLDWIDE",wTop,blueTint);
   if(has){
-    // divider
-    ctx.strokeStyle="rgba(255,255,255,0.15)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(W/2,360); ctx.lineTo(W/2,650); ctx.stroke();
-    ctx.fillStyle="#7EE2A8"; ctx.font="700 34px "+FONT;
-    ctx.fillText(flagEmoji(r.iso)+" "+r.countryName.toUpperCase().slice(0,14), W/2+colW/2, 420);
-    ctx.fillStyle="#34D07C"; ctx.font="800 150px "+FONT;
-    ctx.fillText("TOP "+cTop+"%", W/2+colW/2, 590);
+    drawStat(innerX+panelW+gap, r.countryName.toUpperCase(), cTop, greenTint);
   }
 
-  // optional income (opt-in only — privacy default is HIDDEN)
+  // optional income (opt-in only — privacy default is HIDDEN) + demo watermark,
+  // stacked below the panels, inside the frame, auto-fit so long amounts
+  // never spill past the frame edges either
+  let ny=panelY+panelH+56;
   if(state.showIncomeOnCard){
-    ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.font="500 34px "+FONT;
-    ctx.fillText(r.incomeDisplay, W/2, 700);
+    const incSize=fitFontSize(ctx,r.incomeDisplay,frameW-100,"500",30,16);
+    ctx.fillStyle="rgba(255,255,255,0.6)"; ctx.font=`500 ${incSize}px ${FONT}`;
+    ctx.fillText(r.incomeDisplay, W/2, ny);
+    ny+=40;
   }
-
-  // demo watermark
   if(DATA.metadata.demo){
-    ctx.fillStyle="rgba(255,120,120,0.85)"; ctx.font="700 30px "+FONT;
-    ctx.fillText("DEMO DATA — NOT REAL STATISTICS", W/2, 760);
+    ctx.fillStyle="rgba(255,140,140,0.9)"; ctx.font="700 26px "+FONT;
+    ctx.fillText("DEMO DATA — NOT REAL STATISTICS", W/2, ny);
   }
 
   // footer
-  ctx.fillStyle="#C9D6EC"; ctx.font="600 42px "+FONT;
-  ctx.fillText("Where do you rank?", W/2, 900);
-  ctx.fillStyle="#5B8DEF"; ctx.font="700 38px "+FONT;
-  ctx.fillText("toolflight.com", W/2, 970);
+  ctx.fillStyle="#C9D6EC"; ctx.font="600 40px "+FONT;
+  ctx.fillText("Where do you rank?", W/2, H-110);
+  ctx.fillStyle="#5B8DEF"; ctx.font="700 36px "+FONT;
+  ctx.fillText("toolflight.com", W/2, H-58);
+
   tfTrack("share_card_generated");
 }
 const FONT="'Inter',-apple-system,'Segoe UI',Roboto,sans-serif";
