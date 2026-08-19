@@ -2332,6 +2332,7 @@ if (document.getElementById('aiRemoveDrop')){
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+      document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
       if (implausible){
         toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
       } else {
@@ -2355,6 +2356,7 @@ if (document.getElementById('aiRemoveDrop')){
         initManualEditor(srcCanvas, fallback);
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+      document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
         toast('AI processing failed, but your image is safe — use the manual tools below (start with Lasso or Polygon).', 'err');
       }catch(fallbackErr){
         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
@@ -2385,6 +2387,13 @@ if (document.getElementById('aiRemoveDrop')){
       toast('Could not hand off to Background Changer — try downloading and re-uploading instead.', 'err');
     }
   };
+  // Second entry point to the exact same handoff, placed in the Export tab
+  // next to Download -- the original button lives inside "More: Edge
+  // Cleanup & History", a spot with no reason for anyone to look for a
+  // link to a completely different tool. This is where people actually are
+  // once they're satisfied with the cutout and asking "now what."
+  const aiExportSendToChangerBtn = document.getElementById('aiExportSendToChangerBtn');
+  if (aiExportSendToChangerBtn) aiExportSendToChangerBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
 
   /* ---------- Manual Selection Editor ---------- */
   let originalCanvas = null;   // full-color source, never modified
