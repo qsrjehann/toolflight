@@ -484,11 +484,20 @@ function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
   if (!zone || !input) return;
-  zone.onclick = () => input.click();
+  // <label for="inputId"> zones already open the file picker natively on
+  // tap/click (zero JavaScript required, works even if a script elsewhere
+  // on the page throws) -- attaching a manual input.click() on top of that
+  // double-fires the picker, which is unreliable across mobile browsers.
+  // Older <div>-based drop-zones (most tools) still need the manual
+  // trigger, since a div has no native click-to-activate relationship with
+  // the input.
+  if (zone.tagName.toLowerCase() !== 'label'){
+    zone.onclick = () => input.click();
+  }
   input.onchange = () => { onFiles(Array.from(input.files)); input.value = ''; };
   ['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
   ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
-  zone.addEventListener('drop', e => onFiles(Array.from(e.dataTransfer.files)));
+  zone.addEventListener('drop', e => { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); });
 }
 let _dragReorderCtx = null; // { listEl, arr, rerender, index } — shared across all uses since only one drag happens at a time
 const _dragReorderListElsWithListener = new WeakSet();
