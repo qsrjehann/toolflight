@@ -24826,3 +24826,108 @@ if (document.getElementById('upDrop')){
     toast('Downloaded.');
   };
 }
+
+/* ============ COMPOUND INTEREST CALCULATOR (compound-interest-calculator.html) ============
+   Formula verified separately in Node (Text: basic growth, zero-rate, zero-years,
+   zero-contribution vs textbook A=P(1+r/n)^(nt), mismatched contribution/compounding
+   frequencies, monotonicity, and daily-compounding numerical stability). */
+if (document.getElementById('ciCalcBtn')){
+
+  function ciCompute(principal, contribAmount, contribsPerYear, annualRatePct, compoundsPerYear, years){
+    const ratePerPeriod = (annualRatePct / 100) / compoundsPerYear;
+    const totalPeriods = compoundsPerYear * years;
+    const contribPerPeriod = (contribAmount * contribsPerYear) / compoundsPerYear;
+
+    let balance = principal;
+    let totalContributed = principal;
+    const yearly = [];
+
+    for (let period = 1; period <= totalPeriods; period++){
+      balance = balance * (1 + ratePerPeriod) + contribPerPeriod;
+      totalContributed += contribPerPeriod;
+      if (period % compoundsPerYear === 0){
+        yearly.push({
+          year: period / compoundsPerYear,
+          contributed: totalContributed,
+          interest: balance - totalContributed,
+          balance
+        });
+      }
+    }
+    return { finalBalance: balance, totalContributed, totalInterest: balance - totalContributed, yearly };
+  }
+
+  function ciFmt(n){
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  document.getElementById('ciCalcBtn').onclick = () => {
+    const principal = parseFloat(document.getElementById('ciPrincipal').value) || 0;
+    const contribution = parseFloat(document.getElementById('ciContribution').value) || 0;
+    const contribFreq = parseInt(document.getElementById('ciContribFreq').value, 10);
+    const rate = parseFloat(document.getElementById('ciRate').value);
+    const years = parseFloat(document.getElementById('ciYears').value);
+    const compoundFreq = parseInt(document.getElementById('ciCompoundFreq').value, 10);
+    const inflation = parseFloat(document.getElementById('ciInflation').value);
+
+    if (principal < 0 || contribution < 0){ toast('Amounts can\'t be negative.', 'err'); return; }
+    if (!isFinite(rate) || rate < 0){ toast('Enter a valid interest rate.', 'err'); return; }
+    if (!isFinite(years) || years < 0){ toast('Enter a valid time period.', 'err'); return; }
+    if (principal === 0 && contribution === 0){ toast('Enter an initial deposit or a regular contribution.', 'err'); return; }
+
+    const r = ciCompute(principal, contribution, contribFreq, rate, compoundFreq, years);
+
+    document.getElementById('ciFinalBalance').textContent = ciFmt(r.finalBalance);
+    document.getElementById('ciTotalContributed').textContent = ciFmt(r.totalContributed);
+    document.getElementById('ciTotalInterest').textContent = ciFmt(r.totalInterest);
+    document.getElementById('ciResultBox').classList.remove('hidden');
+
+    // Proportional bar: contributions vs interest earned, as a share of the
+    // final balance. Guarded against a zero balance (e.g. all-zero inputs
+    // already rejected above, but stay defensive).
+    const barBox = document.getElementById('ciBarBox');
+    if (r.finalBalance > 0){
+      const contribPct = Math.max(0, Math.min(100, (r.totalContributed / r.finalBalance) * 100));
+      document.getElementById('ciBarContrib').style.width = contribPct + '%';
+      document.getElementById('ciBarInterest').style.width = (100 - contribPct) + '%';
+      barBox.classList.remove('hidden');
+    } else {
+      barBox.classList.add('hidden');
+    }
+
+    // Inflation-adjusted real value (optional)
+    const realBox = document.getElementById('ciRealBox');
+    if (isFinite(inflation) && inflation > 0 && years > 0){
+      const real = r.finalBalance / Math.pow(1 + inflation / 100, years);
+      document.getElementById('ciRealValue').textContent = ciFmt(real);
+      realBox.classList.remove('hidden');
+    } else {
+      realBox.classList.add('hidden');
+    }
+
+    // Year-by-year schedule
+    const scheduleBox = document.getElementById('ciScheduleBox');
+    const tbody = document.getElementById('ciScheduleBody');
+    if (r.yearly.length > 0){
+      tbody.innerHTML = r.yearly.map(row =>
+        `<tr><td>${row.year}</td><td>${ciFmt(row.contributed)}</td><td>${ciFmt(row.interest)}</td><td><strong>${ciFmt(row.balance)}</strong></td></tr>`
+      ).join('');
+      scheduleBox.classList.remove('hidden');
+    } else {
+      tbody.innerHTML = '';
+      scheduleBox.classList.add('hidden');
+    }
+
+    toast('Growth calculated.');
+  };
+
+  document.getElementById('ciResetBtn').onclick = () => {
+    ['ciPrincipal','ciContribution','ciRate','ciYears','ciInflation'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('ciContribFreq').value = '12';
+    document.getElementById('ciCompoundFreq').value = '12';
+    document.getElementById('ciResultBox').classList.add('hidden');
+    document.getElementById('ciRealBox').classList.add('hidden');
+    document.getElementById('ciBarBox').classList.add('hidden');
+    document.getElementById('ciScheduleBox').classList.add('hidden');
+  };
+}
