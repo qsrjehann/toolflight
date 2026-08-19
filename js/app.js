@@ -715,6 +715,7 @@ if (document.getElementById('compressDrop')){
 
   let compressFile = null;
   let compressedBlobUrl = null;
+  let compressedFileExt = 'jpg';
   let originalPreviewUrl = null;
 
   function setCompressProgress(pct, label){
@@ -808,19 +809,56 @@ if (document.getElementById('compressDrop')){
 
       setCompressProgress(80, 'Encoding…');
       await nextFrame();
-      const blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
+      let blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
+      let outFormatLabel = 'JPG';
+
+      // JPEG's DCT-based compression is built for photos (gradual color,
+      // noise, texture) -- it can genuinely produce a LARGER file than the
+      // original for flat-color/graphic content (logos, screenshots, simple
+      // illustrations, icons), since PNG's lossless approach already
+      // represents large uniform areas very compactly. Previously this was
+      // never checked, so a "compressed" download could come out BIGGER
+      // than what the user started with, while the UI clamped the negative
+      // percentage to a misleading "0% smaller" instead of surfacing what
+      // actually happened. Try PNG as a fallback candidate and always keep
+      // whichever real output is genuinely smallest.
+      if (blob.size >= compressFile.size){
+        const pngBlob = await canvasToBlobAsync(canvas, 'image/png');
+        if (pngBlob.size < blob.size){ blob = pngBlob; outFormatLabel = 'PNG'; }
+      }
+      let usedOriginal = false;
+      if (blob.size >= compressFile.size && target.width === width && target.height === height){
+        // Neither re-encode beats the original, and we didn't even resize
+        // it (so there is no dimension-reduction benefit either) -- the
+        // honest, correct answer is that this file is already about as
+        // small as it can get. Offer the original back rather than a
+        // "compressed" file that is actually larger.
+        blob = compressFile;
+        outFormatLabel = (compressFile.type.split('/')[1] || 'original').toUpperCase();
+        usedOriginal = true;
+      }
 
       setCompressProgress(95, 'Finishing up…');
       await nextFrame();
 
       if (compressedBlobUrl) URL.revokeObjectURL(compressedBlobUrl);
       compressedBlobUrl = URL.createObjectURL(blob);
+      compressedFileExt = usedOriginal
+        ? (compressFile.name && /\.[a-z0-9]+$/i.test(compressFile.name) ? compressFile.name.match(/\.([a-z0-9]+)$/i)[1] : outFormatLabel.toLowerCase())
+        : outFormatLabel.toLowerCase();
       document.getElementById('compPreview').src = compressedBlobUrl;
       document.getElementById('compSize').textContent = fmtBytes(blob.size);
 
-      const savedPct = Math.max(0, Math.round((1 - blob.size / compressFile.size) * 100));
-      document.getElementById('savedBadge').textContent = savedPct + '% smaller' +
-        (target.width !== width || target.height !== height ? ` · resized to ${target.width}×${target.height}` : '');
+      const savedPct = Math.round((1 - blob.size / compressFile.size) * 100);
+      const dimNote = (target.width !== width || target.height !== height) ? ` · resized to ${target.width}×${target.height}` : '';
+      if (usedOriginal){
+        document.getElementById('savedBadge').textContent = 'Already optimal — kept your original file' + dimNote;
+      } else if (savedPct <= 0){
+        document.getElementById('savedBadge').textContent = `Re-encoded as ${outFormatLabel} (about the same size)` + dimNote;
+      } else {
+        document.getElementById('savedBadge').textContent = savedPct + '% smaller' +
+          (outFormatLabel !== 'JPG' ? ` (saved as ${outFormatLabel})` : '') + dimNote;
+      }
       document.getElementById('savedRow').classList.remove('hidden');
       document.getElementById('compressDownloadBtn').classList.remove('hidden');
 
@@ -838,7 +876,7 @@ if (document.getElementById('compressDrop')){
   document.getElementById('compressDownloadBtn').onclick = () => {
     if (!compressedBlobUrl) return;
     const a = document.createElement('a');
-    a.href = compressedBlobUrl; a.download = 'compressed.jpg';
+    a.href = compressedBlobUrl; a.download = 'compressed.' + compressedFileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 }
@@ -3228,9 +3266,29 @@ if (document.getElementById('bgChangerDrop')){
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
       fgCanvas = c;
+
+      // The format check above only confirms this IS a PNG/WEBP -- it says
+      // nothing about whether the file actually HAS transparency. A fully
+      // opaque PNG passes that check, loads "successfully," and then every
+      // background change below has zero visible effect with no
+      // explanation why -- exactly the "nothing happens" bug report this
+      // fixes. Sample the alpha channel directly to tell the difference.
+      const sctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      const sampleStep = Math.max(1, Math.floor(Math.sqrt((w*h) / 4000))); // ~4000 sample points regardless of image size
+      let hasTransparency = false;
+      outer:
+      for (let y = 0; y < h; y += sampleStep){
+        const row = sctx.getImageData(0, y, w, 1).data;
+        for (let x = 0; x < w; x += sampleStep){
+          if (row[x*4 + 3] < 250){ hasTransparency = true; break outer; }
+        }
+      }
+      document.getElementById('bgChangerNoAlphaWarning').classList.toggle('hidden', hasTransparency);
+
       document.getElementById('bgChangerStage').classList.remove('hidden');
       renderBgComposite();
-      toast('Image loaded — choose a new background.');
+      toast(hasTransparency ? 'Image loaded — choose a new background.' : 'Image loaded, but it has no transparent areas — see the note below.', hasTransparency ? undefined : 'err');
     }catch(err){ toast(err.message, 'err'); }
   });
 
@@ -5847,7 +5905,16 @@ if (document.getElementById('upsDrop')){
     }catch(err){
       if (err && err.cancelled){ toast('Cancelled.'); }
       else{
-        toast('Upscaling failed: ' + ((err && err.message) || 'please try a smaller image or a different browser.'), 'err');
+        // A script/model-load failure surfaces the raw CDN URL in
+        // err.message (e.g. "Failed to load https://cdn.jsdelivr.net/...")
+        // -- meaningless and alarming to a non-technical user. Detect that
+        // specific failure shape and show the same clean, actionable
+        // message the other AI tools already use, instead of leaking
+        // internal infrastructure details.
+        const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
+        toast(isLoadFailure
+          ? 'Could not load the upscaling engine — check your connection and try again.'
+          : 'Upscaling failed: ' + ((err && err.message) || 'please try a smaller image or a different browser.'), 'err');
       }
     }finally{
       setLoading(btn, false, 'AI Upscale');
@@ -6085,7 +6152,12 @@ if (document.getElementById('ocrDrop')){
         }
       }
     }catch(err){
-      if (!ocrCancelled) toast('OCR failed: ' + ((err && err.message) || 'please try a different file.'), 'err');
+      if (!ocrCancelled){
+        const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
+        toast(isLoadFailure
+          ? 'Could not load the OCR engine — check your connection and try again.'
+          : 'OCR failed: ' + ((err && err.message) || 'please try a different file.'), 'err');
+      }
     }finally{
       if (ocrWorker){ try{ await ocrWorker.terminate(); }catch(e){} ocrWorker = null; }
       setLoading(btn, false, 'Extract Text');
@@ -8999,6 +9071,16 @@ if (document.getElementById('ppDrop')){
   ppPluginEngine.register({ id: 'exportPng', category: 'more', name: 'Download PNG', kind: 'action', activate: () => exportPp('png') });
   ppPluginEngine.register({ id: 'exportJpeg', category: 'more', name: 'Download JPEG', kind: 'action', activate: () => exportPp('jpeg') });
   document.getElementById('ppDownloadPngBtn').onclick = () => ppPluginEngine.activate('exportPng');
+  // The buttons above live inside the collapsed "More" accordion, which is
+  // not open by default -- on mobile (where #ppTopAppBar is the only chrome
+  // that's always on-screen regardless of which accordion/tab is active),
+  // that meant the single most important action in the whole tool, actually
+  // getting your photo, had no visible entry point unless a user happened
+  // to expand "More" specifically. This sticky top-bar button is a second,
+  // always-reachable entry point to the exact same export, not a
+  // replacement for the one inside "More".
+  const ppTopDownloadBtn = document.getElementById('ppTopDownloadBtn');
+  if (ppTopDownloadBtn) ppTopDownloadBtn.onclick = () => ppPluginEngine.activate('exportPng');
   document.getElementById('ppDownloadJpgBtn').onclick = () => ppPluginEngine.activate('exportJpeg');
   function exportPp(format){
     const canvas = document.getElementById('ppPreviewCanvas');
