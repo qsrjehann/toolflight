@@ -1,4 +1,4 @@
-﻿/* ToolFlight — shared app logic. Loaded on every page.
+/* ToolFlight — shared app logic. Loaded on every page.
    Every tool block below is guarded with an element-existence check
    so this single file works whether that tool exists on the page or not. */
 
@@ -36,53 +36,6 @@ window.addEventListener('pageshow', function(e){
 });
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
-
-/* ============ MOBILE NAVIGATION ============ */
-(function setupMobileNav(){
-  const btn = document.getElementById('mobileMenuBtn');
-  const overlay = document.getElementById('mobileNavOverlay');
-  const closeBtn = document.getElementById('mobileNavClose');
-  const mobileThemeBtn = document.getElementById('mobileNavThemeBtn');
-  if (!btn || !overlay) return;
-
-  // Highlight active nav link in mobile panel
-  (function(){
-    const path = window.location.pathname.split('/').pop() || 'index.html';
-    overlay.querySelectorAll('a[data-page]').forEach(function(a){
-      if (a.dataset.page === path) a.classList.add('active');
-    });
-  })();
-
-  function openNav(){
-    overlay.classList.add('open');
-    btn.setAttribute('aria-expanded', 'true');
-    document.body.style.overflow = 'hidden';
-    if (closeBtn) setTimeout(function(){ closeBtn.focus(); }, 50);
-  }
-  function closeNav(){
-    overlay.classList.remove('open');
-    btn.setAttribute('aria-expanded', 'false');
-    document.body.style.overflow = '';
-    btn.focus();
-  }
-
-  btn.addEventListener('click', openNav);
-  if (closeBtn) closeBtn.addEventListener('click', closeNav);
-  // Close on backdrop click (clicking the overlay outside the panel)
-  overlay.addEventListener('click', function(e){ if (e.target === overlay) closeNav(); });
-  // Close on Escape key
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && overlay.classList.contains('open')) closeNav(); });
-  // Close when a link is tapped (navigating away closes the menu smoothly)
-  overlay.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', closeNav); });
-
-  // Mobile theme toggle mirrors the main theme toggle button
-  if (mobileThemeBtn){
-    mobileThemeBtn.addEventListener('click', function(){
-      var mainThemeBtn = document.getElementById('themeToggle');
-      if (mainThemeBtn) mainThemeBtn.click();
-    });
-  }
-})();
 
 /* ============ TOASTS ============ */
 function toast(message, type='ok'){
@@ -746,13 +699,12 @@ if (document.getElementById('splitDrop')){
 /* ============ COMPRESS IMAGE (image-tools.html) ============ */
 if (document.getElementById('compressDrop')){
   const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB hard reject
-  const MAX_DIMENSION = 2000; // longest side after resize (only applied when keep-res is unchecked)
+  const MAX_DIMENSION = 2000; // longest side after resize
   const COMPRESS_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
   let compressFile = null;
   let compressedBlobUrl = null;
   let originalPreviewUrl = null;
-  let compressFormat = 'jpeg'; // 'jpeg' | 'png' | 'webp'
 
   function setCompressProgress(pct, label){
     const wrap = document.getElementById('compressProgressWrap');
@@ -789,19 +741,6 @@ if (document.getElementById('compressDrop')){
     return { width: Math.round(w * scale), height: Math.round(h * scale) };
   }
 
-  // Format selector buttons
-  document.querySelectorAll('.compress-format-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.compress-format-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      compressFormat = btn.dataset.format;
-      // Reset previous result so user gets fresh output in new format
-      if (compressedBlobUrl){ URL.revokeObjectURL(compressedBlobUrl); compressedBlobUrl = null; }
-      document.getElementById('compressDownloadBtn').classList.add('hidden');
-      document.getElementById('savedRow').classList.add('hidden');
-    });
-  });
-
   setupDropZone('compressDrop','compressInput', async (files) => {
     const f = files.find(f => COMPRESS_ACCEPTED_TYPES.includes(f.type));
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
@@ -832,8 +771,6 @@ if (document.getElementById('compressDrop')){
     try{
       await nextFrame();
       const quality = parseInt(document.getElementById('qualitySlider').value,10) / 100;
-      const keepResEl = document.getElementById('compressKeepRes');
-      const keepRes = keepResEl ? keepResEl.checked : false;
 
       setCompressProgress(30, 'Decoding image…');
       await nextFrame();
@@ -845,10 +782,9 @@ if (document.getElementById('compressDrop')){
       if (!width || !height){
         throw new Error('This file could not be read as an image. Try a JPG, PNG, or WEBP file.');
       }
-      // Only resize if user hasn't opted to keep original resolution
-      const target = keepRes ? { width, height } : computeTargetDims(width, height, MAX_DIMENSION);
+      const target = computeTargetDims(width, height, MAX_DIMENSION);
 
-      setCompressProgress(55, 'Encoding…');
+      setCompressProgress(55, 'Resizing for your device…');
       await nextFrame();
       const canvas = document.createElement('canvas');
       canvas.width = target.width;
@@ -859,11 +795,9 @@ if (document.getElementById('compressDrop')){
       URL.revokeObjectURL(loadedUrl);
       loadedUrl = null;
 
-      setCompressProgress(80, 'Compressing…');
+      setCompressProgress(80, 'Encoding…');
       await nextFrame();
-      // Select MIME type from chosen format; PNG is lossless (quality param is ignored by browsers)
-      const fmtMime = compressFormat === 'png' ? 'image/png' : compressFormat === 'webp' ? 'image/webp' : 'image/jpeg';
-      const blob = await canvasToBlobAsync(canvas, fmtMime, quality);
+      const blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
 
       setCompressProgress(95, 'Finishing up…');
       await nextFrame();
@@ -874,15 +808,13 @@ if (document.getElementById('compressDrop')){
       document.getElementById('compSize').textContent = fmtBytes(blob.size);
 
       const savedPct = Math.max(0, Math.round((1 - blob.size / compressFile.size) * 100));
-      let badge = savedPct + '% smaller';
-      if (target.width !== width || target.height !== height) badge += ` · resized to ${target.width}×${target.height}`;
-      badge += ` · ${compressFormat.toUpperCase()}`;
-      document.getElementById('savedBadge').textContent = badge;
+      document.getElementById('savedBadge').textContent = savedPct + '% smaller' +
+        (target.width !== width || target.height !== height ? ` · resized to ${target.width}×${target.height}` : '');
       document.getElementById('savedRow').classList.remove('hidden');
       document.getElementById('compressDownloadBtn').classList.remove('hidden');
 
       setCompressProgress(100, 'Done.');
-      toast('Image compressed successfully.');
+      toast('Image compressed.');
     }catch(err){
       toast('Compression failed: ' + (err.message || 'please try a different image.'), 'err');
     }finally{
@@ -894,9 +826,8 @@ if (document.getElementById('compressDrop')){
 
   document.getElementById('compressDownloadBtn').onclick = () => {
     if (!compressedBlobUrl) return;
-    const ext = compressFormat === 'png' ? 'png' : compressFormat === 'webp' ? 'webp' : 'jpg';
     const a = document.createElement('a');
-    a.href = compressedBlobUrl; a.download = `compressed.${ext}`;
+    a.href = compressedBlobUrl; a.download = 'compressed.jpg';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 }
@@ -1110,144 +1041,6 @@ if (document.getElementById('qrGenBtn')){
     a.href = url;
     a.click();
     URL.revokeObjectURL(url);
-  };
-}
-
-/* ============ KEYWORD DENSITY CHECKER (keyword-density-checker.html) ============ */
-if (document.getElementById('keywordDensityAnalyzeBtn')){
-  const KDC_STOP_WORDS = new Set(['a','an','the','and','or','but','in','on','at','to',
-    'for','of','with','by','from','as','is','was','are','were','be','been','being',
-    'have','has','had','do','does','did','will','would','could','should','may',
-    'might','shall','must','it','its','this','that','these','those','i','you',
-    'he','she','we','they','me','him','her','us','them','my','your','his','our',
-    'their','what','which','who','whom','how','when','where','why','not','no','so',
-    'if','than','then','about','up','out','more','can','just','also','very','also',
-    'all','any','each','every','few','some','such','too','very','s','t','re','ll']);
-
-  function kdcTokenize(text){
-    return text.toLowerCase()
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[^a-z0-9'\-\s]/g, ' ')
-      .replace(/[\r\n]+/g, ' ')
-      .split(/\s+/)
-      .map(function(w){ return w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''); })
-      .filter(function(w){ return w.length > 1; });
-  }
-
-  function kdcCountSentences(text){
-    var cleaned = text.trim();
-    if (!cleaned) return 0;
-    return (cleaned.match(/[.!?]+/g) || []).length || 1;
-  }
-
-  function kdcCountParagraphs(text){
-    return text.split(/\n\s*\n/).filter(function(p){ return p.trim(); }).length || (text.trim() ? 1 : 0);
-  }
-
-  function kdcPhraseCount(text, phrase){
-    if (!phrase) return 0;
-    var escaped = phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var re = new RegExp('(?<![a-z])' + escaped + '(?![a-z])', 'gi');
-    return (text.match(re) || []).length;
-  }
-
-  // Live stats as user types
-  var kdcTextArea = document.getElementById('keywordDensityText');
-  function kdcUpdateLiveStats(){
-    var text = kdcTextArea ? kdcTextArea.value : '';
-    var words = kdcTokenize(text);
-    var wc = document.getElementById('keywordDensityWordCount');
-    var cc = document.getElementById('keywordDensityCharCount');
-    var ccns = document.getElementById('keywordDensityCharCountNoSpaces');
-    var sc = document.getElementById('keywordDensitySentenceCount');
-    var pc = document.getElementById('keywordDensityParagraphCount');
-    if (wc) wc.textContent = words.length.toLocaleString();
-    if (cc) cc.textContent = text.length.toLocaleString();
-    if (ccns) ccns.textContent = text.replace(/\s/g,'').length.toLocaleString();
-    if (sc) sc.textContent = kdcCountSentences(text).toLocaleString();
-    if (pc) pc.textContent = kdcCountParagraphs(text).toLocaleString();
-  }
-  if (kdcTextArea) kdcTextArea.addEventListener('input', kdcUpdateLiveStats);
-
-  document.getElementById('keywordDensityAnalyzeBtn').onclick = function(){
-    var text = kdcTextArea ? kdcTextArea.value : '';
-    var targetEl = document.getElementById('keywordDensityTargetKeyword');
-    var target = (targetEl ? targetEl.value : '').trim().toLowerCase();
-    if (!text.trim()){ toast('Paste some content first.', 'err'); return; }
-
-    var tokens = kdcTokenize(text);
-    var totalWords = tokens.length;
-    if (!totalWords){ toast('No readable words found in this content.', 'err'); return; }
-
-    var freqMap = {};
-    tokens.forEach(function(w){ freqMap[w] = (freqMap[w] || 0) + 1; });
-
-    // Top 20 keywords, stop words excluded
-    var topWords = Object.entries(freqMap)
-      .filter(function(e){ return !KDC_STOP_WORDS.has(e[0]); })
-      .sort(function(a, b){ return b[1] - a[1]; })
-      .slice(0, 20);
-
-    var html = '';
-
-    // Content statistics grid
-    html += '<div class="kdc-stats-grid">';
-    html += '<div class="kdc-stat"><div class="kdc-num">' + totalWords.toLocaleString() + '</div><div class="kdc-label">Words</div></div>';
-    html += '<div class="kdc-stat"><div class="kdc-num">' + text.length.toLocaleString() + '</div><div class="kdc-label">Characters</div></div>';
-    html += '<div class="kdc-stat"><div class="kdc-num">' + kdcCountSentences(text) + '</div><div class="kdc-label">Sentences</div></div>';
-    html += '<div class="kdc-stat"><div class="kdc-num">' + kdcCountParagraphs(text) + '</div><div class="kdc-label">Paragraphs</div></div>';
-    html += '<div class="kdc-stat"><div class="kdc-num">' + Object.keys(freqMap).length.toLocaleString() + '</div><div class="kdc-label">Unique Words</div></div>';
-    html += '</div>';
-
-    // Target keyword analysis
-    if (target){
-      var count = kdcPhraseCount(text, target);
-      var density = totalWords > 0 ? ((count / totalWords) * 100) : 0;
-      var cls = 'kdc-target-box';
-      var advice = '';
-      if (density === 0){
-        cls += ' kdc-err'; advice = 'Keyword not found in content.';
-      } else if (density < 0.5){
-        cls += ' kdc-warn'; advice = 'Below typical range. Consider using this keyword more naturally.';
-      } else if (density > 4){
-        cls += ' kdc-err'; advice = 'Very high density \u2014 this may read as keyword stuffing to search engines.';
-      } else {
-        advice = 'Good density. Writing naturally matters more than hitting a specific percentage.';
-      }
-      html += '<div class="' + cls + '">';
-      html += '<div class="kdc-target-density">' + density.toFixed(2) + '%</div>';
-      html += '<div class="kdc-target-label"><strong>&ldquo;' + target + '&rdquo;</strong> \u2014 found <strong>' + count.toLocaleString() + '</strong> time' + (count !== 1 ? 's' : '') + ' in ' + totalWords.toLocaleString() + ' words. ' + advice + '</div>';
-      html += '</div>';
-    }
-
-    // Top keywords frequency table
-    if (topWords.length){
-      html += '<div class="kdc-keyword-heading">Top Keywords</div>';
-      html += '<table class="kdc-table"><thead><tr><th>#</th><th>Keyword</th><th>Count</th><th>Density</th></tr></thead><tbody>';
-      topWords.forEach(function(entry, i){
-        var word = entry[0], cnt = entry[1];
-        var pct = ((cnt / totalWords) * 100).toFixed(2);
-        html += '<tr><td class="kdc-rank">' + (i + 1) + '</td><td>' + word + '</td><td>' + cnt + '</td><td class="kdc-pct">' + pct + '%</td></tr>';
-      });
-      html += '</tbody></table>';
-    }
-
-    var resultsEl = document.getElementById('keywordDensityResults');
-    if (resultsEl) resultsEl.innerHTML = html;
-    toast('Analysis complete.');
-  };
-
-  document.getElementById('keywordDensityClearBtn').onclick = function(){
-    if (kdcTextArea) kdcTextArea.value = '';
-    var targetEl = document.getElementById('keywordDensityTargetKeyword');
-    if (targetEl) targetEl.value = '';
-    var resultsEl = document.getElementById('keywordDensityResults');
-    if (resultsEl) resultsEl.innerHTML = '';
-    ['keywordDensityWordCount','keywordDensityCharCount','keywordDensityCharCountNoSpaces',
-     'keywordDensitySentenceCount','keywordDensityParagraphCount'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (el) el.textContent = '\u2014';
-    });
   };
 }
 
@@ -2303,27 +2096,7 @@ if (document.getElementById('aiRemoveDrop')){
   let segmenterLoadPromise = null;
   let aiSourceImg = null;
   let aiResultCanvas = null;
-  // EXIF-orientation-safe image load, used only for this tool's uploads.
-  // See the detailed reasoning where this is wired in below (loadImgAi).
-  function loadImageExifSafe(file){
-    return new Promise((resolve) => {
-      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve); return; }
-      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
-        const c = document.createElement('canvas');
-        c.width = bitmap.width; c.height = bitmap.height;
-        c.getContext('2d').drawImage(bitmap, 0, 0);
-        if (bitmap.close) bitmap.close();
-        c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
-        resolve(c);
-      }).catch(() => {
-        // createImageBitmap or the orientation option isn't supported here --
-        // fall back to the exact path every other ToolFlight image tool uses,
-        // so this can only ever improve correctness, never regress it.
-        loadImageFromFile(file).then(resolve);
-      });
-    });
-  }
-  const loadImgAi = loadImageExifSafe;
+  const loadImgAi = loadImageFromFile;
 
   function setAiStatus(state, message){
     const el = document.getElementById('aiModelStatus');
@@ -3356,7 +3129,6 @@ if (document.getElementById('bgChangerDrop')){
   let fgCanvas = null;
   let bgMode = 'color';
   let customBgImg = null;
-  let bgChangerResultCanvas = null; // was window.__bgChangerResult — removed from global scope (BUG-004)
   const loadImgBg = loadImageFromFile;
 
   // Receive a handoff from the AI Background Remover (now a separate page) via
@@ -3381,14 +3153,7 @@ if (document.getElementById('bgChangerDrop')){
   })();
 
   setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
-    const isPngOrWebp = (file) => {
-      if (file.type === 'image/png' || file.type === 'image/webp') return true;
-      // MIME-type reporting for a genuinely valid file is inconsistent across
-      // mobile browsers/OS share-sheets -- fall back to the filename extension
-      // rather than silently rejecting a real PNG/WEBP the browser mis-labeled.
-      return /\.(png|webp)$/i.test(file.name || '');
-    };
-    const f = files.find(isPngOrWebp);
+    const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
     try{
       const img = await loadImgBg(f);
@@ -3478,11 +3243,11 @@ if (document.getElementById('bgChangerDrop')){
     wrap.innerHTML = '';
     wrap.appendChild(out);
     document.getElementById('bgChangerDownloadRow').classList.remove('hidden');
-    bgChangerResultCanvas = out;
+    window.__bgChangerResult = out;
   }
 
   document.getElementById('bgChangerDownloadBtn').onclick = () => {
-    const out = bgChangerResultCanvas;
+    const out = window.__bgChangerResult;
     if (!out){ toast('Load an image first.', 'err'); return; }
     out.toBlob((blob) => {
       if (!blob){ toast('Could not export this image.', 'err'); return; }
@@ -9631,7 +9396,7 @@ if (document.getElementById('rtDrop')){
     eyeColorHex:null, eyeColorIntensity:0,
     browDefinition:0,
     noseDefinition:0,
-    beautyMarkIntensity:0, beautyMarkSize:50,
+    beautyMarkIntensity:0, beautyMarkSize:0,
   };
   let rtAdj = { ...RT_DEFAULTS };
 
@@ -24551,4 +24316,207 @@ if (document.getElementById('epeDrop')){
       if (banner) banner.classList.add('hidden');
     }
   });
+}
+
+/* ============ WORD COUNTER (word-counter.html) ============ */
+if (document.getElementById('wcText')){
+  const wcText = document.getElementById('wcText');
+  const wcStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
+
+  function wcCountWords(text){
+    const t = text.trim();
+    return t === '' ? 0 : t.split(/\s+/).length;
+  }
+  function wcCountSentences(text){
+    const t = text.trim();
+    if (t === '') return 0;
+    const parts = t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean);
+    return parts.length;
+  }
+  function wcCountParagraphs(text){
+    const t = text.trim();
+    if (t === '') return 0;
+    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
+  }
+  function wcFormatTime(words, wpm){
+    const mins = words / wpm;
+    if (words === 0) return '0 min';
+    if (mins < 1) return '< 1 min';
+    return Math.round(mins) + ' min';
+  }
+  function wcTopKeywords(text, limit){
+    const counts = {};
+    const words = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
+    for (const w of words){
+      if (w.length < 3 || wcStopwords.has(w)) continue;
+      counts[w] = (counts[w] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, limit);
+  }
+
+  function wcUpdate(){
+    const text = wcText.value;
+    const chars = Array.from(text).length;
+    const charsNoSpaces = Array.from(text.replace(/\s/g, '')).length;
+    const words = wcCountWords(text);
+
+    document.getElementById('wcWords').textContent = words.toLocaleString();
+    document.getElementById('wcChars').textContent = chars.toLocaleString();
+    document.getElementById('wcCharsNoSpaces').textContent = charsNoSpaces.toLocaleString();
+    document.getElementById('wcSentences').textContent = wcCountSentences(text).toLocaleString();
+    document.getElementById('wcParagraphs').textContent = wcCountParagraphs(text).toLocaleString();
+    document.getElementById('wcReadingTime').textContent = wcFormatTime(words, 225);
+    document.getElementById('wcSpeakingTime').textContent = wcFormatTime(words, 140);
+
+    const limit = parseInt(document.getElementById('wcLimitSelect').value, 10);
+    const limitBox = document.getElementById('wcLimitResult');
+    if (limit > 0){
+      const remaining = limit - chars;
+      limitBox.classList.remove('hidden');
+      if (remaining < 0){
+        limitBox.style.background = 'color-mix(in srgb, var(--err) 14%, transparent)';
+        limitBox.style.color = 'var(--err-solid)';
+        limitBox.textContent = Math.abs(remaining).toLocaleString() + ' characters over the limit';
+      } else {
+        limitBox.style.background = 'color-mix(in srgb, var(--ok) 14%, transparent)';
+        limitBox.style.color = 'var(--ok-solid)';
+        limitBox.textContent = remaining.toLocaleString() + ' characters left';
+      }
+    } else {
+      limitBox.classList.add('hidden');
+    }
+
+    const kwBox = document.getElementById('wcKeywordsBox');
+    const kwList = document.getElementById('wcKeywordsList');
+    const top = wcTopKeywords(text, 5);
+    if (top.length){
+      kwBox.classList.remove('hidden');
+      kwList.innerHTML = top.map(([w,c]) =>
+        `<span style="background:var(--bg2);border:1px solid var(--card-border);border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;">${w} <span style="color:var(--ink-soft);">(${c})</span></span>`
+      ).join('');
+    } else {
+      kwBox.classList.add('hidden');
+    }
+  }
+
+  wcText.addEventListener('input', wcUpdate);
+  document.getElementById('wcLimitSelect').addEventListener('change', wcUpdate);
+
+  document.getElementById('wcUpperBtn').onclick = () => { wcText.value = wcText.value.toUpperCase(); wcUpdate(); };
+  document.getElementById('wcLowerBtn').onclick = () => { wcText.value = wcText.value.toLowerCase(); wcUpdate(); };
+  document.getElementById('wcTitleBtn').onclick = () => {
+    wcText.value = wcText.value.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    wcUpdate();
+  };
+  document.getElementById('wcSentenceBtn').onclick = () => {
+    const lower = wcText.value.toLowerCase();
+    wcText.value = lower.replace(/(^\s*\w|[.!?]\s+\w)/g, c => c.toUpperCase());
+    wcUpdate();
+  };
+
+  document.getElementById('wcCopyBtn').onclick = () => {
+    if (!wcText.value){ toast('Nothing to copy yet.', 'err'); return; }
+    copyToClipboard(wcText.value).then(() => toast('Text copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
+  };
+  document.getElementById('wcClearBtn').onclick = () => { wcText.value = ''; wcUpdate(); wcText.focus(); };
+
+  document.getElementById('wcFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.txt')){ toast('Please choose a .txt file.', 'err'); e.target.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = () => { wcText.value = reader.result; wcUpdate(); };
+    reader.onerror = () => toast('Could not read that file.', 'err');
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  wcUpdate();
+}
+
+/* ============ KEYWORD DENSITY CHECKER (keyword-density-checker.html) ============ */
+if (document.getElementById('keywordDensityText')){
+  const kdStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
+
+  function kdCountWords(text){
+    const t = text.trim();
+    return t === '' ? 0 : t.split(/\s+/).length;
+  }
+  function kdCountSentences(text){
+    const t = text.trim();
+    if (t === '') return 0;
+    return t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean).length;
+  }
+  function kdCountParagraphs(text){
+    const t = text.trim();
+    if (t === '') return 0;
+    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
+  }
+
+  function kdUpdateStats(){
+    const text = document.getElementById('keywordDensityText').value;
+    document.getElementById('keywordDensityWordCount').textContent = kdCountWords(text).toLocaleString();
+    document.getElementById('keywordDensityCharCount').textContent = Array.from(text).length.toLocaleString();
+    document.getElementById('keywordDensityCharCountNoSpaces').textContent = Array.from(text.replace(/\s/g,'')).length.toLocaleString();
+    document.getElementById('keywordDensitySentenceCount').textContent = kdCountSentences(text).toLocaleString();
+    document.getElementById('keywordDensityParagraphCount').textContent = kdCountParagraphs(text).toLocaleString();
+  }
+  document.getElementById('keywordDensityText').addEventListener('input', kdUpdateStats);
+
+  document.getElementById('keywordDensityAnalyzeBtn').onclick = () => {
+    const text = document.getElementById('keywordDensityText').value;
+    const resultsBox = document.getElementById('keywordDensityResults');
+    if (!text.trim()){
+      toast('Paste some content first.', 'err');
+      resultsBox.innerHTML = '';
+      return;
+    }
+    const totalWords = kdCountWords(text);
+    const wordsLower = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
+
+    // target keyword density (supports multi-word phrases, matched as a
+    // literal substring on word boundaries — case-insensitive)
+    const target = document.getElementById('keywordDensityTargetKeyword').value.trim();
+    let targetHtml = '';
+    if (target){
+      const escaped = target.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp('\\b' + escaped + '\\b', 'gi');
+      const matches = text.match(re) || [];
+      const density = totalWords ? ((matches.length / totalWords) * 100) : 0;
+      targetHtml = `
+        <div style="margin-bottom:16px;padding:14px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
+          <span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Target keyword: "${target}"</span>
+          <span style="font-size:20px;font-weight:800;">${matches.length} occurrence${matches.length===1?'':'s'} &middot; ${density.toFixed(2)}% density</span>
+        </div>`;
+    }
+
+    // top keywords (single words, stopwords filtered) with density %
+    const counts = {};
+    for (const w of wordsLower){
+      if (w.length < 3 || kdStopwords.has(w)) continue;
+      counts[w] = (counts[w] || 0) + 1;
+    }
+    const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 20);
+    const rows = top.map(([w,c]) => {
+      const density = totalWords ? ((c/totalWords)*100).toFixed(2) : '0.00';
+      return `<div class="row" style="justify-content:space-between;margin-top:8px;padding:8px 12px;background:var(--card);border-radius:10px;border:1px solid var(--card-border);">
+        <span style="font-weight:600;">${w}</span>
+        <span style="color:var(--ink-soft);font-size:13px;">${c}× &middot; ${density}%</span>
+      </div>`;
+    }).join('');
+
+    resultsBox.innerHTML = targetHtml +
+      `<span class="field-label" style="margin-top:0;">Top Keywords</span>` +
+      (rows || '<p style="font-size:13px;color:var(--ink-soft);">No repeated keywords found.</p>');
+    kdUpdateStats();
+  };
+
+  document.getElementById('keywordDensityClearBtn').onclick = () => {
+    document.getElementById('keywordDensityText').value = '';
+    document.getElementById('keywordDensityTargetKeyword').value = '';
+    document.getElementById('keywordDensityResults').innerHTML = '';
+    kdUpdateStats();
+  };
+
+  kdUpdateStats();
 }
