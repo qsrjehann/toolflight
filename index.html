@@ -41,6 +41,42 @@
     if (isDark) document.documentElement.classList.add('dark');
   }catch(e){}
 })();
+/* Same reasoning, for the homepage hero's animated tool-wall: nested 3D
+   transforms (perspective + preserve-3d + translateZ) animating on ~70
+   elements at once, combined with color-mix()-based backgrounds, is
+   exactly the kind of workload that flashes, blanks out content, or drops
+   frames on older/non-standard rendering engines and on devices under
+   memory/data pressure.
+
+   UA-string sniffing for this was tried and did not reliably work: UC
+   Browser and other alternative browsers are well documented to disguise
+   their user agent as standard Chrome specifically so websites don't
+   treat them differently, which would make substring-matching for
+   "UCBrowser" silently never fire on exactly the browsers it needs to
+   catch.
+
+   This uses real feature detection instead: CSS.supports() asks the
+   actual rendering engine's own parser whether it understands each
+   feature the 3D wall depends on. This cannot be spoofed the way a UA
+   string can, and it fails safe -- any engine this script doesn't
+   recognize, is too old to have CSS.supports() at all, or simply
+   answers "no" to any of these checks gets the simple, guaranteed-
+   compatible 2D version by default. The 3D treatment is only added on
+   top for engines that positively prove they support every piece of it.
+   Applied before paint, same as the theme class above, so there's no
+   flash between a 3D-then-flattened state. */
+(function(){
+  try{
+    var el = document.documentElement;
+    var supports3D = !!(window.CSS && CSS.supports &&
+      CSS.supports('transform-style', 'preserve-3d') &&
+      CSS.supports('perspective', '1200px') &&
+      CSS.supports('background', 'color-mix(in srgb, red 50%, blue)'));
+    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var lowPerf = !!(conn && (conn.saveData || /2g/.test(conn.effectiveType || '')));
+    if (supports3D && !lowPerf) el.classList.add('hero-3d');
+  }catch(e){}
+})();
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -179,7 +215,7 @@
       <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 8h7a3 3 0 0 1 0 6H8m0 0l3 3m-3-3l3-3M17 16H9"/></svg></div>
       <div class="cat-content">
         <h3>Finance Tools</h3>
-        <p>Income Percentile Calculator — see how rich you are, worldwide and at home.</p>
+        <p>Currency conversion and loan calculations, in progress.</p>
         <span class="cta-link">Open tools <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </div>
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
@@ -298,12 +334,10 @@ const toolsConfig = [
   { name: 'AI Image Upscaler', desc: 'Enhance quality', category: 'ai', icon: '✦', url: 'ai-image-upscaler.html' },
   { name: 'Background Remover', desc: 'Remove backgrounds', category: 'image', icon: '◌', url: 'background-remover.html' },
   { name: 'PDF Merger', desc: 'Combine PDFs', category: 'pdf', icon: '+', url: 'pdf-merge.html' },
-  { name: 'Protect PDF', desc: 'Add password + encrypt', category: 'pdf', icon: '🔒', url: 'protect-pdf.html' },
-  { name: 'Unlock PDF', desc: 'Remove PDF password', category: 'pdf', icon: '🔓', url: 'unlock-pdf.html' },
   { name: 'Image Compressor', desc: 'Reduce file size', category: 'image', icon: '⇩', url: 'image-compress.html' },
+  { name: 'Format Converter', desc: 'PNG, JPG, WebP', category: 'image', icon: '⇄', url: 'image-format-converter.html' },
   { name: 'Currency Converter', desc: 'Live exchange rates', category: 'finance', icon: '$', url: 'currency-converter.html' },
   { name: 'Meta Tag Generator', desc: 'SEO metadata', category: 'seo', icon: '<>', url: 'meta-tag-generator.html' },
-  { name: 'Word Counter', desc: 'Word & character count', category: 'seo', icon: '¶', url: 'word-counter.html' },
   { name: 'BMI Calculator', desc: 'Quick health result', category: 'calc', icon: '⌗', url: 'bmi-calculator.html' },
   { name: 'Unit Converter', desc: 'Length · Weight · More', category: 'conv', icon: '⇄', url: 'unit-converter.html' },
   { name: 'QR Generator', desc: 'Create QR codes', category: 'seo', icon: '▦', url: 'qr-code-generator.html' },
@@ -315,8 +349,6 @@ const toolsConfig = [
   { name: 'AI Photo Retouch', desc: 'Enhance your photos', category: 'ai', icon: '✦', url: 'ai-photo-retouch.html' },
   { name: 'Percentage Calculator', desc: 'Calculate instantly', category: 'calc', icon: '%', url: 'percentage-calculator.html' },
   { name: 'EMI Calculator', desc: 'Loan payment estimate', category: 'calc', icon: '₨', url: 'emi-calculator.html' },
-  { name: 'Income Percentile Calc', desc: 'How rich am I? Worldwide + country', category: 'finance', icon: '🌍', url: 'income-percentile-calculator.html' },
-  { name: 'Compound Interest Calc', desc: 'Grow your savings over time', category: 'finance', icon: '📈', url: 'compound-interest-calculator.html' },
   { name: 'Watermark Tool', desc: 'Protect your images', category: 'image', icon: '◇', url: 'image-watermark.html' },
   { name: 'PDF Compress', desc: 'Reduce PDF size', category: 'pdf', icon: '⊟', url: 'pdf-compress.html' },
   { name: 'Keyword Generator', desc: 'AI keyword ideas', category: 'seo', icon: '⌕', url: 'ai-keyword-generator.html' },
@@ -400,18 +432,32 @@ function renderToolWall() {
   // Card widths are now dynamic (based on tool name length), so track widths
   // differ per row; without this, rows with shorter names would visibly move
   // faster than rows with longer names at the same animation duration.
-  const PIXELS_PER_SECOND = 38;
-  document.querySelectorAll('.wall-row .track').forEach(trackEl => {
-    const trackWidth = trackEl.scrollWidth;
-    if (!trackWidth) return;
-    const distance = trackWidth * 0.52; // matches the -52% keyframe distance
-    const duration = distance / PIXELS_PER_SECOND;
-    trackEl.style.animationDuration = `${duration.toFixed(2)}s`;
+  // Deferred one frame so this measurement work never blocks the hero's
+  // first paint -- CSS's own default durations (see the comment above
+  // .track-ltr/.track-rtl) render immediately either way, this just
+  // corrects them a moment later rather than delaying that first paint.
+  requestAnimationFrame(() => {
+    const PIXELS_PER_SECOND = 38;
+    document.querySelectorAll('.wall-row .track').forEach(trackEl => {
+      const trackWidth = trackEl.scrollWidth;
+      if (!trackWidth) return;
+      const distance = trackWidth * 0.52; // matches the -52% keyframe distance
+      const duration = distance / PIXELS_PER_SECOND;
+      trackEl.style.animationDuration = `${duration.toFixed(2)}s`;
+    });
   });
 }
 
 // 3D perspective based on mouse movement
 function setup3DPerspective() {
+  // Matches the CSS: the 3D wall (and this loop that drives its tilt) only
+  // exists when html.hero-3d is present, which JS only adds after
+  // CSS.supports() positively confirms the engine understands every
+  // feature involved (see the <head> script). Any engine that doesn't get
+  // that class already renders transform:none via CSS regardless -- so
+  // running this loop for it would just burn a requestAnimationFrame
+  // every frame, forever, writing a transform nothing ever displays.
+  if (!document.documentElement.classList.contains('hero-3d')) return;
   const scene = document.getElementById('wallScene');
   const wall = document.getElementById('toolWall');
   if (!scene || !wall) return;
