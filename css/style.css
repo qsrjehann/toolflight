@@ -135,31 +135,41 @@ a{color:inherit;}
 .hero-wall-container{position:relative;height:100%;min-height:500px;display:flex;align-items:center;}
 .wall-scene{
   position:relative;width:100%;height:100%;min-height:500px;
-  perspective:1200px;display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;
   overflow:hidden;border-radius:36px;
 }
+html.hero-3d .wall-scene{ perspective:1200px; }
 .wall-glow{
   position:absolute;width:85%;height:85%;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(109,94,245,.14),transparent 68%);
   background:radial-gradient(ellipse,color-mix(in srgb,var(--accent1) 18%,transparent),transparent 68%);
   filter:blur(32px);pointer-events:none;z-index:1;
 }
 .tool-wall{
-  position:relative;width:110%;height:650px;transform-style:preserve-3d;
-  transform:rotateX(8deg) rotateY(-8deg) rotateZ(-1deg) translateZ(0);
-  transition:transform .15s ease-out;z-index:2;
+  position:relative;width:110%;height:650px;transform-style:flat;transform:none;z-index:2;
+}
+html.hero-3d .tool-wall{
+  transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-8deg) rotateZ(-1deg) translateZ(0);
+  transition:transform .15s ease-out;
 }
 .tool-wall::before{
   content:"";position:absolute;left:4%;right:4%;top:7%;bottom:7%;
   border-radius:36px;
+  background:rgba(109,94,245,.05);
   background:linear-gradient(145deg,color-mix(in srgb,var(--accent1) 8%,transparent),color-mix(in srgb,var(--accent1) 2%,transparent));
+  border:1px solid var(--card-border);
   border:1px solid color-mix(in srgb,var(--card-border) 80%,transparent);
+  pointer-events:none;
+}
+html.hero-3d .tool-wall::before{
   box-shadow:inset 0 0 60px color-mix(in srgb,var(--accent1) 4%,transparent);
-  transform:translateZ(-80px);pointer-events:none;
+  transform:translateZ(-80px);
 }
 .wall-row{
   position:absolute;left:-10%;width:120%;height:110px;display:flex;align-items:center;gap:16px;
-  transform-style:preserve-3d;will-change:transform;
+  transform-style:flat;will-change:auto;
 }
+html.hero-3d .wall-row{ transform-style:preserve-3d;will-change:transform; }
 .wall-row::before{
   content:"";position:absolute;left:0;right:0;height:100%;pointer-events:none;
   background:linear-gradient(90deg,var(--bg1) 0%,transparent 10%,transparent 90%,var(--bg1) 100%);
@@ -170,7 +180,8 @@ a{color:inherit;}
 .row3{top:260px;}
 .row4{top:378px;}
 .row5{top:496px;}
-.track{display:flex;gap:16px;flex:none;transform-style:preserve-3d;padding:0 16px;}
+.track{display:flex;gap:16px;flex:none;transform-style:flat;padding:0 16px;}
+html.hero-3d .track{ transform-style:preserve-3d; }
 .track-ltr{animation:moveLeft 42s linear infinite;}
 .track-rtl{animation:moveRight 45s linear infinite;}
 /* Per-row animation-duration is overridden inline by JS (renderToolWall) to
@@ -182,19 +193,25 @@ a{color:inherit;}
   .track-ltr,.track-rtl{animation:none;transform:translateX(0);}
 }
 .tool-wall .tool-card{
-  --accent:var(--accent1);min-width:96px;max-width:210px;height:auto;min-height:64px;flex:none;border-radius:18px;
+  --accent:var(--accent1);width:170px;height:auto;min-height:64px;flex:none;border-radius:18px;
   background:var(--card);border:1px solid var(--card-border);
   display:flex;align-items:center;gap:12px;padding:10px 16px;
+  box-shadow:0 14px 28px rgba(20,15,50,.12);
+  transform:none;transition:box-shadow .25s ease;
+  cursor:pointer;position:relative;overflow:visible;text-decoration:none;
+  color:inherit;
+}
+html.hero-3d .tool-wall .tool-card{
+  min-width:96px;max-width:210px;width:auto;overflow:hidden;
   box-shadow:0 14px 28px var(--shadow),inset 0 1px color-mix(in srgb,#fff 30%,transparent);
   transform:translateZ(20px);transition:transform .25s cubic-bezier(.23,1,.320,1),box-shadow .25s ease;
-  cursor:pointer;position:relative;overflow:hidden;text-decoration:none;
-  color:inherit;
 }
 .tool-wall .tool-card::after{
   content:"";position:absolute;inset:auto 0 0;height:2.5px;
   background:var(--accent);opacity:.6;
 }
-.tool-wall .tool-card:hover{
+.tool-wall .tool-card:hover{ transform:none; }
+html.hero-3d .tool-wall .tool-card:hover{
   transform:translateZ(45px) scale(1.03);
   box-shadow:0 24px 40px var(--shadow),0 0 20px color-mix(in srgb,var(--accent) 18%,transparent);
   z-index:40;
@@ -203,6 +220,10 @@ a{color:inherit;}
 .tool-wall .tool-icon{
   width:48px;height:48px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:20px;font-weight:800;
+  background:var(--accent);
+  box-shadow:0 8px 16px rgba(0,0,0,.18);
+}
+html.hero-3d .tool-wall .tool-icon{
   background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent));
   box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
 }
@@ -769,8 +790,8 @@ html.dark .category-hub-card .cat-arrow{
 .unit-toggle button.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
 
 .result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px;margin-top:18px;}
-.result-stat{border:1px solid var(--card-border);border-radius:12px;padding:14px 10px;text-align:center;background:var(--card);min-width:0;}
-.result-stat .num{font-size:clamp(15px,5.2vw,22px);font-weight:800;letter-spacing:-.02em;overflow-wrap:break-word;}
+.result-stat{border:1px solid var(--card-border);border-radius:12px;padding:14px 10px;text-align:center;background:var(--card);}
+.result-stat .num{font-size:22px;font-weight:800;letter-spacing:-.02em;}
 .result-stat .label{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
 
 .bmi-badge{
@@ -1998,6 +2019,68 @@ html.dark .category-hub-card .cat-arrow{
 #rtStage .rt-bt-item-hero[aria-selected="true"]{ color:#fff; background:linear-gradient(135deg, var(--accent1), var(--accent2)); filter:brightness(1.1); }
 #rtStage .rt-bt-item-hero:hover{ color:#fff; filter:brightness(1.08); }
 
+/* ---- Makeup Studio panel (rtMakeupBar) ----
+   This entire panel's CSS was missing from the stylesheet -- every class
+   below is created/referenced by js/app.js (~line 12943) but had no
+   matching rule anywhere, so every chip/button rendered as an unstyled
+   native <button>. Styled to match this tool's existing visual language:
+   panel surface matches .rt-panel-sheet, pill buttons match
+   .rt-tb-text-btn/.rt-bt-item, swatches match .bg-swatch. */
+#rtStage .rt-makeup-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:16;
+  background:var(--epe-shell-surface); border-top-left-radius:20px; border-top-right-radius:20px;
+  border-top:1px solid var(--card-border);
+  box-shadow:0 -12px 32px -14px rgba(20,15,50,0.28);
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  max-height:60vh; max-height:60dvh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+#rtStage .rt-ms-level{ display:flex; align-items:flex-start; gap:10px; }
+#rtStage .rt-ms-chips{ flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-chip{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-chip:hover{ background:color-mix(in srgb, var(--accent1) 10%, var(--card)); }
+#rtStage .rt-ms-chip.active,
+#rtStage .rt-ms-chip[aria-selected="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
+#rtStage .rt-ms-close-btn,
+#rtStage .rt-ms-back-btn{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  border:1px solid var(--card-border); background:transparent; color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 12px; border-radius:10px; cursor:pointer;
+}
+#rtStage .rt-ms-close-btn svg,
+#rtStage .rt-ms-back-btn svg{ width:16px; height:16px; flex:none; }
+#rtStage .rt-ms-tool-label{ font-size:14px; font-weight:800; color:var(--ink); flex:1 1 auto; align-self:center; }
+#rtStage .rt-ms-slider-slot{ display:flex; flex-direction:column; gap:14px; margin-top:12px; width:100%; }
+#rtStage .rt-ms-ctrl{ display:flex; flex-direction:column; gap:6px; }
+#rtStage .rt-ms-ctrl input[type="range"]{ width:100%; accent-color:var(--accent1-solid, var(--accent1)); }
+#rtStage .rt-ms-coming-soon{
+  font-size:13px; color:var(--ink-soft); background:var(--card); border:1px dashed var(--card-border);
+  border-radius:12px; padding:16px; text-align:center;
+}
+#rtStage .rt-ms-swatch-row{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-swatch{
+  width:36px; height:36px; border-radius:9px; border:2px solid var(--card-border); cursor:pointer; padding:0;
+}
+#rtStage .rt-ms-swatch[data-hex=""],
+#rtStage .rt-ms-swatch-none{
+  background:
+    linear-gradient(45deg, transparent 48%, #E5484D 49%, #E5484D 51%, transparent 52%),
+    var(--card);
+}
+#rtStage .rt-ms-lipfinish{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-finish-btn{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-finish-btn.active,
+#rtStage .rt-ms-finish-btn[aria-pressed="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
+
 /* (No mobile-only panel-sheet override needed anymore -- the base rule's
    max-height calc() and padding-bottom already account for the fixed
    bottom toolbar's height directly, see .rt-panel-sheet above.) */
@@ -2180,23 +2263,3 @@ html.dark .category-hub-card .cat-arrow{
 .rt-crop-handle-ne{ cursor:nesw-resize; } .rt-crop-handle-sw{ cursor:nesw-resize; }
 .rt-crop-handle-n{ cursor:ns-resize; } .rt-crop-handle-s{ cursor:ns-resize; }
 .rt-crop-handle-e{ cursor:ew-resize; } .rt-crop-handle-w{ cursor:ew-resize; }
-
-/* Generic data table -- small, reusable component (year-by-year growth
-   schedules, amortization tables, etc.) for any tool that needs one. */
-.data-table-wrap{overflow-x:auto;border:1px solid var(--card-border);border-radius:12px;margin-top:12px;}
-.data-table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;}
-.data-table th{text-align:right;padding:10px 14px;background:var(--card);color:var(--ink-soft);font-weight:700;position:sticky;top:0;border-bottom:1px solid var(--card-border);}
-.data-table th:first-child,.data-table td:first-child{text-align:left;}
-.data-table td{text-align:right;padding:9px 14px;border-bottom:1px solid var(--card-border);}
-.data-table tr:last-child td{border-bottom:none;}
-.data-table tr:hover td{background:color-mix(in srgb, var(--accent1) 5%, transparent);}
-
-/* Simple two-segment proportional bar (e.g. contributions vs interest) --
-   no charting library needed for a single comparison. */
-.prop-bar{display:flex;height:14px;border-radius:99px;overflow:hidden;margin-top:10px;background:var(--card-border);}
-.prop-bar .seg-a{background:var(--accent1);}
-.prop-bar .seg-b{background:var(--accent2);}
-.prop-legend{display:flex;gap:18px;margin-top:10px;font-size:12.5px;flex-wrap:wrap;}
-.prop-legend span{display:flex;align-items:center;gap:6px;color:var(--ink-soft);}
-.prop-legend .dot{width:10px;height:10px;border-radius:99px;flex:none;}
-
