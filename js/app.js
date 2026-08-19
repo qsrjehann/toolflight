@@ -2265,11 +2265,40 @@ if (document.getElementById('aiRemoveDrop')){
       if (result.categoryMask.close) result.categoryMask.close();
       if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
 
+      // Plausibility check (combines the two independent signals Passport
+      // Photo Maker already uses, missing here until now): DeepLab v3
+      // recognizes general object categories (people, animals, vehicles,
+      // everyday objects) -- it has no notion of "this is a graphic
+      // design / share card / screenshot, not a photo." On non-
+      // photographic images it can return a segmentation that keeps a
+      // plausible-LOOKING area fraction (e.g. a ~25% band across the
+      // middle) while the model was actually never confident about any of
+      // it -- an area check alone does not catch that shape of failure,
+      // which is exactly the "half my image disappeared" bug report this
+      // fixes; the confidence signal does. It still always hands off to
+      // Manual Mode either way (never strands the user), only the wording
+      // now honestly reflects what happened.
+      let keptPixels = 0;
+      for (let i = 0; i < w*h; i++) if (refinedAlpha[i] > 32) keptPixels++;
+      const keptFrac = keptPixels / (w*h);
+      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
+      let avgConfidence = null;
+      if (confidenceData){
+        let sum = 0; for (let i = 0; i < confidenceData.length; i++) sum += confidenceData[i];
+        avgConfidence = sum / confidenceData.length;
+      }
+      const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
+      const implausible = areaImplausible || lowConfidence;
+
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
-      toast('Background removed. Refine it below if needed.');
+      if (implausible){
+        toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
+      } else {
+        toast('Background removed. Refine it below if needed.');
+      }
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
