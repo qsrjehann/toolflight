@@ -17015,17 +17015,29 @@ if (document.getElementById('epeDrop')){
       mask.close && mask.close();
       const subjectFrac = subjectPixels/(w*h);
       const areaImplausible = subjectFrac < 0.02 || subjectFrac > 0.98;
+      const manualRow = document.getElementById('epeManualBgRow');
+      const manualText = document.getElementById('epeManualBgText');
       if (areaImplausible){
         statusEl.textContent = 'AI could not confidently separate the product.';
-        document.getElementById('epeManualBgRow').classList.remove('hidden');
+        manualText.textContent = 'Use the manual brush tools below (Retouch section) to erase or restore the background by hand.';
+        manualRow.classList.remove('hidden');
       } else {
         epeEraseMask = newMask;
         epeProcessedCanvasCache = null; // force recompute
         statusEl.textContent = 'Background removed.';
+        // The AI recognizes general object categories (people, products,
+        // vehicles, etc.) -- it has no "handwriting" or "stray mark"
+        // category, so pen marks, price stickers, or watermarks near the
+        // product commonly survive this pass untouched. Surfacing the
+        // manual eraser here (not just on failure) is how those get
+        // cleaned up, rather than silently leaving them in the result.
+        manualText.textContent = 'See any leftover spots, pen marks, or writing the AI didn\u2019t catch? Use the manual Erase brush below (Retouch section) to clean those up by hand.';
+        manualRow.classList.remove('hidden');
         renderEpeAll(); epePushHistory();
       }
     }catch(err){
       statusEl.textContent = 'AI background removal couldn\u2019t load right now. Use the manual eraser below instead.';
+      document.getElementById('epeManualBgText').textContent = 'Use the manual brush tools below (Retouch section) to erase or restore the background by hand.';
       document.getElementById('epeManualBgRow').classList.remove('hidden');
     } finally {
       setLoading(btn, false);
@@ -18084,7 +18096,7 @@ if (document.getElementById('epeDrop')){
   /* ---------- Export: the exact same renderEpeArtboard() used for the
      live preview, called with a fresh canvas -- one render pipeline,
      not a second implementation ---------- */
-  document.getElementById('epeDownloadBtn').onclick = () => {
+  document.getElementById('epeDownloadBtn').onclick = async () => {
     if (!epeSourceImg) return;
     if (typeof epeRunProjectHealthCheck === 'function'){
       const health = epeRunProjectHealthCheck();
@@ -18095,6 +18107,45 @@ if (document.getElementById('epeDrop')){
     renderEpeArtboard(exportCanvas);
     const tRender = performance.now();
     const format = document.getElementById('epeExportFormat').value;
+
+    if (format === 'pdf'){
+      // Single-page PDF sized 1:1 to the artboard (in points), embedding a
+      // PNG so transparency (e.g. a background removed with the AI or
+      // manual eraser) is preserved via pdf-lib's SMask support -- same
+      // embedPng() pattern already used by Image-to-PDF, not a second
+      // implementation.
+      const btn = document.getElementById('epeDownloadBtn');
+      setLoading(btn, true);
+      try{
+        const pngBlob = await new Promise((resolve, reject) => {
+          exportCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('Could not render this design.')), 'image/png');
+        });
+        const bytes = new Uint8Array(await pngBlob.arrayBuffer());
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const embedded = await pdfDoc.embedPng(bytes);
+        const page = pdfDoc.addPage([exportCanvas.width, exportCanvas.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: exportCanvas.width, height: exportCanvas.height });
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        const tEncode = performance.now();
+        downloadBlob(blob, 'product-photo.pdf');
+        const totalMs = tEncode - t0;
+        const uncompressedBytes = exportCanvas.width*exportCanvas.height*4;
+        if (typeof epeRecordOperation === 'function'){
+          epeRecordOperation('export_pdf', totalMs, { 'Canvas render': tRender-t0, 'Encode': tEncode-tRender },
+            { fileSizeBytes: blob.size, uncompressedBytes, compressionRatio: uncompressedBytes/blob.size, format: 'pdf' });
+          if (typeof epeRenderExportAnalytics === 'function') epeRenderExportAnalytics();
+        }
+        toast('PDF created.');
+      }catch(err){
+        console.error('Ecommerce Editor PDF export failed:', err);
+        toast(err.message || 'Could not export as PDF.', 'err');
+      }
+      setLoading(btn, false);
+      return;
+    }
+
     const ext = format === 'jpeg' ? 'jpg' : format;
     exportCanvas.toBlob((blob) => {
       if (!blob){ toast('Could not export \u2014 try a different format.', 'err'); return; }
