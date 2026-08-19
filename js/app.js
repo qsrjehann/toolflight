@@ -2324,15 +2324,35 @@ if (document.getElementById('aiRemoveDrop')){
       // fixes; the confidence signal does. It still always hands off to
       // Manual Mode either way (never strands the user), only the wording
       // now honestly reflects what happened.
-      let keptPixels = 0;
-      for (let i = 0; i < w*h; i++) if (refinedAlpha[i] > 32) keptPixels++;
-      const keptFrac = keptPixels / (w*h);
-      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
-      let avgConfidence = null;
-      if (confidenceData){
-        let sum = 0; for (let i = 0; i < confidenceData.length; i++) sum += confidenceData[i];
-        avgConfidence = sum / confidenceData.length;
+      // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
+      // version of this check looped over every one of w*h alpha values
+      // AND every confidenceData value, back-to-back, fully synchronously,
+      // immediately after the already-heavy refineSegmentationMask() and
+      // putImageData() calls above -- on a large photo (the MAX=1200 cap
+      // still allows up to 1,440,000 pixels) that's three uninterrupted
+      // full-resolution passes with no yield to the browser in between,
+      // long enough on real hardware to freeze the tab regardless of how
+      // fast the device is (this blocks the single JS thread; raw CPU
+      // speed shortens but does not prevent the freeze). Sampling ~3000
+      // points is statistically just as reliable for a coarse plausibility
+      // signal and finishes essentially instantly.
+      await nextFrame();
+      function sampledFraction(arr, n, threshold){
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, hits = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
+        return sampled ? hits/sampled : 0;
       }
+      function sampledAverage(arr){
+        const n = arr.length;
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, sum = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
+        return sampled ? sum/sampled : null;
+      }
+      const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
+      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
+      const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
       const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
       const implausible = areaImplausible || lowConfidence;
 
