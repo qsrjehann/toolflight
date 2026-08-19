@@ -2224,8 +2224,16 @@ if (document.getElementById('aiRemoveDrop')){
       aiResultCanvas = srcCanvas0;
       initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
-      // Warm up the model in the background as soon as an image is loaded.
-      ensureSegmenter().catch(() => {});
+      // Previously warmed up the AI model here, immediately on every
+      // upload, before the user asked for it. On a slow connection or a
+      // memory-constrained device, downloading and initializing a large
+      // WASM runtime + model file right away -- unconditionally, whether
+      // or not the user ever clicks "Remove Background" -- risks exactly
+      // the kind of renderer crash/black-screen freeze reported after
+      // selecting a photo here. The model still loads correctly and
+      // normally the moment the user actually clicks the button (see
+      // ensureSegmenter() in that handler below); it just no longer starts
+      // uninvited the instant an image is loaded.
       toast('Image loaded.');
     }catch(err){
       toast(err.message, 'err');
