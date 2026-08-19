@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Compound Interest Calculator — Free Savings & Investment Growth | ToolFlight</title>
+<meta name="description" content="Free compound interest calculator. See how your savings or investment grows with regular contributions, any compounding frequency, and inflation adjustment — with a full year-by-year breakdown.">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#6D5EF5">
+<meta name="author" content="ToolFlight">
+<link rel="icon" href="assets/favicon.ico?v=20260801-2348" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260801-2348">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260801-2348">
+<link rel="canonical" href="https://toolflight.com/compound-interest-calculator.html">
+
+<meta property="og:title" content="Compound Interest Calculator — Free Savings & Investment Growth | ToolFlight">
+<meta property="og:description" content="See how your savings or investment grows with regular contributions, any compounding frequency, and a full year-by-year breakdown.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/compound-interest-calculator.html">
+<meta property="og:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Compound Interest Calculator — Free Savings & Investment Growth | ToolFlight">
+<meta name="twitter:description" content="See how your savings or investment grows with regular contributions and any compounding frequency.">
+<meta name="twitter:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('toolflight_theme');
+    var isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) document.documentElement.classList.add('dark');
+  }catch(e){}
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="css/style.css?v=20260813-1600">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Any",
+  "description": "Free compound interest calculator. See how your savings or investment grows with regular contributions, any compounding frequency, and inflation adjustment.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }
+</script>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="ai-tools.html" data-page="ai-tools.html">AI Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="finance-tools.html" style="color:var(--ink-soft);text-decoration:none;">Finance Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">Compound Interest Calculator</span>
+</nav>
+  <h1>Compound Interest Calculator</h1>
+  <p class="subtitle">See how your savings or investment grows over time — with regular contributions, any compounding frequency, and a full year-by-year breakdown.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="finance-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Finance Tools</a>
+  </div>
+
+  <div class="workspace">
+    <div class="view-title"><h2>Calculate Your Growth</h2></div>
+
+    <span class="field-label" style="margin-top:0;">Initial deposit</span>
+    <input type="number" id="ciPrincipal" placeholder="e.g. 10000" min="0" step="0.01">
+
+    <span class="field-label">Regular contribution</span>
+    <div class="row">
+      <input type="number" id="ciContribution" placeholder="e.g. 200" min="0" step="0.01" style="flex:1;">
+      <select id="ciContribFreq" style="flex:0;min-width:130px;">
+        <option value="12">Monthly</option>
+        <option value="1">Yearly</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <div style="flex:1;">
+        <span class="field-label">Annual interest rate (%)</span>
+        <input type="number" id="ciRate" placeholder="e.g. 7" min="0" step="0.01">
+      </div>
+      <div style="flex:1;">
+        <span class="field-label">Time period (years)</span>
+        <input type="number" id="ciYears" placeholder="e.g. 20" min="0" step="1">
+      </div>
+    </div>
+
+    <span class="field-label">Compounding frequency</span>
+    <select id="ciCompoundFreq">
+      <option value="1">Annually</option>
+      <option value="2">Semi-annually</option>
+      <option value="4">Quarterly</option>
+      <option value="12" selected>Monthly</option>
+      <option value="365">Daily</option>
+    </select>
+
+    <details style="margin-top:16px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--ink);">Advanced options</summary>
+      <div style="margin-top:12px;">
+        <span class="field-label" style="margin-top:0;">Expected annual inflation rate (%, optional)</span>
+        <input type="number" id="ciInflation" placeholder="e.g. 3" min="0" step="0.01">
+        <p class="editor-hint">If set, we'll also show your final balance in today's purchasing power.</p>
+      </div>
+    </details>
+
+    <div class="row" style="margin-top:16px;">
+      <button class="btn btn-primary" id="ciCalcBtn" style="flex:1;" type="button">Calculate Growth</button>
+      <button class="btn btn-danger" id="ciResetBtn" type="button">Reset</button>
+    </div>
+
+    <div class="result-grid hidden" id="ciResultBox">
+      <div class="result-stat"><div class="num" id="ciFinalBalance">0.00</div><div class="label">Final Balance</div></div>
+      <div class="result-stat"><div class="num" id="ciTotalContributed">0.00</div><div class="label">Total Contributed</div></div>
+      <div class="result-stat"><div class="num" id="ciTotalInterest">0.00</div><div class="label">Total Interest Earned</div></div>
+    </div>
+
+    <div id="ciRealBox" class="hidden" style="margin-top:12px;padding:12px 14px;background:var(--card);border:1px solid var(--card-border);border-radius:12px;">
+      <span style="font-size:12px;color:var(--ink-soft);">In today's purchasing power (inflation-adjusted)</span>
+      <div style="font-size:22px;font-weight:800;" id="ciRealValue">0.00</div>
+    </div>
+
+    <div id="ciBarBox" class="hidden">
+      <div class="prop-bar"><div class="seg-a" id="ciBarContrib" style="width:50%;"></div><div class="seg-b" id="ciBarInterest" style="width:50%;"></div></div>
+      <div class="prop-legend">
+        <span><span class="dot" style="background:var(--accent1);"></span>Contributions</span>
+        <span><span class="dot" style="background:var(--accent2);"></span>Interest earned</span>
+      </div>
+    </div>
+
+    <div id="ciScheduleBox" class="hidden" style="margin-top:20px;">
+      <span class="field-label" style="margin-top:0;">Year-by-year breakdown</span>
+      <div class="data-table-wrap" style="max-height:340px;overflow-y:auto;">
+        <table class="data-table">
+          <thead><tr><th>Year</th><th>Contributed</th><th>Interest</th><th>Balance</th></tr></thead>
+          <tbody id="ciScheduleBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:16px;display:flex;align-items:center;gap:6px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+      This calculation runs entirely in your browser — nothing you enter is uploaded or stored.
+    </p>
+  </div>
+
+  <div style="margin-top:16px;padding:14px 16px;background:color-mix(in srgb, var(--warn) 10%, transparent);border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);border-radius:12px;font-size:13px;color:var(--ink);max-width:720px;">
+    <strong>This is a projection, not a guarantee.</strong> It assumes a fixed rate of return for the entire period. Real investments fluctuate, and this tool doesn't account for taxes or fees. It's for general planning only, not financial advice.
+  </div>
+
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About This Calculator</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">This calculator shows how a savings or investment balance grows over time, combining a one-time initial deposit with ongoing regular contributions, compounded at whatever frequency you choose. It's the same math behind savings accounts, retirement accounts, and recurring investment plans (like an SIP).</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;"><li>Combines a lump-sum deposit with monthly or yearly contributions</li><li>Any compounding frequency — annually to daily</li><li>Optional inflation adjustment to see real purchasing power</li><li>Full year-by-year table of contributions, interest, and balance</li></ul>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">What is Compound Interest?</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">Compound interest is interest calculated on both your original balance and the interest it has already earned. Over long periods, this compounding effect can make a much bigger difference than the interest rate alone — which is why starting early and compounding more frequently both help, even with the same rate and contributions.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Why Does Compounding Frequency Change the Result?</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">The more often interest is added to your balance, the sooner it starts earning its own interest. Daily compounding at the same annual rate will always produce a slightly higher final balance than annual compounding, though the difference is usually small compared to the effect of the rate itself or how long you invest.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is this a guaranteed return?</strong><br>No. This tool projects growth at a fixed rate you choose. Real savings and investment returns vary and are never guaranteed — treat this as a planning estimate, not a promise.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Does this include taxes or fees?</strong><br>No. Interest income may be taxable and many investment accounts carry fees — neither is factored in here, so your real result will likely be somewhat lower.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>What's the difference between nominal and real value?</strong><br>Nominal is the actual future dollar amount. Real (inflation-adjusted) value converts that back into today's purchasing power, so you can see what your future balance is actually worth.</p>
+    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;"><strong>Is my data saved anywhere?</strong><br>No. Everything is calculated locally in your browser and nothing is uploaded or stored.</p>
+
+    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
+    <div class="related-grid">
+      <a href="income-percentile-calculator.html" class="blog-card"><span class="blog-tag">Finance Tool</span><h3>Income Percentile Calculator</h3><p>See where your income ranks worldwide and in your country.</p></a>
+      <a href="emi-calculator.html" class="blog-card"><span class="blog-tag">Calculator</span><h3>EMI Calculator</h3><p>Monthly payment, total interest, and total payment for any loan.</p></a>
+      <a href="percentage-calculator.html" class="blog-card"><span class="blog-tag">Calculator</span><h3>Percentage Calculator</h3><p>Quick percentage, increase/decrease, and ratio calculations.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Finance Tools", "item": "https://toolflight.com/finance-tools.html"}, {"@type": "ListItem", "position": 3, "name": "Compound Interest Calculator", "item": "https://toolflight.com/compound-interest-calculator.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Compound Interest Calculator", "description": "Free compound interest calculator. See how your savings or investment grows with regular contributions, any compounding frequency, and inflation adjustment.", "url": "https://toolflight.com/compound-interest-calculator.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Compound Interest Calculator", "applicationCategory": "FinanceApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is this a guaranteed return?", "acceptedAnswer": {"@type": "Answer", "text": "No. This tool projects growth at a fixed rate you choose. Real savings and investment returns vary and are never guaranteed."}}, {"@type": "Question", "name": "Does this include taxes or fees?", "acceptedAnswer": {"@type": "Answer", "text": "No. Interest income may be taxable and many investment accounts carry fees \u2014 neither is factored in here."}}, {"@type": "Question", "name": "What's the difference between nominal and real value?", "acceptedAnswer": {"@type": "Answer", "text": "Nominal is the actual future dollar amount. Real (inflation-adjusted) value converts that back into today's purchasing power."}}, {"@type": "Question", "name": "Is my data saved anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No. Everything is calculated locally in your browser and nothing is uploaded or stored."}}]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+        <a href="ai-tools.html">AI Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="contact.html">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script defer src="js/app.js?v=20260813-1600"></script>
+</body>
+</html>
