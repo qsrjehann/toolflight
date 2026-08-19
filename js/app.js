@@ -484,20 +484,11 @@ function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
   if (!zone || !input) return;
-  // <label for="inputId"> zones already open the file picker natively on
-  // tap/click (zero JavaScript required, works even if a script elsewhere
-  // on the page throws) -- attaching a manual input.click() on top of that
-  // double-fires the picker, which is unreliable across mobile browsers.
-  // Older <div>-based drop-zones (most tools) still need the manual
-  // trigger, since a div has no native click-to-activate relationship with
-  // the input.
-  if (zone.tagName.toLowerCase() !== 'label'){
-    zone.onclick = () => input.click();
-  }
+  zone.onclick = () => input.click();
   input.onchange = () => { onFiles(Array.from(input.files)); input.value = ''; };
   ['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
   ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
-  zone.addEventListener('drop', e => { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); });
+  zone.addEventListener('drop', e => onFiles(Array.from(e.dataTransfer.files)));
 }
 let _dragReorderCtx = null; // { listEl, arr, rerender, index } — shared across all uses since only one drag happens at a time
 const _dragReorderListElsWithListener = new WeakSet();
@@ -563,9 +554,9 @@ function enableDragReorder(listEl, arr, rerender){
 
 /* ============ MERGE PDF (pdf-tools.html) ============ */
 if (document.getElementById('mergeDrop')){
-  const { PDFDocument } = PDFLib;
   let mergeFiles = [];
   setupDropZone('mergeDrop','mergeInput', async (files) => {
+    const { PDFDocument } = PDFLib;
     const pdfs = files.filter(f => f.type === 'application/pdf');
     if (pdfs.length === 0 && files.length > 0){ toast('Please select PDF files only.', 'err'); return; }
     for (const f of pdfs){
@@ -600,6 +591,7 @@ if (document.getElementById('mergeDrop')){
   }
   document.getElementById('mergeClearBtn').onclick = () => { mergeFiles = []; renderMergeList(); };
   document.getElementById('mergeBtn').onclick = async () => {
+    const { PDFDocument } = PDFLib;
     const btn = document.getElementById('mergeBtn');
     setLoading(btn, true);
     try{
@@ -623,11 +615,11 @@ if (document.getElementById('mergeDrop')){
 
 /* ============ SPLIT PDF (pdf-tools.html) ============ */
 if (document.getElementById('splitDrop')){
-  const { PDFDocument } = PDFLib;
   let splitFile = null;
   let splitTotalPages = 0;
   let selectedPages = new Set();
   setupDropZone('splitDrop','splitInput', async (files) => {
+    const { PDFDocument } = PDFLib;
     const f = files.find(f => f.type === 'application/pdf');
     if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
     splitFile = f;
@@ -679,6 +671,7 @@ if (document.getElementById('splitDrop')){
   }
   document.getElementById('splitClearBtn').onclick = clearSplit;
   document.getElementById('splitBtn').onclick = async () => {
+    const { PDFDocument } = PDFLib;
     const btn = document.getElementById('splitBtn');
     if (selectedPages.size === 0){ toast('Select at least one page.', 'err'); return; }
     setLoading(btn, true);
@@ -2105,7 +2098,27 @@ if (document.getElementById('aiRemoveDrop')){
   let segmenterLoadPromise = null;
   let aiSourceImg = null;
   let aiResultCanvas = null;
-  const loadImgAi = loadImageFromFile;
+  // EXIF-orientation-safe image load, used only for this tool's uploads.
+  // See the detailed reasoning where this is wired in below (loadImgAi).
+  function loadImageExifSafe(file){
+    return new Promise((resolve) => {
+      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve); return; }
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
+        const c = document.createElement('canvas');
+        c.width = bitmap.width; c.height = bitmap.height;
+        c.getContext('2d').drawImage(bitmap, 0, 0);
+        if (bitmap.close) bitmap.close();
+        c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
+        resolve(c);
+      }).catch(() => {
+        // createImageBitmap or the orientation option isn't supported here --
+        // fall back to the exact path every other ToolFlight image tool uses,
+        // so this can only ever improve correctness, never regress it.
+        loadImageFromFile(file).then(resolve);
+      });
+    });
+  }
+  const loadImgAi = loadImageExifSafe;
 
   function setAiStatus(state, message){
     const el = document.getElementById('aiModelStatus');
@@ -3162,7 +3175,14 @@ if (document.getElementById('bgChangerDrop')){
   })();
 
   setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
-    const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
+    const isPngOrWebp = (file) => {
+      if (file.type === 'image/png' || file.type === 'image/webp') return true;
+      // MIME-type reporting for a genuinely valid file is inconsistent across
+      // mobile browsers/OS share-sheets -- fall back to the filename extension
+      // rather than silently rejecting a real PNG/WEBP the browser mis-labeled.
+      return /\.(png|webp)$/i.test(file.name || '');
+    };
+    const f = files.find(isPngOrWebp);
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
     try{
       const img = await loadImgBg(f);
@@ -24327,607 +24347,149 @@ if (document.getElementById('epeDrop')){
   });
 }
 
-/* ============ WORD COUNTER (word-counter.html) ============ */
-if (document.getElementById('wcText')){
-  const wcText = document.getElementById('wcText');
-  const wcStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
+/* ============ IMAGE FORMAT CONVERTER (image-format-converter.html) ============
+   Reuses the shared loadImageFromFile() / canvasToBlobAsync() helpers (see
+   the comment above Image Compress's own loadImageWithUrl() for exactly why
+   this tool must NEVER redeclare a function named loadImageFromFile at
+   block/top level -- doing so previously shadowed the shared one and broke
+   five other image tools). Every identifier here uses the ifc prefix,
+   verified unused anywhere else in this file before this tool was built. */
+if (document.getElementById('ifcDrop')){
+  const IFC_MAX_FILE_BYTES = 50 * 1024 * 1024;
+  const IFC_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const IFC_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+  const IFC_LABEL = { 'image/png': 'PNG', 'image/jpeg': 'JPG', 'image/webp': 'WebP' };
 
-  function wcCountWords(text){
-    const t = text.trim();
-    return t === '' ? 0 : t.split(/\s+/).length;
+  let ifcFile = null;
+  let ifcSourceType = null;
+  let ifcTargetType = 'image/png';
+  let ifcResultBlob = null;
+  let ifcOrigUrl = null;
+  let ifcConvUrl = null;
+
+  function ifcSetProgress(pct, label){
+    const wrap = document.getElementById('ifcProgressWrap');
+    wrap.classList.remove('hidden');
+    document.getElementById('ifcProgressFill').style.width = pct + '%';
+    document.getElementById('ifcProgressLabel').textContent = label;
   }
-  function wcCountSentences(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    const parts = t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean);
-    return parts.length;
-  }
-  function wcCountParagraphs(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
-  }
-  function wcFormatTime(words, wpm){
-    const mins = words / wpm;
-    if (words === 0) return '0 min';
-    if (mins < 1) return '< 1 min';
-    return Math.round(mins) + ' min';
-  }
-  function wcTopKeywords(text, limit){
-    const counts = {};
-    const words = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
-    for (const w of words){
-      if (w.length < 3 || wcStopwords.has(w)) continue;
-      counts[w] = (counts[w] || 0) + 1;
-    }
-    return Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, limit);
+  function ifcHideProgress(){
+    document.getElementById('ifcProgressWrap').classList.add('hidden');
+    document.getElementById('ifcProgressFill').style.width = '0%';
   }
 
-  function wcUpdate(){
-    const text = wcText.value;
-    const chars = Array.from(text).length;
-    const charsNoSpaces = Array.from(text.replace(/\s/g, '')).length;
-    const words = wcCountWords(text);
-
-    document.getElementById('wcWords').textContent = words.toLocaleString();
-    document.getElementById('wcChars').textContent = chars.toLocaleString();
-    document.getElementById('wcCharsNoSpaces').textContent = charsNoSpaces.toLocaleString();
-    document.getElementById('wcSentences').textContent = wcCountSentences(text).toLocaleString();
-    document.getElementById('wcParagraphs').textContent = wcCountParagraphs(text).toLocaleString();
-    document.getElementById('wcReadingTime').textContent = wcFormatTime(words, 225);
-    document.getElementById('wcSpeakingTime').textContent = wcFormatTime(words, 140);
-
-    const limit = parseInt(document.getElementById('wcLimitSelect').value, 10);
-    const limitBox = document.getElementById('wcLimitResult');
-    if (limit > 0){
-      const remaining = limit - chars;
-      limitBox.classList.remove('hidden');
-      if (remaining < 0){
-        limitBox.style.background = 'color-mix(in srgb, var(--err) 14%, transparent)';
-        limitBox.style.color = 'var(--err-solid)';
-        limitBox.textContent = Math.abs(remaining).toLocaleString() + ' characters over the limit';
-      } else {
-        limitBox.style.background = 'color-mix(in srgb, var(--ok) 14%, transparent)';
-        limitBox.style.color = 'var(--ok-solid)';
-        limitBox.textContent = remaining.toLocaleString() + ' characters left';
-      }
-    } else {
-      limitBox.classList.add('hidden');
-    }
-
-    const kwBox = document.getElementById('wcKeywordsBox');
-    const kwList = document.getElementById('wcKeywordsList');
-    const top = wcTopKeywords(text, 5);
-    if (top.length){
-      kwBox.classList.remove('hidden');
-      kwList.innerHTML = top.map(([w,c]) =>
-        `<span style="background:var(--bg2);border:1px solid var(--card-border);border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;">${w} <span style="color:var(--ink-soft);">(${c})</span></span>`
-      ).join('');
-    } else {
-      kwBox.classList.add('hidden');
-    }
+  function ifcSelectFormat(type){
+    ifcTargetType = type;
+    document.querySelectorAll('.ifc-format-toggle button').forEach(b => {
+      b.classList.toggle('active', b.dataset.format === type);
+    });
+    const showQuality = (type === 'image/jpeg' || type === 'image/webp');
+    document.getElementById('ifcQualityRow').classList.toggle('hidden', !showQuality);
+    document.getElementById('ifcTransparencyNote').classList.toggle('hidden', type !== 'image/jpeg');
   }
 
-  wcText.addEventListener('input', wcUpdate);
-  document.getElementById('wcLimitSelect').addEventListener('change', wcUpdate);
-
-  document.getElementById('wcUpperBtn').onclick = () => { wcText.value = wcText.value.toUpperCase(); wcUpdate(); };
-  document.getElementById('wcLowerBtn').onclick = () => { wcText.value = wcText.value.toLowerCase(); wcUpdate(); };
-  document.getElementById('wcTitleBtn').onclick = () => {
-    wcText.value = wcText.value.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    wcUpdate();
-  };
-  document.getElementById('wcSentenceBtn').onclick = () => {
-    const lower = wcText.value.toLowerCase();
-    wcText.value = lower.replace(/(^\s*\w|[.!?]\s+\w)/g, c => c.toUpperCase());
-    wcUpdate();
-  };
-
-  document.getElementById('wcCopyBtn').onclick = () => {
-    if (!wcText.value){ toast('Nothing to copy yet.', 'err'); return; }
-    copyToClipboard(wcText.value).then(() => toast('Text copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
-  };
-  document.getElementById('wcClearBtn').onclick = () => { wcText.value = ''; wcUpdate(); wcText.focus(); };
-
-  document.getElementById('wcFileInput').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.txt')){ toast('Please choose a .txt file.', 'err'); e.target.value=''; return; }
-    const reader = new FileReader();
-    reader.onload = () => { wcText.value = reader.result; wcUpdate(); };
-    reader.onerror = () => toast('Could not read that file.', 'err');
-    reader.readAsText(file);
-    e.target.value = '';
+  document.querySelectorAll('.ifc-format-toggle button').forEach(btn => {
+    btn.onclick = () => { if (!btn.disabled) ifcSelectFormat(btn.dataset.format); };
   });
 
-  wcUpdate();
-}
+  document.getElementById('ifcQualitySlider').oninput = (e) => {
+    document.getElementById('ifcQualityVal').textContent = e.target.value;
+  };
 
-/* ============ KEYWORD DENSITY CHECKER (keyword-density-checker.html) ============ */
-if (document.getElementById('keywordDensityText')){
-  const kdStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
-
-  function kdCountWords(text){
-    const t = text.trim();
-    return t === '' ? 0 : t.split(/\s+/).length;
-  }
-  function kdCountSentences(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean).length;
-  }
-  function kdCountParagraphs(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
-  }
-
-  function kdUpdateStats(){
-    const text = document.getElementById('keywordDensityText').value;
-    document.getElementById('keywordDensityWordCount').textContent = kdCountWords(text).toLocaleString();
-    document.getElementById('keywordDensityCharCount').textContent = Array.from(text).length.toLocaleString();
-    document.getElementById('keywordDensityCharCountNoSpaces').textContent = Array.from(text.replace(/\s/g,'')).length.toLocaleString();
-    document.getElementById('keywordDensitySentenceCount').textContent = kdCountSentences(text).toLocaleString();
-    document.getElementById('keywordDensityParagraphCount').textContent = kdCountParagraphs(text).toLocaleString();
-  }
-  document.getElementById('keywordDensityText').addEventListener('input', kdUpdateStats);
-
-  document.getElementById('keywordDensityAnalyzeBtn').onclick = () => {
-    const text = document.getElementById('keywordDensityText').value;
-    const resultsBox = document.getElementById('keywordDensityResults');
-    if (!text.trim()){
-      toast('Paste some content first.', 'err');
-      resultsBox.innerHTML = '';
+  setupDropZone('ifcDrop','ifcInput', async (files) => {
+    const f = files.find(f => IFC_ACCEPTED_TYPES.includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > IFC_MAX_FILE_BYTES){
+      toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB. Try a smaller file.`, 'err');
       return;
     }
-    const totalWords = kdCountWords(text);
-    const wordsLower = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
+    ifcFile = f;
+    ifcSourceType = f.type;
+    ifcResultBlob = null;
 
-    // target keyword density (supports multi-word phrases, matched as a
-    // literal substring on word boundaries — case-insensitive)
-    const target = document.getElementById('keywordDensityTargetKeyword').value.trim();
-    let targetHtml = '';
-    if (target){
-      const escaped = target.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp('\\b' + escaped + '\\b', 'gi');
-      const matches = text.match(re) || [];
-      const density = totalWords ? ((matches.length / totalWords) * 100) : 0;
-      targetHtml = `
-        <div style="margin-bottom:16px;padding:14px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-          <span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Target keyword: "${target}"</span>
-          <span style="font-size:20px;font-weight:800;">${matches.length} occurrence${matches.length===1?'':'s'} &middot; ${density.toFixed(2)}% density</span>
-        </div>`;
-    }
+    document.getElementById('ifcConvertBtn').disabled = false;
+    document.getElementById('ifcDownloadBtn').classList.add('hidden');
+    document.getElementById('ifcCompareBox').classList.add('hidden');
+    ifcHideProgress();
 
-    // top keywords (single words, stopwords filtered) with density %
-    const counts = {};
-    for (const w of wordsLower){
-      if (w.length < 3 || kdStopwords.has(w)) continue;
-      counts[w] = (counts[w] || 0) + 1;
-    }
-    const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 20);
-    const rows = top.map(([w,c]) => {
-      const density = totalWords ? ((c/totalWords)*100).toFixed(2) : '0.00';
-      return `<div class="row" style="justify-content:space-between;margin-top:8px;padding:8px 12px;background:var(--card);border-radius:10px;border:1px solid var(--card-border);">
-        <span style="font-weight:600;">${w}</span>
-        <span style="color:var(--ink-soft);font-size:13px;">${c}× &middot; ${density}%</span>
-      </div>`;
-    }).join('');
+    // A source-format button converting to itself is a pointless no-op --
+    // disable just that one button rather than blocking the whole flow.
+    document.querySelectorAll('.ifc-format-toggle button').forEach(b => {
+      b.disabled = (b.dataset.format === ifcSourceType);
+    });
+    // Smart default: pick the most common real-world target for this source
+    // (PNG -> JPG to shrink/flatten, JPG/WEBP -> PNG as a safe default).
+    const smartDefault = ifcSourceType === 'image/png' ? 'image/jpeg' : 'image/png';
+    ifcSelectFormat(smartDefault);
+    document.getElementById('ifcFormatRow').classList.remove('hidden');
 
-    resultsBox.innerHTML = targetHtml +
-      `<span class="field-label" style="margin-top:0;">Top Keywords</span>` +
-      (rows || '<p style="font-size:13px;color:var(--ink-soft);">No repeated keywords found.</p>');
-    kdUpdateStats();
-  };
-
-  document.getElementById('keywordDensityClearBtn').onclick = () => {
-    document.getElementById('keywordDensityText').value = '';
-    document.getElementById('keywordDensityTargetKeyword').value = '';
-    document.getElementById('keywordDensityResults').innerHTML = '';
-    kdUpdateStats();
-  };
-
-  kdUpdateStats();
-}
-
-/* ============ PROTECT PDF (protect-pdf.html) ============
-   Real PDF password encryption. pdf-lib (already loaded on every page, see
-   the <script> tags in <head>) has NO encryption support of its own -- this
-   is confirmed directly on its GitHub repo (github.com/Hopding/pdf-lib,
-   issue #1680: calling pdfDoc.encrypt(...) throws "not a function"; and
-   pdf-lib cannot even load an already-encrypted file without the
-   ignoreEncryption flag, which still leaves the content streams unusable).
-   So this block loads a small, purpose-built companion library at runtime
-   via a dynamic import() from jsDelivr's ESM CDN -- the standard way to
-   consume an npm-only package from a classic (non-module) <script>, without
-   changing how the rest of this file works. That library implements real
-   AES-256 / RC4-128 PDF encryption (ISO 32000-2 Algorithms 2.B/8/9/10) using
-   the browser's native Web Crypto API -- no custom cryptography is
-   implemented here. */
-if (document.getElementById('pprDrop')){
-  let pprFile = null;
-  let pprResultBlob = null;
-
-  setupDropZone('pprDrop','pprInput', async (files) => {
-    const f = files.find(f => f.type === 'application/pdf');
-    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
-    pprFile = f;
-    pprResultBlob = null;
-    document.getElementById('pprFileName').textContent = f.name;
-    document.getElementById('pprFileSize').textContent = fmtBytes(f.size);
-    document.getElementById('pprPageCount').textContent = '';
-    document.getElementById('pprStage').classList.remove('hidden');
-    document.getElementById('pprResultNote').textContent = '';
-    document.getElementById('pprDownloadRow').classList.add('hidden');
-
-    // Detect encryption (and get page count) via pdf-lib itself -- loading
-    // WITHOUT ignoreEncryption throws a specific error type for encrypted
-    // files, which is a reliable, already-available way to detect this
-    // without needing the separate encryption library just to check.
-    const alreadyBox = document.getElementById('pprAlreadyEncrypted');
-    const formArea = document.getElementById('pprFormArea');
-    const btn = document.getElementById('pprProtectBtn');
-    try{
-      const { PDFDocument } = PDFLib;
-      const bytes = await f.arrayBuffer();
-      const doc = await PDFDocument.load(bytes);
-      document.getElementById('pprPageCount').textContent = doc.getPageCount() + ' page' + (doc.getPageCount()!==1?'s':'');
-      alreadyBox.classList.add('hidden');
-      formArea.classList.remove('hidden');
-      // Don't blindly enable here -- defer to the real password validation
-      // (length + confirm-match), which runs on every keystroke too. Without
-      // this, the button was enabling the instant a valid PDF loaded, before
-      // any password had been typed at all.
-      pprValidate();
-    }catch(err){
-      if (String(err && err.name) === 'EncryptedPDFError' || /encrypted/i.test(String(err && err.message))){
-        alreadyBox.classList.remove('hidden');
-        formArea.classList.add('hidden');
-        btn.disabled = true;
-      } else {
-        toast('This file doesn\'t look like a valid PDF.', 'err');
-        document.getElementById('pprStage').classList.add('hidden');
-      }
-    }
+    if (ifcOrigUrl) URL.revokeObjectURL(ifcOrigUrl);
+    ifcOrigUrl = URL.createObjectURL(f);
+    document.getElementById('ifcOrigPreview').src = ifcOrigUrl;
+    document.getElementById('ifcOrigSize').textContent = fmtBytes(f.size) + ' · ' + IFC_LABEL[ifcSourceType];
   });
 
-  // Show/hide password
-  document.getElementById('pprToggleShow1').onclick = (e) => {
-    const inp = document.getElementById('pprUserPassword');
-    const showing = inp.type === 'text';
-    inp.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
-  };
-
-  document.getElementById('pprSameAsUser').addEventListener('change', (e) => {
-    document.getElementById('pprOwnerPassword').classList.toggle('hidden', e.target.checked);
-  });
-
-  document.querySelectorAll('.ppr-algo-toggle button').forEach(b => {
-    b.onclick = () => {
-      document.querySelectorAll('.ppr-algo-toggle button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-    };
-  });
-
-  // Simple, honest strength heuristic -- length plus character variety, not
-  // a claim of cryptographic entropy measurement.
-  function pprStrength(pw){
-    if (!pw) return { pct: 0, label: 'Enter a password', color: 'var(--err-solid)' };
-    let score = 0;
-    if (pw.length >= 8) score++;
-    if (pw.length >= 12) score++;
-    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
-    if (/[0-9]/.test(pw)) score++;
-    if (/[^A-Za-z0-9]/.test(pw)) score++;
-    if (pw.length < 4) return { pct: 15, label: 'Too short', color: 'var(--err-solid)' };
-    if (score <= 1) return { pct: 30, label: 'Weak', color: 'var(--err-solid)' };
-    if (score <= 3) return { pct: 60, label: 'Okay', color: 'var(--warn-solid)' };
-    return { pct: 100, label: 'Strong', color: 'var(--ok-solid)' };
-  }
-  function pprUpdateStrength(){
-    const pw = document.getElementById('pprUserPassword').value;
-    const s = pprStrength(pw);
-    document.getElementById('pprStrengthBar').style.width = s.pct + '%';
-    document.getElementById('pprStrengthBar').style.background = s.color;
-    document.getElementById('pprStrengthLabel').textContent = s.label;
-    pprValidate();
-  }
-  function pprValidate(){
-    const pw = document.getElementById('pprUserPassword').value;
-    const confirm = document.getElementById('pprUserPasswordConfirm').value;
-    const mismatchBox = document.getElementById('pprMismatch');
-    const mismatch = confirm.length > 0 && pw !== confirm;
-    mismatchBox.classList.toggle('hidden', !mismatch);
-    document.getElementById('pprProtectBtn').disabled = !pprFile || pw.length < 4 || mismatch;
-  }
-  document.getElementById('pprUserPassword').addEventListener('input', pprUpdateStrength);
-  document.getElementById('pprUserPasswordConfirm').addEventListener('input', pprValidate);
-
-  function setPpProgress(pct, label){
-    const wrap = document.getElementById('pprProgressWrap');
-    wrap.classList.remove('hidden');
-    document.getElementById('pprProgressFill').style.width = pct + '%';
-    document.getElementById('pprProgressLabel').textContent = label;
-  }
-
-  document.getElementById('pprProtectBtn').onclick = async () => {
-    if (!pprFile) return;
-    const btn = document.getElementById('pprProtectBtn');
-    const userPassword = document.getElementById('pprUserPassword').value;
-    const sameAsUser = document.getElementById('pprSameAsUser').checked;
-    const ownerPassword = sameAsUser ? userPassword : (document.getElementById('pprOwnerPassword').value || userPassword);
-    const algo = document.querySelector('.ppr-algo-toggle button.active').dataset.algo;
-    const permissions = {
-      printing: document.getElementById('pprAllowPrint').checked,
-      copying: document.getElementById('pprAllowCopy').checked,
-      modifying: document.getElementById('pprAllowModify').checked,
-      annotating: document.getElementById('pprAllowAnnotate').checked,
-    };
-
+  document.getElementById('ifcConvertBtn').onclick = async () => {
+    const btn = document.getElementById('ifcConvertBtn');
+    if (!ifcFile) return;
+    if (ifcTargetType === ifcSourceType){
+      toast('Choose a different format to convert to.', 'err');
+      return;
+    }
     setLoading(btn, true);
-    setPpProgress(10, 'Loading encryption module…');
+    ifcSetProgress(15, 'Reading image…');
     try{
-      const { encryptPDF } = await import('https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-encrypt/+esm');
-      setPpProgress(35, 'Reading PDF…');
-      const bytes = new Uint8Array(await pprFile.arrayBuffer());
       await nextFrame();
+      const quality = parseInt(document.getElementById('ifcQualitySlider').value, 10) / 100;
 
-      setPpProgress(55, 'Encrypting…');
-      let encrypted;
-      try{
-        // Best-effort extended options (algorithm choice, permissions) --
-        // if this exact shape isn't what the library expects, fall back to
-        // the minimal, documented call so the core feature (password
-        // protection) still succeeds rather than failing on an option.
-        encrypted = await encryptPDF(bytes, userPassword, ownerPassword, { algorithm: algo, permissions });
-      }catch(optErr){
-        encrypted = await encryptPDF(bytes, userPassword, ownerPassword);
+      ifcSetProgress(40, 'Decoding image…');
+      await nextFrame();
+      const img = await loadImageFromFile(ifcFile);
+      const width = img.naturalWidth, height = img.naturalHeight;
+      if (!width || !height){
+        throw new Error('This file could not be read as an image. Try a JPG, PNG, or WEBP file.');
       }
 
-      setPpProgress(90, 'Finishing…');
+      ifcSetProgress(65, 'Converting…');
       await nextFrame();
-      pprResultBlob = new Blob([encrypted], { type: 'application/pdf' });
-      setPpProgress(100, 'Done.');
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ifcTargetType === 'image/jpeg'){
+        // JPG has no alpha channel -- paint white first so transparent
+        // areas come out white instead of black (canvas's default).
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.drawImage(img, 0, 0);
 
-      document.getElementById('pprResultNote').textContent = 'Your PDF is protected. Anyone opening it will be asked for the password.';
-      document.getElementById('pprDownloadRow').classList.remove('hidden');
-      toast('PDF protected.');
+      ifcSetProgress(85, 'Encoding…');
+      await nextFrame();
+      const blob = ifcTargetType === 'image/png'
+        ? await canvasToBlobAsync(canvas, 'image/png')
+        : await canvasToBlobAsync(canvas, ifcTargetType, quality);
+
+      ifcResultBlob = blob;
+      if (ifcConvUrl) URL.revokeObjectURL(ifcConvUrl);
+      ifcConvUrl = URL.createObjectURL(blob);
+      document.getElementById('ifcConvPreview').src = ifcConvUrl;
+      document.getElementById('ifcConvSize').textContent = fmtBytes(blob.size) + ' · ' + IFC_LABEL[ifcTargetType];
+      document.getElementById('ifcCompareBox').classList.remove('hidden');
+      document.getElementById('ifcDownloadBtn').classList.remove('hidden');
+      ifcSetProgress(100, 'Done.');
+      toast('Image converted.');
     }catch(err){
-      console.error('Protect PDF failed:', err);
-      document.getElementById('pprResultNote').textContent = 'Something went wrong while encrypting this PDF. Please try again.';
-      toast('Could not protect this PDF.', 'err');
+      console.error('Image Format Converter failed:', err);
+      toast(err.message || 'Could not convert this image.', 'err');
     }
-    setLoading(btn, false, 'Protect PDF');
-    document.getElementById('pprProgressWrap').classList.add('hidden');
+    setLoading(btn, false, 'Convert');
+    ifcHideProgress();
   };
 
-  document.getElementById('pprDownloadBtn').onclick = () => {
-    if (!pprResultBlob) return;
-    const name = (pprFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-protected.pdf';
-    downloadBlob(pprResultBlob, name);
+  document.getElementById('ifcDownloadBtn').onclick = () => {
+    if (!ifcResultBlob) return;
+    const base = (ifcFile.name || 'image').replace(/\.[a-z0-9]+$/i, '');
+    downloadBlob(ifcResultBlob, `${base}.${IFC_EXT[ifcTargetType]}`);
     toast('Downloaded.');
-  };
-}
-
-/* ============ UNLOCK PDF (unlock-pdf.html) ============
-   Companion to Protect PDF -- see that block's comment for why a separate
-   library (not pdf-lib) is loaded at runtime. This ONLY removes encryption
-   given the correct existing password; it never attempts to guess, brute
-   force, or bypass a password the user doesn't provide correctly. */
-if (document.getElementById('upDrop')){
-  let upFile = null;
-  let upResultBlob = null;
-  let upIsEncrypted = true;
-
-  setupDropZone('upDrop','upInput', async (files) => {
-    const f = files.find(f => f.type === 'application/pdf');
-    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
-    upFile = f;
-    upResultBlob = null;
-    document.getElementById('upFileName').textContent = f.name;
-    document.getElementById('upFileSize').textContent = fmtBytes(f.size);
-    document.getElementById('upStage').classList.remove('hidden');
-    document.getElementById('upResultNote').textContent = '';
-    document.getElementById('upDownloadRow').classList.add('hidden');
-    document.getElementById('upWrongPassword').classList.add('hidden');
-
-    const notEncBox = document.getElementById('upNotEncrypted');
-    const formArea = document.getElementById('upFormArea');
-    try{
-      const { PDFDocument } = PDFLib;
-      const bytes = await f.arrayBuffer();
-      await PDFDocument.load(bytes); // succeeds only if NOT encrypted
-      upIsEncrypted = false;
-      notEncBox.classList.remove('hidden');
-      formArea.classList.add('hidden');
-      document.getElementById('upUnlockBtn').disabled = true;
-    }catch(err){
-      if (String(err && err.name) === 'EncryptedPDFError' || /encrypted/i.test(String(err && err.message))){
-        upIsEncrypted = true;
-        notEncBox.classList.add('hidden');
-        formArea.classList.remove('hidden');
-      } else {
-        toast('This file doesn\'t look like a valid PDF.', 'err');
-        document.getElementById('upStage').classList.add('hidden');
-        return;
-      }
-    }
-  });
-
-  document.getElementById('upToggleShow').onclick = (e) => {
-    const inp = document.getElementById('upPassword');
-    const showing = inp.type === 'text';
-    inp.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
-  };
-  document.getElementById('upPassword').addEventListener('input', () => {
-    document.getElementById('upUnlockBtn').disabled = !upFile || !upIsEncrypted || document.getElementById('upPassword').value.length === 0;
-    document.getElementById('upWrongPassword').classList.add('hidden');
-  });
-
-  function setUpProgress(pct, label){
-    const wrap = document.getElementById('upProgressWrap');
-    wrap.classList.remove('hidden');
-    document.getElementById('upProgressFill').style.width = pct + '%';
-    document.getElementById('upProgressLabel').textContent = label;
-  }
-
-  document.getElementById('upUnlockBtn').onclick = async () => {
-    if (!upFile) return;
-    const btn = document.getElementById('upUnlockBtn');
-    const password = document.getElementById('upPassword').value;
-    document.getElementById('upWrongPassword').classList.add('hidden');
-
-    setLoading(btn, true);
-    setUpProgress(10, 'Loading decryption module…');
-    try{
-      const { decryptPDF } = await import('https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-decrypt/+esm');
-      setUpProgress(35, 'Reading PDF…');
-      const bytes = new Uint8Array(await upFile.arrayBuffer());
-      await nextFrame();
-
-      setUpProgress(55, 'Decrypting…');
-      let decrypted;
-      try{
-        decrypted = await decryptPDF(bytes, password);
-      }catch(pwErr){
-        setLoading(btn, false, 'Unlock PDF');
-        document.getElementById('upProgressWrap').classList.add('hidden');
-        document.getElementById('upWrongPassword').classList.remove('hidden');
-        document.getElementById('upWrongPassword').textContent =
-          /password/i.test(String(pwErr && pwErr.message)) || /decrypt/i.test(String(pwErr && pwErr.message))
-            ? 'Incorrect password — please try again.'
-            : 'Could not unlock this PDF — please check the password and try again.';
-        return;
-      }
-
-      setUpProgress(90, 'Finishing…');
-      await nextFrame();
-      upResultBlob = new Blob([decrypted], { type: 'application/pdf' });
-      setUpProgress(100, 'Done.');
-
-      document.getElementById('upResultNote').textContent = 'Password removed. This PDF will now open without a password.';
-      document.getElementById('upDownloadRow').classList.remove('hidden');
-      toast('PDF unlocked.');
-    }catch(err){
-      console.error('Unlock PDF failed:', err);
-      document.getElementById('upResultNote').textContent = 'Something went wrong while unlocking this PDF. Please try again.';
-      toast('Could not unlock this PDF.', 'err');
-    }
-    setLoading(btn, false, 'Unlock PDF');
-    document.getElementById('upProgressWrap').classList.add('hidden');
-  };
-
-  document.getElementById('upDownloadBtn').onclick = () => {
-    if (!upResultBlob) return;
-    const name = (upFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-unlocked.pdf';
-    downloadBlob(upResultBlob, name);
-    toast('Downloaded.');
-  };
-}
-
-/* ============ COMPOUND INTEREST CALCULATOR (compound-interest-calculator.html) ============
-   Formula verified separately in Node (Text: basic growth, zero-rate, zero-years,
-   zero-contribution vs textbook A=P(1+r/n)^(nt), mismatched contribution/compounding
-   frequencies, monotonicity, and daily-compounding numerical stability). */
-if (document.getElementById('ciCalcBtn')){
-
-  function ciCompute(principal, contribAmount, contribsPerYear, annualRatePct, compoundsPerYear, years){
-    const ratePerPeriod = (annualRatePct / 100) / compoundsPerYear;
-    const totalPeriods = compoundsPerYear * years;
-    const contribPerPeriod = (contribAmount * contribsPerYear) / compoundsPerYear;
-
-    let balance = principal;
-    let totalContributed = principal;
-    const yearly = [];
-
-    for (let period = 1; period <= totalPeriods; period++){
-      balance = balance * (1 + ratePerPeriod) + contribPerPeriod;
-      totalContributed += contribPerPeriod;
-      if (period % compoundsPerYear === 0){
-        yearly.push({
-          year: period / compoundsPerYear,
-          contributed: totalContributed,
-          interest: balance - totalContributed,
-          balance
-        });
-      }
-    }
-    return { finalBalance: balance, totalContributed, totalInterest: balance - totalContributed, yearly };
-  }
-
-  function ciFmt(n){
-    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  document.getElementById('ciCalcBtn').onclick = () => {
-    const principal = parseFloat(document.getElementById('ciPrincipal').value) || 0;
-    const contribution = parseFloat(document.getElementById('ciContribution').value) || 0;
-    const contribFreq = parseInt(document.getElementById('ciContribFreq').value, 10);
-    const rate = parseFloat(document.getElementById('ciRate').value);
-    const years = parseFloat(document.getElementById('ciYears').value);
-    const compoundFreq = parseInt(document.getElementById('ciCompoundFreq').value, 10);
-    const inflation = parseFloat(document.getElementById('ciInflation').value);
-
-    if (principal < 0 || contribution < 0){ toast('Amounts can\'t be negative.', 'err'); return; }
-    if (!isFinite(rate) || rate < 0){ toast('Enter a valid interest rate.', 'err'); return; }
-    if (!isFinite(years) || years < 0){ toast('Enter a valid time period.', 'err'); return; }
-    if (principal === 0 && contribution === 0){ toast('Enter an initial deposit or a regular contribution.', 'err'); return; }
-
-    const r = ciCompute(principal, contribution, contribFreq, rate, compoundFreq, years);
-
-    document.getElementById('ciFinalBalance').textContent = ciFmt(r.finalBalance);
-    document.getElementById('ciTotalContributed').textContent = ciFmt(r.totalContributed);
-    document.getElementById('ciTotalInterest').textContent = ciFmt(r.totalInterest);
-    document.getElementById('ciResultBox').classList.remove('hidden');
-
-    // Proportional bar: contributions vs interest earned, as a share of the
-    // final balance. Guarded against a zero balance (e.g. all-zero inputs
-    // already rejected above, but stay defensive).
-    const barBox = document.getElementById('ciBarBox');
-    if (r.finalBalance > 0){
-      const contribPct = Math.max(0, Math.min(100, (r.totalContributed / r.finalBalance) * 100));
-      document.getElementById('ciBarContrib').style.width = contribPct + '%';
-      document.getElementById('ciBarInterest').style.width = (100 - contribPct) + '%';
-      barBox.classList.remove('hidden');
-    } else {
-      barBox.classList.add('hidden');
-    }
-
-    // Inflation-adjusted real value (optional)
-    const realBox = document.getElementById('ciRealBox');
-    if (isFinite(inflation) && inflation > 0 && years > 0){
-      const real = r.finalBalance / Math.pow(1 + inflation / 100, years);
-      document.getElementById('ciRealValue').textContent = ciFmt(real);
-      realBox.classList.remove('hidden');
-    } else {
-      realBox.classList.add('hidden');
-    }
-
-    // Year-by-year schedule
-    const scheduleBox = document.getElementById('ciScheduleBox');
-    const tbody = document.getElementById('ciScheduleBody');
-    if (r.yearly.length > 0){
-      tbody.innerHTML = r.yearly.map(row =>
-        `<tr><td>${row.year}</td><td>${ciFmt(row.contributed)}</td><td>${ciFmt(row.interest)}</td><td><strong>${ciFmt(row.balance)}</strong></td></tr>`
-      ).join('');
-      scheduleBox.classList.remove('hidden');
-    } else {
-      tbody.innerHTML = '';
-      scheduleBox.classList.add('hidden');
-    }
-
-    toast('Growth calculated.');
-  };
-
-  document.getElementById('ciResetBtn').onclick = () => {
-    ['ciPrincipal','ciContribution','ciRate','ciYears','ciInflation'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('ciContribFreq').value = '12';
-    document.getElementById('ciCompoundFreq').value = '12';
-    document.getElementById('ciResultBox').classList.add('hidden');
-    document.getElementById('ciRealBox').classList.add('hidden');
-    document.getElementById('ciBarBox').classList.add('hidden');
-    document.getElementById('ciScheduleBox').classList.add('hidden');
   };
 }
