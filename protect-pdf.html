@@ -108,78 +108,78 @@
   <div class="workspace">
       <div class="view-title"><h2>Upload Your PDF</h2></div>
       <span class="field-label">Choose a PDF</span>
-      <div class="drop-zone" id="ppDrop">
+      <div class="drop-zone" id="pprDrop">
         <div class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
         <div class="drop-title">Drop a PDF here or tap to browse</div>
         <div class="drop-sub">One PDF at a time</div>
-        <input type="file" id="ppInput" accept="application/pdf">
+        <input type="file" id="pprInput" accept="application/pdf">
       </div>
 
-      <div id="ppStage" class="hidden">
+      <div id="pprStage" class="hidden">
         <div class="row" style="margin-top:10px;align-items:center;">
           <div style="flex:1;font-size:12.5px;color:var(--ink-soft);">
-            <strong id="ppFileName" style="color:var(--ink);"></strong><br>
-            <span id="ppFileSize"></span> · <span id="ppPageCount"></span>
+            <strong id="pprFileName" style="color:var(--ink);"></strong><br>
+            <span id="pprFileSize"></span> · <span id="pprPageCount"></span>
           </div>
         </div>
 
-        <p id="ppAlreadyEncrypted" class="hidden" style="margin-top:12px;padding:10px 14px;border-radius:10px;background:color-mix(in srgb, var(--err) 12%, transparent);color:var(--err-solid);font-size:13px;font-weight:600;">
+        <p id="pprAlreadyEncrypted" class="hidden" style="margin-top:12px;padding:10px 14px;border-radius:10px;background:color-mix(in srgb, var(--err) 12%, transparent);color:var(--err-solid);font-size:13px;font-weight:600;">
           This PDF is already password-protected. Use Unlock PDF first if you want to change its password.
         </p>
 
-        <div id="ppFormArea">
+        <div id="pprFormArea">
           <span class="field-label" style="margin-top:14px;">Set a password (required to open the file)</span>
           <div class="row" style="align-items:center;">
-            <input type="password" id="ppUserPassword" placeholder="Enter a password" autocomplete="new-password" style="flex:1;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
-            <button class="btn btn-ghost" id="ppToggleShow1" type="button" style="flex:0;min-width:auto;">Show</button>
+            <input type="password" id="pprUserPassword" placeholder="Enter a password" autocomplete="new-password" style="flex:1;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
+            <button class="btn btn-ghost" id="pprToggleShow1" type="button" style="flex:0;min-width:auto;">Show</button>
           </div>
           <div class="row" style="margin-top:8px;">
-            <input type="password" id="ppUserPasswordConfirm" placeholder="Retype the password" autocomplete="new-password" style="flex:1;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
+            <input type="password" id="pprUserPasswordConfirm" placeholder="Retype the password" autocomplete="new-password" style="flex:1;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
           </div>
-          <div id="ppStrengthWrap" style="margin-top:8px;">
-            <div style="height:5px;background:var(--card-border);border-radius:99px;overflow:hidden;"><div id="ppStrengthBar" style="height:100%;width:0%;background:var(--err-solid);transition:width .2s,background .2s;"></div></div>
-            <span id="ppStrengthLabel" style="font-size:11.5px;color:var(--ink-soft);">Enter a password</span>
+          <div id="pprStrengthWrap" style="margin-top:8px;">
+            <div style="height:5px;background:var(--card-border);border-radius:99px;overflow:hidden;"><div id="pprStrengthBar" style="height:100%;width:0%;background:var(--err-solid);transition:width .2s,background .2s;"></div></div>
+            <span id="pprStrengthLabel" style="font-size:11.5px;color:var(--ink-soft);">Enter a password</span>
           </div>
-          <p id="ppMismatch" class="hidden" style="font-size:12px;color:var(--err-solid);margin-top:6px;">Passwords don't match.</p>
+          <p id="pprMismatch" class="hidden" style="font-size:12px;color:var(--err-solid);margin-top:6px;">Passwords don't match.</p>
 
           <details style="margin-top:16px;">
             <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--ink);">Advanced options</summary>
             <div style="margin-top:12px;">
               <span class="field-label" style="margin-top:0;">Owner password (optional — controls permissions separately)</span>
               <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);margin:6px 0;">
-                <input type="checkbox" id="ppSameAsUser" checked> Use the same password as above
+                <input type="checkbox" id="pprSameAsUser" checked> Use the same password as above
               </label>
-              <input type="password" id="ppOwnerPassword" placeholder="Owner password" autocomplete="new-password" class="hidden" style="width:100%;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
+              <input type="password" id="pprOwnerPassword" placeholder="Owner password" autocomplete="new-password" class="hidden" style="width:100%;padding:11px 14px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px;">
 
               <span class="field-label">Encryption strength</span>
-              <div class="unit-toggle pp-algo-toggle">
+              <div class="unit-toggle ppr-algo-toggle">
                 <button class="active" data-algo="aes256" type="button">AES-256 (recommended)</button>
                 <button data-algo="rc4" type="button">RC4-128 (legacy readers)</button>
               </div>
               <p class="editor-hint">AES-256 is the modern PDF 2.0 standard. Use RC4-128 only if the file must open in very old PDF readers.</p>
 
               <span class="field-label">Permissions</span>
-              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="ppAllowPrint" checked> Allow printing</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="ppAllowCopy" checked> Allow copying text/images</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="ppAllowModify" checked> Allow editing</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="ppAllowAnnotate" checked> Allow comments/annotations</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="pprAllowPrint" checked> Allow printing</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="pprAllowCopy" checked> Allow copying text/images</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="pprAllowModify" checked> Allow editing</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0;"><input type="checkbox" id="pprAllowAnnotate" checked> Allow comments/annotations</label>
             </div>
           </details>
         </div>
 
-        <div class="progress-wrap hidden" id="ppProgressWrap">
-          <div class="progress-track"><div class="progress-fill" id="ppProgressFill"></div></div>
-          <div class="progress-label" id="ppProgressLabel">Encrypting…</div>
+        <div class="progress-wrap hidden" id="pprProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="pprProgressFill"></div></div>
+          <div class="progress-label" id="pprProgressLabel">Encrypting…</div>
         </div>
 
         <div class="row" style="margin-top:16px;">
-          <button class="btn btn-primary" id="ppProtectBtn" style="flex:1;" type="button" disabled>Protect PDF</button>
+          <button class="btn btn-primary" id="pprProtectBtn" style="flex:1;" type="button" disabled>Protect PDF</button>
         </div>
 
-        <p class="editor-hint" id="ppResultNote"></p>
+        <p class="editor-hint" id="pprResultNote"></p>
 
-        <div class="row hidden" id="ppDownloadRow">
-          <button class="btn btn-success" id="ppDownloadBtn" style="flex:1;" type="button">Download protected PDF</button>
+        <div class="row hidden" id="pprDownloadRow">
+          <button class="btn btn-success" id="pprDownloadBtn" style="flex:1;" type="button">Download protected PDF</button>
         </div>
       </div>
 
