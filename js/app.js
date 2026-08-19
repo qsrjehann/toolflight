@@ -484,11 +484,20 @@ function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
   if (!zone || !input) return;
-  zone.onclick = () => input.click();
+  // <label for="inputId"> zones already open the file picker natively on
+  // tap/click (zero JavaScript required, works even if a script elsewhere
+  // on the page throws) -- attaching a manual input.click() on top of that
+  // double-fires the picker, which is unreliable across mobile browsers.
+  // Older <div>-based drop-zones (most tools) still need the manual
+  // trigger, since a div has no native click-to-activate relationship with
+  // the input.
+  if (zone.tagName.toLowerCase() !== 'label'){
+    zone.onclick = () => input.click();
+  }
   input.onchange = () => { onFiles(Array.from(input.files)); input.value = ''; };
   ['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
   ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
-  zone.addEventListener('drop', e => onFiles(Array.from(e.dataTransfer.files)));
+  zone.addEventListener('drop', e => { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); });
 }
 let _dragReorderCtx = null; // { listEl, arr, rerender, index } — shared across all uses since only one drag happens at a time
 const _dragReorderListElsWithListener = new WeakSet();
@@ -24535,37 +24544,41 @@ if (document.getElementById('keywordDensityText')){
    AES-256 / RC4-128 PDF encryption (ISO 32000-2 Algorithms 2.B/8/9/10) using
    the browser's native Web Crypto API -- no custom cryptography is
    implemented here. */
-if (document.getElementById('ppDrop')){
-  let ppFile = null;
-  let ppResultBlob = null;
+if (document.getElementById('pprDrop')){
+  let pprFile = null;
+  let pprResultBlob = null;
 
-  setupDropZone('ppDrop','ppInput', async (files) => {
+  setupDropZone('pprDrop','pprInput', async (files) => {
     const f = files.find(f => f.type === 'application/pdf');
     if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
-    ppFile = f;
-    ppResultBlob = null;
-    document.getElementById('ppFileName').textContent = f.name;
-    document.getElementById('ppFileSize').textContent = fmtBytes(f.size);
-    document.getElementById('ppPageCount').textContent = '';
-    document.getElementById('ppStage').classList.remove('hidden');
-    document.getElementById('ppResultNote').textContent = '';
-    document.getElementById('ppDownloadRow').classList.add('hidden');
+    pprFile = f;
+    pprResultBlob = null;
+    document.getElementById('pprFileName').textContent = f.name;
+    document.getElementById('pprFileSize').textContent = fmtBytes(f.size);
+    document.getElementById('pprPageCount').textContent = '';
+    document.getElementById('pprStage').classList.remove('hidden');
+    document.getElementById('pprResultNote').textContent = '';
+    document.getElementById('pprDownloadRow').classList.add('hidden');
 
     // Detect encryption (and get page count) via pdf-lib itself -- loading
     // WITHOUT ignoreEncryption throws a specific error type for encrypted
     // files, which is a reliable, already-available way to detect this
     // without needing the separate encryption library just to check.
-    const alreadyBox = document.getElementById('ppAlreadyEncrypted');
-    const formArea = document.getElementById('ppFormArea');
-    const btn = document.getElementById('ppProtectBtn');
+    const alreadyBox = document.getElementById('pprAlreadyEncrypted');
+    const formArea = document.getElementById('pprFormArea');
+    const btn = document.getElementById('pprProtectBtn');
     try{
       const { PDFDocument } = PDFLib;
       const bytes = await f.arrayBuffer();
       const doc = await PDFDocument.load(bytes);
-      document.getElementById('ppPageCount').textContent = doc.getPageCount() + ' page' + (doc.getPageCount()!==1?'s':'');
+      document.getElementById('pprPageCount').textContent = doc.getPageCount() + ' page' + (doc.getPageCount()!==1?'s':'');
       alreadyBox.classList.add('hidden');
       formArea.classList.remove('hidden');
-      btn.disabled = false;
+      // Don't blindly enable here -- defer to the real password validation
+      // (length + confirm-match), which runs on every keystroke too. Without
+      // this, the button was enabling the instant a valid PDF loaded, before
+      // any password had been typed at all.
+      pprValidate();
     }catch(err){
       if (String(err && err.name) === 'EncryptedPDFError' || /encrypted/i.test(String(err && err.message))){
         alreadyBox.classList.remove('hidden');
@@ -24573,33 +24586,33 @@ if (document.getElementById('ppDrop')){
         btn.disabled = true;
       } else {
         toast('This file doesn\'t look like a valid PDF.', 'err');
-        document.getElementById('ppStage').classList.add('hidden');
+        document.getElementById('pprStage').classList.add('hidden');
       }
     }
   });
 
   // Show/hide password
-  document.getElementById('ppToggleShow1').onclick = (e) => {
-    const inp = document.getElementById('ppUserPassword');
+  document.getElementById('pprToggleShow1').onclick = (e) => {
+    const inp = document.getElementById('pprUserPassword');
     const showing = inp.type === 'text';
     inp.type = showing ? 'password' : 'text';
     e.target.textContent = showing ? 'Show' : 'Hide';
   };
 
-  document.getElementById('ppSameAsUser').addEventListener('change', (e) => {
-    document.getElementById('ppOwnerPassword').classList.toggle('hidden', e.target.checked);
+  document.getElementById('pprSameAsUser').addEventListener('change', (e) => {
+    document.getElementById('pprOwnerPassword').classList.toggle('hidden', e.target.checked);
   });
 
-  document.querySelectorAll('.pp-algo-toggle button').forEach(b => {
+  document.querySelectorAll('.ppr-algo-toggle button').forEach(b => {
     b.onclick = () => {
-      document.querySelectorAll('.pp-algo-toggle button').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.ppr-algo-toggle button').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
     };
   });
 
   // Simple, honest strength heuristic -- length plus character variety, not
   // a claim of cryptographic entropy measurement.
-  function ppStrength(pw){
+  function pprStrength(pw){
     if (!pw) return { pct: 0, label: 'Enter a password', color: 'var(--err-solid)' };
     let score = 0;
     if (pw.length >= 8) score++;
@@ -24612,44 +24625,44 @@ if (document.getElementById('ppDrop')){
     if (score <= 3) return { pct: 60, label: 'Okay', color: 'var(--warn-solid)' };
     return { pct: 100, label: 'Strong', color: 'var(--ok-solid)' };
   }
-  function ppUpdateStrength(){
-    const pw = document.getElementById('ppUserPassword').value;
-    const s = ppStrength(pw);
-    document.getElementById('ppStrengthBar').style.width = s.pct + '%';
-    document.getElementById('ppStrengthBar').style.background = s.color;
-    document.getElementById('ppStrengthLabel').textContent = s.label;
-    ppValidate();
+  function pprUpdateStrength(){
+    const pw = document.getElementById('pprUserPassword').value;
+    const s = pprStrength(pw);
+    document.getElementById('pprStrengthBar').style.width = s.pct + '%';
+    document.getElementById('pprStrengthBar').style.background = s.color;
+    document.getElementById('pprStrengthLabel').textContent = s.label;
+    pprValidate();
   }
-  function ppValidate(){
-    const pw = document.getElementById('ppUserPassword').value;
-    const confirm = document.getElementById('ppUserPasswordConfirm').value;
-    const mismatchBox = document.getElementById('ppMismatch');
+  function pprValidate(){
+    const pw = document.getElementById('pprUserPassword').value;
+    const confirm = document.getElementById('pprUserPasswordConfirm').value;
+    const mismatchBox = document.getElementById('pprMismatch');
     const mismatch = confirm.length > 0 && pw !== confirm;
     mismatchBox.classList.toggle('hidden', !mismatch);
-    document.getElementById('ppProtectBtn').disabled = !ppFile || pw.length < 4 || mismatch;
+    document.getElementById('pprProtectBtn').disabled = !pprFile || pw.length < 4 || mismatch;
   }
-  document.getElementById('ppUserPassword').addEventListener('input', ppUpdateStrength);
-  document.getElementById('ppUserPasswordConfirm').addEventListener('input', ppValidate);
+  document.getElementById('pprUserPassword').addEventListener('input', pprUpdateStrength);
+  document.getElementById('pprUserPasswordConfirm').addEventListener('input', pprValidate);
 
   function setPpProgress(pct, label){
-    const wrap = document.getElementById('ppProgressWrap');
+    const wrap = document.getElementById('pprProgressWrap');
     wrap.classList.remove('hidden');
-    document.getElementById('ppProgressFill').style.width = pct + '%';
-    document.getElementById('ppProgressLabel').textContent = label;
+    document.getElementById('pprProgressFill').style.width = pct + '%';
+    document.getElementById('pprProgressLabel').textContent = label;
   }
 
-  document.getElementById('ppProtectBtn').onclick = async () => {
-    if (!ppFile) return;
-    const btn = document.getElementById('ppProtectBtn');
-    const userPassword = document.getElementById('ppUserPassword').value;
-    const sameAsUser = document.getElementById('ppSameAsUser').checked;
-    const ownerPassword = sameAsUser ? userPassword : (document.getElementById('ppOwnerPassword').value || userPassword);
-    const algo = document.querySelector('.pp-algo-toggle button.active').dataset.algo;
+  document.getElementById('pprProtectBtn').onclick = async () => {
+    if (!pprFile) return;
+    const btn = document.getElementById('pprProtectBtn');
+    const userPassword = document.getElementById('pprUserPassword').value;
+    const sameAsUser = document.getElementById('pprSameAsUser').checked;
+    const ownerPassword = sameAsUser ? userPassword : (document.getElementById('pprOwnerPassword').value || userPassword);
+    const algo = document.querySelector('.ppr-algo-toggle button.active').dataset.algo;
     const permissions = {
-      printing: document.getElementById('ppAllowPrint').checked,
-      copying: document.getElementById('ppAllowCopy').checked,
-      modifying: document.getElementById('ppAllowModify').checked,
-      annotating: document.getElementById('ppAllowAnnotate').checked,
+      printing: document.getElementById('pprAllowPrint').checked,
+      copying: document.getElementById('pprAllowCopy').checked,
+      modifying: document.getElementById('pprAllowModify').checked,
+      annotating: document.getElementById('pprAllowAnnotate').checked,
     };
 
     setLoading(btn, true);
@@ -24657,7 +24670,7 @@ if (document.getElementById('ppDrop')){
     try{
       const { encryptPDF } = await import('https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-encrypt/+esm');
       setPpProgress(35, 'Reading PDF…');
-      const bytes = new Uint8Array(await ppFile.arrayBuffer());
+      const bytes = new Uint8Array(await pprFile.arrayBuffer());
       await nextFrame();
 
       setPpProgress(55, 'Encrypting…');
@@ -24674,25 +24687,25 @@ if (document.getElementById('ppDrop')){
 
       setPpProgress(90, 'Finishing…');
       await nextFrame();
-      ppResultBlob = new Blob([encrypted], { type: 'application/pdf' });
+      pprResultBlob = new Blob([encrypted], { type: 'application/pdf' });
       setPpProgress(100, 'Done.');
 
-      document.getElementById('ppResultNote').textContent = 'Your PDF is protected. Anyone opening it will be asked for the password.';
-      document.getElementById('ppDownloadRow').classList.remove('hidden');
+      document.getElementById('pprResultNote').textContent = 'Your PDF is protected. Anyone opening it will be asked for the password.';
+      document.getElementById('pprDownloadRow').classList.remove('hidden');
       toast('PDF protected.');
     }catch(err){
       console.error('Protect PDF failed:', err);
-      document.getElementById('ppResultNote').textContent = 'Something went wrong while encrypting this PDF. Please try again.';
+      document.getElementById('pprResultNote').textContent = 'Something went wrong while encrypting this PDF. Please try again.';
       toast('Could not protect this PDF.', 'err');
     }
     setLoading(btn, false, 'Protect PDF');
-    document.getElementById('ppProgressWrap').classList.add('hidden');
+    document.getElementById('pprProgressWrap').classList.add('hidden');
   };
 
-  document.getElementById('ppDownloadBtn').onclick = () => {
-    if (!ppResultBlob) return;
-    const name = (ppFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-protected.pdf';
-    downloadBlob(ppResultBlob, name);
+  document.getElementById('pprDownloadBtn').onclick = () => {
+    if (!pprResultBlob) return;
+    const name = (pprFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-protected.pdf';
+    downloadBlob(pprResultBlob, name);
     toast('Downloaded.');
   };
 }
