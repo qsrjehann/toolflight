@@ -2281,11 +2281,50 @@ if (document.getElementById('aiRemoveDrop')){
       // normally the moment the user actually clicks the button (see
       // ensureSegmenter() in that handler below); it just no longer starts
       // uninvited the instant an image is loaded.
+      // Once there's an actual image to work on, the marketing/explainer
+      // content (hero title, "Back to Image Tools," the long About/FAQ
+      // section) is just scroll distance between a mobile user and the
+      // editor -- hide it so the workspace is reachable without scrolling
+      // past a page's worth of text first. hideAiIntroChrome() restores all
+      // of this on Reset/New Image, so it's not a one-way trip.
+      hideAiIntroChrome();
       toast('Image loaded.');
     }catch(err){
       toast(err.message, 'err');
     }
   });
+
+  function hideAiIntroChrome(){
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    document.querySelectorAll('.navbar').forEach(el => el.classList.add('ai-nav-collapsed'));
+  }
+  function showAiIntroChrome(){
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); });
+    document.querySelectorAll('.navbar').forEach(el => el.classList.remove('ai-nav-collapsed'));
+  }
+  function resetAiToUpload(){
+    document.getElementById('aiRemoveStage').classList.add('hidden');
+    document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
+    aiSourceImg = null; aiSourceFile = null; aiResultCanvas = null;
+    maskCanvas = null; originalCanvas = null;
+    document.getElementById('aiRemoveBtn').disabled = true;
+    showAiIntroChrome();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  const aiNewImageBtnMobile = document.getElementById('aiNewImageBtnMobile');
+  if (aiNewImageBtnMobile) aiNewImageBtnMobile.onclick = () => {
+    resetAiToUpload();
+    toast('Upload a new image.');
+  };
+  const aiResetBtnMobile = document.getElementById('aiResetBtnMobile');
+  if (aiResetBtnMobile) aiResetBtnMobile.onclick = () => {
+    if (!maskCanvas) return;
+    restoreHistory(0);
+    pushHistory();
+    toast('Reset to the original result.');
+  };
 
   let bgRemoveMode = 'photo';
   const AI_MODE_HINTS = {
@@ -2306,51 +2345,90 @@ if (document.getElementById('aiRemoveDrop')){
   });
 
   // Document/Writing mode: NOT a general object-recognition model like
-  // DeepLab below -- this is a purpose-built color-distance matte for a
-  // specific, very common case DeepLab genuinely cannot handle (it has no
-  // "handwriting" category; see the plausibility-check comment further
-  // down). A photo of writing/a signature on a fairly plain background is,
-  // optically, just two tones -- ink and page -- so the background can be
-  // found directly: sample the color along the photo's own border (the
-  // background reliably touches the edges of a document/note photo), then
-  // keep whatever is far enough from that color. Runs instantly, no model
-  // download, works offline, and is fully deterministic (unlike a
-  // learned model, its behavior can be reasoned about and tested exactly).
+  // DeepLab below -- this is a purpose-built matte for a specific, very
+  // common case DeepLab genuinely cannot handle (it has no "handwriting"
+  // category; see the plausibility-check comment further down). Runs
+  // instantly, no model download, works offline, fully deterministic.
+  //
+  // Flood-fill from the border, not a single global background color. An
+  // earlier version sampled the border for ONE representative background
+  // color and kept anything far from it -- which works for a photo with a
+  // single uniform background, but a real document/note photo often shows
+  // TWO: the paper itself, and whatever surface it's sitting on (a desk,
+  // floor, or table) visible in the corners where the paper doesn't fill
+  // the frame. A single global color can't represent both at once, so the
+  // second surface got kept as "foreground" by mistake -- exactly the
+  // reported "corner of the floor didn't get removed" result. Flood-
+  // filling from every border pixel simultaneously, where a pixel joins
+  // the background only if it's close to an ALREADY-CONFIRMED background
+  // NEIGHBOR (not one fixed reference color), correctly follows both
+  // regions outward from the edges regardless of how many different
+  // background surfaces are visible, as long as each is locally smooth and
+  // touches the photo's border -- true for essentially any real photo of
+  // paper on a surface.
   function computeDocumentModeAlpha(srcCanvas){
     const w = srcCanvas.width, h = srcCanvas.height;
     const ctx = srcCanvas.getContext('2d');
     const data = ctx.getImageData(0, 0, w, h).data;
+    const n = w*h;
 
-    const samples = [];
-    const step = Math.max(1, Math.floor(Math.max(w,h) / 250)); // ~250 samples per border side regardless of image size
-    for (let x = 0; x < w; x += step){
-      samples.push(x, 0); samples.push(x, h-1);
-    }
-    for (let y = 0; y < h; y += step){
-      samples.push(0, y); samples.push(w-1, y);
-    }
-    const rs = [], gs = [], bs = [];
-    for (let i = 0; i < samples.length; i += 2){
-      const idx = (samples[i+1]*w + samples[i]) * 4;
-      rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
-    }
-    function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
-    const bgR = median(rs), bgG = median(gs), bgB = median(bs);
+    const isBg = new Uint8Array(n);
+    const visited = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    let qHead = 0, qTail = 0;
+    const STEP_TOL = 26; // max color distance a pixel may differ from an already-confirmed background neighbor
 
-    // Distance thresholds tuned against real ink-on-paper test photos
-    // (both dark-ink-on-light-paper and light-pen-on-dark-paper): far
-    // enough apart to give a soft, anti-aliased edge rather than a jagged
-    // cutout, without a gap so wide that faint pencil marks disappear.
-    const LOW = 28, HIGH = 70;
-    const alpha = new Uint8ClampedArray(w*h);
-    for (let i = 0; i < w*h; i++){
-      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
-      const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
-      if (dist <= LOW) alpha[i] = 0;
-      else if (dist >= HIGH) alpha[i] = 255;
-      else alpha[i] = Math.round(255 * (dist-LOW)/(HIGH-LOW));
+    function colorAt(i){ const p = i*4; return [data[p], data[p+1], data[p+2]]; }
+    function pushSeed(x, y){
+      const i = y*w + x;
+      if (!visited[i]){ visited[i] = 1; isBg[i] = 1; queue[qTail++] = i; }
     }
-    return alpha;
+    for (let x = 0; x < w; x++){ pushSeed(x, 0); pushSeed(x, h-1); }
+    for (let y = 0; y < h; y++){ pushSeed(0, y); pushSeed(w-1, y); }
+
+    while (qHead < qTail){
+      const i = queue[qHead++];
+      const x = i % w, y = (i / w) | 0;
+      const [r0, g0, b0] = colorAt(i);
+      const up = i - w, down = i + w, left = i - 1, right = i + 1;
+      if (y > 0 && !visited[up]){
+        const [r1,g1,b1] = colorAt(up);
+        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[up]=1; isBg[up]=1; queue[qTail++]=up; }
+      }
+      if (y < h-1 && !visited[down]){
+        const [r1,g1,b1] = colorAt(down);
+        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[down]=1; isBg[down]=1; queue[qTail++]=down; }
+      }
+      if (x > 0 && !visited[left]){
+        const [r1,g1,b1] = colorAt(left);
+        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[left]=1; isBg[left]=1; queue[qTail++]=left; }
+      }
+      if (x < w-1 && !visited[right]){
+        const [r1,g1,b1] = colorAt(right);
+        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[right]=1; isBg[right]=1; queue[qTail++]=right; }
+      }
+    }
+
+    const alpha = new Uint8ClampedArray(n);
+    for (let i = 0; i < n; i++) alpha[i] = isBg[i] ? 0 : 255;
+    // Soft edge pass: a kept pixel touching the background set fades
+    // proportionally to how many of its 4 neighbors are background, so
+    // the cutout has a gentle anti-aliased edge instead of a hard, jagged
+    // one-pixel step.
+    const softened = alpha.slice();
+    for (let y = 1; y < h-1; y++){
+      for (let x = 1; x < w-1; x++){
+        const i = y*w + x;
+        if (isBg[i]) continue;
+        let bgNeighbors = 0;
+        if (isBg[i-1]) bgNeighbors++;
+        if (isBg[i+1]) bgNeighbors++;
+        if (isBg[i-w]) bgNeighbors++;
+        if (isBg[i+w]) bgNeighbors++;
+        if (bgNeighbors > 0) softened[i] = Math.round(255 * (1 - bgNeighbors/6));
+      }
+    }
+    return softened;
   }
 
   document.getElementById('aiRemoveBtn').onclick = async () => {
@@ -3224,6 +3302,8 @@ if (document.getElementById('aiRemoveDrop')){
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+        document.getElementById('aiRemoveBtn').disabled = false;
+        hideAiIntroChrome();
         aiViewZoom = 1;
         requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
         setTool('brush');
