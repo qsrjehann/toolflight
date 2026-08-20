@@ -2411,10 +2411,46 @@ if (document.getElementById('aiRemoveDrop')){
 
     const alpha = new Uint8ClampedArray(n);
     for (let i = 0; i < n; i++) alpha[i] = isBg[i] ? 0 : 255;
-    // Soft edge pass: a kept pixel touching the background set fades
-    // proportionally to how many of its 4 neighbors are background, so
-    // the cutout has a gentle anti-aliased edge instead of a hard, jagged
-    // one-pixel step.
+
+    // Safety net: if flood-fill kept almost NOTHING (or almost everything),
+    // something has gone wrong -- most likely the fill leaked through a
+    // softly-blurred/anti-aliased edge in a real camera photo (each step
+    // along the blur is individually small enough to pass STEP_TOL, but
+    // the steps accumulate into a path that eventually swallows the ink
+    // itself, wiping out the exact thing this mode exists to keep). Rather
+    // than silently ship a blank or fully-opaque result, fall back to the
+    // simpler global background-color-distance approach: it can't handle
+    // multiple distinct background regions as well, but it CANNOT leak
+    // through an edge the way step-chained flood-fill can, since every
+    // pixel is judged against one fixed reference color, not a chain of
+    // neighbors. A worse-but-safe result beats a blank one.
+    let keptCount = 0;
+    for (let i = 0; i < n; i++) if (!isBg[i]) keptCount++;
+    const keptFrac = keptCount / n;
+    // Threshold deliberately very close to zero, not a round "looks small"
+    // number: a legitimate thin signature on a large photo can validly be
+    // under 0.3% of the frame (confirmed against the exact floor-region fix
+    // above, which kept ~0.22% -- a threshold anywhere near that would
+    // reintroduce that bug by "fixing" a correct result). True leak-through
+    // collapses to next to nothing kept at all, not merely "small."
+    if (keptFrac < 0.0003 || keptFrac > 0.95){
+      return computeDocumentModeAlphaGlobalFallback(data, w, h);
+    }
+
+    // Soft edge pass -- REDESIGNED. The previous version faded a kept
+    // pixel based on how many of its 4 neighbors were background, scaling
+    // up to a 66% reduction for a pixel surrounded on multiple sides. That
+    // assumption breaks down for genuinely thin content: a signature
+    // stroke only 1-2px wide (very common once scaled to the working
+    // resolution) has background on BOTH sides for its ENTIRE length, not
+    // just at its true end-points -- so the old formula faded the whole
+    // stroke to a faint, ghostly outline instead of solid ink, which is
+    // exactly the "the signature also disappeared" result reported. There
+    // is no way to distinguish "true edge that should soften" from "this
+    // is just how thin the content is" using 4-neighbor counting alone,
+    // so this now applies only a small, capped reduction regardless of
+    // neighbor count -- edges get a light touch of anti-aliasing, but
+    // nothing this gentle can meaningfully erode even 1px-wide content.
     const softened = alpha.slice();
     for (let y = 1; y < h-1; y++){
       for (let x = 1; x < w-1; x++){
@@ -2425,10 +2461,41 @@ if (document.getElementById('aiRemoveDrop')){
         if (isBg[i+1]) bgNeighbors++;
         if (isBg[i-w]) bgNeighbors++;
         if (isBg[i+w]) bgNeighbors++;
-        if (bgNeighbors > 0) softened[i] = Math.round(255 * (1 - bgNeighbors/6));
+        if (bgNeighbors > 0) softened[i] = 255 - Math.min(bgNeighbors * 8, 24);
       }
     }
     return softened;
+  }
+
+  // Fallback used only when flood-fill's safety net trips (see above): a
+  // single global background color sampled from the border, thresholded by
+  // plain distance. Cannot separate two different background regions (a
+  // desk AND paper, say) as well as the flood-fill above, but it is
+  // structurally incapable of leaking through a blurred edge into the ink,
+  // since it never chains through neighbors -- every pixel is judged
+  // independently against the same fixed reference color.
+  function computeDocumentModeAlphaGlobalFallback(data, w, h){
+    const samples = [];
+    const step = Math.max(1, Math.floor(Math.max(w,h) / 250));
+    for (let x = 0; x < w; x += step){ samples.push(x,0); samples.push(x,h-1); }
+    for (let y = 0; y < h; y += step){ samples.push(0,y); samples.push(w-1,y); }
+    const rs=[], gs=[], bs=[];
+    for (let i = 0; i < samples.length; i += 2){
+      const idx = (samples[i+1]*w + samples[i]) * 4;
+      rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
+    }
+    function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+    const bgR = median(rs), bgG = median(gs), bgB = median(bs);
+    const LOW = 28, HIGH = 70;
+    const alpha = new Uint8ClampedArray(w*h);
+    for (let i = 0; i < w*h; i++){
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
+      if (dist <= LOW) alpha[i] = 0;
+      else if (dist >= HIGH) alpha[i] = 255;
+      else alpha[i] = Math.round(255 * (dist-LOW)/(HIGH-LOW));
+    }
+    return alpha;
   }
 
   document.getElementById('aiRemoveBtn').onclick = async () => {
