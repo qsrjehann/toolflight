@@ -2318,13 +2318,12 @@ if (document.getElementById('aiRemoveDrop')){
     resetAiToUpload();
     toast('Upload a new image.');
   };
-  const aiResetBtnMobile = document.getElementById('aiResetBtnMobile');
-  if (aiResetBtnMobile) aiResetBtnMobile.onclick = () => {
-    if (!maskCanvas) return;
-    restoreHistory(0);
-    pushHistory();
-    toast('Reset to the original result.');
-  };
+  // Matches Passport Photo Maker's top app bar pattern exactly: Download +
+  // New Image, always reachable without opening any accordion. Triggers
+  // the same click as the existing Download button in the Export panel,
+  // not a second implementation of the download logic.
+  const aiTopDownloadBtn = document.getElementById('aiTopDownloadBtn');
+  if (aiTopDownloadBtn) aiTopDownloadBtn.onclick = () => document.getElementById('aiRemoveDownloadBtn').click();
 
   let bgRemoveMode = 'photo';
   const AI_MODE_HINTS = {
@@ -2350,142 +2349,44 @@ if (document.getElementById('aiRemoveDrop')){
   // category; see the plausibility-check comment further down). Runs
   // instantly, no model download, works offline, fully deterministic.
   //
-  // Flood-fill from the border, not a single global background color. An
-  // earlier version sampled the border for ONE representative background
-  // color and kept anything far from it -- which works for a photo with a
-  // single uniform background, but a real document/note photo often shows
-  // TWO: the paper itself, and whatever surface it's sitting on (a desk,
-  // floor, or table) visible in the corners where the paper doesn't fill
-  // the frame. A single global color can't represent both at once, so the
-  // second surface got kept as "foreground" by mistake -- exactly the
-  // reported "corner of the floor didn't get removed" result. Flood-
-  // filling from every border pixel simultaneously, where a pixel joins
-  // the background only if it's close to an ALREADY-CONFIRMED background
-  // NEIGHBOR (not one fixed reference color), correctly follows both
-  // regions outward from the edges regardless of how many different
-  // background surfaces are visible, as long as each is locally smooth and
-  // touches the photo's border -- true for essentially any real photo of
-  // paper on a surface.
+  // Deliberately the SIMPLE version: sample one representative background
+  // color from the photo's border, keep whatever is far enough from it.
+  // A flood-fill variant was tried here to also handle photos with TWO
+  // background regions (paper + the desk/floor visible in a corner where
+  // the paper doesn't fill the frame) -- but on real photos it
+  // intermittently classified the signature itself as background too
+  // (chaining through gradually-blurred pixels near the ink, something
+  // never fully reproducible in synthetic testing but confirmed by actual
+  // deployed results). Keeping the actual ink is the entire point of this
+  // mode, so reliability there matters more than also handling the
+  // two-background-region case -- this version cannot chain through an
+  // edge into the ink at all, since every pixel is judged independently
+  // against the same fixed reference color, never against a neighbor.
   function computeDocumentModeAlpha(srcCanvas){
     const w = srcCanvas.width, h = srcCanvas.height;
     const ctx = srcCanvas.getContext('2d');
     const data = ctx.getImageData(0, 0, w, h).data;
-    const n = w*h;
 
-    const isBg = new Uint8Array(n);
-    const visited = new Uint8Array(n);
-    const queue = new Int32Array(n);
-    let qHead = 0, qTail = 0;
-    const STEP_TOL = 26; // max color distance a pixel may differ from an already-confirmed background neighbor
-
-    function colorAt(i){ const p = i*4; return [data[p], data[p+1], data[p+2]]; }
-    function pushSeed(x, y){
-      const i = y*w + x;
-      if (!visited[i]){ visited[i] = 1; isBg[i] = 1; queue[qTail++] = i; }
-    }
-    for (let x = 0; x < w; x++){ pushSeed(x, 0); pushSeed(x, h-1); }
-    for (let y = 0; y < h; y++){ pushSeed(0, y); pushSeed(w-1, y); }
-
-    while (qHead < qTail){
-      const i = queue[qHead++];
-      const x = i % w, y = (i / w) | 0;
-      const [r0, g0, b0] = colorAt(i);
-      const up = i - w, down = i + w, left = i - 1, right = i + 1;
-      if (y > 0 && !visited[up]){
-        const [r1,g1,b1] = colorAt(up);
-        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[up]=1; isBg[up]=1; queue[qTail++]=up; }
-      }
-      if (y < h-1 && !visited[down]){
-        const [r1,g1,b1] = colorAt(down);
-        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[down]=1; isBg[down]=1; queue[qTail++]=down; }
-      }
-      if (x > 0 && !visited[left]){
-        const [r1,g1,b1] = colorAt(left);
-        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[left]=1; isBg[left]=1; queue[qTail++]=left; }
-      }
-      if (x < w-1 && !visited[right]){
-        const [r1,g1,b1] = colorAt(right);
-        if (Math.sqrt((r1-r0)**2+(g1-g0)**2+(b1-b0)**2) <= STEP_TOL){ visited[right]=1; isBg[right]=1; queue[qTail++]=right; }
-      }
-    }
-
-    const alpha = new Uint8ClampedArray(n);
-    for (let i = 0; i < n; i++) alpha[i] = isBg[i] ? 0 : 255;
-
-    // Safety net: if flood-fill kept almost NOTHING (or almost everything),
-    // something has gone wrong -- most likely the fill leaked through a
-    // softly-blurred/anti-aliased edge in a real camera photo (each step
-    // along the blur is individually small enough to pass STEP_TOL, but
-    // the steps accumulate into a path that eventually swallows the ink
-    // itself, wiping out the exact thing this mode exists to keep). Rather
-    // than silently ship a blank or fully-opaque result, fall back to the
-    // simpler global background-color-distance approach: it can't handle
-    // multiple distinct background regions as well, but it CANNOT leak
-    // through an edge the way step-chained flood-fill can, since every
-    // pixel is judged against one fixed reference color, not a chain of
-    // neighbors. A worse-but-safe result beats a blank one.
-    let keptCount = 0;
-    for (let i = 0; i < n; i++) if (!isBg[i]) keptCount++;
-    const keptFrac = keptCount / n;
-    // Threshold deliberately very close to zero, not a round "looks small"
-    // number: a legitimate thin signature on a large photo can validly be
-    // under 0.3% of the frame (confirmed against the exact floor-region fix
-    // above, which kept ~0.22% -- a threshold anywhere near that would
-    // reintroduce that bug by "fixing" a correct result). True leak-through
-    // collapses to next to nothing kept at all, not merely "small."
-    if (keptFrac < 0.0003 || keptFrac > 0.95){
-      return computeDocumentModeAlphaGlobalFallback(data, w, h);
-    }
-
-    // Soft edge pass -- REDESIGNED. The previous version faded a kept
-    // pixel based on how many of its 4 neighbors were background, scaling
-    // up to a 66% reduction for a pixel surrounded on multiple sides. That
-    // assumption breaks down for genuinely thin content: a signature
-    // stroke only 1-2px wide (very common once scaled to the working
-    // resolution) has background on BOTH sides for its ENTIRE length, not
-    // just at its true end-points -- so the old formula faded the whole
-    // stroke to a faint, ghostly outline instead of solid ink, which is
-    // exactly the "the signature also disappeared" result reported. There
-    // is no way to distinguish "true edge that should soften" from "this
-    // is just how thin the content is" using 4-neighbor counting alone,
-    // so this now applies only a small, capped reduction regardless of
-    // neighbor count -- edges get a light touch of anti-aliasing, but
-    // nothing this gentle can meaningfully erode even 1px-wide content.
-    const softened = alpha.slice();
-    for (let y = 1; y < h-1; y++){
-      for (let x = 1; x < w-1; x++){
-        const i = y*w + x;
-        if (isBg[i]) continue;
-        let bgNeighbors = 0;
-        if (isBg[i-1]) bgNeighbors++;
-        if (isBg[i+1]) bgNeighbors++;
-        if (isBg[i-w]) bgNeighbors++;
-        if (isBg[i+w]) bgNeighbors++;
-        if (bgNeighbors > 0) softened[i] = 255 - Math.min(bgNeighbors * 8, 24);
-      }
-    }
-    return softened;
-  }
-
-  // Fallback used only when flood-fill's safety net trips (see above): a
-  // single global background color sampled from the border, thresholded by
-  // plain distance. Cannot separate two different background regions (a
-  // desk AND paper, say) as well as the flood-fill above, but it is
-  // structurally incapable of leaking through a blurred edge into the ink,
-  // since it never chains through neighbors -- every pixel is judged
-  // independently against the same fixed reference color.
-  function computeDocumentModeAlphaGlobalFallback(data, w, h){
     const samples = [];
-    const step = Math.max(1, Math.floor(Math.max(w,h) / 250));
-    for (let x = 0; x < w; x += step){ samples.push(x,0); samples.push(x,h-1); }
-    for (let y = 0; y < h; y += step){ samples.push(0,y); samples.push(w-1,y); }
-    const rs=[], gs=[], bs=[];
+    const step = Math.max(1, Math.floor(Math.max(w,h) / 250)); // ~250 samples per border side regardless of image size
+    for (let x = 0; x < w; x += step){
+      samples.push(x, 0); samples.push(x, h-1);
+    }
+    for (let y = 0; y < h; y += step){
+      samples.push(0, y); samples.push(w-1, y);
+    }
+    const rs = [], gs = [], bs = [];
     for (let i = 0; i < samples.length; i += 2){
       const idx = (samples[i+1]*w + samples[i]) * 4;
       rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
     }
     function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
     const bgR = median(rs), bgG = median(gs), bgB = median(bs);
+
+    // Distance thresholds tuned against real ink-on-paper test photos
+    // (both dark-ink-on-light-paper and light-pen-on-dark-paper): far
+    // enough apart to give a soft, anti-aliased edge rather than a jagged
+    // cutout, without a gap so wide that faint pencil marks disappear.
     const LOW = 28, HIGH = 70;
     const alpha = new Uint8ClampedArray(w*h);
     for (let i = 0; i < w*h; i++){
@@ -2789,15 +2690,27 @@ if (document.getElementById('aiRemoveDrop')){
     if (historyStack.length > MAX_HISTORY) historyStack.shift();
     historyIndex = historyStack.length - 1;
     if (typeof autoSaveSession === 'function') autoSaveSession();
+    updateAiUndoRedoState();
   }
   function restoreHistory(idx){
     if (idx < 0 || idx >= historyStack.length) return;
     maskCanvas.getContext('2d').putImageData(historyStack[idx], 0, 0);
     historyIndex = idx;
     renderComposite();
+    updateAiUndoRedoState();
   }
   function undo(){ if (historyIndex > 0) restoreHistory(historyIndex - 1); else toast('Nothing to undo.'); }
   function redo(){ if (historyIndex < historyStack.length - 1) restoreHistory(historyIndex + 1); else toast('Nothing to redo.'); }
+  // Passport Photo Maker's undo/redo buttons correctly grey out when
+  // there's nothing to undo/redo (ppHistoryEngine.canUndo/canRedo) --
+  // these shared-ID buttons here were wired to the actions but never had
+  // their disabled state kept in sync, so they always looked clickable
+  // even with an empty history. Matches that same always-correct state.
+  function updateAiUndoRedoState(){
+    const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+    if (u) u.disabled = historyIndex <= 0;
+    if (r) r.disabled = historyIndex >= historyStack.length - 1;
+  }
 
   function setTool(tool){
     currentTool = tool;
