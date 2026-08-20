@@ -1857,6 +1857,36 @@ html.dark .category-hub-card .cat-arrow{
 
   #aiSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
   #aiSheetBackdrop.visible{ opacity:1; display:block; }
+
+  /* True single-screen mobile editor. Previously the editing view lived in
+     normal page flow, with #aiTopAppBar (sticky) and #aiBottomToolbar
+     (sticky) each independently deciding when to "stick" based on page
+     scroll position -- workable in isolation, but the two could end up
+     computing conflicting stuck positions at once (both anchored to the
+     same screen edges via independent sticky calculations), rendering the
+     bottom tab row visually sandwiched inside the open sheet instead of
+     cleanly above or below it. Removing page-level scroll entirely for
+     this view removes the ambiguity at the root: everything below becomes
+     plain flow inside one fixed, full-viewport column, so there is no
+     scroll position for anything to compute a "stuck" offset from in the
+     first place. Toggled via JS adding/removing "ai-fullscreen" on
+     #aiRemoveStage exactly when it's shown/hidden.
+     Desktop is deliberately NOT touched by any of this -- #aiRemoveStage
+     stays in normal page flow above 900px, where there's already enough
+     screen space that this class of bug doesn't occur. */
+  #aiRemoveStage.ai-fullscreen{
+    position:fixed; inset:0; z-index:100;
+    display:flex; flex-direction:column;
+    background:var(--bg1);
+  }
+  #aiRemoveStage.ai-fullscreen #aiTopAppBar{ position:relative; top:auto; flex:0 0 auto; }
+  #aiRemoveStage.ai-fullscreen #aiShellBody{ flex:1 1 auto; min-height:0; }
+  #aiRemoveStage.ai-fullscreen #aiCanvasAreaShell{ display:flex; flex-direction:column; min-height:0; height:100%; }
+  #aiRemoveStage.ai-fullscreen #aiWorkspaceViewport{ flex:1 1 auto; min-height:0; height:auto; max-height:none; }
+  #aiRemoveStage.ai-fullscreen #aiBottomToolbar{ position:relative; bottom:auto; flex:0 0 auto; }
+  #aiRemoveStage.ai-fullscreen #aiToolPanel{ z-index:60; }
+  #aiRemoveStage.ai-fullscreen #aiSheetBackdrop{ z-index:55; }
+  body.ai-fullscreen-lock{ overflow:hidden; position:fixed; width:100%; }
 }
 
 @media (min-width: 900px){
