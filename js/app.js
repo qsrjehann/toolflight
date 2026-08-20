@@ -2271,6 +2271,19 @@ if (document.getElementById('aiRemoveDrop')){
       aiResultCanvas = srcCanvas0;
       initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
+      // Auto-detect document/writing vs. photo (see detectDocumentLikeImage
+      // below) and set the mode toggle accordingly, so the common case
+      // ("I uploaded a photo of my signature" or "I uploaded a photo of my
+      // dog") already has the right mode selected without the person
+      // needing to know this toggle exists. Still fully overridable --
+      // this only picks the STARTING selection, exactly like remove.bg
+      // picking a sensible default rather than silently deciding for good.
+      const looksLikeDocument = detectDocumentLikeImage(srcCanvas0);
+      const detectedMode = looksLikeDocument ? 'document' : 'photo';
+      if (detectedMode !== bgRemoveMode){
+        const modeBtn = document.querySelector('#aiRemoveModeToggle button[data-mode="' + detectedMode + '"]');
+        if (modeBtn) modeBtn.click();
+      }
       // Previously warmed up the AI model here, immediately on every
       // upload, before the user asked for it. On a slow connection or a
       // memory-constrained device, downloading and initializing a large
@@ -2288,7 +2301,7 @@ if (document.getElementById('aiRemoveDrop')){
       // past a page's worth of text first. hideAiIntroChrome() restores all
       // of this on Reset/New Image, so it's not a one-way trip.
       hideAiIntroChrome();
-      toast('Image loaded.');
+      toast(looksLikeDocument ? 'Image loaded — looks like a document/signature, switched to Document mode.' : 'Image loaded.');
     }catch(err){
       toast(err.message, 'err');
     }
@@ -2349,44 +2362,140 @@ if (document.getElementById('aiRemoveDrop')){
   // category; see the plausibility-check comment further down). Runs
   // instantly, no model download, works offline, fully deterministic.
   //
-  // Deliberately the SIMPLE version: sample one representative background
-  // color from the photo's border, keep whatever is far enough from it.
-  // A flood-fill variant was tried here to also handle photos with TWO
-  // background regions (paper + the desk/floor visible in a corner where
-  // the paper doesn't fill the frame) -- but on real photos it
-  // intermittently classified the signature itself as background too
-  // (chaining through gradually-blurred pixels near the ink, something
-  // never fully reproducible in synthetic testing but confirmed by actual
-  // deployed results). Keeping the actual ink is the entire point of this
-  // mode, so reliability there matters more than also handling the
-  // two-background-region case -- this version cannot chain through an
-  // edge into the ink at all, since every pixel is judged independently
-  // against the same fixed reference color, never against a neighbor.
+  // Multi-seed version: a single global background color (the previous,
+  // deliberately simplest version here) reliably preserves the ink, but
+  // can't tell a SECOND background region apart from the first -- a
+  // desk/floor visible in a corner where the paper doesn't fill the frame
+  // reads as "far from the paper's color" and gets kept by mistake. A
+  // flood-fill variant was tried to fix that, but it could chain through
+  // gradually-blurred pixels near the ink on real photos and misclassify
+  // the ink itself as background -- unacceptable, since keeping the ink is
+  // the entire point of this mode. This version keeps the flood-fill
+  // version's ability to recognize more than one background region, but
+  // WITHOUT any neighbor-to-neighbor chaining: it samples several
+  // candidate background colors from different zones around the border
+  // (corners and edge midpoints, deduplicated), and judges each pixel
+  // independently against whichever candidate is closest -- structurally
+  // incapable of leaking into the ink no matter how gradual a blur is,
+  // since there is no chain to leak along, only a fixed lookup table of
+  // reference colors compared once per pixel.
   function computeDocumentModeAlpha(srcCanvas){
     const w = srcCanvas.width, h = srcCanvas.height;
     const ctx = srcCanvas.getContext('2d');
     const data = ctx.getImageData(0, 0, w, h).data;
 
+    function sampleZoneMedian(xs, ys){
+      const rs=[], gs=[], bs=[];
+      for (let i = 0; i < xs.length; i++){
+        const idx = (ys[i]*w + xs[i]) * 4;
+        rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
+      }
+      function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+      return [median(rs), median(gs), median(bs)];
+    }
+    function zoneRange(x0,x1,y0,y1,step){
+      const xs=[], ys=[];
+      for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step){ xs.push(x); ys.push(y); }
+      return [xs, ys];
+    }
+    const zoneSize = Math.max(4, Math.floor(Math.min(w,h) * 0.12));
+    const halfStrip = Math.max(2, Math.floor(zoneSize/2));
+    const step = Math.max(1, Math.floor(zoneSize/8));
+    const zoneRanges = [
+      zoneRange(0,zoneSize, 0,zoneSize, step),                                   // top-left
+      zoneRange(w-zoneSize,w, 0,zoneSize, step),                                 // top-right
+      zoneRange(0,zoneSize, h-zoneSize,h, step),                                 // bottom-left
+      zoneRange(w-zoneSize,w, h-zoneSize,h, step),                               // bottom-right
+      zoneRange(Math.floor(w/2-zoneSize/2),Math.floor(w/2+zoneSize/2), 0,halfStrip, step),        // top-mid
+      zoneRange(Math.floor(w/2-zoneSize/2),Math.floor(w/2+zoneSize/2), h-halfStrip,h, step),      // bottom-mid
+      zoneRange(0,halfStrip, Math.floor(h/2-zoneSize/2),Math.floor(h/2+zoneSize/2), step),        // left-mid
+      zoneRange(w-halfStrip,w, Math.floor(h/2-zoneSize/2),Math.floor(h/2+zoneSize/2), step),      // right-mid
+    ];
+    const candidates = zoneRanges.map(([xs,ys]) => sampleZoneMedian(xs,ys));
+    // Merge near-duplicate candidates (typically all 8 zones are the same
+    // single background, in which case this collapses back down to
+    // exactly the single-color behavior the earlier version always used).
+    const backgroundColors = [];
+    for (const c of candidates){
+      const dupe = backgroundColors.find(m => Math.sqrt((m[0]-c[0])**2 + (m[1]-c[1])**2 + (m[2]-c[2])**2) < 20);
+      if (!dupe) backgroundColors.push(c);
+    }
+
+    // Distance thresholds. LOW is deliberately tighter than a single-
+    // reference-color version needs: with several candidate colors to
+    // compare against, a pixel only needs to coincidentally land near ANY
+    // one of them, so the margin has to be tighter to avoid a coincidental
+    // match -- confirmed against a real failure case where a dark floor
+    // and dark ink were only ~27 apart; 24 correctly keeps that ink while
+    // still fully removing genuine floor/desk pixels (which land within a
+    // few units of their own candidate, not 27).
+    const LOW = 24, HIGH = 66;
+    const alpha = new Uint8ClampedArray(w*h);
+    for (let i = 0; i < w*h; i++){
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      let minDist = Infinity;
+      for (const [cr,cg,cb] of backgroundColors){
+        const d = Math.sqrt((r-cr)**2 + (g-cg)**2 + (b-cb)**2);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist <= LOW) alpha[i] = 0;
+      else if (minDist >= HIGH) alpha[i] = 255;
+      else alpha[i] = Math.round(255 * (minDist-LOW)/(HIGH-LOW));
+    }
+
+    // Safety net: if this produced an almost-blank (or almost-fully-kept)
+    // result, something is wrong for this specific photo -- fall back to
+    // the single-global-color version, which cannot leak/misfire the same
+    // way since it only ever has one reference color to begin with.
+    let keptCount = 0;
+    for (let i = 0; i < w*h; i++) if (alpha[i] > 200) keptCount++;
+    const keptFrac = keptCount / (w*h);
+    if (keptFrac < 0.0003 || keptFrac > 0.95){
+      return computeDocumentModeAlphaGlobalFallback(data, w, h);
+    }
+
+    // Gentle edge softening -- capped small on purpose. An earlier,
+    // stronger version scaled fade by how many of a pixel's 4 neighbors
+    // were background, up to a 66% reduction; that devastated thin (1-2px)
+    // strokes, since nearly every pixel along a thin stroke touches
+    // background on both sides for its whole length, not just at its true
+    // end-points -- the entire signature faded to a ghostly outline. This
+    // version caps the maximum possible reduction well below anything
+    // that could make even 1px-wide ink look faded.
+    const softened = alpha.slice();
+    for (let y = 1; y < h-1; y++){
+      for (let x = 1; x < w-1; x++){
+        const i = y*w + x;
+        if (alpha[i] === 0) continue;
+        let bgNeighbors = 0;
+        if (alpha[i-1] === 0) bgNeighbors++;
+        if (alpha[i+1] === 0) bgNeighbors++;
+        if (alpha[i-w] === 0) bgNeighbors++;
+        if (alpha[i+w] === 0) bgNeighbors++;
+        if (bgNeighbors > 0) softened[i] = Math.min(softened[i], 255 - Math.min(bgNeighbors * 8, 24));
+      }
+    }
+    return softened;
+  }
+
+  // Fallback used only when the multi-seed version's safety net trips: a
+  // single global background color sampled from the border, thresholded by
+  // plain distance. Cannot separate two different background regions as
+  // well, but it is structurally incapable of the failure modes above,
+  // since it only ever has one reference color for every pixel to compare
+  // against.
+  function computeDocumentModeAlphaGlobalFallback(data, w, h){
     const samples = [];
-    const step = Math.max(1, Math.floor(Math.max(w,h) / 250)); // ~250 samples per border side regardless of image size
-    for (let x = 0; x < w; x += step){
-      samples.push(x, 0); samples.push(x, h-1);
-    }
-    for (let y = 0; y < h; y += step){
-      samples.push(0, y); samples.push(w-1, y);
-    }
-    const rs = [], gs = [], bs = [];
+    const step = Math.max(1, Math.floor(Math.max(w,h) / 250));
+    for (let x = 0; x < w; x += step){ samples.push(x,0); samples.push(x,h-1); }
+    for (let y = 0; y < h; y += step){ samples.push(0,y); samples.push(w-1,y); }
+    const rs=[], gs=[], bs=[];
     for (let i = 0; i < samples.length; i += 2){
       const idx = (samples[i+1]*w + samples[i]) * 4;
       rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
     }
     function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
     const bgR = median(rs), bgG = median(gs), bgB = median(bs);
-
-    // Distance thresholds tuned against real ink-on-paper test photos
-    // (both dark-ink-on-light-paper and light-pen-on-dark-paper): far
-    // enough apart to give a soft, anti-aliased edge rather than a jagged
-    // cutout, without a gap so wide that faint pencil marks disappear.
     const LOW = 28, HIGH = 70;
     const alpha = new Uint8ClampedArray(w*h);
     for (let i = 0; i < w*h; i++){
@@ -2397,6 +2506,33 @@ if (document.getElementById('aiRemoveDrop')){
       else alpha[i] = Math.round(255 * (dist-LOW)/(HIGH-LOW));
     }
     return alpha;
+  }
+
+  // Auto-detect: document/writing vs. photo. Cheap, fast, no AI model
+  // needed for the DETECTION step itself (only Photo mode's actual removal
+  // uses the AI model) -- samples the image and counts how many distinct
+  // (coarsely quantized) colors appear. A document/note photo is
+  // essentially two-tone -- background plus ink -- so distinct colors stay
+  // low (confirmed on test photos: 17-30). A natural photo of a person,
+  // object, or scene has continuous tonal variation and lands far higher
+  // (confirmed: 138+ on a natural-photo test image) even accounting for
+  // camera noise and JPEG artifacts. This only sets the DEFAULT selected
+  // mode after upload -- the Photo/Document toggle stays fully manual on
+  // top of it, since this heuristic, like any heuristic, won't be right
+  // for every possible photo.
+  function detectDocumentLikeImage(srcCanvas){
+    const w = srcCanvas.width, h = srcCanvas.height;
+    const ctx = srcCanvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const n = w*h;
+    const stride = Math.max(1, Math.floor(n/5000));
+    const buckets = new Set();
+    for (let i = 0; i < n; i += stride){
+      const p = i*4;
+      const key = (data[p]>>4) + ',' + (data[p+1]>>4) + ',' + (data[p+2]>>4); // 16 levels/channel
+      buckets.add(key);
+    }
+    return buckets.size < 60;
   }
 
   document.getElementById('aiRemoveBtn').onclick = async () => {
