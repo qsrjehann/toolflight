@@ -953,6 +953,8 @@ html.dark .category-hub-card .cat-arrow{
 #rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; }
 .editor-stage-wrap.tool-brush canvas, .editor-stage-wrap.tool-eraser canvas{cursor:crosshair;}
 .editor-stage-wrap.tool-wand canvas{cursor:pointer;}
+.editor-stage-wrap.tool-pan canvas{cursor:grab;}
+.editor-stage-wrap.tool-pan canvas:active{cursor:grabbing;}
 .editor-stage-wrap.tool-polygon canvas, .editor-stage-wrap.tool-lasso canvas{cursor:crosshair;}
 .editor-stage-wrap.panning canvas{cursor:grab;}
 .editor-hint{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.6;}
