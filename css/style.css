@@ -324,6 +324,24 @@ html.dark .tool-wall .tool-card::after{opacity:.9;box-shadow:0 0 8px var(--accen
   margin-top:30px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
   padding:28px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
 }
+/* #aiToolPanel's mobile bottom-sheet uses position:fixed, which is meant
+   to be positioned relative to the actual viewport. Per spec, an ancestor
+   with backdrop-filter set (even fully static, non-transformed) becomes
+   the CONTAINING BLOCK for any position:fixed descendant instead of the
+   viewport -- .workspace's own backdrop-filter above (purely cosmetic,
+   fine for the static "card" look every other tool page uses it for) was
+   silently trapping the sheet inside .workspace's own box instead of the
+   real screen, so the sheet rendered far too narrow and positioned wrong,
+   with page content behind it visible through/around it exactly as
+   reported. Scoped to this one wrapper's ID -- every other tool's
+   .workspace usage elsewhere on the site is completely unaffected. */
+#aiWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+/* Same fix, same reasoning, for the other two tools sharing this exact
+   .workspace + mobile-fixed-sheet architecture -- Passport Photo Maker
+   and the Ecommerce Product Editor have the identical latent bug, just
+   not yet reported for those two specifically. */
+#ppWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+#epeWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
 /* The ecommerce editor's mobile bottom sheet uses position:fixed, which
    must be positioned relative to the true viewport to work correctly
    while the page is scrolled. backdrop-filter on an ancestor creates a
@@ -1821,14 +1839,16 @@ html.dark .category-hub-card .cat-arrow{
   #aiCanvasAreaShell{ padding:10px; }
 
   #aiToolPanel{
-    position:fixed; left:0; right:0; bottom:var(--ai-bottombar-h); top:auto;
-    width:auto; flex:none; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
+    position:fixed !important; left:0 !important; right:0 !important; bottom:var(--ai-bottombar-h) !important; top:auto !important;
+    width:auto !important; flex:none !important; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
     border-left:none; border-top:1px solid var(--card-border);
     border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
     transform:translateY(calc(100% + var(--ai-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
     z-index:50;
   }
   #aiToolPanel.sheet-open{ transform:translateY(0); }
+  #aiToolPanel.sheet-half{ height:45vh; height:45dvh; }
+  #aiToolPanel.sheet-full{ height:88vh; height:88dvh; }
   #aiToolPanel.collapsed{ width:auto; }
   #aiSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
   #aiToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
