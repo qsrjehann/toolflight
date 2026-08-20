@@ -1747,6 +1747,23 @@ html.dark .category-hub-card .cat-arrow{
   margin-top:10px;
 }
 #aiWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+/* #aiEditStageWrap uses the shared .editor-stage-wrap class (for its
+   checkerboard background etc.), but that base class also carries
+   overflow:auto and max-height:520px -- meant for older, simple tools that
+   just need a plain scrollable box. This tool (like Ecommerce Editor and
+   Passport Photo Maker, which hit and fixed this exact conflict already --
+   see #epeCanvasStageWrap / #ppCanvasStageWrap) uses the newer workspace-
+   engine architecture instead: #aiWorkspaceViewport is the one true
+   clipping box, #aiWorkspace carries the pan/zoom transform, and this inner
+   wrap should just be exactly the size of its canvas with no clipping or
+   scrolling of its own. Left un-overridden, the base class's own
+   overflow:auto + max-height:520px fought the transform-based pan/zoom
+   above it: on a portrait image taller than 520px, THIS element (not the
+   viewport) was the one actually cutting the image off, and it has its own
+   independent (native browser) scrollbar that touch-action:none on the
+   canvas blocks from ever being reachable by touch -- which is exactly the
+   reported "image doesn't fully load" and "can't drag" bug. */
+#aiEditStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
 
 #aiFloatingControls{
   position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
