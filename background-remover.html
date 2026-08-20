@@ -182,6 +182,7 @@
               </div>
                 <div id="aiFloatingControls" role="toolbar" aria-label="Editing tools">
                   <button type="button" id="aiFloatDragHandle" class="epe-drag-handle" title="Drag to move" aria-label="Drag to move toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/></svg></button>
+                  <button class="editor-tool-btn ai-tool-btn" data-tool="pan" type="button" aria-pressed="false" title="Hand — pan without drawing, even if a brush tool is selected" aria-label="Hand, pan the canvas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8M6 14l-1.5-1.5a1.5 1.5 0 0 0-2 2.2L6 18a6 6 0 0 0 6 6h2a6 6 0 0 0 6-6v-4a2 2 0 0 0-4 0"/></svg></button>
                   <div class="epe-float-sep"></div>
                   <button type="button" id="undoBtn" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12H8"/></svg></button>
                   <button type="button" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h6"/></svg></button>
@@ -237,7 +238,7 @@
         </div>
         <div class="row" style="margin-top:10px;">
           <button class="btn btn-ghost" id="invertSelBtn" type="button">Invert selection</button>
-          <button class="btn btn-danger" id="resetSelBtn" type="button">Reset to AI result</button>
+          <button class="btn btn-danger" id="resetSelBtn" type="button">Reset to Original Image</button>
         </div>
         <div class="row">
           <button class="btn btn-ghost" id="overlayToggleBtn" type="button" aria-pressed="false">Selection overlay</button>
