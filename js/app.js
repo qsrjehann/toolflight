@@ -2308,12 +2308,12 @@ if (document.getElementById('aiRemoveDrop')){
   });
 
   function hideAiIntroChrome(){
-    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections'];
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections','aiUploadFormArea'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
     document.querySelectorAll('.navbar').forEach(el => el.classList.add('ai-nav-collapsed'));
   }
   function showAiIntroChrome(){
-    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections'];
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections','aiUploadFormArea'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); });
     document.querySelectorAll('.navbar').forEach(el => el.classList.remove('ai-nav-collapsed'));
   }
@@ -2332,11 +2332,49 @@ if (document.getElementById('aiRemoveDrop')){
     toast('Upload a new image.');
   };
   // Matches Passport Photo Maker's top app bar pattern exactly: Download +
-  // New Image, always reachable without opening any accordion. Triggers
-  // the same click as the existing Download button in the Export panel,
-  // not a second implementation of the download logic.
+  // New Image, always reachable without opening any accordion. Clicking
+  // the main button downloads the common case (transparent PNG) directly,
+  // matching the single Export button's default; the caret next to it
+  // reveals JPG/PDF as a couple of extra taps for anyone who wants them,
+  // without needing to open the Export accordion at all.
   const aiTopDownloadBtn = document.getElementById('aiTopDownloadBtn');
+  const aiTopDownloadCaretBtn = document.getElementById('aiTopDownloadCaretBtn');
+  const aiTopDownloadMenu = document.getElementById('aiTopDownloadMenu');
   if (aiTopDownloadBtn) aiTopDownloadBtn.onclick = () => document.getElementById('aiRemoveDownloadBtn').click();
+  if (aiTopDownloadCaretBtn && aiTopDownloadMenu){
+    aiTopDownloadCaretBtn.onclick = (e) => {
+      e.stopPropagation();
+      const opening = aiTopDownloadMenu.classList.contains('hidden');
+      aiTopDownloadMenu.classList.toggle('hidden', !opening);
+      aiTopDownloadCaretBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    };
+    document.addEventListener('click', (e) => {
+      if (!aiTopDownloadMenu.classList.contains('hidden') && !e.target.closest('#aiTopDownloadWrap')){
+        aiTopDownloadMenu.classList.add('hidden');
+        aiTopDownloadCaretBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+    document.querySelectorAll('.ai-download-format-opt').forEach(opt => {
+      opt.onclick = () => {
+        aiTopDownloadMenu.classList.add('hidden');
+        aiTopDownloadCaretBtn.setAttribute('aria-expanded', 'false');
+        const fmt = opt.dataset.format;
+        if (fmt === 'png'){
+          document.getElementById('aiRemoveDownloadBtn').click();
+          return;
+        }
+        // JPG/PDF reuse the exact same export pipeline the Export panel's
+        // own button uses (full-resolution rebuild, worker-based when
+        // available) -- this is just a second, faster way to reach it.
+        const formatSelect = document.getElementById('exportFormat');
+        if (formatSelect){
+          formatSelect.value = fmt;
+          formatSelect.dispatchEvent(new Event('change'));
+        }
+        document.getElementById('exportBtn').click();
+      };
+    });
+  }
 
   let bgRemoveMode = 'photo';
   const AI_MODE_HINTS = {
@@ -2429,7 +2467,22 @@ if (document.getElementById('aiRemoveDrop')){
     // and dark ink were only ~27 apart; 24 correctly keeps that ink while
     // still fully removing genuine floor/desk pixels (which land within a
     // few units of their own candidate, not 27).
-    const LOW = 24, HIGH = 66;
+    //
+    // HIGH was previously 66 -- too wide in practice. A real photo's ink
+    // often isn't stark black-on-white; moderate contrast (a worn pen,
+    // pencil, glare, JPEG softening) is common, and any pixel whose
+    // distance fell in the wide 24-66 gap got a correspondingly wide range
+    // of PARTIAL alpha rather than full opacity -- confirmed on a
+    // deliberately washed-out test signature, where the old window left
+    // real ink at only ~41% average opacity along a stroke (looks faded/
+    // "dull"), while sharper-contrast paper creases nearby could cross 66
+    // and reach full opacity, looking MORE solid than the actual
+    // signature -- the exact "signature dull, lines highlighted" result
+    // reported. Narrowing to 24-40 lets moderate-contrast ink reach full
+    // opacity much sooner (same test: ~67% and rising) while the floor/
+    // multi-region case (verified above) stays just as clean, since that
+    // separation was never about HIGH in the first place.
+    const LOW = 24, HIGH = 40;
     const alpha = new Uint8ClampedArray(w*h);
     for (let i = 0; i < w*h; i++){
       const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
@@ -2513,13 +2566,21 @@ if (document.getElementById('aiRemoveDrop')){
   // uses the AI model) -- samples the image and counts how many distinct
   // (coarsely quantized) colors appear. A document/note photo is
   // essentially two-tone -- background plus ink -- so distinct colors stay
-  // low (confirmed on test photos: 17-30). A natural photo of a person,
-  // object, or scene has continuous tonal variation and lands far higher
-  // (confirmed: 138+ on a natural-photo test image) even accounting for
-  // camera noise and JPEG artifacts. This only sets the DEFAULT selected
-  // mode after upload -- the Photo/Document toggle stays fully manual on
-  // top of it, since this heuristic, like any heuristic, won't be right
-  // for every possible photo.
+  // low. A natural photo of a person, object, or scene has continuous
+  // tonal variation and lands far higher (confirmed: 138+ on a natural-
+  // photo test image) even accounting for camera noise and JPEG artifacts.
+  //
+  // Threshold raised from 60 to 90. Every synthetic recreation tried here
+  // (including realistic JPEG compression, lighting gradients, and sensor
+  // noise) stayed well under 60 for genuine document/signature photos --
+  // but a real deployed photo still got misclassified as "Photo," meaning
+  // a real camera photo carries more color variation (uneven real-world
+  // lighting, shadows, paper texture, compression artifacts stacked
+  // together) than any synthetic test here reproduced. 90 keeps a solid
+  // ~35% margin below the natural-photo reference point (138) while giving
+  // real document photos meaningfully more headroom than before. This only
+  // sets the DEFAULT selected mode after upload -- the Photo/Document
+  // toggle stays fully manual on top of it either way.
   function detectDocumentLikeImage(srcCanvas){
     const w = srcCanvas.width, h = srcCanvas.height;
     const ctx = srcCanvas.getContext('2d');
@@ -2532,7 +2593,7 @@ if (document.getElementById('aiRemoveDrop')){
       const key = (data[p]>>4) + ',' + (data[p+1]>>4) + ',' + (data[p+2]>>4); // 16 levels/channel
       buckets.add(key);
     }
-    return buckets.size < 60;
+    return buckets.size < 90;
   }
 
   document.getElementById('aiRemoveBtn').onclick = async () => {
@@ -3000,8 +3061,6 @@ if (document.getElementById('aiRemoveDrop')){
     }
     aiWorkspaceEngine.fitToScreen(canvas.width, canvas.height, aiViewZoom);
   }
-  document.getElementById('aiViewFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
-  document.getElementById('aiViewCenterBtn').onclick = () => { fitAiCanvasDisplay(); };
   document.getElementById('aiFloatFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
   window.addEventListener('resize', () => { if (document.getElementById('aiEditCanvas').width) fitAiCanvasDisplay(); });
   // Belt-and-braces for the same class of bug the deferred rAF calls above
@@ -3063,7 +3122,7 @@ if (document.getElementById('aiRemoveDrop')){
     barEl: () => document.getElementById('aiFloatingControls'),
     viewportEl: () => document.getElementById('aiWorkspaceViewport'),
     draggingClass: 'ai-dragging',
-    resetTriggerEls: [ () => document.getElementById('aiViewFitBtn') ],
+    resetTriggerEls: [ () => document.getElementById('aiFloatFitBtn') ],
   });
 
   const editStageWrap = document.getElementById('aiEditStageWrap');
