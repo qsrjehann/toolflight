@@ -2688,6 +2688,23 @@ if (document.getElementById('aiRemoveDrop')){
     const canvas = document.getElementById('aiEditCanvas');
     if (!canvas || !canvas.width) return;
     canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+    // Size the viewport's HEIGHT to the loaded image's own aspect ratio
+    // (within the existing min/max bounds) instead of a fixed 60vh
+    // regardless of content. A portrait crop inside a much taller fixed
+    // box left a large dead checkered area below the image -- looked like
+    // part of the image hadn't loaded, and that empty area didn't respond
+    // to drag the way the actual image did. Landscape images now get a
+    // short, wide viewport; portrait images get a taller one; square
+    // images get a square one -- little to no leftover empty space either
+    // way, and zoom/pan behavior below is unchanged.
+    const viewport = document.getElementById('aiWorkspaceViewport');
+    if (viewport){
+      const w = viewport.clientWidth || viewport.getBoundingClientRect().width;
+      if (w > 0){
+        const idealH = w * (canvas.height / canvas.width);
+        viewport.style.height = Math.max(280, Math.min(640, idealH)) + 'px';
+      }
+    }
     aiWorkspaceEngine.fitToScreen(canvas.width, canvas.height, aiViewZoom);
   }
   document.getElementById('aiViewFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
@@ -2759,7 +2776,7 @@ if (document.getElementById('aiRemoveDrop')){
   const editStageWrap = document.getElementById('aiEditStageWrap');
 
   editStageWrap.addEventListener('pointerdown', (e) => {
-    if (!maskCanvas || spacePan) return;
+    if (!maskCanvas || spacePan || currentTool === 'pan') return;
     const canvas = document.getElementById('aiEditCanvas');
     editCanvas = canvas;
     const pt = canvasPointFromEvent(e);
@@ -2843,7 +2860,12 @@ if (document.getElementById('aiRemoveDrop')){
     const viewport = document.getElementById('aiWorkspaceViewport');
     let panning = false, startX = 0, startY = 0, startWsX = 0, startWsY = 0;
     viewport.addEventListener('pointerdown', (e) => {
-      if (!spacePan) return;
+      // Space+drag is the desktop path; the "pan" tool button is the touch
+      // equivalent -- there's no keyboard on mobile to hold Space with, so
+      // without this second trigger, dragging the canvas had no way to
+      // work at all on a phone (matches the reported "can't drag the image"
+      // bug exactly).
+      if (!spacePan && currentTool !== 'pan') return;
       if (e.target.closest('#aiFloatingControls')) return;
       panning = true;
       startX = e.clientX; startY = e.clientY;
