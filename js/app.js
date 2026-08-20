@@ -2144,19 +2144,46 @@ if (document.getElementById('aiRemoveDrop')){
   let segmenter = null;
   let segmenterLoadPromise = null;
   let aiSourceImg = null;
+  let aiSourceFile = null;  // raw File, kept so a full-resolution bitmap can be
+                            // decoded lazily at export time instead of eagerly
+                            // on every upload -- see loadImageExifSafe below.
   let aiResultCanvas = null;
   // EXIF-orientation-safe image load, used only for this tool's uploads.
-  // See the detailed reasoning where this is wired in below (loadImgAi).
+  // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
+  // resizeWidth/resizeHeight, rather than decoding the full original and
+  // only downscaling afterward. The previous version created a full native-
+  // resolution bitmap AND a full native-resolution canvas immediately on
+  // upload, before any button click -- for a modern phone photo (12MP,
+  // 48MP+ on newer phones is common) that is tens to hundreds of megabytes
+  // of raw pixel memory, allocated instantly and unconditionally. That is
+  // enough to crash a mobile browser tab's renderer outright (shows as a
+  // black screen that never recovers) regardless of how fast the device's
+  // CPU is -- this is a memory-allocation failure, not a slow-computation
+  // freeze, so no amount of processing power prevents it. Asking
+  // createImageBitmap to resize AT DECODE TIME means the full-resolution
+  // pixel buffer is never materialized at all for the working copy.
+  const AI_SOURCE_CAP = 2000; // generous vs. the 1200px working canvas elsewhere in this tool, still far below a raw 12-48MP original
   function loadImageExifSafe(file){
     return new Promise((resolve) => {
       if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve); return; }
-      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
-        const c = document.createElement('canvas');
-        c.width = bitmap.width; c.height = bitmap.height;
-        c.getContext('2d').drawImage(bitmap, 0, 0);
-        if (bitmap.close) bitmap.close();
-        c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
-        resolve(c);
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(probeBitmap => {
+        const pw = probeBitmap.width, ph = probeBitmap.height;
+        const needsResize = Math.max(pw, ph) > AI_SOURCE_CAP;
+        const targetW = needsResize ? Math.round(pw * (AI_SOURCE_CAP / Math.max(pw, ph))) : pw;
+        const targetH = needsResize ? Math.round(ph * (AI_SOURCE_CAP / Math.max(pw, ph))) : ph;
+        const finish = (bitmap) => {
+          const c = document.createElement('canvas');
+          c.width = bitmap.width; c.height = bitmap.height;
+          c.getContext('2d').drawImage(bitmap, 0, 0);
+          if (bitmap.close) bitmap.close();
+          c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
+          resolve(c);
+        };
+        if (!needsResize){ finish(probeBitmap); return; }
+        probeBitmap.close && probeBitmap.close();
+        createImageBitmap(file, { imageOrientation: 'from-image', resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high' })
+          .then(finish)
+          .catch(() => loadImageFromFile(file).then(resolve));
       }).catch(() => {
         // createImageBitmap or the orientation option isn't supported here --
         // fall back to the exact path every other ToolFlight image tool uses,
@@ -2166,6 +2193,25 @@ if (document.getElementById('aiRemoveDrop')){
     });
   }
   const loadImgAi = loadImageExifSafe;
+
+  // Decodes a FULL native-resolution bitmap from the original file, used
+  // only at export time (buildFullResExport below) -- this is the one place
+  // that legitimately needs full resolution, and it now only happens once,
+  // on demand, when the user actually asks for their result, instead of
+  // unconditionally on every upload.
+  function loadFullResExifSafe(file){
+    return new Promise((resolve, reject) => {
+      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve).catch(reject); return; }
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
+        const c = document.createElement('canvas');
+        c.width = bitmap.width; c.height = bitmap.height;
+        c.getContext('2d').drawImage(bitmap, 0, 0);
+        if (bitmap.close) bitmap.close();
+        c.naturalWidth = c.width; c.naturalHeight = c.height;
+        resolve(c);
+      }).catch(() => loadImageFromFile(file).then(resolve).catch(reject));
+    });
+  }
 
   function setAiStatus(state, message){
     const el = document.getElementById('aiModelStatus');
@@ -2208,6 +2254,7 @@ if (document.getElementById('aiRemoveDrop')){
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB.`, 'err'); return; }
     try{
+      aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
       document.getElementById('aiRemoveStage').classList.remove('hidden');
       // Show the uploaded image immediately in the SAME canvas that will
@@ -3140,11 +3187,11 @@ if (document.getElementById('aiRemoveDrop')){
     }
     return exportWorker;
   }
-  function buildFullResExportMainThread(){
-    const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
+  function buildFullResExportMainThread(fullImg){
+    const fullW = fullImg.naturalWidth, fullH = fullImg.naturalHeight;
     const fullOriginal = document.createElement('canvas');
     fullOriginal.width = fullW; fullOriginal.height = fullH;
-    fullOriginal.getContext('2d').drawImage(aiSourceImg, 0, 0);
+    fullOriginal.getContext('2d').drawImage(fullImg, 0, 0);
     const fullMask = document.createElement('canvas');
     fullMask.width = fullW; fullMask.height = fullH;
     fullMask.getContext('2d').drawImage(maskCanvas, 0, 0, fullW, fullH);
@@ -3164,10 +3211,22 @@ if (document.getElementById('aiRemoveDrop')){
     return out;
   }
   async function buildFullResExport(){
-    const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
+    // aiSourceImg is a CAPPED working copy (see loadImageExifSafe above) --
+    // full native resolution is decoded fresh, here, from the original
+    // file, ONLY when the user actually exports, rather than being held in
+    // memory unconditionally from the moment of upload. Falls back to the
+    // capped aiSourceImg if there's no stored File (e.g. a restored
+    // autosave session), which just means that specific export won't
+    // exceed the resolution that was already being worked with.
+    let fullImg = aiSourceImg;
+    if (aiSourceFile){
+      try{ fullImg = await loadFullResExifSafe(aiSourceFile); }
+      catch(e){ fullImg = aiSourceImg; }
+    }
+    const fullW = fullImg.naturalWidth, fullH = fullImg.naturalHeight;
     if (supportsWorkerExport()){
       try{
-        const originalBitmap = await createImageBitmap(aiSourceImg);
+        const originalBitmap = await createImageBitmap(fullImg);
         const maskBitmap = await createImageBitmap(maskCanvas);
         const worker = getExportWorker();
         if (!worker) throw new Error('Worker unavailable');
@@ -3182,10 +3241,10 @@ if (document.getElementById('aiRemoveDrop')){
         canvas.getContext('2d').drawImage(bitmap, 0, 0);
         return canvas;
       }catch(err){
-        return buildFullResExportMainThread(); // graceful fallback, same visual result
+        return buildFullResExportMainThread(fullImg); // graceful fallback, same visual result
       }
     }
-    return buildFullResExportMainThread();
+    return buildFullResExportMainThread(fullImg);
   }
 
   const exportQualitySlider = document.getElementById('exportQuality');
