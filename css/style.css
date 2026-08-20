@@ -54,6 +54,16 @@ a{color:inherit;}
   background:color-mix(in srgb, var(--bg1) 55%, transparent);
   border-bottom:1px solid var(--card-border);
 }
+@media (max-width:899.98px){
+  /* Once the Background Remover's editor is actively open, the full-size
+     navbar is mostly just scroll distance between a mobile user and their
+     canvas -- shrink it (logo + theme toggle still reachable, just more
+     compact) rather than removing navigation entirely. */
+  .navbar.ai-nav-collapsed .nav-inner{ padding:6px 14px; }
+  .navbar.ai-nav-collapsed .logo{ font-size:15px; gap:6px; }
+  .navbar.ai-nav-collapsed .logo img{ width:22px; height:22px; }
+  .navbar.ai-nav-collapsed .theme-toggle{ transform:scale(0.8); }
+}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;max-width:1080px;margin:0 auto;}
 .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-.02em;}
 .logo .mark{
@@ -1669,6 +1679,8 @@ html.dark .category-hub-card .cat-arrow{
   #ppTopAppBarTitle{ flex:1; }
   #ppNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
   #ppNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+  #aiNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  #aiNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
   #ppCanvasTopControls{ display:none; }
   #ppBottomToolbar{ display:flex; }
   #ppLeftRail{ display:none; }
