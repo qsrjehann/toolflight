@@ -1,0 +1,2346 @@
+:root{
+  --bg1:#EEF1FF; --bg2:#FDF4FF; --bg3:#F5FBFF;
+  --ink:#151726; --ink-soft:#5C6079;
+  --card:rgba(255,255,255,0.72); --card-border:rgba(255,255,255,0.9);
+  --accent1:#6D5EF5; --accent2:#C24CF0; --accent-text:#ffffff;
+  --ok:#12A66B; --err:#EF4444; --warn:#F59E0B;
+  --paper:#ffffff;
+  /* Darker "-solid" variants for use behind white text — the base tokens above
+     don't all meet WCAG AA (4.5:1) contrast with white, these do. */
+  --accent1-solid:#5142D6; --ok-solid:#0E8F5C; --warn-solid:#B45309; --err-solid:#DC2626;
+  --shadow: 0 20px 45px -20px rgba(90,60,200,0.25);
+  --radius:20px;
+  color-scheme: light;
+  /* Solid editor-shell surfaces (bottom sheet, accordions, floating
+     controls, toolbars) -- kept separate from --card, which stays at
+     its existing translucency everywhere else on the site. Verified
+     WCAG AA+ contrast against --ink/--ink-soft (17.8:1 / 6.2:1). */
+  --epe-shell-surface: rgba(255,255,255,0.97);
+  --epe-shell-surface-solid: #FFFFFF;
+  --epe-shell-border: rgba(20,15,45,0.12);
+}
+html.dark{
+  --bg1:#0B0D18; --bg2:#141225; --bg3:#0E1024;
+  --ink:#F1F1F8; --ink-soft:#9A9CC0;
+  --card:rgba(255,255,255,0.06); --card-border:rgba(255,255,255,0.12);
+  --paper:#ffffff;
+  --shadow: 0 20px 45px -20px rgba(0,0,0,0.6);
+  color-scheme: dark;
+  /* Verified WCAG AA+ contrast against --ink/--ink-soft (16.3:1 / 6.9:1). */
+  --epe-shell-surface: rgba(20,18,37,0.97);
+  --epe-shell-surface-solid: #141225;
+  --epe-shell-border: rgba(255,255,255,0.14);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;scroll-behavior:smooth;}
+body{
+  font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(circle at 8% 8%, color-mix(in srgb, var(--accent1) 18%, transparent), transparent 42%),
+    radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 45%),
+    linear-gradient(160deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+  min-height:100vh;
+  min-height:100dvh; /* progressive enhancement — accounts for mobile Safari's dynamic toolbar; ignored by browsers that don't recognize dvh, which keep the vh value above */
+  transition:background .4s ease, color .3s ease;
+}
+a{color:inherit;}
+.container{max-width:1080px;margin:0 auto;padding:0 20px;}
+
+/* ---- Navbar ---- */
+.navbar{
+  position:sticky; top:0; z-index:50;
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  background:color-mix(in srgb, var(--bg1) 55%, transparent);
+  border-bottom:1px solid var(--card-border);
+}
+@media (max-width:899.98px){
+  /* Once the Background Remover's editor is actively open, the full-size
+     navbar is mostly just scroll distance between a mobile user and their
+     canvas -- shrink it (logo + theme toggle still reachable, just more
+     compact) rather than removing navigation entirely. */
+  .navbar.ai-nav-collapsed .nav-inner{ padding:6px 14px; }
+  .navbar.ai-nav-collapsed .logo{ font-size:15px; gap:6px; }
+  .navbar.ai-nav-collapsed .logo img{ width:22px; height:22px; }
+  .navbar.ai-nav-collapsed .theme-toggle{ transform:scale(0.8); }
+}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;max-width:1080px;margin:0 auto;}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-.02em;}
+.logo .mark{
+  width:30px;height:30px;border-radius:9px;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800;
+  box-shadow:0 6px 16px -4px color-mix(in srgb, var(--accent1) 60%, transparent);
+}
+.nav-links{display:flex;gap:22px;align-items:center;font-size:14px;font-weight:600;}
+.nav-links a{text-decoration:none;color:var(--ink-soft);transition:color .2s;}
+.nav-links a:hover{color:var(--ink);}
+.theme-toggle{
+  width:38px;height:38px;border-radius:12px;border:1px solid var(--card-border);
+  background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:transform .2s ease;
+}
+.theme-toggle:hover{transform:translateY(-2px);}
+.theme-toggle svg{width:18px;height:18px;}
+.mobile-hide{display:flex;}
+@media (max-width:680px){ .mobile-hide{display:none;} }
+
+/* ---- Hero 3D Moving Tool Wall ---- */
+.hero-section{
+  position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:80px 20px 40px;overflow:hidden;
+}
+.hero-content{
+  display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;
+  max-width:1400px;width:100%;margin:0 auto;
+}
+.hero-copy{position:relative;z-index:10;max-width:540px;}
+.hero-copy h1{
+  font-size:clamp(42px,5.5vw,72px);font-weight:800;line-height:1.05;
+  letter-spacing:-.03em;margin:0 0 20px;color:var(--ink);
+}
+.grad{
+  background:linear-gradient(110deg,var(--accent1),var(--accent2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero-sub{
+  font-size:clamp(15px,2vw,18px);line-height:1.6;color:var(--ink-soft);
+  max-width:500px;margin:0 0 28px;font-weight:500;
+}
+.hero-search{
+  display:flex;align-items:center;gap:8px;height:54px;width:100%;
+  max-width:480px;background:var(--card);border:1px solid var(--card-border);
+  border-radius:16px;padding:0 16px;margin-bottom:24px;box-shadow:0 12px 28px var(--shadow);
+}
+.hero-search svg{width:18px;height:18px;color:var(--ink-soft);flex-shrink:0;}
+.search-input{
+  flex:1;border:none;background:transparent;color:var(--ink);font-size:14px;
+  font-family:inherit;outline:none;
+}
+.search-input::placeholder{color:var(--ink-soft);}
+.search-btn{
+  width:40px;height:40px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;
+  transition:transform .2s ease,box-shadow .2s ease;flex-shrink:0;
+}
+.search-btn:hover{transform:scale(1.05);}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;}
+.cta-primary,.cta-secondary{
+  display:inline-flex;align-items:center;justify-content:center;height:48px;
+  border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;
+  text-decoration:none;transition:transform .2s ease,box-shadow .2s ease,background .2s ease;
+  border:none;padding:0 24px;white-space:nowrap;
+}
+.cta-primary{
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;
+  box-shadow:0 12px 24px color-mix(in srgb,var(--accent1) 40%,transparent);
+}
+.cta-primary:hover{transform:translateY(-2px);box-shadow:0 16px 32px color-mix(in srgb,var(--accent1) 50%,transparent);}
+.cta-secondary{
+  background:var(--card);border:1px solid var(--card-border);color:var(--accent1);
+}
+.cta-secondary:hover{transform:translateY(-2px);background:color-mix(in srgb,var(--accent1) 8%,var(--card));}
+
+/* 3D Tool Wall */
+.hero-wall-container{position:relative;height:100%;min-height:500px;display:flex;align-items:center;}
+.wall-scene{
+  position:relative;width:100%;height:100%;min-height:500px;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;border-radius:36px;
+}
+html.hero-3d .wall-scene{ perspective:1200px; }
+.wall-glow{
+  position:absolute;width:85%;height:85%;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(109,94,245,.14),transparent 68%);
+  background:radial-gradient(ellipse,color-mix(in srgb,var(--accent1) 18%,transparent),transparent 68%);
+  filter:blur(32px);pointer-events:none;z-index:1;
+}
+.tool-wall{
+  position:relative;width:110%;height:650px;transform-style:flat;transform:none;z-index:2;
+}
+html.hero-3d .tool-wall{
+  transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-8deg) rotateZ(-1deg) translateZ(0);
+  transition:transform .15s ease-out;
+}
+.tool-wall::before{
+  content:"";position:absolute;left:4%;right:4%;top:7%;bottom:7%;
+  border-radius:36px;
+  background:rgba(109,94,245,.05);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent1) 8%,transparent),color-mix(in srgb,var(--accent1) 2%,transparent));
+  border:1px solid var(--card-border);
+  border:1px solid color-mix(in srgb,var(--card-border) 80%,transparent);
+  pointer-events:none;
+}
+html.hero-3d .tool-wall::before{
+  box-shadow:inset 0 0 60px color-mix(in srgb,var(--accent1) 4%,transparent);
+  transform:translateZ(-80px);
+}
+.wall-row{
+  position:absolute;left:-10%;width:120%;height:110px;display:flex;align-items:center;gap:16px;
+  transform-style:flat;will-change:auto;
+}
+html.hero-3d .wall-row{ transform-style:preserve-3d;will-change:transform; }
+.wall-row::before{
+  content:"";position:absolute;left:0;right:0;height:100%;pointer-events:none;
+  background:linear-gradient(90deg,var(--bg1) 0%,transparent 10%,transparent 90%,var(--bg1) 100%);
+  z-index:30;
+}
+.row1{top:24px;}
+.row2{top:142px;}
+.row3{top:260px;}
+.row4{top:378px;}
+.row5{top:496px;}
+.track{display:flex;gap:16px;flex:none;transform-style:flat;padding:0 16px;}
+html.hero-3d .track{ transform-style:preserve-3d; }
+.track-ltr{animation:moveLeft 42s linear infinite;}
+.track-rtl{animation:moveRight 45s linear infinite;}
+/* Per-row animation-duration is overridden inline by JS (renderToolWall) to
+   keep a consistent pixels/second speed now that card widths are dynamic.
+   The values above are non-JS fallbacks only. */
+@keyframes moveLeft{from{transform:translateX(0)}to{transform:translateX(-52%)}}
+@keyframes moveRight{from{transform:translateX(-52%)}to{transform:translateX(0)}}
+@media (prefers-reduced-motion:reduce){
+  .track-ltr,.track-rtl{animation:none;transform:translateX(0);}
+}
+.tool-wall .tool-card{
+  --accent:var(--accent1);width:170px;height:auto;min-height:64px;flex:none;border-radius:18px;
+  background:var(--card);border:1px solid var(--card-border);
+  display:flex;align-items:center;gap:12px;padding:10px 16px;
+  box-shadow:0 14px 28px rgba(20,15,50,.12);
+  transform:none;transition:box-shadow .25s ease;
+  cursor:pointer;position:relative;overflow:visible;text-decoration:none;
+  color:inherit;
+}
+html.hero-3d .tool-wall .tool-card{
+  min-width:96px;max-width:210px;width:auto;overflow:hidden;
+  box-shadow:0 14px 28px var(--shadow),inset 0 1px color-mix(in srgb,#fff 30%,transparent);
+  transform:translateZ(20px);transition:transform .25s cubic-bezier(.23,1,.320,1),box-shadow .25s ease;
+}
+.tool-wall .tool-card::after{
+  content:"";position:absolute;inset:auto 0 0;height:2.5px;
+  background:var(--accent);opacity:.6;
+}
+.tool-wall .tool-card:hover{ transform:none; }
+html.hero-3d .tool-wall .tool-card:hover{
+  transform:translateZ(45px) scale(1.03);
+  box-shadow:0 24px 40px var(--shadow),0 0 20px color-mix(in srgb,var(--accent) 18%,transparent);
+  z-index:40;
+}
+.tool-wall .tool-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.tool-wall .tool-icon{
+  width:48px;height:48px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:20px;font-weight:800;
+  background:var(--accent);
+  box-shadow:0 8px 16px rgba(0,0,0,.18);
+}
+html.hero-3d .tool-wall .tool-icon{
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent));
+  box-shadow:0 8px 16px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+.tool-wall .tool-name{font-size:12.5px;line-height:1.2;white-space:normal;color:var(--ink);font-weight:600;word-break:break-word;}
+
+/* Tool category colors (hero wall only) */
+.tool-wall .tool-card.image{--accent:#2378ff;}
+.tool-wall .tool-card.ai{--accent:var(--accent2);}
+.tool-wall .tool-card.pdf{--accent:#ed5661;}
+.tool-wall .tool-card.calc{--accent:#e39a22;}
+.tool-wall .tool-card.conv{--accent:#18a982;}
+.tool-wall .tool-card.seo{--accent:#e88424;}
+.tool-wall .tool-card.finance{--accent:#2e7fe7;}
+.tool-wall .tool-card.text{--accent:#8a54d8;}
+.tool-wall .tool-card.video{--accent:#e64e77;}
+.tool-wall .tool-card.audio{--accent:#1aa69a;}
+
+/* Dark mode: subtle neon glow on hero cards/icons, same layout/structure */
+html.dark .tool-wall .tool-card{
+  background:color-mix(in srgb, var(--accent) 8%, var(--card));
+  border-color:color-mix(in srgb, var(--accent) 35%, var(--card-border));
+  box-shadow:0 14px 28px var(--shadow),0 0 14px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+html.dark .tool-wall .tool-card:hover{
+  box-shadow:0 24px 40px var(--shadow),0 0 26px color-mix(in srgb,var(--accent) 45%,transparent);
+}
+html.dark .tool-wall .tool-icon{
+  box-shadow:0 0 16px color-mix(in srgb,var(--accent) 55%,transparent);
+}
+html.dark .tool-wall .tool-card::after{opacity:.9;box-shadow:0 0 8px var(--accent);}
+
+/* Responsive Design */
+@media (max-width:1024px){
+  .hero-content{grid-template-columns:1fr;gap:32px;}
+  .hero-wall-container{min-height:400px;}
+  .tool-wall{height:500px;}
+  .wall-row{height:95px;}
+  .row1{top:18px;}
+  .row2{top:112px;}
+  .row3{top:206px;}
+  .row4{top:300px;}
+  .row5{top:394px;}
+}
+@media (max-width:680px){
+  .hero-section{padding:60px 14px 30px;min-height:auto;}
+  .hero-content{grid-template-columns:1fr;gap:24px;}
+  .hero-copy h1{font-size:clamp(32px,5vw,48px);margin-bottom:16px;}
+  .hero-sub{font-size:clamp(14px,3.5vw,16px);margin-bottom:20px;}
+  .hero-search{max-width:100%;height:48px;margin-bottom:18px;}
+  .hero-ctas{gap:10px;}
+  .cta-primary,.cta-secondary{height:44px;font-size:14px;padding:0 18px;}
+  .hero-wall-container{min-height:350px;margin-top:8px;}
+  .tool-wall{height:380px;}
+  .wall-row{height:70px;gap:10px;}
+  .wall-row::before{background:linear-gradient(90deg,var(--bg1) 0%,transparent 12%,transparent 88%,var(--bg1) 100%);}
+  .tool-wall .tool-card{min-width:78px;max-width:150px;min-height:52px;gap:8px;padding:8px 12px;border-radius:12px;}
+  .tool-wall .tool-icon{width:36px;height:36px;font-size:16px;border-radius:10px;}
+  .tool-wall .tool-name{font-size:11px;}
+  .row1{top:10px;}
+  .row2{top:80px;}
+  .row3{top:150px;}
+  .row4{top:220px;}
+  .row5{top:290px;}
+}
+
+/* ---- Tool cards grid ---- */
+.tools-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;
+  margin:36px 0 8px;
+}
+.tool-card{
+  background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:22px;cursor:pointer;text-align:left;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:var(--shadow);transition:transform .25s ease, box-shadow .25s ease;
+}
+.tool-card:hover{transform:translateY(-5px);}
+.tool-icon{
+  width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;margin-bottom:14px;
+}
+.tool-icon svg{width:22px;height:22px;}
+.tool-card h3{margin:0 0 6px;font-size:16.5px;font-weight:700;letter-spacing:-.01em;}
+.tool-card p{margin:0;font-size:13px;color:var(--ink-soft);line-height:1.5;}
+.tool-card.active{outline:2px solid var(--accent1);outline-offset:2px;}
+
+/* ---- Workspace panel ---- */
+.workspace{
+  margin-top:30px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:28px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
+}
+/* #aiToolPanel's mobile bottom-sheet uses position:fixed, which is meant
+   to be positioned relative to the actual viewport. Per spec, an ancestor
+   with backdrop-filter set (even fully static, non-transformed) becomes
+   the CONTAINING BLOCK for any position:fixed descendant instead of the
+   viewport -- .workspace's own backdrop-filter above (purely cosmetic,
+   fine for the static "card" look every other tool page uses it for) was
+   silently trapping the sheet inside .workspace's own box instead of the
+   real screen, so the sheet rendered far too narrow and positioned wrong,
+   with page content behind it visible through/around it exactly as
+   reported. Scoped to this one wrapper's ID -- every other tool's
+   .workspace usage elsewhere on the site is completely unaffected. */
+#aiWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+/* Same fix, same reasoning, for the other two tools sharing this exact
+   .workspace + mobile-fixed-sheet architecture -- Passport Photo Maker
+   and the Ecommerce Product Editor have the identical latent bug, just
+   not yet reported for those two specifically. */
+#ppWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+#epeWorkspaceCard{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+/* The ecommerce editor's mobile bottom sheet uses position:fixed, which
+   must be positioned relative to the true viewport to work correctly
+   while the page is scrolled. backdrop-filter on an ancestor creates a
+   new CSS containing block for fixed-position descendants (per spec),
+   which broke this. Scoped to only the page containing the editor via
+   :has() so no other tool's .workspace styling is affected. */
+.workspace:has(#epeToolPanel){ backdrop-filter:none; -webkit-backdrop-filter:none; }
+.workspace:has(#epeStage:not(.hidden)){ margin-top:0; padding:0; border:none; box-shadow:none; background:transparent; }
+/* Same containing-block issue as above, same fix, for AI Photo Retouch's
+   fixed bottom toolbar and sticky top toolbar. */
+.workspace:has(#rtStage.rt-shell:not(.hidden)){ backdrop-filter:none; -webkit-backdrop-filter:none; margin-top:0; padding:0; border:none; box-shadow:none; background:transparent; }
+.tool-view{display:none;}
+.tool-view.active{display:block;animation:fadein .35s ease;}
+@keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.view-title{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+.view-title h2{font-size:20px;margin:0;font-weight:800;letter-spacing:-.01em;}
+
+.field-label{font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;display:block;text-transform:uppercase;letter-spacing:.05em;}
+
+/* Dropzone */
+.drop-zone{
+  display:block;
+  border:2px dashed color-mix(in srgb, var(--accent1) 45%, var(--card-border));
+  border-radius:16px;padding:34px 18px;text-align:center;cursor:pointer;
+  background:color-mix(in srgb, var(--accent1) 4%, transparent);
+  transition:all .2s ease; position:relative;
+}
+.drop-zone:hover{background:color-mix(in srgb, var(--accent1) 8%, transparent);}
+.drop-zone.drag{border-color:var(--accent1);background:color-mix(in srgb, var(--accent1) 12%, transparent);}
+.drop-zone input{display:none;}
+.drop-icon{
+  width:46px;height:46px;margin:0 auto 12px;border-radius:14px;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  display:flex;align-items:center;justify-content:center;color:#fff;
+}
+.drop-icon svg{width:22px;height:22px;}
+.drop-title{font-weight:700;font-size:14.5px;margin-bottom:4px;}
+.drop-sub{font-size:12px;color:var(--ink-soft);}
+
+.file-list{margin-top:14px;display:flex;flex-direction:column;gap:8px;}
+.file-item{
+  display:flex;align-items:center;gap:10px;
+  border:1px solid var(--card-border);background:color-mix(in srgb, var(--card) 80%, transparent);
+  border-radius:12px;padding:10px 12px;font-size:13px;cursor:grab;
+}
+.file-item.dragging{opacity:.4;}
+.file-item .drag-handle{color:var(--ink-soft);font-size:14px;}
+.file-item .fmeta{flex:1;min-width:0;}
+.file-item .fname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.file-item .fsub{color:var(--ink-soft);font-size:11.5px;}
+.file-remove{
+  width:36px;height:36px;border-radius:9px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
+  color:var(--err);cursor:pointer;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+
+.badge{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+  padding:5px 11px;border-radius:999px;background:color-mix(in srgb, var(--accent1) 12%, transparent);color:var(--accent1);
+}
+
+.btn{
+  font-family:inherit;font-weight:700;font-size:14px;border-radius:12px;border:1.5px solid transparent;cursor:pointer;
+  padding:13px 20px;transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease, background-color .15s ease, border-color .15s ease, color .15s ease;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  text-decoration:none;line-height:1.2;
+}
+.btn-primary{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;box-shadow:0 12px 24px -10px color-mix(in srgb, var(--accent1) 60%, transparent);border-color:transparent;}
+.btn-primary:hover:not(:disabled){transform:translateY(-2px);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-ghost{background:var(--card);border-color:var(--card-border);color:var(--ink);}
+.btn-ghost:hover:not(:disabled){background:color-mix(in srgb, var(--accent1) 8%, var(--card));}
+#epeToolPanel .btn-ghost{ background:var(--epe-shell-surface); border-color:var(--epe-shell-border); }
+#epeToolPanel .btn-ghost:hover:not(:disabled){ background:color-mix(in srgb, var(--accent1) 10%, var(--epe-shell-surface)); }
+/* ============ BUTTON DESIGN SYSTEM ============
+   Every button on the site falls into one of these categories. All reuse the
+   existing color tokens (--accent1-solid, --ok-solid, --err-solid,
+   --warn-solid) that were already defined for WCAG-safe text-on-color
+   contrast, so no new colors are introduced. */
+
+/* Secondary — neutral surface with a border, theme aware. Functionally the
+   same as the existing .btn-ghost (kept below for backward compatibility
+   with existing markup) but named to match the requested system. */
+.btn-secondary{background:var(--card);border-color:var(--card-border);color:var(--ink);}
+.btn-secondary:hover:not(:disabled){background:color-mix(in srgb, var(--accent1) 8%, var(--card));}
+#epeToolPanel .btn-secondary{ background:var(--epe-shell-surface); border-color:var(--epe-shell-border); }
+#epeToolPanel .btn-secondary:hover:not(:disabled){ background:color-mix(in srgb, var(--accent1) 10%, var(--epe-shell-surface)); }
+
+/* Success — for completing/downloading/confirming actions (Download, Save,
+   Done, Apply, Convert). */
+.btn-success{background:var(--ok-solid);color:#fff;border-color:var(--ok-solid);box-shadow:0 12px 24px -10px color-mix(in srgb, var(--ok-solid) 55%, transparent);}
+.btn-success:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.07);}
+.btn-success:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+
+/* Danger — for destructive actions (Delete, Remove, Clear, Reset All). */
+.btn-danger{background:var(--err-solid);color:#fff;border-color:var(--err-solid);}
+.btn-danger:hover:not(:disabled){filter:brightness(1.08);}
+.btn-danger:disabled{opacity:.4;cursor:not-allowed;}
+
+/* Warning — for cautionary actions (Overwrite, Replace, Continue Anyway). */
+.btn-warning{background:var(--warn-solid);color:#fff;border-color:var(--warn-solid);}
+.btn-warning:hover:not(:disabled){filter:brightness(1.08);}
+.btn-warning:disabled{opacity:.4;cursor:not-allowed;}
+
+/* Outline — border only, transparent background, theme aware. */
+.btn-outline{background:transparent;border-color:var(--ink);color:var(--ink);}
+.btn-outline:hover:not(:disabled){background:color-mix(in srgb, var(--ink) 8%, transparent);}
+
+/* Back button — dedicated pill-shaped style with a built-in CSS-drawn arrow
+   (no image asset needed), consistent everywhere a "Back to X" link appears. */
+.btn-back{
+  background:var(--card);border-color:var(--card-border);color:var(--ink);
+  padding:10px 18px 10px 16px;font-size:13.5px;font-weight:700;border-radius:999px;
+}
+.btn-back::before{
+  content:"";display:inline-block;width:7px;height:7px;flex-shrink:0;
+  border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(45deg);
+}
+.btn-back:hover:not(:disabled){
+  background:color-mix(in srgb, var(--accent1) 10%, var(--card));
+  border-color:var(--accent1);color:var(--accent1);
+}
+.btn-back:active{transform:scale(.97);}
+
+/* Disabled — applies to any .btn variant uniformly, still readable rather
+   than vanishing. */
+.btn:disabled, .btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed;transform:none !important;box-shadow:none;}
+
+.row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+.row button{flex:1;min-width:150px;}
+
+.spinner{
+  width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;
+  animation:spin .7s linear infinite;
+}
+.spinner.dark-spin{border:2.5px solid color-mix(in srgb, var(--ink) 25%, transparent);border-top-color:var(--ink);}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+input[type=text], input[type=date], input[type=number], input[type=email], input[type=tel], textarea{
+  width:100%;font-family:inherit;font-size:15px;padding:13px 14px;border-radius:12px;
+  border:1.5px solid var(--card-border);background:color-mix(in srgb, var(--card) 60%, #fff 0%);color:var(--ink);outline:none;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+}
+textarea{resize:vertical;min-height:120px;line-height:1.6;}
+/* Custom single-arrow select — appearance:none removes every browser's native
+   arrow (Chrome/Edge/Safari/Opera/Brave/Samsung Internet via -webkit-appearance,
+   Firefox via -moz-appearance, plus the unprefixed standard property), then one
+   SVG background-image supplies the only arrow that ever renders. */
+select{
+  width:100%;font-family:inherit;font-size:15px;line-height:1.3;
+  padding:13px 36px 13px 14px;border-radius:12px;
+  border:1.5px solid var(--card-border);background-color:color-mix(in srgb, var(--card) 60%, #fff 0%);
+  color:var(--ink);outline:none;cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C6079' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  background-size:16px 16px;
+}
+/* Belt-and-suspenders: Internet Explorer's legacy dropdown-arrow pseudo-element
+   (not used by any browser on the compatibility list, but harmless to hide). */
+select::-ms-expand{display:none;}
+html.dark input[type=text], html.dark input[type=date], html.dark input[type=number], html.dark input[type=email], html.dark input[type=tel], html.dark textarea{
+  background:rgba(255,255,255,0.06);color:var(--ink);
+}
+html.dark select{
+  background-color:rgba(255,255,255,0.06);color:var(--ink);
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239A9CC0' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+input[type=text]:focus, input[type=date]:focus, input[type=number]:focus, input[type=email]:focus, input[type=tel]:focus, textarea:focus, select:focus{border-color:var(--accent1);}
+input::placeholder{color:var(--ink-soft);opacity:1;}
+/* Native date-picker calendar icon: keep visible against both light and dark input backgrounds */
+input[type=date]::-webkit-calendar-picker-indicator{
+  cursor:pointer;border-radius:6px;padding:3px;
+}
+html.dark input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);}
+/* Visible keyboard-focus ring — restores what removing the native outline took away,
+   using :focus-visible so mouse clicks don't show it but Tab navigation does. */
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible{
+  outline:2.5px solid var(--accent1);
+  outline-offset:2px;
+}
+/* Fallback for browsers without :focus-visible support (very old Safari/Firefox) —
+   degrades to always showing on focus rather than never showing at all. */
+@supports not selector(:focus-visible){
+  input:focus, select:focus, textarea:focus, button:focus, a:focus{
+    outline:2.5px solid var(--accent1);
+    outline-offset:2px;
+  }
+}
+
+input[type=range]{
+  width:100%;accent-color:var(--accent1);cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background:transparent;height:20px;outline:none;touch-action:pan-y;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:6px;border-radius:999px;background:var(--card-border);
+}
+input[type=range]::-moz-range-track{
+  height:6px;border-radius:999px;background:var(--card-border);
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:18px;height:18px;border-radius:50%;margin-top:-6px;
+  background:var(--accent1-solid);border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;border:2px solid #fff;
+  background:var(--accent1-solid);box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
+}
+input[type=range]:focus-visible::-webkit-slider-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
+input[type=range]:focus-visible::-moz-range-thumb{outline:2.5px solid var(--accent1);outline-offset:2px;}
+@keyframes rtResetFlash{ 0%{ filter:brightness(1); } 30%{ filter:brightness(1.6) saturate(1.4); } 100%{ filter:brightness(1); } }
+input[type=range].rt-reset-flash::-webkit-slider-runnable-track{ animation:rtResetFlash 0.4s ease; }
+input[type=range].rt-reset-flash{ animation:rtResetFlash 0.4s ease; }
+input[type=color]{width:46px;height:36px;border:none;border-radius:9px;cursor:pointer;background:none;padding:0;}
+
+/* Page grid for split */
+.page-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:8px;margin-top:12px;max-height:220px;overflow-y:auto;padding:4px;}
+.page-chip{
+  aspect-ratio:1/1.15;border-radius:9px;border:1.5px solid var(--card-border);background:var(--card);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink-soft);
+  transition:all .15s ease;
+}
+.page-chip.selected{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;border-color:transparent;}
+
+/* Compare (compress) */
+.compare{display:flex;gap:14px;margin-top:16px;flex-wrap:wrap;}
+.compare .box{flex:1;min-width:150px;border:1px solid var(--card-border);border-radius:14px;padding:12px;text-align:center;background:var(--card);}
+.compare .box img{max-width:100%;border-radius:10px;display:block;margin:0 auto 8px;}
+.compare .box .size{font-size:13px;font-weight:700;}
+.compare .box .tag{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;}
+.saved-badge{
+  display:inline-flex;margin-top:10px;font-size:13px;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,var(--ok),#0d8f5c);padding:8px 14px;border-radius:999px;
+}
+.progress-wrap{margin-top:16px;}
+.progress-track{
+  width:100%;height:9px;border-radius:999px;background:color-mix(in srgb, var(--accent1) 12%, var(--card));
+  overflow:hidden;border:1px solid var(--card-border);
+}
+.progress-fill{
+  height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent1),var(--accent2));
+  transition:width .25s ease;
+}
+.progress-label{margin-top:7px;font-size:12.5px;color:var(--ink-soft);font-weight:600;}
+
+.qr-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-top:14px;}
+.qr-controls .ctrl{display:flex;flex-direction:column;gap:6px;}
+.qr-controls label{font-size:11.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+
+.viewfinder{
+  margin:22px auto 0;width:100%;max-width:260px;aspect-ratio:1/1;border-radius:18px;
+  border:1.5px solid var(--card-border);background:var(--card);display:flex;align-items:center;justify-content:center;
+  padding:14px;
+}
+.viewfinder img,.viewfinder svg{max-width:100%;max-height:100%;border-radius:8px;}
+.placeholder-text{color:var(--ink-soft);font-size:12.5px;text-align:center;padding:0 20px;}
+
+/* Toasts */
+.toast-stack{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom, 0px));right:calc(20px + env(safe-area-inset-right, 0px));z-index:100;display:flex;flex-direction:column;gap:10px;max-width:320px;}
+.toast{
+  background:var(--card);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--card-border);border-radius:12px;
+  padding:13px 16px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:10px;animation:toastin .25s ease;
+}
+@keyframes toastin{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+.toast.ok{border-left:4px solid var(--ok);}
+.toast.err{border-left:4px solid var(--err);}
+.toast .ticon{width:18px;height:18px;flex-shrink:0;}
+
+/* FAQ accordion */
+.faq-item{border-bottom:1px solid var(--card-border);padding:14px 0;}
+.faq-q{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:700;font-size:14.5px;}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .3s ease;font-size:13.5px;color:var(--ink-soft);line-height:1.6;}
+.faq-item.open .faq-a{max-height:200px;padding-top:10px;}
+.faq-q .chev{transition:transform .25s ease;}
+.faq-item.open .chev{transform:rotate(180deg);}
+
+section{padding:50px 0;}
+.section-title{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:22px;text-align:center;}
+
+footer{border-top:1px solid var(--card-border);padding:44px 0 26px;margin-top:20px;}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:26px;}
+.footer-grid h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 12px;}
+.footer-grid a{display:block;font-size:13.5px;margin-bottom:8px;text-decoration:none;color:var(--ink);opacity:.85;}
+.footer-grid a:hover{opacity:1;color:var(--accent1);}
+.footer-bottom{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:34px;}
+@media (max-width:700px){ .footer-grid{grid-template-columns:1fr 1fr;} }
+
+.legal-modal{
+  position:fixed;inset:0;background:rgba(10,8,30,0.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  display:none;align-items:center;justify-content:center;z-index:200;padding:20px;
+}
+.legal-modal.show{display:flex;}
+.legal-box{
+  background:var(--bg3);border:1px solid var(--card-border);border-radius:18px;max-width:520px;width:100%;
+  max-height:80vh;overflow-y:auto;padding:26px;box-shadow:var(--shadow);
+}
+.legal-box h3{margin-top:0;}
+.legal-box p{font-size:13.5px;color:var(--ink-soft);line-height:1.7;}
+.legal-close{float:right;background:none;border:none;font-size:18px;cursor:pointer;color:var(--ink-soft);}
+.hidden{display:none !important;}
+html.pp-editing-mode, body.pp-editing-mode{ overflow:hidden; height:100vh; height:100dvh; }
+
+/* ============ MULTI-PAGE ADDITIONS ============ */
+.nav-links a.active{color:var(--accent1);}
+.nav-links a{position:relative;}
+.nav-links a.active::after{
+  content:"";position:absolute;left:0;right:0;bottom:-14px;height:2px;
+  background:linear-gradient(90deg,var(--accent1),var(--accent2));
+}
+
+.hero-sub{padding:52px 20px 10px;text-align:center;position:relative;overflow:hidden;}
+.hero-sub h1{
+  font-size:clamp(28px,5.5vw,42px);font-weight:800;letter-spacing:-.02em;line-height:1.08;margin:16px 0 10px;
+  background:linear-gradient(100deg, var(--ink), var(--ink) 55%, var(--accent1));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero-sub p.subtitle{color:var(--ink-soft);font-size:15.5px;max-width:520px;margin:0 auto;line-height:1.6;font-weight:500;}
+
+.tool-card{position:relative;}
+
+.category-hub-grid{display:flex;flex-direction:column;gap:14px;max-width:760px;margin:36px auto;}
+.category-hub-card{
+  --accent:var(--accent1);
+  position:relative;display:flex;align-items:center;gap:16px;
+  background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:18px 22px 18px 30px;text-decoration:none;color:var(--ink);overflow:hidden;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:var(--shadow);
+  transition:transform .3s ease,box-shadow .3s ease,border-color .3s ease;
+}
+.category-hub-card::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+  border-radius:var(--radius) 0 0 var(--radius);
+  background:var(--accent);opacity:.9;
+}
+.category-hub-card:hover{
+  box-shadow:0 26px 44px var(--shadow),0 0 26px color-mix(in srgb,var(--accent) 22%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 30%,var(--card-border));
+}
+.category-hub-card .cat-icon{
+  flex:none;width:64px;height:64px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  position:relative;color:#fff;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 55%,#fff) 0%,var(--accent) 55%,color-mix(in srgb,var(--accent) 80%,#000) 100%);
+  box-shadow:
+    0 10px 20px -6px color-mix(in srgb,var(--accent) 55%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 45%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 20%,transparent);
+  transition:transform .3s cubic-bezier(.23,1,.32,1),box-shadow .3s ease;
+}
+.category-hub-card .cat-icon::before{
+  content:"";position:absolute;inset:-10px;border-radius:50%;z-index:-1;
+  background:radial-gradient(circle,color-mix(in srgb,var(--accent) 30%,transparent) 0%,transparent 72%);
+  opacity:.9;transition:opacity .3s ease;
+}
+.category-hub-card .cat-icon svg{width:30px;height:30px;stroke-width:2.2;}
+.category-hub-card:hover .cat-icon{
+  transform:scale(1.05);
+  box-shadow:
+    0 12px 26px -6px color-mix(in srgb,var(--accent) 65%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 45%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 20%,transparent);
+}
+.category-hub-card:hover .cat-icon::before{opacity:1;}
+.category-hub-card .cat-content{flex:1 1 auto;min-width:0;}
+.category-hub-card h3{font-size:16.5px;margin:0 0 4px;font-weight:800;letter-spacing:-.01em;}
+.category-hub-card p{margin:0 0 10px;font-size:13px;color:var(--ink-soft);line-height:1.5;}
+.category-hub-card .cta-link{font-size:12.5px;font-weight:700;color:var(--accent);display:inline-flex;align-items:center;gap:5px;}
+.category-hub-card .cat-arrow{
+  flex:none;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--card-border));color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 6%,var(--card));
+  transition:transform .3s cubic-bezier(.23,1,.32,1),box-shadow .3s ease,background .3s ease;
+}
+.category-hub-card:hover .cat-arrow{
+  transform:translateX(3px) scale(1.06);
+  box-shadow:0 0 14px color-mix(in srgb,var(--accent) 40%,transparent);
+  background:color-mix(in srgb,var(--accent) 14%,var(--card));
+}
+
+/* Category accent colors */
+.category-hub-card.cat-pdf{--accent:#FF4D6D;}
+.category-hub-card.cat-image{--accent:#4E8BFF;}
+.category-hub-card.cat-calc{--accent:#FF9F1C;}
+.category-hub-card.cat-finance{--accent:#3B82F6;}
+.category-hub-card.cat-seo{--accent:#8B5CF6;}
+.category-hub-card.cat-ai{--accent:#EC4899;}
+.category-hub-card.cat-blog{--accent:#20C997;}
+.category-hub-card.cat-invoice{--accent:#06B6D4;}
+
+/* Dark mode: glass card + neon glow, same structure */
+html.dark .category-hub-card{
+  background:color-mix(in srgb,var(--accent) 5%,var(--card));
+  border-color:color-mix(in srgb,var(--accent) 22%,var(--card-border));
+}
+html.dark .category-hub-card::before{box-shadow:0 0 8px var(--accent);}
+html.dark .category-hub-card:hover{
+  box-shadow:0 26px 44px var(--shadow),0 0 34px color-mix(in srgb,var(--accent) 35%,transparent);
+}
+html.dark .category-hub-card .cat-icon{
+  box-shadow:
+    0 0 18px color-mix(in srgb,var(--accent) 55%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 35%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 30%,transparent);
+}
+html.dark .category-hub-card:hover .cat-icon{
+  box-shadow:
+    0 0 26px color-mix(in srgb,var(--accent) 70%,transparent),
+    inset 0 2px 2px color-mix(in srgb,#fff 35%,transparent),
+    inset 0 -3px 6px color-mix(in srgb,#000 30%,transparent);
+}
+html.dark .category-hub-card .cat-arrow{
+  background:color-mix(in srgb,var(--accent) 10%,var(--card));
+}
+
+@media (max-width:560px){
+  .category-hub-card{gap:12px;padding:14px 16px 14px 24px;}
+  .category-hub-card .cat-icon{width:52px;height:52px;border-radius:15px;}
+  .category-hub-card .cat-icon svg{width:24px;height:24px;}
+  .category-hub-card h3{font-size:15px;}
+  .category-hub-card p{font-size:12.5px;}
+  .category-hub-card .cat-arrow{width:34px;height:34px;}
+}
+
+.empty-state{
+  text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:14px;
+}
+
+/* ============ TASK: HERO FEATURE CARDS ============ */
+.feature-strip{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;
+  max-width:900px;margin:34px auto 0;
+}
+.feature-chip{
+  background:var(--card);border:1px solid var(--card-border);border-radius:14px;
+  padding:14px 12px;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:var(--shadow);
+  opacity:0;transform:translateY(14px);transition:opacity .5s ease, transform .5s ease;
+}
+.feature-chip.in-view{opacity:1;transform:translateY(0);}
+.feature-chip .fc-icon{
+  width:34px;height:34px;margin:0 auto 8px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  display:flex;align-items:center;justify-content:center;color:#fff;
+}
+.feature-chip .fc-icon svg{width:17px;height:17px;}
+.feature-chip .fc-label{font-size:12.5px;font-weight:700;letter-spacing:-.01em;}
+
+/* Scroll-triggered card entrance for the tools grid */
+.tools-grid .tool-card, .category-hub-grid .category-hub-card{
+  opacity:0;transform:translateY(18px);transition:opacity .5s ease, transform .5s ease;
+}
+.tools-grid .tool-card.in-view, .category-hub-grid .category-hub-card.in-view{
+  opacity:1;transform:translateY(0);
+}
+/* category-hub-card :hover/:active must win over the .in-view rule above for
+   the 'transform' property (both are specificity (0,3,0) - .category-hub-card
+   repeated intentionally to win the tie via source order) once a card has
+   settled into view, otherwise the entrance animation permanently cancels
+   the hover-lift interaction. */
+.category-hub-card.category-hub-card:hover{transform:translateY(-5px);}
+.category-hub-card.category-hub-card:active{transform:translateY(-2px) scale(.99);}
+
+/* ============ TASK: CALCULATORS ============ */
+.unit-toggle{display:flex;gap:6px;flex-wrap:wrap;}
+.unit-toggle button{
+  font-family:inherit;font-size:12.5px;font-weight:700;padding:9px 14px;border-radius:10px;
+  border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);cursor:pointer;
+}
+.unit-toggle button.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+
+.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px;margin-top:18px;}
+.result-stat{border:1px solid var(--card-border);border-radius:12px;padding:14px 10px;text-align:center;background:var(--card);}
+.result-stat .num{font-size:22px;font-weight:800;letter-spacing:-.02em;}
+.result-stat .label{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+.bmi-badge{
+  display:inline-flex;margin-top:10px;font-size:13.5px;font-weight:800;color:#fff;padding:8px 16px;border-radius:999px;
+}
+
+/* ============ TASK: BLOG ============ */
+.blog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin:36px 0;}
+.blog-card{
+  background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:22px;text-decoration:none;color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:var(--shadow);
+  transition:transform .25s ease;display:flex;flex-direction:column;gap:10px;
+}
+.blog-card:hover{transform:translateY(-5px);}
+.blog-card .blog-tag{
+  font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent1);
+}
+.blog-card h3{margin:0;font-size:17px;font-weight:800;letter-spacing:-.01em;line-height:1.3;}
+.blog-card p{margin:0;font-size:13px;color:var(--ink-soft);line-height:1.55;}
+.blog-card .blog-meta{font-size:11.5px;color:var(--ink-soft);margin-top:auto;display:flex;gap:8px;align-items:center;}
+
+.article-shell{max-width:720px;margin:0 auto;padding:40px 20px 60px;}
+.article-meta-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.article-shell h1{font-size:clamp(26px,5vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1.15;margin:0 0 14px;}
+.article-lede{color:var(--ink-soft);font-size:15.5px;line-height:1.7;margin-bottom:26px;}
+.toc-box{
+  background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:18px 20px;margin-bottom:30px;
+}
+.toc-box h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px;color:var(--ink-soft);}
+.toc-box ol{margin:0;padding-left:18px;}
+.toc-box li{margin-bottom:6px;font-size:13.5px;}
+.toc-box a{color:var(--ink);text-decoration:none;font-weight:600;}
+.toc-box a:hover{color:var(--accent1);}
+
+.article-body h2{font-size:21px;font-weight:800;letter-spacing:-.01em;margin:34px 0 12px;scroll-margin-top:90px;}
+.article-body h3{font-size:16.5px;font-weight:700;margin:22px 0 8px;}
+.article-body p{font-size:15px;line-height:1.75;color:var(--ink);margin:0 0 14px;}
+.article-body ul, .article-body ol{margin:0 0 14px;padding-left:22px;}
+.article-body li{font-size:15px;line-height:1.7;margin-bottom:6px;}
+.article-body strong{font-weight:700;}
+.inline-cta{
+  display:block;margin:22px 0;padding:16px 18px;border-radius:14px;
+  background:color-mix(in srgb, var(--accent1) 8%, var(--card));border:1px solid var(--card-border);
+  text-decoration:none;color:var(--ink);font-weight:700;font-size:14px;
+}
+.inline-cta:hover{border-color:var(--accent1);}
+
+.related-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:14px;}
+
+/* ============ TASK: SEO TOOLS (robots.txt / meta tag generators) ============ */
+.code-preview{
+  background:var(--paper-alt, var(--bg1, var(--paper)));
+  background:color-mix(in srgb, var(--ink) 5%, var(--card));
+  border:1px solid var(--card-border);border-radius:12px;padding:14px;margin-top:8px;
+  font-family:'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size:12.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+  max-height:280px;overflow-y:auto;color:var(--ink);
+}
+.rule-row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.rule-row input[type=text]{flex:1;min-width:120px;}
+.rule-row select{
+  font-family:inherit;font-size:13px;padding:11px 30px 11px 10px;border-radius:10px;border:1.5px solid var(--card-border);
+  background-color:var(--card);color:var(--ink);
+}
+.rule-remove{
+  width:40px;height:40px;border-radius:9px;border:none;background:color-mix(in srgb, var(--err) 12%, transparent);
+  color:var(--err);cursor:pointer;font-weight:700;font-size:15px;flex-shrink:0;
+}
+
+/* ============ TASK: SCIENTIFIC CALCULATOR ============ */
+.sci-display{
+  background:color-mix(in srgb, var(--ink) 5%, var(--card));border:1.5px solid var(--card-border);border-radius:14px;
+  padding:18px 16px;margin-top:10px;font-family:'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size:22px;font-weight:700;text-align:right;color:var(--ink);word-break:break-all;min-height:34px;
+}
+.sci-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;}
+.sci-btn{
+  font-family:inherit;font-size:14px;font-weight:700;padding:14px 6px;border-radius:10px;
+  border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);cursor:pointer;min-height:44px;
+}
+.sci-btn:active{transform:translateY(1px);}
+.sci-btn.sci-mem{font-size:12px;color:var(--accent1);}
+.sci-btn.sci-op{background:color-mix(in srgb, var(--accent1) 10%, var(--card));color:var(--accent1);}
+.sci-btn.sci-equals{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;border-color:transparent;}
+
+/* ============ TASK: IMAGE CROP / WATERMARK / ROTATE-FLIP TOOLS ============ */
+.canvas-stage{
+  position:relative;margin-top:14px;border:1.5px solid var(--card-border);border-radius:16px;overflow:hidden;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+  display:flex;align-items:center;justify-content:center;min-height:200px;touch-action:none;
+}
+.canvas-stage canvas{display:block;max-width:100%;height:auto;}
+.crop-box{
+  position:absolute;border:2px solid #fff;box-shadow:0 0 0 2000px rgba(0,0,0,0.45);cursor:move;touch-action:none;
+}
+.crop-handle{
+  position:absolute;width:22px;height:22px;background:#fff;border:2px solid var(--accent1);border-radius:50%;
+  transform:translate(-50%,-50%);touch-action:none;cursor:nwse-resize;
+}
+.crop-handle.tl{top:0;left:0;} .crop-handle.tr{top:0;left:100%;cursor:nesw-resize;}
+.crop-handle.bl{top:100%;left:0;cursor:nesw-resize;} .crop-handle.br{top:100%;left:100%;}
+.wm-drag-hint{
+  position:absolute;font-size:10.5px;font-weight:700;color:#fff;background:rgba(0,0,0,0.55);
+  padding:4px 8px;border-radius:999px;pointer-events:none;transform:translate(-50%,-140%);white-space:nowrap;
+}
+.pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:180px;margin-top:8px;}
+.pos-btn{
+  aspect-ratio:1/1;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.pos-btn .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-soft);}
+.pos-btn.active{background:var(--accent1-solid);border-color:var(--accent1-solid);}
+.pos-btn.active .dot{background:var(--paper);}
+.loading-overlay{
+  position:absolute;inset:0;background:rgba(0,0,0,0.35);display:none;align-items:center;justify-content:center;border-radius:16px;
+}
+.loading-overlay.show{display:flex;}
+.loading-overlay .spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+
+/* ============ TASK: AI BACKGROUND REMOVER / CHANGER ============ */
+.bg-mode-tabs{display:flex;gap:6px;flex-wrap:wrap;}
+.bg-mode-tab{
+  font-family:inherit;font-size:12px;font-weight:700;padding:8px 12px;border-radius:10px;
+  border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);cursor:pointer;
+}
+.bg-mode-tab.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+.bg-swatch-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.bg-swatch{
+  width:36px;height:36px;border-radius:9px;border:2px solid var(--card-border);cursor:pointer;padding:0;
+}
+.bg-swatch.selected{border-color:var(--accent1);box-shadow:0 0 0 2px color-mix(in srgb, var(--accent1) 35%, transparent);}
+.model-status-line{font-size:12px;color:var(--ink-soft);margin-top:8px;display:flex;align-items:center;gap:8px;}
+.model-status-line .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-soft);flex-shrink:0;}
+.model-status-line.ready .dot{background:var(--ok);}
+.model-status-line.error .dot{background:var(--err);}
+
+/* ============ TASK: MANUAL SELECTION EDITOR (AI Background Remover refine mode) ============ */
+.editor-toolbar{display:flex;gap:6px;flex-wrap:wrap;}
+.editor-tool-btn{
+  font-family:inherit;font-size:12px;font-weight:700;padding:9px 13px;border-radius:10px;
+  border:1.5px solid var(--card-border);background:var(--card);color:var(--ink);cursor:pointer;
+}
+.editor-tool-btn.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+.editor-stage-wrap{
+  margin-top:14px;border:1.5px solid var(--card-border);border-radius:16px;overflow:auto;max-height:520px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+}
+.editor-stage-wrap canvas{display:block;touch-action:none;}
+#rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; }
+.editor-stage-wrap.tool-brush canvas, .editor-stage-wrap.tool-eraser canvas{cursor:crosshair;}
+.editor-stage-wrap.tool-wand canvas{cursor:pointer;}
+.editor-stage-wrap.tool-pan canvas{cursor:grab;}
+.editor-stage-wrap.tool-pan canvas:active{cursor:grabbing;}
+.editor-stage-wrap.tool-polygon canvas, .editor-stage-wrap.tool-lasso canvas{cursor:crosshair;}
+.editor-stage-wrap.panning canvas{cursor:grab;}
+.editor-hint{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.6;}
+
+/* ============ TASK: BACKGROUND REMOVER — PRODUCTION-GRADE EDITOR ADDITIONS ============ */
+.editor-stage-wrap.tool-refine canvas{cursor:crosshair;}
+.editor-stage-wrap.overlay-on{position:relative;}
+
+/* Ecommerce Product Editor: the stage wrap must be a positioned ancestor
+   so the in-place text-edit textarea (position:absolute) and any other
+   absolutely-positioned overlay inside it are placed relative to the
+   canvas area itself, not some distant, unrelated ancestor further up
+   the page. Scoped to this tool's specific ID so it never affects the
+   shared .editor-stage-wrap class used by other tools. */
+#epeCanvasStageWrap{position:relative;}
+
+.compare-wrap{position:relative;overflow:hidden;border-radius:12px;user-select:none;touch-action:none;}
+.compare-wrap img, .compare-wrap canvas{display:block;width:100%;height:auto;pointer-events:none;}
+.compare-after{position:absolute;top:0;left:0;height:100%;overflow:hidden;}
+.compare-handle{
+  position:absolute;top:0;bottom:0;width:3px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.2);
+  cursor:ew-resize;touch-action:none;
+}
+.compare-handle::after{
+  content:"⇔";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:34px;height:34px;border-radius:50%;background:#fff;color:var(--ink);
+  display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow);
+}
+
+.session-restore-banner{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  background:color-mix(in srgb, var(--accent1) 10%, var(--card));border:1.5px solid var(--accent1);
+  border-radius:14px;padding:14px 16px;margin-bottom:16px;
+}
+.session-restore-banner p{margin:0;font-size:13px;font-weight:600;}
+
+.export-panel{margin-top:16px;padding-top:16px;border-top:1px solid var(--card-border);}
+
+@media (max-width: 640px){
+  .editor-tool-btn{padding:12px 14px;font-size:13px;}
+  .pos-btn, .bg-swatch{min-width:40px;min-height:40px;}
+}
+
+/* ============ TASK: CONTACT PAGE ============ */
+.field-error{
+  display:block;min-height:16px;font-size:11.5px;color:var(--err);margin-top:4px;
+}
+.trust-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;}
+.trust-list li{
+  display:flex;align-items:flex-start;gap:10px;font-size:13.5px;color:var(--ink-soft);line-height:1.6;
+}
+.trust-list li svg{flex-shrink:0;width:18px;height:18px;color:var(--ok);margin-top:2px;}
+
+/* ============ TASK: IMAGE-TO-PDF / PDF-TO-IMAGE ============ */
+.thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;margin-top:12px;}
+.thumb-card{display:flex;flex-direction:column;gap:6px;align-items:center;border:1px solid var(--card-border);border-radius:10px;padding:8px;background:var(--card);}
+.thumb-card img{max-width:100%;border-radius:6px;display:block;}
+.thumb-card .thumb-label{font-size:11px;color:var(--ink-soft);}
+.thumb-card button{font-size:11px;padding:6px 10px;}
+
+/* ============ TASK: PDF COMPRESS — level toggle robustness fix ============
+   Scoped specifically to this tool's toggle so no other page using the shared
+   .unit-toggle pattern is affected. Explicit min-width/white-space/color
+   guarantee the Low/Medium/High labels can never be clipped, wrapped onto
+   themselves, or rendered with insufficient contrast. */
+.pdfc-level-toggle button{
+  min-width:64px;white-space:nowrap;color:var(--ink);
+}
+.pdfc-level-toggle button.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+
+/* ============ TASK: GOOGLE KEYWORDS AI GENERATOR ============ */
+.gkw-section-heading{font-size:14px;font-weight:800;margin:18px 0 8px;padding-top:10px;border-top:1px solid var(--card-border);}
+.gkw-section-heading:first-child{margin-top:0;padding-top:0;border-top:none;}
+.gkw-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:10px;
+}
+.gkw-row:hover{background:color-mix(in srgb, var(--accent1) 5%, transparent);}
+.gkw-row-best{background:color-mix(in srgb, var(--ok) 8%, transparent);}
+.gkw-check input{width:16px;height:16px;accent-color:var(--accent1);cursor:pointer;}
+.gkw-kw{font-size:13.5px;font-weight:600;flex:1;min-width:140px;}
+
+/* ============ RESUME BUILDER + ATS CHECKER ============ */
+.resume-layout{display:grid;grid-template-columns:1fr;gap:20px;margin-top:16px;}
+@media (min-width:980px){ .resume-layout{grid-template-columns:1fr 1fr;align-items:start;} }
+.resume-form-col{min-width:0;}
+.resume-preview-col{min-width:0;position:sticky;top:16px;}
+@media (max-width:979px){ .resume-preview-col{position:static;} }
+
+.resume-form-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:8px;}
+@media (min-width:560px){ .resume-form-grid{grid-template-columns:1fr 1fr;} }
+.resume-form-grid.resume-form-grid-full{grid-template-columns:1fr;}
+.resume-field-group{display:flex;flex-direction:column;gap:5px;}
+.resume-field-group label{font-size:12px;font-weight:700;color:var(--ink-soft);}
+
+.resume-section-block{margin-top:20px;padding-top:16px;border-top:1px solid var(--card-border);}
+.resume-section-heading-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.resume-section-heading-row h3{font-size:15px;font-weight:800;margin:0;}
+
+.resume-item-card{
+  background:var(--card);border:1.5px solid var(--card-border);border-radius:14px;padding:14px;margin-top:10px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.resume-item-card-head{display:flex;align-items:center;gap:8px;}
+.resume-item-drag-handle{cursor:grab;color:var(--ink-soft);font-size:16px;flex-shrink:0;touch-action:none;}
+.resume-item-card-head .resume-item-title{flex:1;font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+
+.resume-preview{
+  background:#ffffff;color:#141414;border-radius:16px;border:1.5px solid var(--card-border);
+  padding:34px 30px;font-size:12.5px;line-height:1.55;overflow-wrap:break-word;box-shadow:var(--shadow);
+  max-height:80vh;overflow-y:auto;
+}
+.resume-preview h1.resume-pv-name{font-size:22px;margin:0 0 3px;letter-spacing:.2px;}
+.resume-preview .resume-pv-contact{font-size:11.5px;color:#444;margin-bottom:14px;}
+.resume-preview .resume-pv-contact span{margin-right:10px;}
+.resume-preview h2.resume-pv-heading{font-size:13px;text-transform:uppercase;letter-spacing:.6px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1.5px solid #ddd;}
+.resume-preview .resume-pv-entry{margin-bottom:9px;}
+.resume-preview .resume-pv-entry-top{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:12.5px;}
+.resume-preview .resume-pv-entry-sub{font-size:11.5px;color:#555;font-style:italic;margin-bottom:2px;}
+.resume-preview ul.resume-pv-bullets{margin:3px 0 0;padding-left:16px;}
+.resume-preview .resume-pv-skills-list{display:flex;flex-wrap:wrap;gap:6px;}
+.resume-preview .resume-pv-skill-chip{background:#f1f1f4;border-radius:999px;padding:2px 10px;font-size:11px;}
+
+/* Template variants -- same markup, different visual identity */
+.resume-tpl-modern h1.resume-pv-name{color:#5142D6;}
+.resume-tpl-modern h2.resume-pv-heading{color:#5142D6;border-bottom-color:#c9c3f7;}
+.resume-tpl-modern .resume-pv-skill-chip{background:#EEF0FF;color:#5142D6;}
+
+.resume-tpl-minimal{padding:30px 26px;}
+.resume-tpl-minimal h1.resume-pv-name{font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:18px;}
+.resume-tpl-minimal h2.resume-pv-heading{border-bottom:none;font-weight:700;color:#888;font-size:11px;}
+
+.resume-tpl-professional h1.resume-pv-name{font-size:20px;text-align:center;}
+.resume-tpl-professional .resume-pv-contact{text-align:center;}
+.resume-tpl-professional h2.resume-pv-heading{background:#141414;color:#fff;padding:4px 10px;border-bottom:none;border-radius:4px;}
+
+@media print{
+  body *{visibility:hidden;}
+  .resume-preview, .resume-preview *{visibility:visible;}
+  .resume-preview{position:absolute;top:0;left:0;width:100%;max-height:none;overflow:visible;box-shadow:none;border:none;border-radius:0;}
+}
+
+.ats-score-wrap{display:flex;align-items:center;gap:16px;margin-top:14px;}
+.ats-score-num{font-size:44px;font-weight:800;line-height:1;}
+.ats-score-label{font-size:12.5px;color:var(--ink-soft);}
+.ats-result-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.ats-result-list li{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;}
+.ats-result-list li .ats-icon{flex-shrink:0;width:18px;height:18px;margin-top:1px;}
+
+/* ============ PASSPORT PHOTO MAKER: PHASE 3 (print sheet + ICAO overlay) ============ */
+.pp-tool-btn.active{background:var(--accent1-solid);color:#ffffff;border-color:var(--accent1-solid);}
+.pp-sheet-preview-wrap{position:relative;margin:10px auto 0;border:1.5px solid var(--card-border);background:#fff;box-shadow:var(--shadow);}
+.pp-sheet-slot{position:absolute;background-size:cover;background-position:center;border:1px dashed rgba(0,0,0,0.35);cursor:pointer;}
+.pp-sheet-slot:hover{outline:2px solid var(--accent1-solid);}
+
+/* Print root is invisible on screen; only shown -- and only it -- during print */
+.pp-print-root{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  .pp-print-root, .pp-print-root *{visibility:visible;}
+  .pp-print-root{display:block;position:absolute;top:0;left:0;}
+  .pp-print-root img{position:absolute;}
+  @page{margin:0;}
+}
+
+/* ============ PASSPORT PHOTO MAKER: MOBILE UX (accordion sections + sticky preview) ============
+   Root cause of the reported "sliders hijack scroll" issue: many range
+   inputs were all present in the DOM simultaneously, so a touch that landed
+   on a slider thumb while a user meant to scroll got captured as a drag
+   instead. Wrapping slider-bearing groups in native <details> means a
+   collapsed section has no slider element in the layout at all to
+   accidentally touch -- not just visually hidden, structurally absent from
+   the scroll path until deliberately opened. */
+.pp-accordion{border:1.5px solid var(--card-border);border-radius:14px;margin-top:12px;padding:0 14px;background:var(--card);}
+.pp-accordion.epe-category-hidden{ display:none !important; }
+#epeToolPanel .pp-accordion{ background:var(--epe-shell-surface); border-color:var(--epe-shell-border); }
+.pp-accordion[open]{padding-bottom:14px;}
+/* Explicit, defensive rule: without this, author rules elsewhere on the page
+   (e.g. .resume-form-grid{display:grid}) can override the browser's native
+   "hide children when <details> is closed" behavior, since author-origin
+   CSS normally beats the UA stylesheet default -- confirmed as a real,
+   reproducible bug via testing, not a hypothetical edge case. */
+.pp-accordion:not([open]) > *:not(summary){display:none !important;}
+.pp-accordion-summary{
+  list-style:none;cursor:pointer;padding:13px 0;font-weight:700;font-size:13.5px;
+  display:flex;align-items:center;justify-content:space-between;
+  -webkit-tap-highlight-color:transparent;min-height:24px;
+}
+.pp-accordion-summary-left{ display:inline-flex; align-items:center; flex:1; min-width:0; }
+.pp-accordion-summary-icon{ display:inline-flex; flex:0 0 auto; margin-right:9px; color:var(--accent1-solid); }
+.pp-accordion-summary-icon svg{ width:18px; height:18px; }
+.pp-accordion-summary-title{ flex:1; }
+.pp-accordion-summary::-webkit-details-marker{display:none;}
+.pp-accordion-summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:rotate(-45deg);transition:transform .15s;margin-right:4px;}
+.pp-accordion[open] > .pp-accordion-summary::after{transform:rotate(45deg);}
+.pp-accordion-summary:focus-visible{outline:2px solid var(--accent1-solid);outline-offset:3px;border-radius:6px;}
+
+#ppCanvasStageWrap{position:relative!important;}
+#ppPreviewCanvas{scroll-margin-top:80px;}
+#ppIcaoOverlay{position:absolute!important;top:0!important;left:0!important;pointer-events:none!important;z-index:2;scroll-margin-top:80px;}
+@media (max-width:719px){
+  #ppCanvasStageWrap{position:sticky!important;top:75px;z-index:5;max-height:36vh;}
+}
+
+/* ============ SEGMENTATION DEBUG MODE (developer tool) ============ */
+.pp-debug-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;padding:12px;border:1.5px dashed var(--card-border);border-radius:12px;}
+.pp-debug-tile{display:flex;flex-direction:column;gap:4px;}
+.pp-debug-tile-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);}
+.pp-debug-tile canvas{width:100%;height:auto;border:1px solid var(--card-border);border-radius:6px;background:#fff;}
+
+/* ============ CAMERA DEBUG PANEL (developer/diagnostic tool) ============ */
+.pp-camera-debug{margin-top:10px;padding:12px;border:1.5px dashed var(--card-border);border-radius:12px;background:var(--card);max-height:340px;overflow:auto;}
+
+/* ============ Design Studio Engine (DSE) — Phase 3 Part 1 ============ */
+.dse-layer-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);cursor:pointer;transition:background 0.12s;}
+.dse-layer-row:hover{background:var(--card-hover,var(--bg2));}
+.dse-layer-selected{border-color:var(--accent1-solid);background:color-mix(in srgb, var(--accent1-solid) 8%, var(--card));}
+.dse-layer-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dse-layer-vis,.dse-layer-lock,.dse-layer-move{background:none;border:none;cursor:pointer;font-size:14px;border-radius:4px;color:var(--ink-soft);min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.dse-layer-vis:hover,.dse-layer-lock:hover,.dse-layer-move:hover{background:var(--card-border);}
+.dse-layer-hidden{opacity:0.45;}
+.dse-layer-locked{color:var(--accent1-solid);}
+
+/* ============ Typography Engine — Phase 3 Part 2 ============ */
+.dse-font-option{display:block;width:100%;text-align:left;background:none;border:none;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--ink);opacity:0.7;transition:opacity 0.15s,background 0.12s;}
+.dse-font-option:hover{background:var(--card-border);opacity:1;}
+.dse-font-chip{background:var(--card);border:1px solid var(--card-border);border-radius:6px;padding:3px 9px;font-size:11.5px;cursor:pointer;color:var(--ink);}
+.dse-font-chip:hover{border-color:var(--accent1-solid);}
+#epeTextAlignRow button.active,#epeTextVAlignRow button.active{background:var(--accent1-solid);color:#fff;border-color:var(--accent1-solid);}
+#dseTextEditOverlay.hidden{display:none;}
+
+/* ============ Design System — Phase 3 Part 3 ============ */
+.dse-icon-option{display:flex;align-items:center;justify-content:center;background:none;border:1px solid transparent;border-radius:6px;padding:5px;cursor:pointer;color:var(--ink);}
+.dse-icon-option:hover{background:var(--card-border);border-color:var(--accent1-solid);}
+.dse-brand-swatch-wrap{position:relative;display:inline-block;}
+.dse-brand-swatch{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--card-border);cursor:pointer;}
+.dse-brand-swatch-del{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--err-solid);color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer;}
+
+/* ============ Session & Recovery — Phase 10 ============ */
+.dse-snapshot-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--card-border);background:var(--card);}
+.dse-snapshot-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ============================================================
+   ECOMMERCE EDITOR — UI SHELL (Phase A: layout/navigation only)
+   ============================================================
+   This redesigns presentation only. Every existing accordion,
+   control, and its JS handler is untouched -- #epeToolPanelBody
+   contains the exact same 32 accordions as before, just repositioned:
+   a persistent right sidebar on desktop/tablet-landscape, a draggable
+   bottom sheet on mobile/tablet-portrait. Canvas stays visible at all
+   times; the panel never covers it on desktop, and on mobile the
+   panel is collapsed (off-screen) until the user opens it.
+   Breakpoint: >=900px uses the desktop rail+panel layout (comfortably
+   fits tablet landscape and up); <900px uses the mobile bottom
+   toolbar+sheet layout (mobile portrait/landscape and tablet portrait).
+   ============================================================ */
+
+#epeStage{ --epe-topbar-h:52px; --epe-bottombar-h:64px; --epe-rail-w:76px; --epe-panel-w:360px; }
+#epeStage.hidden{ display:none; }
+#epeStage:not(.hidden){
+  position:relative;
+  height:calc(100vh - var(--epe-navbar-h, 60px));
+  min-height:220px;
+  display:flex; flex-direction:column;
+  margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); /* break out of the centered content column to use the full viewport width */
+  width:100vw;
+}
+#epeShellBody{ flex:1 1 auto; min-height:0; }
+
+/* ---- Top App Bar (mobile/tablet-portrait only) ---- */
+#epeTopAppBar{
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  height:var(--epe-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
+  background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
+}
+#epeTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#epeTopAppBar .row{ flex:0; gap:6px; }
+#epeTopAppBar button{ min-width:40px; min-height:40px; padding:0 10px; }
+
+/* ---- Overall shell body: switches between row (desktop) and column (mobile) ---- */
+#epeShellBody{ display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+/* ---- Left icon rail (desktop/tablet-landscape only) ---- */
+#epeLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--epe-rail-w); flex:0 0 var(--epe-rail-w); padding:10px 6px;
+  border-right:1px solid var(--epe-shell-border); background:var(--epe-shell-surface);
+}
+.epe-rail-btn{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px;
+  border:none; background:transparent; border-radius:12px; cursor:pointer; color:var(--ink-soft);
+  font-size:10.5px; font-weight:600; line-height:1.2; min-height:56px;
+}
+.epe-rail-btn svg{ width:20px; height:20px; }
+.epe-rail-btn:hover{ background:rgba(109,94,245,0.08); color:var(--ink); }
+.epe-rail-btn.active{ background:var(--accent1); color:#fff; }
+.epe-rail-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+/* ---- Canvas area ---- */
+#epeCanvasArea{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+/* Fix for the Fit to Screen cumulative-shrink bug: #epeCanvasStageWrap
+   inherits .editor-stage-wrap, which has no explicit width and an
+   arbitrary max-height:520px unrelated to actual available space.
+   Without a stable, parent-determined size, each fitEpeCanvasDisplay()
+   call measured wrap.clientWidth/Height AFTER the previous call had
+   already resized the canvas inside it, creating a feedback loop.
+   width:100% and flex:1 1 auto make the wrap's size depend only on its
+   parent, never on its child canvas's current size. */
+#epeCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
+#epeCanvasTopControls{ margin-bottom:10px; }
+
+/* ---- Workspace architecture: Viewport (fixed, visible window,
+   overflow:hidden) -> Workspace (large virtual area, GPU transform
+   for pan/zoom) -> Canvas (epeCanvasStageWrap, always at its native
+   pixel size -- never resized for zoom, only the workspace's own
+   scale() transform makes it appear larger/smaller on screen). This
+   is why coordinate math elsewhere (getBoundingClientRect-based)
+   continues to work unmodified: the browser reports the canvas's
+   actual on-screen position/size correctly regardless of whether
+   that's due to its own CSS size or an ancestor's transform. */
+#epeWorkspaceViewport{
+  flex:1 1 auto; min-height:0; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+}
+#epeWorkspace{
+  position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform;
+}
+#epeWorkspaceViewport.epe-pan-mode{ cursor:grab; }
+#epeWorkspaceViewport.epe-pan-mode:active{ cursor:grabbing; }
+
+/* ---- Floating canvas controls ---- */
+#epeFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#epeFloatingControls.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+.epe-drag-handle{ cursor:grab; touch-action:none; }
+.epe-drag-handle:active{ cursor:grabbing; }
+#epeFloatingControls.epe-dragging{ transition:none !important; }
+#epeFloatingControls button{
+  min-width:44px; min-height:44px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#epeFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#epeFloatingControls button:disabled{ opacity:0.35; cursor:not-allowed; }
+#epeFloatingControls button svg{ width:18px; height:18px; }
+#epeFloatZoomLabel{ font-size:12px; font-weight:600; color:var(--ink-soft); padding:0 4px; white-space:nowrap; }
+#epeFloatingControls .epe-float-sep{ width:1px; height:22px; background:var(--epe-shell-border); flex:0 0 auto; margin:0 2px; }
+
+/* ---- Floating Brush Controls (Phase B): compact, always-reachable
+   brush settings that appear whenever a brush-type tool is active, so
+   the person never needs to open the full accordion/sheet mid-stroke. ---- */
+#epeFloatingBrushBar{
+  position:absolute; left:50%; bottom:84px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:10px; padding:8px 14px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:59; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  pointer-events:none; /* empty areas of the bar let clicks pass through to the canvas underneath */
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#epeFloatingBrushBar.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#epeFloatingBrushBar > *{ pointer-events:auto; } /* the bar's own controls stay fully clickable */
+#epeSelectSourceBtn{
+  min-height:48px; padding:0 16px; border-radius:999px; border:1px solid var(--epe-shell-border);
+  background:transparent; color:var(--ink); font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; flex:0 0 auto;
+}
+#epeSelectSourceBtn.active{ background:var(--accent1); color:#fff; border-color:transparent; }
+#epeSelectSourceBtn.hidden{ display:none; }
+.epe-float-brush-ctrl{ display:flex; flex-direction:column; align-items:center; gap:2px; flex:0 0 auto; }
+.epe-float-brush-ctrl label{ font-size:9.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; }
+.epe-float-brush-ctrl input[type="range"]{ width:64px; height:24px; margin:0; }
+
+/* ---- Selection Mini-Toolbar (Phase B): compact quick actions for the
+   currently selected object, top-anchored so it doesn't compete with
+   the bottom-anchored brush bar or floating controls. ---- */
+#epeSelectionMiniToolbar{
+  position:absolute; left:50%; top:10px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:2px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:58; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  pointer-events:none;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#epeSelectionMiniToolbar.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#epeSelectionMiniToolbar > *{ pointer-events:auto; }
+#epeSelectionMiniToolbar button{
+  min-width:48px; min-height:48px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#epeSelectionMiniToolbar button:hover{ background:rgba(109,94,245,0.12); }
+#epeSelectionMiniToolbar button svg{ width:18px; height:18px; }
+#epeSelectionMiniToolbar button.active{ background:var(--accent1); color:#fff; }
+#epeSelectionMiniToolbar #epeMiniDeleteBtn:hover{ background:rgba(239,68,68,0.15); color:var(--err-solid); }
+
+/* ---- Tool panel: right sidebar on desktop, bottom sheet on mobile ---- */
+#epeToolPanel{
+  display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
+  width:var(--epe-panel-w); flex:0 0 var(--epe-panel-w); max-height:100vh; position:sticky; top:0;
+  transition:width 0.2s ease; backdrop-filter:blur(6px);
+}
+#epeToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#epeToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--epe-shell-border); gap:8px; }
+#epeToolPanelTitle{ font-weight:700; font-size:14px; }
+#epeSheetDragHandle{ display:none; }
+#epePanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#epePanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#epePanelResizeHandle{ display:none; }
+#epeSheetCloseBtn{ display:none; }
+#epeToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+/* ---- Bottom toolbar (mobile/tablet-portrait only) ---- */
+#epeBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--epe-bottombar-h);
+  background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.epe-tab-btn{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  flex:1 0 64px; min-width:64px; border:none; background:transparent; cursor:pointer; color:var(--ink-soft);
+  font-size:10px; font-weight:600; padding:4px 2px;
+}
+.epe-tab-btn svg{ width:20px; height:20px; }
+.epe-tab-btn.active{ color:var(--accent1-solid); }
+.epe-tab-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+/* ============================================================
+   MOBILE / TABLET-PORTRAIT LAYOUT (<900px)
+   ============================================================ */
+@media (max-width: 899.98px){
+  #epeTopAppBar{ display:flex; }
+  #epeBottomToolbar{ display:flex; }
+  #epeLeftRail{ display:none; }
+  #epeCanvasArea{ padding:10px; padding-bottom:10px; }
+
+  /* Bottom sheet: fixed to viewport, slides via translateY, drag handle visible */
+  #epeToolPanel{
+    position:fixed; left:0; right:0; bottom:var(--epe-bottombar-h); top:auto;
+    width:auto; flex:none; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--epe-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #epeToolPanel.sheet-open{ transform:translateY(0); }
+  #epeToolPanel.sheet-half{ height:45vh; }
+  #epeToolPanel.sheet-full{ height:88vh; }
+  #epeToolPanel.collapsed{ width:auto; } /* collapse button doesn't apply on mobile */
+  #epeSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #epeToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #epePanelCollapseBtn{ display:none; }
+  #epeSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  /* Sheet backdrop */
+  #epeSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
+  #epeSheetBackdrop.visible{ opacity:1; }
+  #epeSheetBackdrop.visible{ display:block; }
+}
+
+/* ============================================================
+   DESKTOP / TABLET-LANDSCAPE LAYOUT (>=900px)
+   ============================================================ */
+@media (min-width: 900px){
+  #epeTopAppBar{ display:none; }
+  #epeBottomToolbar{ display:none; }
+  #epeLeftRail{ display:flex; }
+  #epeSheetBackdrop{ display:none !important; }
+  #epePanelResizeHandle{
+    display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5;
+  }
+  #epePanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #epeToolPanel{ position:relative; }
+}
+
+@media (min-width: 1400px){
+  #epeStage{ --epe-panel-w:400px; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  #epeToolPanel{ transition:none !important; }
+}
+
+/* Status bar (desktop only -- mobile uses that space for the bottom nav) */
+#epeStatusBar{
+  display:none; align-items:center; gap:8px; padding-top:8px; font-size:11.5px; color:var(--ink-soft);
+  border-top:1px solid var(--epe-shell-border); margin-top:8px; font-variant-numeric:tabular-nums;
+}
+.epe-status-sep{ opacity:0.4; }
+@media (min-width:900px){ #epeStatusBar{ display:flex; } }
+
+/* Smooth zoom transitions -- short enough (150ms) to stay responsive
+   during slider drags and pinch gestures, but perceptible for discrete
+   changes (buttons, presets, Fit to Screen). Purely visual; does not
+   affect the underlying canvas pixel data or exports. */
+#epeArtboardCanvas, #epeOverlayCanvas{ transition:width 0.15s ease, height 0.15s ease; }
+
+/* Pan mode cursor feedback */
+#epeCanvasStageWrap.epe-pan-mode{ cursor:grab; }
+#epeCanvasStageWrap.epe-pan-mode:active{ cursor:grabbing; }
+#epeFloatPanBtn.active{ background:var(--accent1); color:#fff; }
+
+/* ---- Asset Library (new phase) ---- */
+.epe-asset-cat-btn{
+  font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:999px; border:1px solid var(--card-border);
+  background:var(--card); color:var(--ink-soft); cursor:pointer; white-space:nowrap;
+}
+.epe-asset-cat-btn.active{ background:var(--accent1); color:#fff; border-color:transparent; }
+#epeAssetGridScroll{ max-height:340px; overflow-y:auto; margin-top:10px; border-radius:10px; }
+#epeAssetGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); gap:8px; }
+.epe-asset-cell{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px;
+  border:1px solid var(--card-border); border-radius:10px; background:var(--card); cursor:pointer;
+  min-height:48px; color:var(--ink); transition:background 0.12s, border-color 0.12s;
+}
+.epe-asset-cell:hover{ background:color-mix(in srgb, var(--accent1) 8%, var(--card)); border-color:var(--accent1); }
+.epe-asset-preview{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; }
+.epe-asset-title{ font-size:8.5px; font-weight:600; text-align:center; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; color:var(--ink-soft); }
+
+/* ---- Search engine additions (this phase) ---- */
+#epeAssetSuggestions{
+  position:absolute; top:100%; left:0; right:0; z-index:20; margin-top:4px;
+  background:var(--epe-shell-surface, var(--card)); border:1px solid var(--card-border); border-radius:10px;
+  box-shadow:var(--shadow); max-height:220px; overflow-y:auto; padding:4px;
+}
+#epeAssetSuggestions.hidden{ display:none; }
+.epe-asset-suggestion{
+  display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px;
+  border-radius:6px; cursor:pointer; font-size:12.5px; color:var(--ink);
+}
+.epe-asset-suggestion:hover{ background:var(--card-border); }
+.epe-asset-fav{
+  position:absolute; top:2px; right:2px; font-size:12px; color:var(--ink-soft); cursor:pointer;
+  width:20px; height:20px; display:flex; align-items:center; justify-content:center;
+}
+.epe-asset-fav.active{ color:#FFB800; }
+.epe-asset-cell{ position:relative; }
+#epeAssetColorFilter, #epeAssetStyleFilter{ font-size:11.5px; padding:5px 8px; border-radius:8px; border:1px solid var(--card-border); background:var(--card); color:var(--ink); }
+
+/* ---- Canva-style colorful category tiles (this phase) ---- */
+.epe-asset-section-title{ font-size:12.5px; font-weight:700; margin:16px 0 8px; color:var(--ink); }
+.epe-tile-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+.epe-tile-scroll{ display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+.epe-cat-tile{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  border:none; border-radius:16px; cursor:pointer; aspect-ratio:1/1; padding:8px 4px;
+  box-shadow:0 4px 10px -4px rgba(20,10,50,0.25); transition:transform 0.12s ease, box-shadow 0.12s ease;
+  color:#fff; position:relative; overflow:hidden;
+}
+.epe-cat-tile:hover{ transform:translateY(-2px) scale(1.02); box-shadow:0 8px 16px -4px rgba(20,10,50,0.35); }
+.epe-cat-tile:active{ transform:translateY(0) scale(0.98); }
+.epe-cat-tile-glyph{ font-size:22px; line-height:1; font-weight:800; text-shadow:0 1px 3px rgba(0,0,0,0.25); }
+.epe-cat-tile-label{ font-size:11px; font-weight:700; text-align:center; text-shadow:0 1px 2px rgba(0,0,0,0.25); line-height:1.15; }
+.epe-tile-wide{ flex:0 0 84px; aspect-ratio:auto; height:84px; }
+
+/* Base category tiles -- distinct, saturated gradients per type */
+.epe-tile-icons{ background:linear-gradient(135deg,#0EA5A5,#0B7A7A); }
+.epe-tile-shapes{ background:linear-gradient(135deg,#7C3AED,#5B21B6); }
+.epe-tile-stickers{ background:linear-gradient(135deg,#F59E0B,#D97706); }
+.epe-tile-elements{ background:linear-gradient(135deg,#3B82F6,#1D4ED8); }
+.epe-tile-frames{ background:linear-gradient(135deg,#10B981,#047857); }
+.epe-tile-patterns{ background:linear-gradient(135deg,#8B5CF6,#6D28D9); }
+.epe-tile-backgrounds{ background:linear-gradient(135deg,#06B6D4,#0E7490); }
+.epe-tile-textstyles{ background:linear-gradient(135deg,#F43F5E,#BE123C); }
+
+/* Marketing industry tiles -- warm-to-cool spread across 13 industries */
+.epe-tile-sale{ background:linear-gradient(135deg,#E05252,#B32C2C); }
+.epe-tile-luxury{ background:linear-gradient(135deg,#3D3D3D,#111111); }
+.epe-tile-business{ background:linear-gradient(135deg,#1E3A5F,#0F2138); }
+.epe-tile-fashion{ background:linear-gradient(135deg,#D6336C,#9C1F52); }
+.epe-tile-restaurant{ background:linear-gradient(135deg,#E67E22,#B85C0A); }
+.epe-tile-gym{ background:linear-gradient(135deg,#3BA55C,#1F5C33); }
+.epe-tile-medical{ background:linear-gradient(135deg,#2E86C1,#1B5E85); }
+.epe-tile-technology{ background:linear-gradient(135deg,#5142D6,#2E2494); }
+.epe-tile-realestate{ background:linear-gradient(135deg,#8B7355,#5C4A34); }
+.epe-tile-travel{ background:linear-gradient(135deg,#00B8D9,#0080A0); }
+.epe-tile-education{ background:linear-gradient(135deg,#7C3AED,#4C1D95); }
+.epe-tile-kids{ background:linear-gradient(135deg,#FFB800,#E09600); }
+.epe-tile-wedding{ background:linear-gradient(135deg,#D6336C,#8B7355); }
+
+/* Text style tiles -- each reflects its own look where possible */
+.epe-tile-txt-luxury{ background:linear-gradient(135deg,#3D3D3D,#111111); }
+.epe-tile-txt-gaming{ background:linear-gradient(135deg,#FF3366,#00FFF0); }
+.epe-tile-txt-minimal{ background:linear-gradient(135deg,#9CA3AF,#4B5563); }
+.epe-tile-txt-3d{ background:linear-gradient(135deg,#E05252,#8B1A1A); }
+.epe-tile-txt-gradient{ background:linear-gradient(135deg,#FF6B35,#D6336C,#5142D6); }
+.epe-tile-txt-retro{ background:linear-gradient(135deg,#FF6B35,#8B4513); }
+.epe-tile-txt-shadow{ background:linear-gradient(135deg,#4B5563,#111111); }
+.epe-tile-txt-glass{ background:linear-gradient(135deg,#B8E0F5,#5FA8D3); }
+.epe-tile-txt-neon{ background:linear-gradient(135deg,#FF00E5,#00FFF0); }
+.epe-tile-txt-metal{ background:linear-gradient(135deg,#C0C0C0,#5A5A5A); }
+.epe-tile-txt-gold{ background:linear-gradient(135deg,#FFD700,#B8860B); }
+.epe-tile-txt-silver{ background:linear-gradient(135deg,#E8E8E8,#9A9AA5); }
+.epe-tile-txt-fashion{ background:linear-gradient(135deg,#111111,#3D3D3D); }
+.epe-tile-txt-wedding{ background:linear-gradient(135deg,#D6336C,#8B7355); }
+.epe-tile-txt-business{ background:linear-gradient(135deg,#1E3A5F,#0F2138); }
+
+@media (max-width:420px){ .epe-tile-grid{ grid-template-columns:repeat(3, 1fr); } }
+
+.epe-cat-tile.active{ box-shadow:0 0 0 3px var(--accent1), 0 4px 10px -4px rgba(20,10,50,0.25); transform:translateY(-1px); }
+
+/* ---- Passport Photo Maker Workspace (Phase 9) ----
+   New, parallel rules -- NOT selector-merged with the Ecommerce
+   #epeWorkspaceViewport/#epeWorkspace rules, after a prior attempt at
+   selector-merging nearly shipped a severe regression (splitting a
+   compound selector like #epeFloatingBrushBar.hidden into two
+   unrelated selectors). Same exact values as Ecommerce's equivalents,
+   written as separate, safe rules instead. */
+#ppCanvasStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
+#ppCanvasTopControls{ margin-bottom:10px; }
+#ppWorkspaceViewport{
+  flex:0 1 auto; min-height:120px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+}
+#ppWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+#ppWorkspaceViewport.pp-pan-mode{ cursor:grab; }
+#ppWorkspaceViewport.pp-pan-mode:active{ cursor:grabbing; }
+
+/* ============================================================
+   PASSPORT PHOTO MAKER SHELL (Phase 11). Parallel rules mirroring
+   Ecommerce's shell layout exactly (same values, new selectors) --
+   NOT selector-merged with Ecommerce's rules, after an earlier
+   selector-merge attempt nearly shipped a severe regression by
+   splitting a compound selector. .epe-rail-btn/.epe-tab-btn/
+   .pp-accordion are already confirmed generic (Phase 2/6) and reused
+   directly here, unmodified -- no new CSS needed for those. Passport's
+   floating controls are scoped to Undo/Redo/Zoom/Fit only, since it
+   has no multi-layer selection or brush-bar architecture to mirror.
+   ============================================================ */
+#ppStage{ --pp-topbar-h:52px; --pp-bottombar-h:64px; --pp-rail-w:76px; --pp-panel-w:360px; }
+#ppStage.hidden{ display:none; }
+#ppStage:not(.hidden){
+  position:relative;
+  height:calc(100vh - var(--epe-navbar-h, 60px));
+  min-height:220px;
+  display:flex; flex-direction:column;
+  margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw);
+  width:100vw;
+}
+#ppShellBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+#ppTopAppBar{
+  display:none; align-items:center; justify-content:space-between; gap:10px;
+  height:var(--pp-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
+  background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
+}
+#ppTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+#ppLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--pp-rail-w); flex:0 0 var(--pp-rail-w); padding:10px 6px;
+  border-right:1px solid var(--epe-shell-border); background:var(--epe-shell-surface);
+}
+
+#ppCanvasAreaShell{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+
+#ppFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#ppFloatingControls.hidden{ display:flex !important; opacity:0; transform:translateX(-50%) scale(0.94); pointer-events:none !important; }
+#ppFloatingControls.pp-dragging{ transition:none !important; }
+#ppFloatingControls button{
+  min-width:44px; min-height:44px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#ppFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#ppFloatingControls button:disabled{ opacity:0.35; cursor:not-allowed; }
+#ppFloatingControls button svg{ width:18px; height:18px; }
+#ppFloatZoomLabel{ font-size:12px; font-weight:600; color:var(--ink-soft); padding:0 4px; white-space:nowrap; }
+#ppFloatingControls .epe-float-sep{ width:1px; height:22px; background:var(--epe-shell-border); flex:0 0 auto; margin:0 2px; }
+
+#ppToolPanel{
+  display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
+  width:var(--pp-panel-w); flex:0 0 var(--pp-panel-w); max-height:100vh; max-height:100dvh; position:sticky; top:0;
+  transition:width 0.2s ease; backdrop-filter:blur(6px);
+}
+#ppToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#ppToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--epe-shell-border); gap:8px; }
+#ppToolPanelTitle{ font-weight:700; font-size:14px; }
+#ppSheetDragHandle{ display:none; }
+#ppPanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#ppPanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#ppPanelResizeHandle{ display:none; }
+#ppSheetCloseBtn{ display:none; }
+#ppToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+#ppBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--pp-bottombar-h);
+  background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width: 899.98px){
+  #ppTopAppBar{ display:flex; }
+  #ppTopAppBarTitle{ flex:1; }
+  #ppNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  #ppNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+  #aiNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  #aiNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+  #ppCanvasTopControls{ display:none; }
+  #ppBottomToolbar{ display:flex; }
+  #ppLeftRail{ display:none; }
+  #ppCanvasAreaShell{ padding:10px; padding-bottom:10px; }
+
+  #ppToolPanel{
+    position:fixed; left:0; right:0; bottom:var(--pp-bottombar-h); top:auto;
+    width:auto; flex:none; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--pp-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #ppToolPanel.sheet-open{ transform:translateY(0); }
+  #ppToolPanel.sheet-half{ height:45vh; height:45dvh; }
+  #ppToolPanel.sheet-full{ height:88vh; height:88dvh; }
+  #ppToolPanel.collapsed{ width:auto; }
+  #ppSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #ppToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #ppPanelCollapseBtn{ display:none; }
+  #ppSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  #ppSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
+  #ppSheetBackdrop.visible{ opacity:1; display:block; }
+}
+
+@media (min-width: 900px){
+  #ppTopAppBar{ display:none; }
+  #ppBottomToolbar{ display:none; }
+  #ppLeftRail{ display:flex; }
+  #ppSheetBackdrop{ display:none !important; }
+  #ppPanelResizeHandle{ display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5; }
+  #ppPanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #ppToolPanel{ position:relative; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #ppToolPanel{ transition:none !important; }
+}
+
+/* ============================================================
+   AI BACKGROUND REMOVER SHELL. Parallel rules mirroring Ecommerce's
+   shell layout exactly (same values, new selectors) -- NOT selector-
+   merged, per the established safe pattern. .epe-rail-btn/.epe-tab-btn/
+   .pp-accordion/.editor-tool-btn are already confirmed generic and
+   reused directly, unmodified.
+   ============================================================ */
+#aiRemoveStage{ --ai-topbar-h:52px; --ai-bottombar-h:64px; --ai-rail-w:76px; --ai-panel-w:360px; }
+
+#aiTopAppBar{
+  display:none; align-items:center; justify-content:flex-end; gap:10px;
+  height:var(--ai-topbar-h); padding:0 12px; position:sticky; top:0; z-index:50;
+  background:var(--epe-shell-surface); backdrop-filter:blur(10px); border-bottom:1px solid var(--epe-shell-border);
+}
+#aiTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+#aiShellBody{ flex:1 1 auto; min-height:0; display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
+
+#aiLeftRail{
+  display:flex; flex-direction:column; align-items:stretch; gap:2px;
+  width:var(--ai-rail-w); flex:0 0 var(--ai-rail-w); padding:10px 6px;
+  border-right:1px solid var(--epe-shell-border); background:var(--epe-shell-surface);
+}
+
+#aiCanvasAreaShell{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; position:relative; padding:14px; }
+
+#aiWorkspaceViewport{
+  flex:1 1 auto; min-height:280px; height:60vh; max-height:640px; position:relative; overflow:hidden;
+  border:1.5px solid var(--card-border); border-radius:16px;
+  background:
+    linear-gradient(45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(-45deg, #00000010 25%, transparent 25%) 0 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #00000010 75%) 0 0/16px 16px,
+    #fff;
+  margin-top:10px;
+}
+#aiWorkspace{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+/* #aiEditStageWrap uses the shared .editor-stage-wrap class (for its
+   checkerboard background etc.), but that base class also carries
+   overflow:auto and max-height:520px -- meant for older, simple tools that
+   just need a plain scrollable box. This tool (like Ecommerce Editor and
+   Passport Photo Maker, which hit and fixed this exact conflict already --
+   see #epeCanvasStageWrap / #ppCanvasStageWrap) uses the newer workspace-
+   engine architecture instead: #aiWorkspaceViewport is the one true
+   clipping box, #aiWorkspace carries the pan/zoom transform, and this inner
+   wrap should just be exactly the size of its canvas with no clipping or
+   scrolling of its own. Left un-overridden, the base class's own
+   overflow:auto + max-height:520px fought the transform-based pan/zoom
+   above it: on a portrait image taller than 520px, THIS element (not the
+   viewport) was the one actually cutting the image off, and it has its own
+   independent (native browser) scrollbar that touch-action:none on the
+   canvas blocks from ever being reachable by touch -- which is exactly the
+   reported "image doesn't fully load" and "can't drag" bug. */
+#aiEditStageWrap{ position:relative; width:fit-content; height:fit-content; max-height:none; overflow:visible; }
+
+#aiFloatingControls{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) scale(1);
+  display:flex; align-items:center; gap:4px; padding:6px; border-radius:999px;
+  background:var(--epe-shell-surface); backdrop-filter:blur(6px); box-shadow:var(--shadow);
+  border:1px solid var(--epe-shell-border); z-index:47; flex-wrap:nowrap; max-width:calc(100% - 20px); overflow-x:auto;
+  opacity:1; transition:opacity 0.18s ease, transform 0.18s ease;
+}
+#aiFloatingControls.ai-dragging{ transition:none !important; }
+#aiFloatingControls button{
+  min-width:40px; min-height:40px; border-radius:999px; border:none; background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink); flex:0 0 auto;
+}
+#aiFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
+#aiFloatingControls button.active{ background:var(--accent1-solid); color:#fff; }
+#aiFloatingControls button[aria-pressed="true"]{ background:var(--accent1-solid); color:#fff; }
+
+#aiToolPanel{
+  display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
+  width:var(--ai-panel-w); flex:0 0 var(--ai-panel-w); max-height:100vh; position:sticky; top:0;
+  transition:width 0.2s ease; backdrop-filter:blur(6px);
+}
+#aiToolPanel.collapsed{ width:0; flex-basis:0; border-left:none; overflow:hidden; }
+#aiToolPanelHeader{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--epe-shell-border); gap:8px; }
+#aiToolPanelTitle{ font-weight:700; font-size:14px; }
+#aiSheetDragHandle{ display:none; }
+#aiPanelCollapseBtn{ min-width:32px; min-height:32px; border:none; background:transparent; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+#aiPanelCollapseBtn:hover{ background:rgba(109,94,245,0.1); }
+#aiPanelResizeHandle{ display:none; }
+#aiSheetCloseBtn{ display:none; }
+#aiToolPanelBody{ flex:1; overflow-y:auto; padding:14px; -webkit-overflow-scrolling:touch; }
+
+#aiBottomToolbar{
+  display:none; position:sticky; bottom:0; z-index:50; height:var(--ai-bottombar-h);
+  background:var(--epe-shell-surface-solid); border-top:1px solid var(--epe-shell-border);
+  align-items:stretch; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width: 899.98px){
+  #aiTopAppBar{ display:flex; }
+  #aiBottomToolbar{ display:flex; }
+  #aiLeftRail{ display:none; }
+  #aiCanvasAreaShell{ padding:10px; }
+
+  #aiToolPanel{
+    position:fixed !important; left:0 !important; right:0 !important; bottom:var(--ai-bottombar-h) !important; top:auto !important;
+    width:auto !important; flex:none !important; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
+    border-left:none; border-top:1px solid var(--card-border);
+    border-radius:18px 18px 0 0; box-shadow:0 -10px 30px -10px rgba(30,20,70,0.25);
+    transform:translateY(calc(100% + var(--ai-bottombar-h))); transition:transform 0.28s cubic-bezier(.2,.8,.2,1);
+    z-index:50;
+  }
+  #aiToolPanel.sheet-open{ transform:translateY(0); }
+  #aiToolPanel.sheet-half{ height:45vh; height:45dvh; }
+  #aiToolPanel.sheet-full{ height:88vh; height:88dvh; }
+  #aiToolPanel.collapsed{ width:auto; }
+  #aiSheetDragHandle{ display:block; width:40px; height:5px; border-radius:3px; background:var(--card-border); margin:8px auto 0; flex:0 0 auto; }
+  #aiToolPanelHeader{ flex-direction:column; padding:4px 14px 8px; gap:2px; }
+  #aiPanelCollapseBtn{ display:none; }
+  #aiSheetCloseBtn{ display:flex; position:absolute; right:10px; top:10px; min-width:44px; min-height:44px; border:none; background:rgba(0,0,0,0.06); border-radius:999px; align-items:center; justify-content:center; }
+
+  #aiSheetBackdrop{ display:none; position:fixed; inset:0; background:rgba(10,8,24,0.55); z-index:45; opacity:0; transition:opacity 0.28s ease; }
+  #aiSheetBackdrop.visible{ opacity:1; display:block; }
+
+  /* True single-screen mobile editor. Previously the editing view lived in
+     normal page flow, with #aiTopAppBar (sticky) and #aiBottomToolbar
+     (sticky) each independently deciding when to "stick" based on page
+     scroll position -- workable in isolation, but the two could end up
+     computing conflicting stuck positions at once (both anchored to the
+     same screen edges via independent sticky calculations), rendering the
+     bottom tab row visually sandwiched inside the open sheet instead of
+     cleanly above or below it. Removing page-level scroll entirely for
+     this view removes the ambiguity at the root: everything below becomes
+     plain flow inside one fixed, full-viewport column, so there is no
+     scroll position for anything to compute a "stuck" offset from in the
+     first place. Toggled via JS adding/removing "ai-fullscreen" on
+     #aiRemoveStage exactly when it's shown/hidden.
+     Desktop is deliberately NOT touched by any of this -- #aiRemoveStage
+     stays in normal page flow above 900px, where there's already enough
+     screen space that this class of bug doesn't occur. */
+  #aiRemoveStage.ai-fullscreen{
+    position:fixed; inset:0; z-index:100;
+    display:flex; flex-direction:column;
+    background:var(--bg1);
+  }
+  #aiRemoveStage.ai-fullscreen #aiTopAppBar{ position:relative; top:auto; flex:0 0 auto; }
+  #aiRemoveStage.ai-fullscreen #aiShellBody{ flex:1 1 auto; min-height:0; }
+  #aiRemoveStage.ai-fullscreen #aiCanvasAreaShell{ display:flex; flex-direction:column; min-height:0; height:100%; }
+  #aiRemoveStage.ai-fullscreen #aiWorkspaceViewport{ flex:1 1 auto; min-height:0; height:auto; max-height:none; }
+  #aiRemoveStage.ai-fullscreen #aiBottomToolbar{ position:relative; bottom:auto; flex:0 0 auto; }
+  #aiRemoveStage.ai-fullscreen #aiToolPanel{ z-index:60; }
+  #aiRemoveStage.ai-fullscreen #aiSheetBackdrop{ z-index:55; }
+  body.ai-fullscreen-lock{ overflow:hidden; position:fixed; width:100%; }
+}
+
+@media (min-width: 900px){
+  #aiTopAppBar{ display:none; }
+  #aiBottomToolbar{ display:none; }
+  #aiLeftRail{ display:flex; }
+  #aiSheetBackdrop{ display:none !important; }
+  #aiPanelResizeHandle{ display:block; position:absolute; left:0; top:0; bottom:0; width:6px; cursor:col-resize; z-index:5; }
+  #aiPanelResizeHandle:hover{ background:rgba(109,94,245,0.15); }
+  #aiToolPanel{ position:relative; }
+}
+
+/* ============================================================
+   AI PHOTO RETOUCH -- WORKSPACE SHELL (rt-* prefix)
+   Phase 1 architecture: sticky top toolbar (undo/redo/fit/compare/
+   reset), a canvas area that always stays visible, a panel sheet for
+   the existing .pp-accordion controls (unchanged, reused verbatim),
+   and a horizontally-scrollable bottom toolbar of category buttons.
+   Scoped entirely under #rtStage.rt-shell so no other tool (including
+   Passport Photo Maker's shared .pp-accordion rules) is affected.
+   Mobile-first: base rules target phones, desktop widened at 900px.
+   ============================================================ */
+#rtStage.rt-shell{ margin-top:14px; }
+
+#rtStage .rt-topbar{
+  position:sticky; top:8px; z-index:6;
+  display:flex; align-items:center; gap:6px;
+  background:var(--card); border:1px solid var(--card-border);
+  border-radius:14px; padding:6px 8px;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 6px 20px -10px rgba(20,15,50,0.25);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+@media (max-width: 899px){
+  /* Floating Toolbar (Mobile UX Polish Sprint, Part 1): fully out of
+     document flow -- consumes zero permanent layout height. The
+     existing rtUpdateCanvasMaxHeight() measures the canvas wrap's real,
+     live position each time, so it automatically reclaims whatever
+     space this frees up -- no change to the canvas-sizing formula
+     itself was needed or made. */
+  #rtStage .rt-topbar{
+    position:fixed; top:76px; left:8px; right:8px; z-index:20;
+    background:var(--epe-shell-surface-solid);
+    border-radius:16px;
+    box-shadow:0 10px 28px -14px rgba(20,15,50,0.4);
+    transition:opacity 0.35s ease;
+  }
+  #rtStage .rt-topbar.rt-toolbar-idle{ opacity:0.25; }
+  #rtStage .rt-topbar button, #rtStage .rt-topbar input{ touch-action:manipulation; }
+}
+#rtStage .rt-tb-icon-btn{
+  flex:0 0 auto; width:38px; height:38px; border-radius:10px;
+  border:1px solid var(--card-border); background:transparent; color:var(--ink);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+#rtStage .rt-tb-icon-btn svg{ width:18px; height:18px; }
+#rtStage .rt-tb-icon-btn:disabled{ opacity:.35; cursor:not-allowed; }
+#rtStage .rt-tb-icon-btn:not(:disabled):hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+#rtStage .rt-tb-sep{ width:1px; height:22px; background:var(--card-border); flex:0 0 auto; margin:0 2px; }
+#rtStage .rt-tb-drag-handle{
+  flex:0 0 auto; width:32px; height:38px; display:flex; align-items:center; justify-content:center;
+  color:var(--ink-soft); cursor:grab; touch-action:none; margin-right:0;
+}
+#rtStage .rt-tb-drag-handle svg{ width:14px; height:18px; }
+#rtStage .rt-topbar.rt-toolbar-dragging{ transition:none; }
+#rtStage .rt-toolbar-dragging .rt-tb-drag-handle{ cursor:grabbing; }
+
+/* ---- Beauty / Advanced mode toggle (UI evolution on the verified Phase 2 architecture) ---- */
+#rtStage .rt-mode-toggle{
+  display:flex; flex:0 0 auto; border:1.5px solid var(--card-border); border-radius:10px; padding:2px; gap:2px;
+  background:var(--card);
+}
+#rtStage .rt-mode-toggle-btn{
+  border:none; background:transparent; color:var(--ink-soft); font-size:11.5px; font-weight:700;
+  padding:7px 9px; border-radius:8px; cursor:pointer; white-space:nowrap;
+}
+#rtStage .rt-mode-toggle-btn.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; }
+/* Advanced-only bottom-toolbar categories are simply hidden in Beauty Mode --
+   nothing about the underlying panels, data, or history changes; switching
+   back to Advanced Mode reveals exactly the same state, untouched. */
+#rtBottomToolbar.rt-beauty-mode .rt-bt-item[data-advanced="true"]{ display:none; }
+#rtStage.rt-mode-beauty .rt-advanced-only-section{ display:none; }
+#rtStage .rt-tb-text-btn{
+  flex:0 0 auto; white-space:nowrap; font-size:12.5px; font-weight:700;
+  padding:9px 12px; border-radius:10px; border:1px solid var(--card-border);
+  background:transparent; color:var(--ink); cursor:pointer;
+}
+#rtStage .rt-tb-text-btn:hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+#rtStage .rt-tb-text-btn.rt-tb-danger{ margin-left:auto; color:#E5484D; border-color:color-mix(in srgb, #E5484D 35%, var(--card-border)); }
+#rtStage .rt-tb-icon-btn.rt-tb-danger{ color:#E5484D; border-color:color-mix(in srgb, #E5484D 35%, var(--card-border)); }
+#rtStage .rt-tb-text-btn[aria-pressed="true"]{ background:var(--accent1); color:#fff; border-color:transparent; }
+
+#rtStage .rt-canvas-area{ margin-top:12px; }
+#rtStage .rt-zoom-row{ display:flex; align-items:center; gap:10px; margin-top:8px; }
+#rtStage .rt-sheet-handle{ display:none; } /* base/desktop default -- the mobile media query below overrides this to display:flex, correctly winning via source order since its condition is satisfied on mobile */
+@media (max-width: 899px){
+  /* Shared .editor-stage-wrap base rule (520px cap) is untouched -- this
+     only narrows it further inside the retouch tool on small screens.
+     "Canvas is King" (Mobile UX Polish Sprint): the canvas should claim
+     ~70-75% of the mobile screen once an image is loaded. This starting
+     value is intentionally generous -- rtUpdateCanvasMaxHeight() (JS)
+     recalculates the real, safe value from actual measured layout
+     (topbar/toolbar heights) on load/resize, the same proven
+     self-correcting pattern already used for the panel sheet's height,
+     so this CSS value is only ever the pre-JS fallback, not the final
+     word. */
+  #rtStage .editor-stage-wrap{ max-height:min(640px, 68vh); max-height:min(640px, 68dvh); }
+  /* Zoom slider replaced by pinch-to-zoom + double-tap on mobile (modern
+     editors don't use a slider for this) -- kept in the DOM and fully
+     functional on desktop, where there's no touch gesture equivalent. */
+  #rtStage .rt-zoom-row{ display:none; }
+  /* Canva-style navigation (Mobile UX Polish Sprint, Part 2): only the
+     currently-open category is visible -- everything else is hidden
+     entirely rather than shown as a scrollable list of collapsed
+     headers. The bottom nav is the sole way to switch categories now,
+     so the header list was redundant; removing it also means the panel
+     sheet collapses to near-zero height when nothing is selected,
+     directly freeing more room for the canvas (Part 4). Reuses the
+     exact same .pp-accordion elements and exclusivity logic already
+     built -- this is a presentational change, not a rewrite. */
+  #rtStage .rt-panel-sheet .pp-accordion:not([open]){ display:none; }
+
+  /* Canva-style Bottom Sheet (Mobile UX Polish Sprint, drag + swipe slice).
+     Height itself is set directly by JS (rtApplySheetHeight) tied to live
+     measurements, not by a CSS max-height guess -- this is what lets the
+     canvas resize in lockstep with the sheet during an active drag,
+     using ONE shared source of truth instead of two systems fighting
+     over the same space. This block only provides the drag-handle
+     affordance, snap-animation timing, and per-state overflow behavior. */
+  #rtStage .rt-panel-sheet{
+    position:fixed; left:0; right:0; z-index:15;
+    background:var(--epe-shell-surface); border-top-left-radius:20px; border-top-right-radius:20px;
+    box-shadow:0 -12px 32px -14px rgba(20,15,50,0.28);
+    margin:0; padding-left:16px; padding-right:16px; padding-bottom:16px;
+    transition:height 0.28s cubic-bezier(0.22,0.9,0.32,1);
+    overflow-y:hidden; /* Half state: no internal scroll -- see Part 1's "Internal scrolling only happens in Expanded state" */
+  }
+  #rtStage .rt-panel-sheet.rt-sheet-dragging{ transition:none; } /* live 1:1 finger tracking, no animation lag */
+  #rtStage .rt-panel-sheet.rt-sheet-expanded{ overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  #rtStage .rt-sheet-handle{
+    display:flex; align-items:center; justify-content:center;
+    height:22px; width:100%; touch-action:none; cursor:grab;
+  }
+  #rtStage .rt-sheet-handle span{
+    width:36px; height:4px; border-radius:2px; background:var(--card-border);
+  }
+  #rtStage .rt-panel-sheet.rt-sheet-dragging .rt-sheet-handle{ cursor:grabbing; }
+}
+
+/* Panel sheet: on mobile this floats above the canvas and bottom
+   toolbar as a fixed-position overlay (see the mobile-scoped rule
+   above, which owns position/margin/padding/background on mobile) --
+   only the active .pp-accordion (single-open, existing exclusivity
+   logic) is visible at a time. This base rule now only supplies
+   scroll-behavior and the pre-JS max-height fallback, both harmless on
+   desktop (which re-declares margin:0 in its own grid-context rule). */
+#rtStage .rt-panel-sheet{
+  max-height:42vh; max-height:42dvh; /* fallback before JS measures exact space; JS inline style overrides this */
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth;
+}
+#rtStage .rt-panel-sheet .pp-accordion{ scroll-margin-top:10px; }
+
+#rtStage .rt-bottom-toolbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:7;
+  display:flex; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+  padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  background:var(--bg, var(--card)); background:color-mix(in srgb, var(--card) 92%, var(--bg, #fff) 8%);
+  border-top:1px solid var(--card-border);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+}
+#rtStage .rt-bt-item{
+  flex:1 0 auto; min-width:64px; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:7px 10px; border:none; background:transparent; color:var(--ink-soft);
+  border-radius:10px; cursor:pointer; font-size:10.5px; font-weight:700; letter-spacing:.01em;
+}
+#rtStage .rt-bt-item svg{ width:20px; height:20px; }
+/* Colorful category icons (Universal Design System polish) -- each
+   tool gets a distinct, tasteful icon tint even when inactive, matching
+   the panel header icon colors; AI Magic stays the one true "hero" via
+   its gradient fill, untouched by these rules. Selected by position
+   since button order is fixed and stable in this toolbar. */
+#rtStage .rt-bt-item:nth-child(2) svg{ color:#14b8a6; }  /* Crop -- teal */
+#rtStage .rt-bt-item:nth-child(3) svg{ color:#ec4899; }  /* Face -- rose */
+#rtStage .rt-bt-item:nth-child(4) svg{ color:#f59e0b; }  /* Light -- amber */
+#rtStage .rt-bt-item:nth-child(5) svg{ color:#a855f7; }  /* Color -- purple */
+#rtStage .rt-bt-item:nth-child(6) svg{ color:#6366f1; }  /* Detail -- indigo */
+#rtStage .rt-bt-item:nth-child(7) svg{ color:#3b82f6; }  /* Background -- blue */
+#rtStage .rt-bt-item:nth-child(8) svg{ color:#b45309; }  /* Hair -- brown */
+#rtStage .rt-bt-item:nth-child(9) svg{ color:#8b5cf6; }  /* Filters -- violet */
+#rtStage .rt-bt-item:nth-child(10) svg{ color:#64748b; } /* Layers -- slate */
+#rtStage .rt-bt-item:nth-child(11) svg{ color:#22c55e; } /* History -- green */
+#rtStage .rt-bt-item:nth-child(12) svg{ color:#ef4444; } /* Heal -- red */
+#rtStage .rt-bt-item:nth-child(13) svg{ color:#d946ef; } /* Portrait -- magenta */
+#rtStage .rt-bt-item:nth-child(14) svg{ color:#10b981; } /* Export -- emerald */
+#rtStage .rt-bt-item[aria-selected="true"] svg{ color:inherit; } /* active state's own accent color takes over, per existing logic */
+#rtStage .rt-bt-item[aria-selected="true"]{ color:var(--accent1-solid, var(--accent1)); background:color-mix(in srgb, var(--accent1) 12%, transparent); }
+#rtStage .rt-bt-item:hover{ color:var(--ink); }
+
+/* AI Magic hero button (Mobile UX Polish Sprint, Part 5): the flagship
+   one-tap action reads as visually primary among its neighbors --
+   gradient fill, subtle glow, slightly larger -- without competing so
+   hard it becomes distracting or crowds out the other categories. */
+#rtStage .rt-bt-item-hero{
+  background:linear-gradient(135deg, var(--accent1), var(--accent2));
+  color:#fff; border-radius:12px; padding:8px 12px;
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--accent1) 35%, transparent), 0 4px 14px -4px color-mix(in srgb, var(--accent1) 55%, transparent);
+  transform:scale(1.06);
+}
+#rtStage .rt-bt-item-hero svg{ width:22px; height:22px; }
+#rtStage .rt-bt-item-hero[aria-selected="true"]{ color:#fff; background:linear-gradient(135deg, var(--accent1), var(--accent2)); filter:brightness(1.1); }
+#rtStage .rt-bt-item-hero:hover{ color:#fff; filter:brightness(1.08); }
+
+/* ---- Makeup Studio panel (rtMakeupBar) ----
+   This entire panel's CSS was missing from the stylesheet -- every class
+   below is created/referenced by js/app.js (~line 12943) but had no
+   matching rule anywhere, so every chip/button rendered as an unstyled
+   native <button>. Styled to match this tool's existing visual language:
+   panel surface matches .rt-panel-sheet, pill buttons match
+   .rt-tb-text-btn/.rt-bt-item, swatches match .bg-swatch. */
+#rtStage .rt-makeup-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:16;
+  background:var(--epe-shell-surface); border-top-left-radius:20px; border-top-right-radius:20px;
+  border-top:1px solid var(--card-border);
+  box-shadow:0 -12px 32px -14px rgba(20,15,50,0.28);
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  max-height:60vh; max-height:60dvh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+#rtStage .rt-ms-level{ display:flex; align-items:flex-start; gap:10px; }
+#rtStage .rt-ms-chips{ flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-chip{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-chip:hover{ background:color-mix(in srgb, var(--accent1) 10%, var(--card)); }
+#rtStage .rt-ms-chip.active,
+#rtStage .rt-ms-chip[aria-selected="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
+#rtStage .rt-ms-close-btn,
+#rtStage .rt-ms-back-btn{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  border:1px solid var(--card-border); background:transparent; color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 12px; border-radius:10px; cursor:pointer;
+}
+#rtStage .rt-ms-close-btn svg,
+#rtStage .rt-ms-back-btn svg{ width:16px; height:16px; flex:none; }
+#rtStage .rt-ms-tool-label{ font-size:14px; font-weight:800; color:var(--ink); flex:1 1 auto; align-self:center; }
+#rtStage .rt-ms-slider-slot{ display:flex; flex-direction:column; gap:14px; margin-top:12px; width:100%; }
+#rtStage .rt-ms-ctrl{ display:flex; flex-direction:column; gap:6px; }
+#rtStage .rt-ms-ctrl input[type="range"]{ width:100%; accent-color:var(--accent1-solid, var(--accent1)); }
+#rtStage .rt-ms-coming-soon{
+  font-size:13px; color:var(--ink-soft); background:var(--card); border:1px dashed var(--card-border);
+  border-radius:12px; padding:16px; text-align:center;
+}
+#rtStage .rt-ms-swatch-row{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-swatch{
+  width:36px; height:36px; border-radius:9px; border:2px solid var(--card-border); cursor:pointer; padding:0;
+}
+#rtStage .rt-ms-swatch[data-hex=""],
+#rtStage .rt-ms-swatch-none{
+  background:
+    linear-gradient(45deg, transparent 48%, #E5484D 49%, #E5484D 51%, transparent 52%),
+    var(--card);
+}
+#rtStage .rt-ms-lipfinish{ display:flex; flex-wrap:wrap; gap:8px; }
+#rtStage .rt-ms-finish-btn{
+  flex:0 0 auto; border:1px solid var(--card-border); background:var(--card); color:var(--ink);
+  font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:999px; cursor:pointer;
+}
+#rtStage .rt-ms-finish-btn.active,
+#rtStage .rt-ms-finish-btn[aria-pressed="true"]{
+  background:var(--accent1-solid, var(--accent1)); border-color:transparent; color:#fff;
+}
+
+/* (No mobile-only panel-sheet override needed anymore -- the base rule's
+   max-height calc() and padding-bottom already account for the fixed
+   bottom toolbar's height directly, see .rt-panel-sheet above.) */
+
+/* Desktop (>=900px): left/right split so the canvas stays large and
+   centered -- left column repurposes the bottom toolbar as a vertical
+   rail, right column becomes a persistent (non-sheet) properties panel.
+   Only applied if it improves usability, per project layout rules. */
+@media (min-width: 900px){
+  #rtStage.rt-shell{
+    display:grid; grid-template-columns:76px minmax(0,1fr) 340px;
+    grid-template-areas:"rail topbar topbar" "rail canvas panel";
+    gap:14px; align-items:start;
+  }
+  #rtStage .rt-topbar{ grid-area:topbar; position:sticky; top:14px; }
+  #rtStage .rt-canvas-area{ grid-area:canvas; margin-top:0; }
+  #rtStage .rt-panel-sheet{
+    grid-area:panel; margin-top:0; margin-bottom:0; max-height:none;
+    max-height:initial; position:sticky; top:70px; padding-bottom:16px;
+    max-height:calc(100vh - 90px); max-height:calc(100dvh - 90px);
+  }
+  #rtStage .rt-bottom-toolbar{
+    grid-area:rail; position:sticky; top:14px; bottom:auto; left:auto; right:auto;
+    flex-direction:column; height:fit-content; max-height:calc(100vh - 30px);
+    border-top:none; border-radius:14px; border:1px solid var(--card-border);
+    padding:8px; background:var(--card);
+  }
+  #rtStage .rt-bt-item{ min-width:auto; }
+}
+
+/* ---- Layers panel ---- */
+#rtLayersList{ display:flex; flex-direction:column; gap:8px; }
+.rt-layer-row{
+  border:1.5px solid var(--card-border); border-radius:12px; padding:8px 10px;
+  background:var(--card); cursor:pointer; transition:border-color .15s;
+}
+.rt-layer-row.active{ border-color:var(--accent1-solid, var(--accent1)); background:color-mix(in srgb, var(--accent1) 8%, var(--card)); }
+.rt-layer-row.locked{ opacity:.75; }
+.rt-layer-row-top{ display:flex; align-items:center; gap:8px; }
+.rt-layer-thumb{ width:36px; height:36px; border-radius:7px; object-fit:cover; border:1px solid var(--card-border); flex:0 0 auto; background:#8884; }
+.rt-layer-name-input{
+  flex:1; min-width:0; font-size:13px; font-weight:700; color:var(--ink); background:transparent; border:none; outline:none;
+  padding:4px 2px; border-radius:6px;
+}
+.rt-layer-name-input:focus{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+.rt-layer-icon-btn{
+  flex:0 0 auto; width:30px; height:30px; border-radius:8px; border:1px solid var(--card-border);
+  background:transparent; color:var(--ink-soft); display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.rt-layer-icon-btn svg{ width:15px; height:15px; }
+.rt-layer-icon-btn[aria-pressed="true"]{ color:var(--accent1-solid, var(--accent1)); border-color:var(--accent1-solid, var(--accent1)); }
+.rt-layer-row-controls{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.rt-layer-row-controls label{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+.rt-layer-opacity{ flex:1; min-width:70px; }
+.rt-layer-blend-select{
+  font-size:11.5px; padding:5px 22px 5px 8px; border-radius:8px; border:1.5px solid var(--card-border);
+  background:var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6b7a' stroke-width='2.2'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 6px center / 13px 13px;
+  background-color:var(--card);
+  color:var(--ink);
+  -webkit-appearance:none; -moz-appearance:none; appearance:none;
+  width:auto; max-width:130px; flex:0 0 auto;
+}
+.rt-layer-reorder-btns{ display:flex; gap:4px; margin-left:auto; }
+
+/* ---- History panel ---- */
+#rtHistoryList{ display:flex; flex-direction:column; gap:2px; max-height:320px; overflow-y:auto; }
+.rt-history-row{
+  display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:9px; cursor:pointer;
+  font-size:12.5px; color:var(--ink-soft); border:1px solid transparent;
+}
+.rt-history-row:hover{ background:color-mix(in srgb, var(--accent1) 6%, transparent); }
+.rt-history-row.current{ background:color-mix(in srgb, var(--accent1) 12%, transparent); color:var(--ink); font-weight:700; border-color:color-mix(in srgb, var(--accent1) 30%, transparent); }
+.rt-history-step-num{ flex:0 0 auto; width:20px; text-align:right; font-variant-numeric:tabular-nums; opacity:.7; }
+
+/* ---- Mask controls ---- */
+#rtMaskPanel:empty{ display:none; }
+.rt-mask-box{ border:1.5px dashed var(--card-border); border-radius:12px; padding:10px; margin-bottom:12px; }
+.rt-mask-box-top{ display:flex; align-items:center; gap:10px; }
+.rt-mask-thumb{ width:34px; height:34px; border-radius:6px; border:1px solid var(--card-border); object-fit:cover; background:#000; }
+.rt-mask-title{ font-size:12.5px; font-weight:700; color:var(--ink); flex:1; }
+.rt-mask-row{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.rt-mask-row label{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+.rt-mask-segmented{ display:flex; border:1.5px solid var(--card-border); border-radius:9px; overflow:hidden; }
+.rt-mask-segmented button{
+  border:none; background:transparent; color:var(--ink-soft); font-size:11.5px; font-weight:700;
+  padding:6px 10px; cursor:pointer;
+}
+.rt-mask-segmented button.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; }
+.rt-mask-edit-btn.editing{ background:var(--accent1-solid, var(--accent1)); color:#fff; border-color:transparent; }
+
+/* ---- Canvas Background selector (Phase 2 Slice 5) ----
+   Purely a CSS background behind the canvas for viewing convenience --
+   never touches pixel data, so it can never leak into an export. */
+.rt-canvas-bg-row{ display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.rt-canvas-bg-swatch{
+  width:26px; height:26px; border-radius:7px; border:1.5px solid var(--card-border);
+  cursor:pointer; padding:0; flex:0 0 auto;
+}
+.rt-canvas-bg-swatch.active{ outline:2px solid var(--accent1-solid, var(--accent1)); outline-offset:1px; }
+.rt-canvas-bg-swatch-checker{
+  background:
+    linear-gradient(45deg, #9992 25%, transparent 25%) 0 0/10px 10px,
+    linear-gradient(-45deg, #9992 25%, transparent 25%) 0 0/10px 10px,
+    linear-gradient(45deg, transparent 75%, #9992 75%) 0 0/10px 10px,
+    linear-gradient(-45deg, transparent 75%, #9992 75%) 0 0/10px 10px, #fff;
+}
+.rt-canvas-bg-swatch-white{ background:#fff; }
+.rt-canvas-bg-swatch-gray{ background:#8a8a8a; }
+.rt-canvas-bg-swatch-black{ background:#111; }
+.rt-canvas-bg-swatch-custom{ width:26px; height:26px; border-radius:7px; border:1.5px solid var(--card-border); padding:0; cursor:pointer; flex:0 0 auto; }
+#rtCanvasStageWrap.rt-canvas-bg-white{ background:#fff; }
+#rtCanvasStageWrap.rt-canvas-bg-gray{ background:#8a8a8a; }
+#rtCanvasStageWrap.rt-canvas-bg-black{ background:#111; }
+#rtCanvasStageWrap.rt-canvas-bg-custom{ background:var(--rt-canvas-custom-bg, #5142d6); }
+
+/* ---- Crop panel ---- */
+.rt-crop-ratios{ display:flex; flex-wrap:wrap; gap:6px; }
+.rt-crop-ratio-btn{
+  font-size:12px; font-weight:700; padding:7px 11px; border-radius:9px;
+  border:1.5px solid var(--card-border); background:var(--card); color:var(--ink-soft); cursor:pointer;
+}
+.rt-crop-ratio-btn.active{ background:var(--accent1-solid, var(--accent1)); color:#fff; border-color:transparent; }
+
+/* ---- Crop overlay (interactive, on-canvas) ----
+   Positioned via JS to exactly match #rtPreviewCanvas's rendered box;
+   all coordinates inside are plain CSS pixels within that box. */
+.rt-crop-overlay{ position:absolute; top:0; left:0; touch-action:none; }
+
+/* AI Magic premium processing animation (finalized experience: no
+   summary, no confidence, no plan -- just an elegant visual while
+   processing, gone the instant the result is ready). */
+.rt-ai-magic-anim{
+  position:absolute; inset:0; z-index:5; overflow:hidden; border-radius:inherit;
+  background:linear-gradient(135deg, color-mix(in srgb, var(--accent1) 22%, transparent), color-mix(in srgb, var(--accent2) 18%, transparent));
+  pointer-events:none;
+}
+.rt-ai-magic-sweep{
+  position:absolute; top:0; bottom:0; left:-45%; width:40%;
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, #fff 55%, transparent), transparent);
+  animation:rtAiSweep 1.6s ease-in-out infinite;
+  mix-blend-mode:overlay;
+  will-change:transform;
+}
+@keyframes rtAiSweep{
+  0%{ transform:translateX(0); }
+  100%{ transform:translateX(375%); }
+}
+.rt-ai-magic-particles span{
+  position:absolute; width:6px; height:6px; border-radius:50%;
+  background:radial-gradient(circle, #fff, var(--accent1) 70%);
+  opacity:0; animation:rtAiParticle 2.2s ease-in-out infinite;
+  box-shadow:0 0 8px 2px color-mix(in srgb, var(--accent1) 60%, transparent);
+}
+.rt-ai-magic-particles span:nth-child(1){ left:15%; top:20%; animation-delay:0s; }
+.rt-ai-magic-particles span:nth-child(2){ left:75%; top:15%; animation-delay:0.3s; }
+.rt-ai-magic-particles span:nth-child(3){ left:35%; top:65%; animation-delay:0.6s; }
+.rt-ai-magic-particles span:nth-child(4){ left:85%; top:55%; animation-delay:0.9s; }
+.rt-ai-magic-particles span:nth-child(5){ left:55%; top:80%; animation-delay:1.2s; }
+.rt-ai-magic-particles span:nth-child(6){ left:10%; top:75%; animation-delay:1.5s; }
+@keyframes rtAiParticle{
+  0%{ opacity:0; transform:translateY(0) scale(0.6); }
+  40%{ opacity:1; transform:translateY(-14px) scale(1); }
+  100%{ opacity:0; transform:translateY(-28px) scale(0.6); }
+}
+.rt-crop-overlay.hidden{ display:none; }
+#rtCanvasStageWrap.rt-crop-editing{ overflow:visible; }
+.rt-crop-shade{ position:absolute; background:rgba(0,0,0,0.55); pointer-events:none; }
+.rt-crop-rect{
+  position:absolute; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,0.4);
+  box-sizing:border-box; cursor:move;
+}
+.rt-crop-grid-line{ position:absolute; background:rgba(255,255,255,0.55); pointer-events:none; }
+.rt-crop-handle{
+  position:absolute; width:26px; height:26px; margin:-13px; border-radius:50%;
+  background:#fff; border:2px solid var(--accent1-solid, var(--accent1)); box-shadow:0 1px 4px rgba(0,0,0,0.35);
+  touch-action:none; z-index:2;
+}
+.rt-crop-handle.rt-crop-handle-edge{ background:rgba(255,255,255,0.9); }
+.rt-crop-handle-nw{ cursor:nwse-resize; } .rt-crop-handle-se{ cursor:nwse-resize; }
+.rt-crop-handle-ne{ cursor:nesw-resize; } .rt-crop-handle-sw{ cursor:nesw-resize; }
+.rt-crop-handle-n{ cursor:ns-resize; } .rt-crop-handle-s{ cursor:ns-resize; }
+.rt-crop-handle-e{ cursor:ew-resize; } .rt-crop-handle-w{ cursor:ew-resize; }
