@@ -2257,6 +2257,7 @@ if (document.getElementById('aiRemoveDrop')){
       aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
       document.getElementById('aiRemoveStage').classList.remove('hidden');
+      enterAiFullscreen();
       // Show the uploaded image immediately in the SAME canvas that will
       // later display the AI result -- fixes a real, reported bug where
       // upload showed a separate <img> preview while the actual editable
@@ -2317,8 +2318,35 @@ if (document.getElementById('aiRemoveDrop')){
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); });
     document.querySelectorAll('.navbar').forEach(el => el.classList.remove('ai-nav-collapsed'));
   }
+  // True single-screen mode on mobile (see the matching CSS comment for
+  // #aiRemoveStage.ai-fullscreen for why this exists): locks page scroll
+  // and turns the editor into a fixed, full-viewport view, eliminating the
+  // sticky-vs-sticky stacking ambiguity that showed the bottom tab row
+  // rendering inside the open sheet. Restores the exact scroll position
+  // afterward rather than just unlocking, since position:fixed on <body>
+  // otherwise loses it. A no-op on desktop -- the CSS these classes
+  // trigger only exists inside the max-width:899.98px media query.
+  let aiFullscreenScrollY = 0;
+  function enterAiFullscreen(){
+    const stage = document.getElementById('aiRemoveStage');
+    if (!stage) return;
+    aiFullscreenScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    document.body.style.top = -aiFullscreenScrollY + 'px';
+    document.body.classList.add('ai-fullscreen-lock');
+    stage.classList.add('ai-fullscreen');
+    document.querySelector('footer') && document.querySelector('footer').classList.add('hidden');
+  }
+  function exitAiFullscreen(){
+    const stage = document.getElementById('aiRemoveStage');
+    if (stage) stage.classList.remove('ai-fullscreen');
+    document.body.classList.remove('ai-fullscreen-lock');
+    document.body.style.top = '';
+    window.scrollTo(0, aiFullscreenScrollY);
+    document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
+  }
   function resetAiToUpload(){
     document.getElementById('aiRemoveStage').classList.add('hidden');
+    exitAiFullscreen();
     document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
     aiSourceImg = null; aiSourceFile = null; aiResultCanvas = null;
     maskCanvas = null; originalCanvas = null;
@@ -3259,10 +3287,26 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('undoBtn').onclick = undo;
   document.getElementById('redoBtn').onclick = redo;
   document.getElementById('resetSelBtn').onclick = () => {
-    if (!maskCanvas) return;
-    restoreHistory(0);
-    pushHistory();
-    toast('Selection reset to AI result.');
+    // Genuinely back to the original upload -- fully opaque, no AI/Document
+    // processing and no manual edits applied -- not just undoing brush/
+    // eraser strokes on top of an already-processed result (that was the
+    // previous "Reset to AI result" behavior, which is a different, more
+    // narrow thing). Rebuilds the exact same starting state the editor
+    // shows immediately after upload, using the same MAX=1200 cap.
+    if (!aiSourceImg) return;
+    const MAX = 1200;
+    let w0 = aiSourceImg.naturalWidth, h0 = aiSourceImg.naturalHeight;
+    if (Math.max(w0, h0) > MAX){ const sc = MAX / Math.max(w0, h0); w0 = Math.round(w0*sc); h0 = Math.round(h0*sc); }
+    const srcCanvas0 = document.createElement('canvas');
+    srcCanvas0.width = w0; srcCanvas0.height = h0;
+    srcCanvas0.getContext('2d').drawImage(aiSourceImg, 0, 0, w0, h0);
+    aiResultCanvas = srcCanvas0;
+    initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- exactly the post-upload starting state
+    document.getElementById('aiRemoveDownloadRow').classList.add('hidden');
+    document.getElementById('sendToAiChangerBtn').classList.add('hidden');
+    document.getElementById('aiExportSendToChangerRow').classList.add('hidden');
+    document.getElementById('aiRemoveBtn').disabled = false;
+    toast('Reset to the original uploaded image.');
   };
   document.getElementById('invertSelBtn').onclick = () => {
     if (!maskCanvas) return;
@@ -3388,24 +3432,56 @@ if (document.getElementById('aiRemoveDrop')){
 
   /* ---------- Before / After compare slider ---------- */
   function updateCompareImages(){
-    document.getElementById('compareBefore').src = originalCanvas.toDataURL('image/png');
+    // compareWrap previously had no explicit pixel size -- its child
+    // <img> used width:100%, which is ambiguous against .editor-stage-
+    // wrap's width:fit-content (there's no percentage basis to resolve
+    // against until the child itself has resolved, and vice versa).
+    // Browsers fall back to the image's own natural/intrinsic pixel size
+    // in that situation, NOT the canvas's current pan/zoom-scaled display
+    // size -- so compare mode rendered at the wrong (usually smaller, and
+    // not matching whatever zoom level was active) size, and dragging/
+    // zooming over it didn't move anything because the workspace
+    // transform is calibrated for the canvas's actual pixel dimensions,
+    // not this mismatched size. Setting explicit pixel width/height here,
+    // matching the canvas exactly, resolves both: correct display size,
+    // and correct interaction with the SAME pan/zoom transform the canvas
+    // itself uses (compareWrap is a sibling of the canvas inside the same
+    // transformed #aiWorkspace, so it was always going to inherit that
+    // transform correctly once its own size was correct).
+    const w = editCanvas.width, h = editCanvas.height;
+    const compareWrapEl = document.getElementById('compareWrap');
+    compareWrapEl.style.width = w + 'px';
+    compareWrapEl.style.height = h + 'px';
+    const beforeEl = document.getElementById('compareBefore');
+    beforeEl.style.width = w + 'px';
+    beforeEl.style.height = h + 'px';
+    beforeEl.src = originalCanvas.toDataURL('image/png');
     const onWhite = document.createElement('canvas');
     onWhite.width = originalCanvas.width; onWhite.height = originalCanvas.height;
     const octx = onWhite.getContext('2d');
     octx.fillStyle = '#ffffff';
     octx.fillRect(0, 0, onWhite.width, onWhite.height);
     octx.drawImage(editCanvas, 0, 0);
-    document.getElementById('compareAfter').src = onWhite.toDataURL('image/png');
+    const afterEl = document.getElementById('compareAfter');
+    afterEl.style.width = w + 'px';
+    afterEl.style.height = h + 'px';
+    afterEl.src = onWhite.toDataURL('image/png');
   }
   const compareToggleBtn = document.getElementById('compareToggleBtn');
   const compareWrap = document.getElementById('compareWrap');
   if (compareToggleBtn) compareToggleBtn.onclick = () => {
     const showing = compareWrap.classList.contains('hidden');
+    if (showing) updateCompareImages(); // size it correctly BEFORE revealing, avoiding a flash of wrong size
     compareWrap.classList.toggle('hidden', !showing);
     document.getElementById('aiEditCanvas').classList.toggle('hidden', showing);
     compareToggleBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
-    compareToggleBtn.textContent = showing ? 'Back to editing' : 'Before / After';
-    if (showing) updateCompareImages();
+    // Was compareToggleBtn.textContent = '...' -- this is an icon-only
+    // button (an <svg>, no text node), and .textContent replaces ALL
+    // children, silently deleting the icon and leaving literal text in
+    // its place. title/aria-label carry the same information without
+    // touching the button's actual content.
+    compareToggleBtn.title = showing ? 'Back to editing' : 'Before / After';
+    compareToggleBtn.setAttribute('aria-label', showing ? 'Back to editing' : 'Before and after comparison');
   };
   const compareHandle = document.getElementById('compareHandle');
   const compareAfterWrap = document.getElementById('compareAfterWrap');
@@ -3476,6 +3552,7 @@ if (document.getElementById('aiRemoveDrop')){
         historyStack = []; historyIndex = -1; pushHistory();
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
+        enterAiFullscreen();
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('aiRemoveBtn').disabled = false;
         hideAiIntroChrome();
@@ -3503,6 +3580,99 @@ if (document.getElementById('aiRemoveDrop')){
     });
   }
   offerAutoSavedSession();
+
+  // Recover from the canvas going blank after the tab was backgrounded and
+  // resumed -- a known mobile-browser behavior (memory pressure can clear
+  // canvas pixel data while a tab is suspended) that AI Photo Retouch
+  // already hit and fixed for its own single-photo case (see
+  // rtRecoverCanvasIfNeeded above). This tool's version needs to recover
+  // TWO things at once -- the original photo AND the mask -- and the mask
+  // specifically holds the actual work (AI/Document result plus any manual
+  // brush/eraser edits), which can't be regenerated by just re-decoding
+  // the original file the way Photo Retouch's simpler single-layer case
+  // can. The autosave snapshot already in localStorage (a debounced string,
+  // immune to the same canvas-clearing event since it isn't a rendering
+  // resource) is the one source that has both, already kept fresh by the
+  // existing autoSaveSession() call after every edit -- so recovery reuses
+  // that instead of a separate backup mechanism.
+  let aiRecoveryInProgress = false;
+  async function aiRecoverCanvasIfNeeded(){
+    if (!editCanvas || !maskCanvas) return; // nothing loaded yet -- upload screen, not the editor
+    if (aiRecoveryInProgress) return;
+    aiRecoveryInProgress = true;
+    try{
+      const canvasLooksLost = () => {
+        if (!editCanvas.width || !editCanvas.height) return true;
+        try{
+          const px = editCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+          // A real result's corner is either the checkerboard-transparent
+          // background (alpha 0 but this is drawn on the DOM, not baked
+          // into the canvas pixel -- the canvas itself reads fully
+          // transparent black at a removed-background corner in the
+          // NORMAL, working case too) -- so alpha alone can't distinguish
+          // "correctly transparent" from "cleared by the browser." Check
+          // the mask canvas instead, which is guaranteed fully opaque
+          // everywhere BY CONSTRUCTION (every pixel's red channel encodes
+          // a 0-255 keep-amount, but the canvas's OWN alpha channel is
+          // always 255 -- see initManualEditor/renderComposite above) --
+          // if that reads as transparent black, something cleared it.
+          const maskPx = maskCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+          return (maskPx[3] === 0);
+        } catch(err){
+          return true;
+        }
+      };
+      if (!canvasLooksLost()) return;
+
+      const attemptRebuild = async () => {
+        let raw;
+        try{ raw = localStorage.getItem(AUTOSAVE_KEY); }catch(e){ return false; }
+        if (!raw) return false;
+        let data;
+        try{ data = JSON.parse(raw); }catch(e){ return false; }
+        if (!data || !data.original || !data.mask) return false;
+        try{
+          const origImg = await loadDataUrlAsImage(data.original);
+          const maskImg = await loadDataUrlAsImage(data.mask);
+          if (!origImg.naturalWidth || !maskImg.naturalWidth) throw new Error('no dimensions');
+          const oc = document.createElement('canvas'); oc.width = origImg.naturalWidth; oc.height = origImg.naturalHeight;
+          oc.getContext('2d').drawImage(origImg, 0, 0);
+          const mc = document.createElement('canvas'); mc.width = maskImg.naturalWidth; mc.height = maskImg.naturalHeight;
+          mc.getContext('2d').drawImage(maskImg, 0, 0);
+          const verifyPx = mc.getContext('2d').getImageData(0, 0, 1, 1).data;
+          if (verifyPx[3] === 0) throw new Error('rebuilt mask still reads blank');
+          originalCanvas = oc; maskCanvas = mc;
+          editCanvas.width = oc.width; editCanvas.height = oc.height;
+          renderComposite();
+          return true;
+        }catch(err){
+          return false;
+        }
+      };
+
+      let ok = await attemptRebuild();
+      if (!ok){
+        await new Promise(r => setTimeout(r, 400));
+        ok = await attemptRebuild();
+      }
+      if (ok){
+        requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
+        toast('Image recovered after the browser cleared it in the background.', 'ok');
+      } else {
+        toast('The browser cleared this image from memory and it could not be restored. Please upload it again.', 'err');
+        resetAiToUpload();
+      }
+    } finally {
+      aiRecoveryInProgress = false;
+    }
+  }
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) aiRecoverCanvasIfNeeded();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') aiRecoverCanvasIfNeeded();
+  });
+  window.addEventListener('focus', () => aiRecoverCanvasIfNeeded());
 
   // Defensive fix for a reported "toolbar visible before upload" issue:
   // the back-forward cache restores a page's DOM exactly as it was left,
