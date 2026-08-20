@@ -2287,10 +2287,109 @@ if (document.getElementById('aiRemoveDrop')){
     }
   });
 
+  let bgRemoveMode = 'photo';
+  const AI_MODE_HINTS = {
+    photo: 'Best for photos of people, animals, vehicles, and everyday objects.',
+    document: 'Best for handwriting, signatures, or notes on a fairly plain background \u2014 keeps the dark ink/pen marks, removes everything else.',
+  };
+  document.querySelectorAll('#aiRemoveModeToggle button').forEach(btn => {
+    btn.onclick = () => {
+      bgRemoveMode = btn.dataset.mode;
+      document.querySelectorAll('#aiRemoveModeToggle button').forEach(b => {
+        const active = b === btn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      document.getElementById('aiRemoveModeHint').textContent = AI_MODE_HINTS[bgRemoveMode];
+      document.getElementById('aiRemoveBtn').textContent = bgRemoveMode === 'document' ? 'Remove background (Document mode)' : 'Remove background (AI)';
+    };
+  });
+
+  // Document/Writing mode: NOT a general object-recognition model like
+  // DeepLab below -- this is a purpose-built color-distance matte for a
+  // specific, very common case DeepLab genuinely cannot handle (it has no
+  // "handwriting" category; see the plausibility-check comment further
+  // down). A photo of writing/a signature on a fairly plain background is,
+  // optically, just two tones -- ink and page -- so the background can be
+  // found directly: sample the color along the photo's own border (the
+  // background reliably touches the edges of a document/note photo), then
+  // keep whatever is far enough from that color. Runs instantly, no model
+  // download, works offline, and is fully deterministic (unlike a
+  // learned model, its behavior can be reasoned about and tested exactly).
+  function computeDocumentModeAlpha(srcCanvas){
+    const w = srcCanvas.width, h = srcCanvas.height;
+    const ctx = srcCanvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    const samples = [];
+    const step = Math.max(1, Math.floor(Math.max(w,h) / 250)); // ~250 samples per border side regardless of image size
+    for (let x = 0; x < w; x += step){
+      samples.push(x, 0); samples.push(x, h-1);
+    }
+    for (let y = 0; y < h; y += step){
+      samples.push(0, y); samples.push(w-1, y);
+    }
+    const rs = [], gs = [], bs = [];
+    for (let i = 0; i < samples.length; i += 2){
+      const idx = (samples[i+1]*w + samples[i]) * 4;
+      rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
+    }
+    function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+    const bgR = median(rs), bgG = median(gs), bgB = median(bs);
+
+    // Distance thresholds tuned against real ink-on-paper test photos
+    // (both dark-ink-on-light-paper and light-pen-on-dark-paper): far
+    // enough apart to give a soft, anti-aliased edge rather than a jagged
+    // cutout, without a gap so wide that faint pencil marks disappear.
+    const LOW = 28, HIGH = 70;
+    const alpha = new Uint8ClampedArray(w*h);
+    for (let i = 0; i < w*h; i++){
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
+      if (dist <= LOW) alpha[i] = 0;
+      else if (dist >= HIGH) alpha[i] = 255;
+      else alpha[i] = Math.round(255 * (dist-LOW)/(HIGH-LOW));
+    }
+    return alpha;
+  }
+
   document.getElementById('aiRemoveBtn').onclick = async () => {
     const btn = document.getElementById('aiRemoveBtn');
     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
     setLoading(btn, true);
+
+    if (bgRemoveMode === 'document'){
+      try{
+        await nextFrame();
+        const MAX = 1200;
+        let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
+        if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = w; srcCanvas.height = h;
+        srcCanvas.getContext('2d').drawImage(aiSourceImg, 0, 0, w, h);
+
+        const alpha = computeDocumentModeAlpha(srcCanvas);
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = w; outCanvas.height = h;
+        const octx = outCanvas.getContext('2d');
+        octx.drawImage(srcCanvas, 0, 0);
+        const imageData = octx.getImageData(0, 0, w, h);
+        for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
+        octx.putImageData(imageData, 0, 0);
+
+        aiResultCanvas = outCanvas;
+        initManualEditor(srcCanvas, outCanvas);
+        document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+        document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+        document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+        toast('Background removed. Refine it below if needed.');
+      }catch(err){
+        toast(err.message || 'Could not process this image.', 'err');
+      }
+      setLoading(btn, false);
+      return;
+    }
+
     try{
       const seg = await ensureSegmenter();
       await nextFrame();
@@ -3273,7 +3372,7 @@ if (document.getElementById('aiRemoveDrop')){
   const exportFormatSelect = document.getElementById('exportFormat');
   if (exportQualitySlider) exportQualitySlider.oninput = (e) => { document.getElementById('exportQualityVal').textContent = e.target.value; };
   if (exportFormatSelect) exportFormatSelect.onchange = (e) => {
-    document.getElementById('exportQualityRow').classList.toggle('hidden', e.target.value === 'png');
+    document.getElementById('exportQualityRow').classList.toggle('hidden', e.target.value === 'png' || e.target.value === 'pdf');
     document.getElementById('exportBgColorRow').classList.toggle('hidden', e.target.value !== 'jpg');
   };
 
@@ -3286,6 +3385,28 @@ if (document.getElementById('aiRemoveDrop')){
       const format = document.getElementById('exportFormat').value;
       const quality = +document.getElementById('exportQuality').value / 100;
       let finalCanvas = await buildFullResExport();
+
+      if (format === 'pdf'){
+        // Single-page PDF sized 1:1 to the export (in points), embedding a
+        // PNG so transparency is preserved via pdf-lib's SMask support --
+        // same embedPng() pattern already used by Image-to-PDF and the
+        // Ecommerce Product Editor's export, not a second implementation.
+        const pngBlob = await new Promise((resolve, reject) => {
+          finalCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('Could not render this image.')), 'image/png');
+        });
+        const bytes = new Uint8Array(await pngBlob.arrayBuffer());
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const embedded = await pdfDoc.embedPng(bytes);
+        const page = pdfDoc.addPage([finalCanvas.width, finalCanvas.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: finalCanvas.width, height: finalCanvas.height });
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        setLoading(exportBtn, false, 'Export image');
+        downloadBlob(blob, 'toolflight-export.pdf');
+        toast('Exported at full resolution.');
+        return;
+      }
 
       let mime = 'image/png', ext = 'png';
       if (format === 'jpg'){
