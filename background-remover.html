@@ -147,7 +147,14 @@
             <div class="row" id="aiCanvasTopControls" style="flex-wrap:wrap;">
               <button class="btn btn-secondary" id="aiViewFitBtn" type="button">Fit to Screen</button>
               <button class="btn btn-secondary" id="aiViewCenterBtn" type="button">Center View</button>
-              <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled>Remove background (AI)</button>
+            </div>
+            <div class="unit-toggle" id="aiRemoveModeToggle" style="margin-top:8px;">
+              <button class="active" data-mode="photo" type="button" aria-pressed="true">Photo (AI)</button>
+              <button data-mode="document" type="button" aria-pressed="false">Document / Writing</button>
+            </div>
+            <p class="editor-hint" id="aiRemoveModeHint">Best for photos of people, animals, vehicles, and everyday objects.</p>
+            <div class="row" style="margin-top:8px;">
+              <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled style="flex:1;">Remove background (AI)</button>
             </div>
             <p class="editor-hint">Keyboard: Ctrl+Z undo, Ctrl+Y redo, hold Space and scroll/drag to pan, Escape or Delete cancels an in-progress Polygon/Lasso selection. Scroll or pinch to pan when zoomed in; mouse wheel over the canvas zooms in/out; two-finger pinch/drag on touch devices.</p>
             <div id="aiWorkspaceViewport">
@@ -238,6 +245,7 @@
                 <option value="png" selected>PNG (transparent)</option>
                 <option value="jpg">JPG (solid background)</option>
                 <option value="webp">WEBP (transparent)</option>
+                <option value="pdf">PDF (single page)</option>
               </select>
             </div>
             <div class="ctrl" id="exportBgColorRow">
