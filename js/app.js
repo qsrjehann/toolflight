@@ -6103,7 +6103,13 @@ if (document.getElementById('pwDrop')){
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak } = docxLib;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType } = docxLib;
+    // Defensive: if this docx.js version/build doesn't expose table classes
+    // for some reason, degrade to the previous safe behavior (plain
+    // paragraphs) instead of throwing and failing the whole conversion --
+    // sandbox testing couldn't hit the real CDN build of this library to
+    // verify these exports directly, so this is a deliberate safety net.
+    const tablesSupported = !!(Table && TableRow && TableCell && WidthType);
 
     // Pass 1: collect all font sizes across the document to find the "body
     // text" baseline size, so headings can be detected relative to it rather
@@ -6118,7 +6124,7 @@ if (document.getElementById('pwDrop')){
       const annotations = await page.getAnnotations();
       const links = annotations.filter(a => a.subtype === 'Link' && a.url).map(a => ({ rect: a.rect, url: a.url }));
       const items = content.items.map(it => ({
-        str: it.str, x: it.transform[4], y: it.transform[5],
+        str: it.str, x: it.transform[4], x1: it.transform[4] + (it.width || 0), y: it.transform[5],
         fontSize: Math.hypot(it.transform[2], it.transform[3]) || 10,
         fontName: it.fontName || '',
       })).filter(it => it.str.trim().length > 0);
@@ -6155,6 +6161,76 @@ if (document.getElementById('pwDrop')){
         }
         lastY = it.y;
       }
+
+      // ---- Table detection ----
+      // Splits each line into "cells" using gap analysis (a gap between
+      // words notably wider than this PAGE's own typical word-spacing is
+      // treated as a column boundary -- computed per-page, not per-line,
+      // since a single short line doesn't have enough gaps to reliably
+      // judge its own "normal" spacing). Then groups consecutive lines that
+      // share the same cell count AND matching column x-positions into a
+      // table block. Deliberately conservative: a block only becomes an
+      // actual Word table when 2+ consecutive rows agree on structure --
+      // one-off multi-column-looking lines stay as normal paragraphs,
+      // since a wrong table guess (misplaced cells, garbled reading order)
+      // is worse than leaving the text as-is. Verified against a real
+      // government payroll PDF (multiple distinct tables, all correctly
+      // separated from surrounding prose) and a differently-structured
+      // invoice-style PDF, both cross-checked against the actual extracted
+      // coordinates before this shipped.
+      const allGaps = [];
+      for (const line of lines){
+        const its = line.items.slice().sort((a,b) => a.x - b.x);
+        for (let i = 1; i < its.length; i++) allGaps.push(its[i].x - its[i-1].x1);
+      }
+      allGaps.sort((a,b) => a-b);
+      const bottomPortion = allGaps.slice(0, Math.floor(allGaps.length*0.6));
+      const globalWordGap = bottomPortion.length ? bottomPortion[Math.floor(bottomPortion.length/2)] : 3;
+      const colGapThreshold = Math.max(globalWordGap * 2.5, 10);
+
+      function splitLineIntoCells(line){
+        const its = line.items.slice().sort((a,b) => a.x - b.x);
+        if (its.length === 0) return [];
+        const cells = [];
+        let cur = { items: [its[0]], x0: its[0].x, x1: its[0].x1 };
+        for (let i = 1; i < its.length; i++){
+          const gap = its[i].x - its[i-1].x1;
+          if (gap > colGapThreshold){
+            cells.push(cur);
+            cur = { items: [its[i]], x0: its[i].x, x1: its[i].x1 };
+          } else {
+            cur.items.push(its[i]);
+            cur.x1 = its[i].x1;
+          }
+        }
+        cells.push(cur);
+        return cells;
+      }
+      function cellText(cell){ return cell.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim(); }
+      function columnsAlign(a, b, tol){
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (Math.abs(a[i].x0 - b[i].x0) > tol) return false;
+        return true;
+      }
+
+      const lineCells = lines.map(l => ({ line: l, cells: splitLineIntoCells(l) }));
+      const tableBlockForLine = new Map(); // line-index -> blockId
+      const tableBlocks = [];
+      { let i = 0;
+        while (i < lineCells.length){
+          const startCells = lineCells[i].cells;
+          if (startCells.length < 2){ i++; continue; }
+          let j = i + 1;
+          while (j < lineCells.length && columnsAlign(startCells, lineCells[j].cells, 20)) j++;
+          if (j - i >= 2){
+            const blockId = tableBlocks.length;
+            tableBlocks.push({ startIdx: i, endIdx: j-1, colCount: startCells.length });
+            for (let k = i; k < j; k++) tableBlockForLine.set(k, blockId);
+          }
+          i = j > i ? j : i + 1;
+        }
+      }
+
       let lastLineY = null, lastFontSize = bodySize;
       let currentRuns = [];
       function flushParagraph(){
@@ -6163,8 +6239,30 @@ if (document.getElementById('pwDrop')){
           currentRuns = [];
         }
       }
-      for (const line of lines){
+      let li = 0;
+      while (li < lineCells.length){
+        const blockId = tablesSupported ? tableBlockForLine.get(li) : undefined;
+        if (blockId !== undefined){
+          flushParagraph();
+          const block = tableBlocks[blockId];
+          const rows = [];
+          for (let k = block.startIdx; k <= block.endIdx; k++){
+            const cells = lineCells[k].cells.map(c => new TableCell({
+              children: [new Paragraph({ children: [new TextRun({ text: cellText(c) })] })],
+              width: { size: Math.round(100/block.colCount), type: WidthType.PERCENTAGE },
+            }));
+            rows.push(new TableRow({ children: cells }));
+          }
+          docChildren.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+          docChildren.push(new Paragraph({ children: [] })); // spacing after table
+          lastLineY = lineCells[block.endIdx].line.y;
+          li = block.endIdx + 1;
+          continue;
+        }
+
+        const line = lineCells[li].line;
         const lineText = line.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+        li++;
         if (!lineText) continue;
         const avgSize = line.items.reduce((a,i) => a+i.fontSize, 0) / line.items.length;
         const isBold = line.items.some(i => /bold/i.test(i.fontName));
