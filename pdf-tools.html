@@ -76,6 +76,26 @@
       <stop offset="0%" stop-color="#ffffff"/>
       <stop offset="100%" stop-color="#EEF0F5"/>
     </linearGradient>
+    <filter id="convIconShadow" x="-30%" y="-20%" width="160%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.8" flood-color="#000" flood-opacity="0.28"/></filter>
+    <g id="wordIconDef">
+      <g filter="url(#convIconShadow)">
+        <path d="M20 8 H40 A2 2 0 0 1 42 10 V46 A2 2 0 0 1 40 48 H20 Z" fill="#fff" stroke="#C7CCDC" stroke-width="1"/>
+      </g>
+      <g stroke="#2B579A" stroke-width="2.6" stroke-linecap="round">
+        <path d="M25 16h13M25 22h13M25 28h13M25 34h13M25 40h9"/>
+      </g>
+      <g filter="url(#convIconShadow)">
+        <path d="M6 5 L24 2 A2 2 0 0 1 26 4 V50 A2 2 0 0 1 24 52 L6 49 A2 2 0 0 1 4 47 V7 A2 2 0 0 1 6 5 Z" fill="#2B579A"/>
+      </g>
+      <text x="15" y="33" text-anchor="middle" font-family="Inter" font-weight="900" font-size="19" fill="#fff">W</text>
+    </g>
+    <g id="pdfIconDef">
+      <g filter="url(#convIconShadow)">
+        <path d="M8 3 H31 L42 14 V49 A2 2 0 0 1 40 51 H8 A2 2 0 0 1 6 49 V5 A2 2 0 0 1 8 3 Z" fill="#D32F2F"/>
+        <path d="M31 3 L42 14 H33 A2 2 0 0 1 31 12 Z" fill="#F0908F"/>
+      </g>
+      <text x="24" y="37" text-anchor="middle" font-family="Inter" font-weight="900" font-size="13.5" fill="#fff">PDF</text>
+    </g>
   </defs>
 </svg>
 <nav class="navbar">
@@ -238,14 +258,11 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="pdf-to-word.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 54 54">
-    <g filter="url(#pdfIconShadow)">
-      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
-      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
-    </g>
-    <rect x="8" y="30" width="30" height="14" rx="2" fill="#C4281C"/>
-    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
-  </svg></div>
+      <div class="cat-icon cat-icon-wide"><svg width="100%" height="100%" viewBox="0 0 124 54">
+        <use href="#pdfIconDef" x="0" y="0"/>
+        <path d="M50 27h20M62 19l8 8-8 8" fill="none" stroke="#151726" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <use href="#wordIconDef" x="78" y="0"/>
+      </svg></div>
       <div class="cat-content">
         <h3>PDF to Word Converter</h3>
         <p>Convert PDF into an editable DOCX — real selectable text.</p>
@@ -254,14 +271,11 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="word-to-pdf.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 54 54">
-    <g filter="url(#pdfIconShadow)">
-      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
-      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#C9D6EA"/>
-    </g>
-    <rect x="8" y="30" width="30" height="14" rx="2" fill="#2B579A"/>
-    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="11" fill="#fff">W</text>
-  </svg></div>
+      <div class="cat-icon cat-icon-wide"><svg width="100%" height="100%" viewBox="0 0 124 54">
+        <use href="#wordIconDef" x="0" y="0"/>
+        <path d="M50 27h20M62 19l8 8-8 8" fill="none" stroke="#151726" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <use href="#pdfIconDef" x="78" y="0"/>
+      </svg></div>
       <div class="cat-content">
         <h3>Word to PDF Converter</h3>
         <p>Convert DOCX into a real, selectable-text PDF.</p>
