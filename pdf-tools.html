@@ -69,6 +69,15 @@
 
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="pdfIconShadow" x="-30%" y="-20%" width="160%" height="150%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-color="#000" flood-opacity="0.32"/></filter>
+    <linearGradient id="pdfPaperGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#EEF0F5"/>
+    </linearGradient>
+  </defs>
+</svg>
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
@@ -102,7 +111,16 @@
 <div class="container">
   <div class="category-hub-grid">
     <a href="pdf-merge.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="13" rx="2"/><path d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <rect x="4" y="6" width="22" height="30" rx="2" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1" transform="rotate(-8 15 21)"/>
+      <rect x="24" y="12" width="22" height="30" rx="2" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1" transform="rotate(6 35 27)"/>
+    </g>
+    <rect x="4" y="6" width="22" height="8" rx="2" fill="#C4281C" transform="rotate(-8 15 21)"/>
+    <rect x="24" y="12" width="22" height="8" rx="2" fill="#C4281C" transform="rotate(6 35 27)"/>
+    <circle cx="27" cy="27" r="8" fill="#6D5EF5" filter="url(#pdfIconShadow)"/>
+    <path d="M27 23v8M23 27h8" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Merge PDF</h3>
         <p>Combine multiple PDFs into one, in any order you choose.</p>
@@ -111,7 +129,15 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="pdf-split.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <rect x="2" y="5" width="18" height="28" rx="2.6" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <rect x="34" y="5" width="18" height="28" rx="2.6" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+    </g>
+    <rect x="2" y="23" width="18" height="10" rx="2.6" fill="#C4281C"/>
+    <rect x="34" y="23" width="18" height="10" rx="2.6" fill="#C4281C"/>
+    <path d="M27 14v14" stroke="#151726" stroke-width="1.8" stroke-dasharray="2 2"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Split PDF</h3>
         <p>Pull specific pages out, or split every page into its own file.</p>
@@ -120,7 +146,16 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="image-to-pdf.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#C6E4D3"/>
+    </g>
+    <path d="M12 24l4.5-5 4 4.5 5.5-6.5 6 7v6H12z" fill="#0F9D58"/>
+    <circle cx="16" cy="17" r="2.2" fill="#0F9D58"/>
+    <rect x="8" y="30" width="30" height="14" rx="2" fill="#0F9D58"/>
+    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="8.5" fill="#fff">IMG</text>
+  </svg></div>
       <div class="cat-content">
         <h3>Image to PDF</h3>
         <p>Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.</p>
@@ -129,7 +164,14 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="pdf-to-image.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h4v6M20 10h-4V4M14 4l6 6M4 20l6-6"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
+    </g>
+    <rect x="8" y="30" width="30" height="14" rx="2" fill="#C4281C"/>
+    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
+  </svg></div>
       <div class="cat-content">
         <h3>PDF to Image</h3>
         <p>Convert every page of a PDF into JPG, PNG, or WEBP images.</p>
@@ -138,7 +180,17 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="protect-pdf.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M14 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H14 A2 2 0 0 1 12 47 V5 A2 2 0 0 1 14 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
+    </g>
+    <rect x="12" y="30" width="26" height="14" rx="2" fill="#C4281C"/>
+    <text x="25" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
+    <rect x="20" y="16" width="10" height="8" rx="1.5" fill="#fff" stroke="#151726" stroke-width="2"/>
+    <path d="M22 16v-2.5a3 3 0 0 1 6 0V16" fill="none" stroke="#151726" stroke-width="2"/>
+    <circle cx="25" cy="20" r="1.4" fill="#151726"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Protect PDF</h3>
         <p>Add a password and AES-256 encryption to a PDF.</p>
@@ -147,7 +199,17 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="unlock-pdf.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-2.5"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M14 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H14 A2 2 0 0 1 12 47 V5 A2 2 0 0 1 14 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
+    </g>
+    <rect x="12" y="30" width="26" height="14" rx="2" fill="#C4281C"/>
+    <text x="25" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
+    <rect x="20" y="16" width="10" height="8" rx="1.5" fill="#fff" stroke="#151726" stroke-width="2"/>
+    <path d="M22 16v-3a3 3 0 0 1 5.8-1" fill="none" stroke="#151726" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="25" cy="20" r="1.4" fill="#151726"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Unlock PDF</h3>
         <p>Remove a password from a PDF you have the password for.</p>
@@ -156,7 +218,18 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="pdf-compress.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M14 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H14 A2 2 0 0 1 12 47 V5 A2 2 0 0 1 14 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
+    </g>
+    <rect x="12" y="30" width="26" height="14" rx="2" fill="#C4281C"/>
+    <text x="25" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
+    <g stroke="#151726" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M19 17l4-4 4 4M23 13v7"/>
+      <path d="M31 25l-4 4-4-4M27 29v-7"/>
+    </g>
+  </svg></div>
       <div class="cat-content">
         <h3>PDF Compress</h3>
         <p>Shrink PDF file size by recompressing embedded images.</p>
@@ -165,7 +238,14 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="pdf-to-word.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 13l1.5 5L11 14l1.5 4L14 13"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#F3C6C4"/>
+    </g>
+    <rect x="8" y="30" width="30" height="14" rx="2" fill="#C4281C"/>
+    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="9.5" fill="#fff">PDF</text>
+  </svg></div>
       <div class="cat-content">
         <h3>PDF to Word Converter</h3>
         <p>Convert PDF into an editable DOCX — real selectable text.</p>
@@ -174,7 +254,14 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="word-to-pdf.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 13l1.5 5L11 14l1.5 4L14 13"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#C9D6EA"/>
+    </g>
+    <rect x="8" y="30" width="30" height="14" rx="2" fill="#2B579A"/>
+    <text x="23" y="40.5" text-anchor="middle" font-family="Inter" font-weight="800" font-size="11" fill="#fff">W</text>
+  </svg></div>
       <div class="cat-content">
         <h3>Word to PDF Converter</h3>
         <p>Convert DOCX into a real, selectable-text PDF.</p>
@@ -183,7 +270,16 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="resume-builder.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13h6M9 17h4"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#E4E7F0"/>
+    </g>
+    <circle cx="17" cy="19" r="4" fill="#8B9BC2"/>
+    <g stroke="#5C6079" stroke-width="1.8" stroke-linecap="round"><path d="M24 17h11M24 21h9M13 27h22M13 31h22M13 35h15"/></g>
+    <circle cx="37" cy="38" r="10" fill="#0F9D58" filter="url(#pdfIconShadow)"/>
+    <path d="M33 38l3 3 6-6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Resume Builder & ATS Checker</h3>
         <p>Build a resume and check it against common ATS patterns.</p>
