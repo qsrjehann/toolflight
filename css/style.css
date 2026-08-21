@@ -698,6 +698,17 @@ html.dark .category-hub-card .cat-icon{
 }
 .category-hub-card .cat-icon::before{ display:none; }
 .category-hub-card .cat-icon svg{width:46px;height:46px;stroke-width:2.2;}
+/* Wide variant: for "format conversion" cards (Word→PDF, PDF→Word) that
+   show two document icons and a transition arrow side by side -- a plain
+   square 64px box is too narrow to keep both icons legible, so this
+   widens just the box (own content still centers correctly) while every
+   other card's icon-box is untouched. */
+.category-hub-card .cat-icon.cat-icon-wide{ width:108px; }
+.category-hub-card .cat-icon.cat-icon-wide svg{ width:100px; height:44px; }
+@media (max-width:560px){
+  .category-hub-card .cat-icon.cat-icon-wide{ width:96px; }
+  .category-hub-card .cat-icon.cat-icon-wide svg{ width:88px; height:39px; }
+}
 .category-hub-card:hover .cat-icon{
   transform:scale(1.05);
   box-shadow:0 6px 16px -4px rgba(20,20,40,0.18);
