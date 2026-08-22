@@ -6201,8 +6201,8 @@ if (document.getElementById('pwDrop')){
     // one page-wide grid. Verified: correctly separated 3 distinct tables
     // on a real payslip into 3 regions, matching the source document. ----
     function clusterLineRegions(lines){
-      const vlines = lines.filter(l => (l.x1-l.x0) < 0.5).map((l,idx) => ({...l, idx, orient:'v'}));
-      const hlines = lines.filter(l => (l.y1-l.y0) < 0.5).map((l,idx) => ({...l, idx: idx+100000, orient:'h'}));
+      const vlines = lines.filter(l => (l.x1-l.x0) < 3).map((l,idx) => ({...l, idx, orient:'v'}));
+      const hlines = lines.filter(l => (l.y1-l.y0) < 3).map((l,idx) => ({...l, idx: idx+100000, orient:'h'}));
       const all = [...vlines, ...hlines];
       const parent = {};
       function find(x){ if (parent[x]===undefined) parent[x]=x; if (parent[x]!==x) parent[x]=find(parent[x]); return parent[x]; }
@@ -6386,40 +6386,21 @@ if (document.getElementById('pwDrop')){
           // and rows/cols were found at each stage, so any future mismatch
           // is immediately visible instead of requiring another guess-and-
           // redeploy round.
-          const vCount = lines.filter(l => (l.x1-l.x0) < 0.5).length;
-          const hCount = lines.filter(l => (l.y1-l.y0) < 0.5).length;
+          const vCount = lines.filter(l => (l.x1-l.x0) < 3).length;
+          const hCount = lines.filter(l => (l.y1-l.y0) < 3).length;
           console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
           if (tableRegions.length === 0){
-            // A near-total detection failure despite thousands of ops means
-            // this PDF's lines aren't drawn as strokes at all (the only
-            // thing this code currently looks for) -- most likely as thin
-            // *filled* rectangles instead (a common alternative technique
-            // for crisp table borders). Build a full operation-type
-            // histogram so the real composition is visible directly,
-            // instead of guessing at another specific pattern blind.
-            const opNames = {};
-            for (const key in OPS) opNames[OPS[key]] = key;
-            const counts = {};
-            for (const fn of opList.fnArray) counts[opNames[fn] || ('op'+fn)] = (counts[opNames[fn] || ('op'+fn)] || 0) + 1;
-            const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 12);
-            // Also break down constructPath's own first argument (its
-            // embedded paint-type code) by value, and separately count how
-            // many of those calls are immediately followed by eoClip
-            // (a clip-only path, never visibly painted) vs not (a path
-            // that's actually rendered -- these are the ones worth
-            // examining further, whatever their paint-type code is).
-            const paintTypeCounts = {};
-            let followedByClip = 0, notFollowedByClip = 0;
-            for (let i = 0; i < opList.fnArray.length; i++){
-              if (opList.fnArray[i] === OPS.constructPath){
-                const pt = opList.argsArray[i] && opList.argsArray[i][0];
-                paintTypeCounts[pt] = (paintTypeCounts[pt] || 0) + 1;
-                const next = opList.fnArray[i+1];
-                if (next === OPS.eoClip || next === OPS.clip) followedByClip++; else notFollowedByClip++;
-              }
-            }
-            console.info('[PDF to Word] page', p, 'full op histogram:', JSON.stringify(counts), '| constructPath paintType value counts:', JSON.stringify(paintTypeCounts), '| followedByClip:', followedByClip, 'notFollowedByClip:', notFollowedByClip, '| OPS.fill=', OPS.fill, 'OPS.eoFill=', OPS.eoFill, 'OPS.stroke=', OPS.stroke);
-            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines -> 0 tables | constructPath paintTypes: ${JSON.stringify(paintTypeCounts)} | clipFollowed=${followedByClip}/notClip=${notFollowedByClip} | OPS: fill=${OPS.fill},eoFill=${OPS.eoFill},stroke=${OPS.stroke}`);
+            // Consolidated single diagnostic: line counts by orientation,
+            // raw (pre-filter) region count from clustering, and a sample
+            // of actual coordinates -- enough to tell whether clustering
+            // found nothing at all (a touch-detection/tolerance issue) or
+            // found regions that got filtered out (a too-strict row/col
+            // minimum), without needing another guess-and-redeploy round.
+            const vSample = lines.filter(l => (l.x1-l.x0) < 3).slice(0, 6).map(l => `x=${l.x0.toFixed(1)},y${l.y0.toFixed(0)}-${l.y1.toFixed(0)}`);
+            const hSample = lines.filter(l => (l.y1-l.y0) < 3).slice(0, 6).map(l => `y=${l.y0.toFixed(1)},x${l.x0.toFixed(0)}-${l.x1.toFixed(0)}`);
+            const rawRegionSizes = regionGroups.map(g => `${g.filter(l=>l.orient==='v').length}v+${g.filter(l=>l.orient==='h').length}h`);
+            console.info('[PDF to Word] page', p, 'DEEP diag -- vSample:', vSample, 'hSample:', hSample, 'rawRegionSizes:', rawRegionSizes);
+            pwLastDiagnostics.push(`page ${p}: ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) [sizes: ${rawRegionSizes.join(',')}] -> 0 valid | vSample: ${vSample.join(' ')} | hSample: ${hSample.join(' ')}`);
           }
         }
         if (imagesSupported) images = await extractImages(page, opList);
