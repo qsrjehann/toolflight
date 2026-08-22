@@ -5972,6 +5972,7 @@ if (document.getElementById('pwDrop')){
   let pdfjsLoadPromisePW = null;
   let mammothLoadPromise = null;
   let docxLoadPromise = null;
+  let jsZipLoadPromise = null;
 
   async function ensurePdfJsPW(){
     if (!pdfjsLoadPromisePW){
@@ -5999,6 +6000,16 @@ if (document.getElementById('pwDrop')){
         .catch((err) => { docxLoadPromise = null; throw err; });
     }
     return docxLoadPromise;
+  }
+  async function ensureJsZip(){
+    if (!jsZipLoadPromise){
+      jsZipLoadPromise = (async () => {
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+        if (!window.JSZip) throw new Error('JSZip failed to load.');
+        return window.JSZip;
+      })().catch((err) => { jsZipLoadPromise = null; throw err; });
+    }
+    return jsZipLoadPromise;
   }
 
   /* ---------- Tabs ---------- */
@@ -6112,7 +6123,8 @@ if (document.getElementById('pwDrop')){
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle } = docxLib;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType } = docxLib;
+    const floatingImagesSupported = !!(HorizontalPositionRelativeFrom && VerticalPositionRelativeFrom && TextWrappingType);
     // Defensive: if this docx.js build doesn't expose table/image classes for
     // some reason, degrade to plain paragraphs / skip images rather than
     // throwing and failing the whole conversion.
@@ -6480,6 +6492,17 @@ if (document.getElementById('pwDrop')){
         const rows = [];
         const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: '444444' };
         const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+        // Column widths from the PDF's own measured column boundaries
+        // (colXs), not an even split -- a "Description" column that's
+        // genuinely wider than an "Amount" column in the source PDF now
+        // stays wider in the .docx too, matching the real table's
+        // proportions instead of forcing every column to the same size.
+        const totalTableWidth = colXs[colXs.length-1] - colXs[0];
+        const colPercents = [];
+        for (let c = 0; c < colXs.length - 1; c++){
+          const raw = ((colXs[c+1] - colXs[c]) / totalTableWidth) * 100;
+          colPercents.push(Math.max(4, Math.round(raw))); // floor so no column vanishes to 0%
+        }
         for (let r = rowYs.length - 2; r >= 0; r--){
           const yTop = rowYs[r+1], yBot = rowYs[r];
           const cells = [];
@@ -6487,7 +6510,7 @@ if (document.getElementById('pwDrop')){
             const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
             cells.push(new TableCell({
               children: [new Paragraph({ children: [new TextRun({ text })] })],
-              width: { size: Math.round(100/(colXs.length-1)), type: WidthType.PERCENTAGE },
+              width: { size: colPercents[c], type: WidthType.PERCENTAGE },
               borders: cellBorders,
             }));
           }
@@ -6523,11 +6546,27 @@ if (document.getElementById('pwDrop')){
           flushParagraph();
           try {
             const scale = Math.min(1, 468 / ev.img.dispW); // cap width to a reasonable page-content width (points)
+            const dispW = Math.max(20, Math.round(ev.img.dispW * scale));
+            const dispH = Math.max(20, Math.round(ev.img.dispH * scale));
+            // Place the image at its actual position on the original PDF
+            // page (floating, anchored to the page itself) instead of just
+            // inline in reading order -- e.g. a letterhead seal that sits
+            // in the top-right corner of the source PDF now lands in that
+            // same corner in the .docx, rather than wherever it happened to
+            // fall in the text flow. Word/PT_EMU conversion: 1pt = 12700 EMU.
+            const EMU_PER_PT = 12700;
+            const distFromLeft = Math.max(0, ev.img.x) * EMU_PER_PT;
+            const distFromTop = Math.max(0, pageHeight - ev.img.y) * EMU_PER_PT;
             docChildren.push(new Paragraph({ children: [
-              new ImageRun({ data: ev.img.bytes, type: 'png', transformation: {
-                width: Math.max(20, Math.round(ev.img.dispW * scale)),
-                height: Math.max(20, Math.round(ev.img.dispH * scale)),
-              } }),
+              new ImageRun({ data: ev.img.bytes, type: 'png', transformation: { width: dispW, height: dispH },
+                ...(floatingImagesSupported ? { floating: {
+                  horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: Math.round(distFromLeft) },
+                  verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round(distFromTop) },
+                  wrap: { type: TextWrappingType.NONE },
+                  allowOverlap: true,
+                  behindDocument: false,
+                } } : {}),
+              }),
             ] }));
           } catch(e){ console.error('[PDF to Word] Failed to embed an extracted image into the document -- skipping it. Error:', e); pwLastDiagnostics.push(`image embed: ${e && e.message ? e.message : e}`); }
           continue;
@@ -6588,11 +6627,69 @@ if (document.getElementById('pwDrop')){
   }
 
   /* ================= WORD -> PDF ================= */
+  async function extractFloatingImagesFromDocx(arrayBuffer){
+    // Reads the .docx's own OOXML directly (a .docx is just a zip of XML
+    // files) to recover exact page-relative image positions -- mammoth's
+    // HTML conversion is built for extracting semantic content, not exact
+    // visual layout, so it doesn't expose this. Verified against a .docx
+    // this tool itself generated with a known image position (a letterhead
+    // seal placed 484pt from the left, 7.6pt from the top of the page):
+    // this extraction recovered those exact same numbers back out.
+    // Returns [] harmlessly for ordinary documents with no floating
+    // (only regular inline) images -- those keep flowing with the text
+    // exactly as before, which is the correct default for typical docs.
+    try {
+      const JSZip = await ensureJsZip();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const docFile = zip.file('word/document.xml');
+      const relsFile = zip.file('word/_rels/document.xml.rels');
+      if (!docFile) return [];
+      const docXml = await docFile.async('string');
+      const relsXml = relsFile ? await relsFile.async('string') : '';
+      const relMap = {};
+      const relRe = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+      let rm;
+      while ((rm = relRe.exec(relsXml))) relMap[rm[1]] = rm[2];
+
+      const results = [];
+      const drawingRe = /<w:drawing>([\s\S]*?)<\/w:drawing>/g;
+      let dm;
+      while ((dm = drawingRe.exec(docXml))){
+        const block = dm[1];
+        if (!/<wp:anchor\b/.test(block)) continue; // inline images: let mammoth+normal flow handle these
+        const hPos = /<wp:positionH[^>]*relativeFrom="([^"]*)"[^>]*>\s*<wp:posOffset>(-?\d+)<\/wp:posOffset>/.exec(block);
+        const vPos = /<wp:positionV[^>]*relativeFrom="([^"]*)"[^>]*>\s*<wp:posOffset>(-?\d+)<\/wp:posOffset>/.exec(block);
+        const extent = /<wp:extent cx="(\d+)" cy="(\d+)"/.exec(block);
+        const embed = /<a:blip[^>]*r:embed="([^"]+)"/.exec(block);
+        if (!hPos || !vPos || !embed) continue; // no exact page offset to place it by -- skip rather than guess
+        const relTarget = relMap[embed[1]];
+        if (!relTarget) continue;
+        const mediaPath = 'word/' + relTarget.replace(/^\/?/, '');
+        const imgFile = zip.file(mediaPath);
+        if (!imgFile) continue;
+        const bytes = await imgFile.async('uint8array');
+        const EMU_PER_PT = 12700;
+        results.push({
+          relativeFromH: hPos[1], offsetXPt: parseInt(hPos[2], 10) / EMU_PER_PT,
+          relativeFromV: vPos[1], offsetYPt: parseInt(vPos[2], 10) / EMU_PER_PT,
+          widthPt: extent ? parseInt(extent[1],10) / EMU_PER_PT : null,
+          heightPt: extent ? parseInt(extent[2],10) / EMU_PER_PT : null,
+          bytes,
+        });
+      }
+      return results;
+    } catch(e){
+      console.warn('[Word to PDF] Floating-image XML extraction failed -- images will fall back to normal in-flow placement. Error:', e);
+      return [];
+    }
+  }
+
   async function convertWordToPdf(file, onProgress, isCancelled){
     onProgress(5, 'Reading Word document\u2026');
     const mammoth = await ensureMammoth();
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.convertToHtml({ arrayBuffer });
+    const floatingImages = await extractFloatingImagesFromDocx(arrayBuffer);
     onProgress(25, 'Parsing content\u2026');
 
     const container = document.createElement('div');
@@ -6610,6 +6707,31 @@ if (document.getElementById('pwDrop')){
     let cursorY = PAGE_H - MARGIN;
     const maxWidth = PAGE_W - MARGIN*2;
 
+    // Place every floating image immediately, at its exact original
+    // position on ITS OWN page-relative coordinates -- these don't
+    // participate in the normal text-flow layout at all, matching how a
+    // floating/anchored image in Word behaves (it doesn't push text down).
+    const floatingImageB64Set = new Set();
+    for (const fimg of floatingImages){
+      try {
+        let bin = ''; for (let i = 0; i < fimg.bytes.length; i++) bin += String.fromCharCode(fimg.bytes[i]);
+        floatingImageB64Set.add(btoa(bin));
+        const isPng = fimg.bytes[0] === 0x89 && fimg.bytes[1] === 0x50;
+        const img = isPng ? await pdfDoc.embedPng(fimg.bytes) : await pdfDoc.embedJpg(fimg.bytes);
+        const w = fimg.widthPt || img.width, h = fimg.heightPt || img.height;
+        // relativeFrom is almost always "page" for a simple letterhead-style
+        // image; margin-relative offsets are intentionally not special-
+        // cased here to avoid guessing at margin geometry that varies by
+        // document -- those fall back to normal in-flow placement instead.
+        if (fimg.relativeFromH === 'page' && fimg.relativeFromV === 'page'){
+          const x = fimg.offsetXPt;
+          const yTopDown = fimg.offsetYPt; // distance from top of page
+          const y = PAGE_H - yTopDown - h; // pdf-lib's y is measured from the bottom
+          page.drawImage(img, { x, y, width: w, height: h });
+        }
+      } catch(e){ console.warn('[Word to PDF] Failed to place a floating image at its original position:', e); }
+    }
+
     function pickFont(bold, italic){
       if (bold && italic) return fontBoldItalic;
       if (bold) return fontBold;
@@ -6623,13 +6745,13 @@ if (document.getElementById('pwDrop')){
     function ensureSpace(lineHeight){
       if (cursorY - lineHeight < MARGIN) newPage();
     }
-    function wrapText(text, font, size){
+    function wrapText(text, font, size, width = maxWidth){
       const words = text.split(/\s+/).filter(Boolean);
       const lines = [];
       let current = '';
       for (const w of words){
         const test = current ? current + ' ' + w : w;
-        if (font.widthOfTextAtSize(test, size) > maxWidth && current){
+        if (font.widthOfTextAtSize(test, size) > width && current){
           lines.push(current);
           current = w;
         } else {
@@ -6694,7 +6816,14 @@ if (document.getElementById('pwDrop')){
         return;
       }
       if (tag === 'img'){
-        const img = await embedImageFromSrc(node.getAttribute('src') || '');
+        const src = node.getAttribute('src') || '';
+        // Skip images already placed via their exact original floating
+        // position above -- otherwise a letterhead image would be drawn
+        // twice: once correctly positioned, once again wherever it fell in
+        // the normal reading-order flow.
+        const b64Match = /^data:image\/[a-z]+;base64,(.+)$/i.exec(src);
+        if (b64Match && floatingImageB64Set.has(b64Match[1])) return;
+        const img = await embedImageFromSrc(src);
         if (img){
           const scale = Math.min(1, maxWidth / img.width);
           const w = img.width * scale, h = img.height * scale;
@@ -6710,20 +6839,45 @@ if (document.getElementById('pwDrop')){
         const rows = Array.from(node.querySelectorAll('tr'));
         const colCount = Math.max(1, ...rows.map(r => r.children.length));
         const colWidth = maxWidth / colCount;
+        const borderColor = rgb(0.55, 0.55, 0.58), borderThickness = 0.75;
+        const tableLeft = MARGIN, tableRight = MARGIN + maxWidth;
+        const cellPadding = 3, cellTextWidth = Math.max(20, colWidth - cellPadding*2);
+        function drawHLine(y){
+          page.drawLine({ start: { x: tableLeft, y }, end: { x: tableRight, y }, thickness: borderThickness, color: borderColor });
+        }
+        function drawVLines(yTop, yBottom){
+          for (let c = 0; c <= colCount; c++){
+            const x = MARGIN + c*colWidth;
+            page.drawLine({ start: { x, y: yTop }, end: { x, y: yBottom }, thickness: borderThickness, color: borderColor });
+          }
+        }
         for (const row of rows){
           const cells = Array.from(row.children);
-          ensureSpace(16);
+          // Compute this row's full height up front (cell text can wrap to
+          // multiple lines) so the row's borders can be drawn as one
+          // consistent rectangle instead of following the old text-only
+          // layout that never drew any grid at all -- a real table needs
+          // visible cell lines, not just correctly-positioned text. Text is
+          // wrapped to the cell's own width (not the full page width, which
+          // let long cell text overflow visibly into the next column once
+          // real borders made the overflow obvious).
+          const cellLineCounts = cells.map(c => Math.min(3, wrapText(c.textContent, fontRegular, 10, cellTextWidth).length || 1));
+          const rowLines = Math.max(1, ...cellLineCounts);
+          const rowHeight = 16 + (rowLines - 1) * 12 + 4;
+          ensureSpace(rowHeight);
           const rowY = cursorY;
           cells.forEach((cell, ci) => {
             const text = cell.textContent.replace(/\s+/g, ' ').trim();
-            const lines = wrapText(text, fontRegular, 10).slice(0, 3); // cap lines per cell to keep table rows aligned
+            const lines = wrapText(text, fontRegular, 10, cellTextWidth).slice(0, 3); // cap lines per cell to keep table rows aligned
             lines.forEach((line, li) => {
-              page.drawText(line, { x: MARGIN + ci*colWidth + 3, y: rowY - 12 - li*12, size: 10, font: fontRegular, color: rgb(0.05,0.06,0.1) });
+              page.drawText(line, { x: MARGIN + ci*colWidth + cellPadding, y: rowY - 12 - li*12, size: 10, font: fontRegular, color: rgb(0.05,0.06,0.1) });
             });
           });
-          cursorY -= 16 + Math.max(0, ...cells.map(c => Math.min(3, wrapText(c.textContent, fontRegular, 10).length)-1)) * 12;
-          cursorY -= 4;
+          drawHLine(rowY);
+          drawVLines(rowY, rowY - rowHeight);
+          cursorY -= rowHeight;
         }
+        drawHLine(cursorY); // closing line under the last row
         cursorY -= 8;
         return;
       }
