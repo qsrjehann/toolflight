@@ -6123,7 +6123,7 @@ if (document.getElementById('pwDrop')){
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType } = docxLib;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, TableLayoutType } = docxLib;
     const floatingImagesSupported = !!(HorizontalPositionRelativeFrom && VerticalPositionRelativeFrom && TextWrappingType);
     // Defensive: if this docx.js build doesn't expose table/image classes for
     // some reason, degrade to plain paragraphs / skip images rather than
@@ -6497,12 +6497,26 @@ if (document.getElementById('pwDrop')){
         // genuinely wider than an "Amount" column in the source PDF now
         // stays wider in the .docx too, matching the real table's
         // proportions instead of forcing every column to the same size.
+        //
+        // Widths are set in DXA (twentieths of a point -- an absolute,
+        // unambiguous unit), not PERCENTAGE. The percentage encoding this
+        // library produces (e.g. w:w="45%") was tolerated by LibreOffice
+        // during testing but misread by at least one real-world DOCX
+        // viewer as a raw twips/fiftieths value, making every column
+        // catastrophically narrow and, combined with the FIXED layout
+        // below forcing that width, blowing up row heights instead as
+        // text wrapped one character at a time -- confirmed from an actual
+        // converted document. DXA sidesteps that ambiguity entirely: the
+        // default page is A4 (11906 twips wide) with 1-inch (1440 twips)
+        // margins each side, giving 9026 twips of usable content width.
+        const PAGE_CONTENT_DXA = 9026;
         const totalTableWidth = colXs[colXs.length-1] - colXs[0];
-        const colPercents = [];
+        const colDxa = [];
         for (let c = 0; c < colXs.length - 1; c++){
-          const raw = ((colXs[c+1] - colXs[c]) / totalTableWidth) * 100;
-          colPercents.push(Math.max(4, Math.round(raw))); // floor so no column vanishes to 0%
+          const frac = (colXs[c+1] - colXs[c]) / totalTableWidth;
+          colDxa.push(Math.max(750, Math.round(frac * PAGE_CONTENT_DXA))); // floor so a short code column (e.g. "0001") doesn't wrap to 2 lines
         }
+        const tableDxa = colDxa.reduce((a,b) => a+b, 0);
         for (let r = rowYs.length - 2; r >= 0; r--){
           const yTop = rowYs[r+1], yBot = rowYs[r];
           const cells = [];
@@ -6510,14 +6524,32 @@ if (document.getElementById('pwDrop')){
             const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
             cells.push(new TableCell({
               children: [new Paragraph({ children: [new TextRun({ text })] })],
-              width: { size: colPercents[c], type: WidthType.PERCENTAGE },
+              width: { size: colDxa[c], type: WidthType.DXA },
               borders: cellBorders,
             }));
           }
           rows.push(new TableRow({ children: cells }));
         }
         return new Table({
-          rows, width: { size: 100, type: WidthType.PERCENTAGE },
+          rows, width: { size: tableDxa, type: WidthType.DXA },
+          // The <w:tblGrid> element (the table's base column structure)
+          // needs its own explicit widths too -- without this, the docx
+          // library leaves it at a meaningless placeholder value, and at
+          // least one real-world DOCX viewer trusts tblGrid over the
+          // per-cell widths, making every column collapse to near-nothing
+          // regardless of what the cells themselves declared. Confirmed
+          // directly by inspecting this library's own XML output before
+          // this fix: tblGrid was hardcoded to "100" twips per column
+          // (0.07cm) while the cells said otherwise.
+          columnWidths: colDxa,
+          // Without an explicit fixed layout, Word/LibreOffice can shrink
+          // the table to fit its (often short) cell text instead of
+          // honoring the declared width, leaving a wide gap of empty space
+          // on the right -- exactly the gap flagged on a real converted
+          // document. AUTOFIT is the (undeclared) default; FIXED makes the
+          // table actually span the page as declared, now that the widths
+          // themselves are unambiguous DXA values it can safely honor.
+          layout: TableLayoutType.FIXED,
           borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder },
         });
       }
