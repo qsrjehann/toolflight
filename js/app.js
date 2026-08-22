@@ -6383,8 +6383,24 @@ if (document.getElementById('pwDrop')){
             const counts = {};
             for (const fn of opList.fnArray) counts[opNames[fn] || ('op'+fn)] = (counts[opNames[fn] || ('op'+fn)] || 0) + 1;
             const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 12);
-            console.info('[PDF to Word] page', p, 'full op histogram:', JSON.stringify(counts));
-            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) -> 0 valid tables | top ops: ${top.map(([n,c]) => n+'='+c).join(', ')}`);
+            // Also break down constructPath's own first argument (its
+            // embedded paint-type code) by value, and separately count how
+            // many of those calls are immediately followed by eoClip
+            // (a clip-only path, never visibly painted) vs not (a path
+            // that's actually rendered -- these are the ones worth
+            // examining further, whatever their paint-type code is).
+            const paintTypeCounts = {};
+            let followedByClip = 0, notFollowedByClip = 0;
+            for (let i = 0; i < opList.fnArray.length; i++){
+              if (opList.fnArray[i] === OPS.constructPath){
+                const pt = opList.argsArray[i] && opList.argsArray[i][0];
+                paintTypeCounts[pt] = (paintTypeCounts[pt] || 0) + 1;
+                const next = opList.fnArray[i+1];
+                if (next === OPS.eoClip || next === OPS.clip) followedByClip++; else notFollowedByClip++;
+              }
+            }
+            console.info('[PDF to Word] page', p, 'full op histogram:', JSON.stringify(counts), '| constructPath paintType value counts:', JSON.stringify(paintTypeCounts), '| followedByClip:', followedByClip, 'notFollowedByClip:', notFollowedByClip, '| OPS.fill=', OPS.fill, 'OPS.eoFill=', OPS.eoFill, 'OPS.stroke=', OPS.stroke);
+            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines -> 0 tables | constructPath paintTypes: ${JSON.stringify(paintTypeCounts)} | clipFollowed=${followedByClip}/notClip=${notFollowedByClip} | OPS: fill=${OPS.fill},eoFill=${OPS.eoFill},stroke=${OPS.stroke}`);
           }
         }
         if (imagesSupported) images = await extractImages(page, opList);
