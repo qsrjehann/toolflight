@@ -6390,7 +6390,32 @@ if (document.getElementById('pwDrop')){
           tableRegions = regionGroups.map(g => {
             const vls = g.filter(l => l.orient === 'v'), hls = g.filter(l => l.orient === 'h');
             const colXs = clusterCoords(vls.map(l => l.x0), 1.5);
-            const rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
+            let rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
+            // A table that CONTINUES from a previous PDF page commonly
+            // doesn't redraw a top border rule for its first row on the
+            // new page (the "real" top border was already drawn once,
+            // higher up, on the earlier page). rowYs is built purely from
+            // horizontal divider lines, so that first row has no upper
+            // boundary and silently drops out of the table entirely --
+            // confirmed on a real multi-page PTCL/DigiSkills offer PDF:
+            // its row 11 ("Inform and engage...") had intact left/right/
+            // internal column lines reaching up to the very top of the
+            // page, but zero horizontal lines above the row-11/row-12
+            // divider, so the row vanished from the table and its text
+            // (with the Yes/Yes columns no longer separated) fell through
+            // to ordinary paragraph flow instead. Column lines still mark
+            // where that row's content sits even without a drawn top
+            // rule, so extend rowYs up to the columns' own highest point
+            // whenever it reaches meaningfully higher than any detected
+            // horizontal boundary -- recovering the row's ceiling from
+            // the verticals themselves. A row that turns out to be blank
+            // (nothing between it and the next boundary) is dropped later
+            // by the empty-row filter, so a false extension here is
+            // self-correcting rather than adding visible clutter.
+            if (rowYs.length && vls.length){
+              const maxVTop = Math.max(...vls.map(l => l.y1));
+              if (maxVTop > Math.max(...rowYs) + 1.5) rowYs = [...rowYs, maxVTop].sort((a,b) => a-b);
+            }
             return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
           }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
           // Always-on, detailed pipeline diagnostics (not just for hard
@@ -6520,14 +6545,29 @@ if (document.getElementById('pwDrop')){
         for (let r = rowYs.length - 2; r >= 0; r--){
           const yTop = rowYs[r+1], yBot = rowYs[r];
           const cells = [];
+          let rowHasText = false;
           for (let c = 0; c < colXs.length - 1; c++){
             const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
+            if (text) rowHasText = true;
             cells.push(new TableCell({
               children: [new Paragraph({ children: [new TextRun({ text })] })],
               width: { size: colDxa[c], type: WidthType.DXA },
               borders: cellBorders,
             }));
           }
+          // Skip a row that's completely empty across every column. This
+          // happens when a nearby decorative rule (e.g. the underline
+          // beneath a section heading just above the table) sits close
+          // enough to the table's own border lines to get unioned into
+          // the same region by the touch-based clustering, producing a
+          // phantom extra boundary with no real content between it and
+          // the true header row -- confirmed on a real converted
+          // document where this showed up as a blank leading row before
+          // the actual table header. Also acts as a safety net for the
+          // top-border-recovery above: if that recovery ever extends a
+          // row that turns out to have no text in it, it's silently
+          // dropped here instead of appearing as visible clutter.
+          if (!rowHasText) continue;
           rows.push(new TableRow({ children: cells }));
         }
         return new Table({
@@ -6624,7 +6664,21 @@ if (document.getElementById('pwDrop')){
         const isBold = line.items.some(i => /bold/i.test(i.fontName));
         const isItalic = line.items.some(i => /italic|oblique/i.test(i.fontName));
         const gap = lastLineY === null ? 0 : lastLineY - line.y;
-        const newParagraph = lastLineY === null || gap > lastFontSize * 1.6;
+        // A line that visually starts a new bullet/list item (•, ‣, ▪, ◦,
+        // a plain "-", or numbered markers like "1." or "1)") should
+        // always begin its own paragraph, regardless of the line-gap --
+        // list items are normally set with ordinary single-line spacing,
+        // so the gap-based heuristic alone never exceeds its threshold
+        // between consecutive items. Confirmed on a real converted
+        // document: 18 separate bulleted feature lines were being fused
+        // into one run-on paragraph because their gaps were all under
+        // the 1.6x-body-size cutoff, losing the source's list structure
+        // entirely (each "•" ended up mid-sentence instead of starting
+        // its own line). This only ever adds a paragraph break where the
+        // text itself signals a new item, so it can't cause unrelated
+        // lines to split apart.
+        const startsNewListItem = /^[•‣▪◦∙·]\s|^-\s|^\d{1,2}[.)]\s/.test(lineText);
+        const newParagraph = lastLineY === null || gap > lastFontSize * 1.6 || startsNewListItem;
 
         let heading = null;
         if (avgSize > bodySize * 1.6) heading = HeadingLevel.HEADING_1;
