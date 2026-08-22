@@ -6155,12 +6155,12 @@ if (document.getElementById('pwDrop')){
         else if (fn === OPS.lineTo){ if (args) extendCurrent(args[0], args[1]); }
         else if (fn === OPS.constructPath){
           const paintType = args && args[0];
-          if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke){
+          if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke || paintType === OPS.fill || paintType === OPS.eoFill){
             // pattern (a): paint type embedded in the same operation
             pushLineFromBBox(args[2], ctm);
           } else if (args && args[2] && args[2].length === 4 && typeof args[2][0] === 'number'){
             // pattern (b): just remember this path's shape; a later,
-            // separate stroke op (if any) will paint it
+            // separate paint op (if any) will paint it
             lastPathBBox = args[2];
             lastPathCtm = ctm;
           } else if (args && args[1] && args[1].length === 4 && typeof args[1][0] === 'number'){
@@ -6168,9 +6168,28 @@ if (document.getElementById('pwDrop')){
             lastPathCtm = ctm;
           }
         }
-        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke){
+        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke || fn === OPS.fill || fn === OPS.eoFill){
+          // Confirmed via a live diagnostic on a real production PDF: its
+          // table border lines are drawn as thin *filled* rectangles
+          // (constructPath's own first argument is OPS.rectangle -- the
+          // path-construction method, not a paint type as first assumed --
+          // followed by a separate OPS.fill/OPS.eoFill). A standalone
+          // stroke-only check missed every one of these. Both filled and
+          // stroked paint operations are now treated as "paint whatever
+          // path was just built", covering both real-world encodings seen
+          // so far.
           if (lastPathBBox){ pushLineFromBBox(lastPathBBox, lastPathCtm); lastPathBBox = null; }
           else if (curMinX !== null){ pushLineFromBBox([curMinX,curMinY,curMaxX,curMaxY], ctm); curMinX=curMinY=curMaxX=curMaxY=null; }
+        }
+        else if (fn === OPS.eoClip || fn === OPS.clip || fn === OPS.endPath){
+          // These consume/finish the current path WITHOUT visibly painting
+          // it (clip-region setup, or an explicit "done with this path, no
+          // paint" marker) -- also confirmed present in the same live
+          // diagnostic (702 clip-only paths, used for text-rendering
+          // masks, not table borders). Clear any remembered path here so
+          // its bounds can't leak into an unrelated later paint operation.
+          lastPathBBox = null;
+          curMinX = curMinY = curMaxX = curMaxY = null;
         }
       }
       return out;
