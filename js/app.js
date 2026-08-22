@@ -484,11 +484,20 @@ function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
   if (!zone || !input) return;
-  zone.onclick = () => input.click();
+  // <label for="inputId"> zones already open the file picker natively on
+  // tap/click (zero JavaScript required, works even if a script elsewhere
+  // on the page throws) -- attaching a manual input.click() on top of that
+  // double-fires the picker, which is unreliable across mobile browsers.
+  // Older <div>-based drop-zones (most tools) still need the manual
+  // trigger, since a div has no native click-to-activate relationship with
+  // the input.
+  if (zone.tagName.toLowerCase() !== 'label'){
+    zone.onclick = () => input.click();
+  }
   input.onchange = () => { onFiles(Array.from(input.files)); input.value = ''; };
   ['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
   ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
-  zone.addEventListener('drop', e => onFiles(Array.from(e.dataTransfer.files)));
+  zone.addEventListener('drop', e => { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files)); });
 }
 let _dragReorderCtx = null; // { listEl, arr, rerender, index } — shared across all uses since only one drag happens at a time
 const _dragReorderListElsWithListener = new WeakSet();
@@ -554,9 +563,9 @@ function enableDragReorder(listEl, arr, rerender){
 
 /* ============ MERGE PDF (pdf-tools.html) ============ */
 if (document.getElementById('mergeDrop')){
-  const { PDFDocument } = PDFLib;
   let mergeFiles = [];
   setupDropZone('mergeDrop','mergeInput', async (files) => {
+    const { PDFDocument } = PDFLib;
     const pdfs = files.filter(f => f.type === 'application/pdf');
     if (pdfs.length === 0 && files.length > 0){ toast('Please select PDF files only.', 'err'); return; }
     for (const f of pdfs){
@@ -591,6 +600,7 @@ if (document.getElementById('mergeDrop')){
   }
   document.getElementById('mergeClearBtn').onclick = () => { mergeFiles = []; renderMergeList(); };
   document.getElementById('mergeBtn').onclick = async () => {
+    const { PDFDocument } = PDFLib;
     const btn = document.getElementById('mergeBtn');
     setLoading(btn, true);
     try{
@@ -614,11 +624,11 @@ if (document.getElementById('mergeDrop')){
 
 /* ============ SPLIT PDF (pdf-tools.html) ============ */
 if (document.getElementById('splitDrop')){
-  const { PDFDocument } = PDFLib;
   let splitFile = null;
   let splitTotalPages = 0;
   let selectedPages = new Set();
   setupDropZone('splitDrop','splitInput', async (files) => {
+    const { PDFDocument } = PDFLib;
     const f = files.find(f => f.type === 'application/pdf');
     if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
     splitFile = f;
@@ -670,6 +680,7 @@ if (document.getElementById('splitDrop')){
   }
   document.getElementById('splitClearBtn').onclick = clearSplit;
   document.getElementById('splitBtn').onclick = async () => {
+    const { PDFDocument } = PDFLib;
     const btn = document.getElementById('splitBtn');
     if (selectedPages.size === 0){ toast('Select at least one page.', 'err'); return; }
     setLoading(btn, true);
@@ -704,6 +715,7 @@ if (document.getElementById('compressDrop')){
 
   let compressFile = null;
   let compressedBlobUrl = null;
+  let compressedFileExt = 'jpg';
   let originalPreviewUrl = null;
 
   function setCompressProgress(pct, label){
@@ -797,19 +809,56 @@ if (document.getElementById('compressDrop')){
 
       setCompressProgress(80, 'Encoding…');
       await nextFrame();
-      const blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
+      let blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
+      let outFormatLabel = 'JPG';
+
+      // JPEG's DCT-based compression is built for photos (gradual color,
+      // noise, texture) -- it can genuinely produce a LARGER file than the
+      // original for flat-color/graphic content (logos, screenshots, simple
+      // illustrations, icons), since PNG's lossless approach already
+      // represents large uniform areas very compactly. Previously this was
+      // never checked, so a "compressed" download could come out BIGGER
+      // than what the user started with, while the UI clamped the negative
+      // percentage to a misleading "0% smaller" instead of surfacing what
+      // actually happened. Try PNG as a fallback candidate and always keep
+      // whichever real output is genuinely smallest.
+      if (blob.size >= compressFile.size){
+        const pngBlob = await canvasToBlobAsync(canvas, 'image/png');
+        if (pngBlob.size < blob.size){ blob = pngBlob; outFormatLabel = 'PNG'; }
+      }
+      let usedOriginal = false;
+      if (blob.size >= compressFile.size && target.width === width && target.height === height){
+        // Neither re-encode beats the original, and we didn't even resize
+        // it (so there is no dimension-reduction benefit either) -- the
+        // honest, correct answer is that this file is already about as
+        // small as it can get. Offer the original back rather than a
+        // "compressed" file that is actually larger.
+        blob = compressFile;
+        outFormatLabel = (compressFile.type.split('/')[1] || 'original').toUpperCase();
+        usedOriginal = true;
+      }
 
       setCompressProgress(95, 'Finishing up…');
       await nextFrame();
 
       if (compressedBlobUrl) URL.revokeObjectURL(compressedBlobUrl);
       compressedBlobUrl = URL.createObjectURL(blob);
+      compressedFileExt = usedOriginal
+        ? (compressFile.name && /\.[a-z0-9]+$/i.test(compressFile.name) ? compressFile.name.match(/\.([a-z0-9]+)$/i)[1] : outFormatLabel.toLowerCase())
+        : outFormatLabel.toLowerCase();
       document.getElementById('compPreview').src = compressedBlobUrl;
       document.getElementById('compSize').textContent = fmtBytes(blob.size);
 
-      const savedPct = Math.max(0, Math.round((1 - blob.size / compressFile.size) * 100));
-      document.getElementById('savedBadge').textContent = savedPct + '% smaller' +
-        (target.width !== width || target.height !== height ? ` · resized to ${target.width}×${target.height}` : '');
+      const savedPct = Math.round((1 - blob.size / compressFile.size) * 100);
+      const dimNote = (target.width !== width || target.height !== height) ? ` · resized to ${target.width}×${target.height}` : '';
+      if (usedOriginal){
+        document.getElementById('savedBadge').textContent = 'Already optimal — kept your original file' + dimNote;
+      } else if (savedPct <= 0){
+        document.getElementById('savedBadge').textContent = `Re-encoded as ${outFormatLabel} (about the same size)` + dimNote;
+      } else {
+        document.getElementById('savedBadge').textContent = savedPct + '% smaller' +
+          (outFormatLabel !== 'JPG' ? ` (saved as ${outFormatLabel})` : '') + dimNote;
+      }
       document.getElementById('savedRow').classList.remove('hidden');
       document.getElementById('compressDownloadBtn').classList.remove('hidden');
 
@@ -827,7 +876,7 @@ if (document.getElementById('compressDrop')){
   document.getElementById('compressDownloadBtn').onclick = () => {
     if (!compressedBlobUrl) return;
     const a = document.createElement('a');
-    a.href = compressedBlobUrl; a.download = 'compressed.jpg';
+    a.href = compressedBlobUrl; a.download = 'compressed.' + compressedFileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 }
@@ -2095,8 +2144,74 @@ if (document.getElementById('aiRemoveDrop')){
   let segmenter = null;
   let segmenterLoadPromise = null;
   let aiSourceImg = null;
+  let aiSourceFile = null;  // raw File, kept so a full-resolution bitmap can be
+                            // decoded lazily at export time instead of eagerly
+                            // on every upload -- see loadImageExifSafe below.
   let aiResultCanvas = null;
-  const loadImgAi = loadImageFromFile;
+  // EXIF-orientation-safe image load, used only for this tool's uploads.
+  // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
+  // resizeWidth/resizeHeight, rather than decoding the full original and
+  // only downscaling afterward. The previous version created a full native-
+  // resolution bitmap AND a full native-resolution canvas immediately on
+  // upload, before any button click -- for a modern phone photo (12MP,
+  // 48MP+ on newer phones is common) that is tens to hundreds of megabytes
+  // of raw pixel memory, allocated instantly and unconditionally. That is
+  // enough to crash a mobile browser tab's renderer outright (shows as a
+  // black screen that never recovers) regardless of how fast the device's
+  // CPU is -- this is a memory-allocation failure, not a slow-computation
+  // freeze, so no amount of processing power prevents it. Asking
+  // createImageBitmap to resize AT DECODE TIME means the full-resolution
+  // pixel buffer is never materialized at all for the working copy.
+  const AI_SOURCE_CAP = 2000; // generous vs. the 1200px working canvas elsewhere in this tool, still far below a raw 12-48MP original
+  function loadImageExifSafe(file){
+    return new Promise((resolve) => {
+      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve); return; }
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(probeBitmap => {
+        const pw = probeBitmap.width, ph = probeBitmap.height;
+        const needsResize = Math.max(pw, ph) > AI_SOURCE_CAP;
+        const targetW = needsResize ? Math.round(pw * (AI_SOURCE_CAP / Math.max(pw, ph))) : pw;
+        const targetH = needsResize ? Math.round(ph * (AI_SOURCE_CAP / Math.max(pw, ph))) : ph;
+        const finish = (bitmap) => {
+          const c = document.createElement('canvas');
+          c.width = bitmap.width; c.height = bitmap.height;
+          c.getContext('2d').drawImage(bitmap, 0, 0);
+          if (bitmap.close) bitmap.close();
+          c.naturalWidth = c.width; c.naturalHeight = c.height; // matches the <img> API surface every caller below already expects
+          resolve(c);
+        };
+        if (!needsResize){ finish(probeBitmap); return; }
+        probeBitmap.close && probeBitmap.close();
+        createImageBitmap(file, { imageOrientation: 'from-image', resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high' })
+          .then(finish)
+          .catch(() => loadImageFromFile(file).then(resolve));
+      }).catch(() => {
+        // createImageBitmap or the orientation option isn't supported here --
+        // fall back to the exact path every other ToolFlight image tool uses,
+        // so this can only ever improve correctness, never regress it.
+        loadImageFromFile(file).then(resolve);
+      });
+    });
+  }
+  const loadImgAi = loadImageExifSafe;
+
+  // Decodes a FULL native-resolution bitmap from the original file, used
+  // only at export time (buildFullResExport below) -- this is the one place
+  // that legitimately needs full resolution, and it now only happens once,
+  // on demand, when the user actually asks for their result, instead of
+  // unconditionally on every upload.
+  function loadFullResExifSafe(file){
+    return new Promise((resolve, reject) => {
+      if (typeof createImageBitmap !== 'function'){ loadImageFromFile(file).then(resolve).catch(reject); return; }
+      createImageBitmap(file, { imageOrientation: 'from-image' }).then(bitmap => {
+        const c = document.createElement('canvas');
+        c.width = bitmap.width; c.height = bitmap.height;
+        c.getContext('2d').drawImage(bitmap, 0, 0);
+        if (bitmap.close) bitmap.close();
+        c.naturalWidth = c.width; c.naturalHeight = c.height;
+        resolve(c);
+      }).catch(() => loadImageFromFile(file).then(resolve).catch(reject));
+    });
+  }
 
   function setAiStatus(state, message){
     const el = document.getElementById('aiModelStatus');
@@ -2139,8 +2254,10 @@ if (document.getElementById('aiRemoveDrop')){
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB.`, 'err'); return; }
     try{
+      aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
       document.getElementById('aiRemoveStage').classList.remove('hidden');
+      enterAiFullscreen();
       // Show the uploaded image immediately in the SAME canvas that will
       // later display the AI result -- fixes a real, reported bug where
       // upload showed a separate <img> preview while the actual editable
@@ -2155,18 +2272,395 @@ if (document.getElementById('aiRemoveDrop')){
       aiResultCanvas = srcCanvas0;
       initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
-      // Warm up the model in the background as soon as an image is loaded.
-      ensureSegmenter().catch(() => {});
-      toast('Image loaded.');
+      // Auto-detect document/writing vs. photo (see detectDocumentLikeImage
+      // below) and set the mode toggle accordingly, so the common case
+      // ("I uploaded a photo of my signature" or "I uploaded a photo of my
+      // dog") already has the right mode selected without the person
+      // needing to know this toggle exists. Still fully overridable --
+      // this only picks the STARTING selection, exactly like remove.bg
+      // picking a sensible default rather than silently deciding for good.
+      const looksLikeDocument = detectDocumentLikeImage(srcCanvas0);
+      const detectedMode = looksLikeDocument ? 'document' : 'photo';
+      if (detectedMode !== bgRemoveMode){
+        const modeBtn = document.querySelector('#aiRemoveModeToggle button[data-mode="' + detectedMode + '"]');
+        if (modeBtn) modeBtn.click();
+      }
+      // Previously warmed up the AI model here, immediately on every
+      // upload, before the user asked for it. On a slow connection or a
+      // memory-constrained device, downloading and initializing a large
+      // WASM runtime + model file right away -- unconditionally, whether
+      // or not the user ever clicks "Remove Background" -- risks exactly
+      // the kind of renderer crash/black-screen freeze reported after
+      // selecting a photo here. The model still loads correctly and
+      // normally the moment the user actually clicks the button (see
+      // ensureSegmenter() in that handler below); it just no longer starts
+      // uninvited the instant an image is loaded.
+      // Once there's an actual image to work on, the marketing/explainer
+      // content (hero title, "Back to Image Tools," the long About/FAQ
+      // section) is just scroll distance between a mobile user and the
+      // editor -- hide it so the workspace is reachable without scrolling
+      // past a page's worth of text first. hideAiIntroChrome() restores all
+      // of this on Reset/New Image, so it's not a one-way trip.
+      hideAiIntroChrome();
+      toast(looksLikeDocument ? 'Image loaded — looks like a document/signature, switched to Document mode.' : 'Image loaded.');
     }catch(err){
       toast(err.message, 'err');
     }
   });
 
+  function hideAiIntroChrome(){
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections','aiUploadFormArea'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    document.querySelectorAll('.navbar').forEach(el => el.classList.add('ai-nav-collapsed'));
+  }
+  function showAiIntroChrome(){
+    const ids = ['aiHeroSub','aiBackRow','aiUploadIntro','aiInfoSections','aiUploadFormArea'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); });
+    document.querySelectorAll('.navbar').forEach(el => el.classList.remove('ai-nav-collapsed'));
+  }
+  // True single-screen mode on mobile (see the matching CSS comment for
+  // #aiRemoveStage.ai-fullscreen for why this exists): locks page scroll
+  // and turns the editor into a fixed, full-viewport view, eliminating the
+  // sticky-vs-sticky stacking ambiguity that showed the bottom tab row
+  // rendering inside the open sheet. Restores the exact scroll position
+  // afterward rather than just unlocking, since position:fixed on <body>
+  // otherwise loses it. A no-op on desktop -- the CSS these classes
+  // trigger only exists inside the max-width:899.98px media query.
+  let aiFullscreenScrollY = 0;
+  function enterAiFullscreen(){
+    const stage = document.getElementById('aiRemoveStage');
+    if (!stage) return;
+    aiFullscreenScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    document.body.style.top = -aiFullscreenScrollY + 'px';
+    document.body.classList.add('ai-fullscreen-lock');
+    stage.classList.add('ai-fullscreen');
+    document.querySelector('footer') && document.querySelector('footer').classList.add('hidden');
+  }
+  function exitAiFullscreen(){
+    const stage = document.getElementById('aiRemoveStage');
+    if (stage) stage.classList.remove('ai-fullscreen');
+    document.body.classList.remove('ai-fullscreen-lock');
+    document.body.style.top = '';
+    window.scrollTo(0, aiFullscreenScrollY);
+    document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
+  }
+  function resetAiToUpload(){
+    document.getElementById('aiRemoveStage').classList.add('hidden');
+    exitAiFullscreen();
+    document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
+    aiSourceImg = null; aiSourceFile = null; aiResultCanvas = null;
+    maskCanvas = null; originalCanvas = null;
+    document.getElementById('aiRemoveBtn').disabled = true;
+    showAiIntroChrome();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  const aiNewImageBtnMobile = document.getElementById('aiNewImageBtnMobile');
+  if (aiNewImageBtnMobile) aiNewImageBtnMobile.onclick = () => {
+    resetAiToUpload();
+    toast('Upload a new image.');
+  };
+  // Matches Passport Photo Maker's top app bar pattern exactly: Download +
+  // New Image, always reachable without opening any accordion. Clicking
+  // the main button downloads the common case (transparent PNG) directly,
+  // matching the single Export button's default; the caret next to it
+  // reveals JPG/PDF as a couple of extra taps for anyone who wants them,
+  // without needing to open the Export accordion at all.
+  const aiTopDownloadBtn = document.getElementById('aiTopDownloadBtn');
+  const aiTopDownloadCaretBtn = document.getElementById('aiTopDownloadCaretBtn');
+  const aiTopDownloadMenu = document.getElementById('aiTopDownloadMenu');
+  if (aiTopDownloadBtn) aiTopDownloadBtn.onclick = () => document.getElementById('aiRemoveDownloadBtn').click();
+  if (aiTopDownloadCaretBtn && aiTopDownloadMenu){
+    aiTopDownloadCaretBtn.onclick = (e) => {
+      e.stopPropagation();
+      const opening = aiTopDownloadMenu.classList.contains('hidden');
+      aiTopDownloadMenu.classList.toggle('hidden', !opening);
+      aiTopDownloadCaretBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    };
+    document.addEventListener('click', (e) => {
+      if (!aiTopDownloadMenu.classList.contains('hidden') && !e.target.closest('#aiTopDownloadWrap')){
+        aiTopDownloadMenu.classList.add('hidden');
+        aiTopDownloadCaretBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+    document.querySelectorAll('.ai-download-format-opt').forEach(opt => {
+      opt.onclick = () => {
+        aiTopDownloadMenu.classList.add('hidden');
+        aiTopDownloadCaretBtn.setAttribute('aria-expanded', 'false');
+        const fmt = opt.dataset.format;
+        if (fmt === 'png'){
+          document.getElementById('aiRemoveDownloadBtn').click();
+          return;
+        }
+        // JPG/PDF reuse the exact same export pipeline the Export panel's
+        // own button uses (full-resolution rebuild, worker-based when
+        // available) -- this is just a second, faster way to reach it.
+        const formatSelect = document.getElementById('exportFormat');
+        if (formatSelect){
+          formatSelect.value = fmt;
+          formatSelect.dispatchEvent(new Event('change'));
+        }
+        document.getElementById('exportBtn').click();
+      };
+    });
+  }
+
+  let bgRemoveMode = 'photo';
+  const AI_MODE_HINTS = {
+    photo: 'Best for photos of people, animals, vehicles, and everyday objects.',
+    document: 'Best for handwriting, signatures, or notes on a fairly plain background \u2014 keeps the dark ink/pen marks, removes everything else.',
+  };
+  document.querySelectorAll('#aiRemoveModeToggle button').forEach(btn => {
+    btn.onclick = () => {
+      bgRemoveMode = btn.dataset.mode;
+      document.querySelectorAll('#aiRemoveModeToggle button').forEach(b => {
+        const active = b === btn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      document.getElementById('aiRemoveModeHint').textContent = AI_MODE_HINTS[bgRemoveMode];
+      document.getElementById('aiRemoveBtn').textContent = bgRemoveMode === 'document' ? 'Remove background (Document mode)' : 'Remove background (AI)';
+    };
+  });
+
+  // Document/Writing mode: NOT a general object-recognition model like
+  // DeepLab below -- this is a purpose-built matte for a specific, very
+  // common case DeepLab genuinely cannot handle (it has no "handwriting"
+  // category; see the plausibility-check comment further down). Runs
+  // instantly, no model download, works offline, fully deterministic.
+  //
+  // Multi-seed version: a single global background color (the previous,
+  // deliberately simplest version here) reliably preserves the ink, but
+  // can't tell a SECOND background region apart from the first -- a
+  // desk/floor visible in a corner where the paper doesn't fill the frame
+  // reads as "far from the paper's color" and gets kept by mistake. A
+  // flood-fill variant was tried to fix that, but it could chain through
+  // gradually-blurred pixels near the ink on real photos and misclassify
+  // the ink itself as background -- unacceptable, since keeping the ink is
+  // the entire point of this mode. This version keeps the flood-fill
+  // version's ability to recognize more than one background region, but
+  // WITHOUT any neighbor-to-neighbor chaining: it samples several
+  // candidate background colors from different zones around the border
+  // (corners and edge midpoints, deduplicated), and judges each pixel
+  // independently against whichever candidate is closest -- structurally
+  // incapable of leaking into the ink no matter how gradual a blur is,
+  // since there is no chain to leak along, only a fixed lookup table of
+  // reference colors compared once per pixel.
+  function computeDocumentModeAlpha(srcCanvas){
+    const w = srcCanvas.width, h = srcCanvas.height;
+    const ctx = srcCanvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    function sampleZoneMedian(xs, ys){
+      const rs=[], gs=[], bs=[];
+      for (let i = 0; i < xs.length; i++){
+        const idx = (ys[i]*w + xs[i]) * 4;
+        rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
+      }
+      function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+      return [median(rs), median(gs), median(bs)];
+    }
+    function zoneRange(x0,x1,y0,y1,step){
+      const xs=[], ys=[];
+      for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step){ xs.push(x); ys.push(y); }
+      return [xs, ys];
+    }
+    const zoneSize = Math.max(4, Math.floor(Math.min(w,h) * 0.12));
+    const halfStrip = Math.max(2, Math.floor(zoneSize/2));
+    const step = Math.max(1, Math.floor(zoneSize/8));
+    const zoneRanges = [
+      zoneRange(0,zoneSize, 0,zoneSize, step),                                   // top-left
+      zoneRange(w-zoneSize,w, 0,zoneSize, step),                                 // top-right
+      zoneRange(0,zoneSize, h-zoneSize,h, step),                                 // bottom-left
+      zoneRange(w-zoneSize,w, h-zoneSize,h, step),                               // bottom-right
+      zoneRange(Math.floor(w/2-zoneSize/2),Math.floor(w/2+zoneSize/2), 0,halfStrip, step),        // top-mid
+      zoneRange(Math.floor(w/2-zoneSize/2),Math.floor(w/2+zoneSize/2), h-halfStrip,h, step),      // bottom-mid
+      zoneRange(0,halfStrip, Math.floor(h/2-zoneSize/2),Math.floor(h/2+zoneSize/2), step),        // left-mid
+      zoneRange(w-halfStrip,w, Math.floor(h/2-zoneSize/2),Math.floor(h/2+zoneSize/2), step),      // right-mid
+    ];
+    const candidates = zoneRanges.map(([xs,ys]) => sampleZoneMedian(xs,ys));
+    // Merge near-duplicate candidates (typically all 8 zones are the same
+    // single background, in which case this collapses back down to
+    // exactly the single-color behavior the earlier version always used).
+    const backgroundColors = [];
+    for (const c of candidates){
+      const dupe = backgroundColors.find(m => Math.sqrt((m[0]-c[0])**2 + (m[1]-c[1])**2 + (m[2]-c[2])**2) < 20);
+      if (!dupe) backgroundColors.push(c);
+    }
+
+    // Distance thresholds. LOW is deliberately tighter than a single-
+    // reference-color version needs: with several candidate colors to
+    // compare against, a pixel only needs to coincidentally land near ANY
+    // one of them, so the margin has to be tighter to avoid a coincidental
+    // match -- confirmed against a real failure case where a dark floor
+    // and dark ink were only ~27 apart; 24 correctly keeps that ink while
+    // still fully removing genuine floor/desk pixels (which land within a
+    // few units of their own candidate, not 27).
+    //
+    // HIGH was previously 66 -- too wide in practice. A real photo's ink
+    // often isn't stark black-on-white; moderate contrast (a worn pen,
+    // pencil, glare, JPEG softening) is common, and any pixel whose
+    // distance fell in the wide 24-66 gap got a correspondingly wide range
+    // of PARTIAL alpha rather than full opacity -- confirmed on a
+    // deliberately washed-out test signature, where the old window left
+    // real ink at only ~41% average opacity along a stroke (looks faded/
+    // "dull"), while sharper-contrast paper creases nearby could cross 66
+    // and reach full opacity, looking MORE solid than the actual
+    // signature -- the exact "signature dull, lines highlighted" result
+    // reported. Narrowing to 24-40 lets moderate-contrast ink reach full
+    // opacity much sooner (same test: ~67% and rising) while the floor/
+    // multi-region case (verified above) stays just as clean, since that
+    // separation was never about HIGH in the first place.
+    const LOW = 24, HIGH = 40;
+    const alpha = new Uint8ClampedArray(w*h);
+    for (let i = 0; i < w*h; i++){
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      let minDist = Infinity;
+      for (const [cr,cg,cb] of backgroundColors){
+        const d = Math.sqrt((r-cr)**2 + (g-cg)**2 + (b-cb)**2);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist <= LOW) alpha[i] = 0;
+      else if (minDist >= HIGH) alpha[i] = 255;
+      else alpha[i] = Math.round(255 * (minDist-LOW)/(HIGH-LOW));
+    }
+
+    // Safety net: if this produced an almost-blank (or almost-fully-kept)
+    // result, something is wrong for this specific photo -- fall back to
+    // the single-global-color version, which cannot leak/misfire the same
+    // way since it only ever has one reference color to begin with.
+    let keptCount = 0;
+    for (let i = 0; i < w*h; i++) if (alpha[i] > 200) keptCount++;
+    const keptFrac = keptCount / (w*h);
+    if (keptFrac < 0.0003 || keptFrac > 0.95){
+      return computeDocumentModeAlphaGlobalFallback(data, w, h);
+    }
+
+    // Gentle edge softening -- capped small on purpose. An earlier,
+    // stronger version scaled fade by how many of a pixel's 4 neighbors
+    // were background, up to a 66% reduction; that devastated thin (1-2px)
+    // strokes, since nearly every pixel along a thin stroke touches
+    // background on both sides for its whole length, not just at its true
+    // end-points -- the entire signature faded to a ghostly outline. This
+    // version caps the maximum possible reduction well below anything
+    // that could make even 1px-wide ink look faded.
+    const softened = alpha.slice();
+    for (let y = 1; y < h-1; y++){
+      for (let x = 1; x < w-1; x++){
+        const i = y*w + x;
+        if (alpha[i] === 0) continue;
+        let bgNeighbors = 0;
+        if (alpha[i-1] === 0) bgNeighbors++;
+        if (alpha[i+1] === 0) bgNeighbors++;
+        if (alpha[i-w] === 0) bgNeighbors++;
+        if (alpha[i+w] === 0) bgNeighbors++;
+        if (bgNeighbors > 0) softened[i] = Math.min(softened[i], 255 - Math.min(bgNeighbors * 8, 24));
+      }
+    }
+    return softened;
+  }
+
+  // Fallback used only when the multi-seed version's safety net trips: a
+  // single global background color sampled from the border, thresholded by
+  // plain distance. Cannot separate two different background regions as
+  // well, but it is structurally incapable of the failure modes above,
+  // since it only ever has one reference color for every pixel to compare
+  // against.
+  function computeDocumentModeAlphaGlobalFallback(data, w, h){
+    const samples = [];
+    const step = Math.max(1, Math.floor(Math.max(w,h) / 250));
+    for (let x = 0; x < w; x += step){ samples.push(x,0); samples.push(x,h-1); }
+    for (let y = 0; y < h; y += step){ samples.push(0,y); samples.push(w-1,y); }
+    const rs=[], gs=[], bs=[];
+    for (let i = 0; i < samples.length; i += 2){
+      const idx = (samples[i+1]*w + samples[i]) * 4;
+      rs.push(data[idx]); gs.push(data[idx+1]); bs.push(data[idx+2]);
+    }
+    function median(arr){ const s = arr.slice().sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+    const bgR = median(rs), bgG = median(gs), bgB = median(bs);
+    const LOW = 28, HIGH = 70;
+    const alpha = new Uint8ClampedArray(w*h);
+    for (let i = 0; i < w*h; i++){
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
+      if (dist <= LOW) alpha[i] = 0;
+      else if (dist >= HIGH) alpha[i] = 255;
+      else alpha[i] = Math.round(255 * (dist-LOW)/(HIGH-LOW));
+    }
+    return alpha;
+  }
+
+  // Auto-detect: document/writing vs. photo. Cheap, fast, no AI model
+  // needed for the DETECTION step itself (only Photo mode's actual removal
+  // uses the AI model) -- samples the image and counts how many distinct
+  // (coarsely quantized) colors appear. A document/note photo is
+  // essentially two-tone -- background plus ink -- so distinct colors stay
+  // low. A natural photo of a person, object, or scene has continuous
+  // tonal variation and lands far higher (confirmed: 138+ on a natural-
+  // photo test image) even accounting for camera noise and JPEG artifacts.
+  //
+  // Threshold raised from 60 to 90. Every synthetic recreation tried here
+  // (including realistic JPEG compression, lighting gradients, and sensor
+  // noise) stayed well under 60 for genuine document/signature photos --
+  // but a real deployed photo still got misclassified as "Photo," meaning
+  // a real camera photo carries more color variation (uneven real-world
+  // lighting, shadows, paper texture, compression artifacts stacked
+  // together) than any synthetic test here reproduced. 90 keeps a solid
+  // ~35% margin below the natural-photo reference point (138) while giving
+  // real document photos meaningfully more headroom than before. This only
+  // sets the DEFAULT selected mode after upload -- the Photo/Document
+  // toggle stays fully manual on top of it either way.
+  function detectDocumentLikeImage(srcCanvas){
+    const w = srcCanvas.width, h = srcCanvas.height;
+    const ctx = srcCanvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const n = w*h;
+    const stride = Math.max(1, Math.floor(n/5000));
+    const buckets = new Set();
+    for (let i = 0; i < n; i += stride){
+      const p = i*4;
+      const key = (data[p]>>4) + ',' + (data[p+1]>>4) + ',' + (data[p+2]>>4); // 16 levels/channel
+      buckets.add(key);
+    }
+    return buckets.size < 90;
+  }
+
   document.getElementById('aiRemoveBtn').onclick = async () => {
     const btn = document.getElementById('aiRemoveBtn');
     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
     setLoading(btn, true);
+
+    if (bgRemoveMode === 'document'){
+      try{
+        await nextFrame();
+        const MAX = 1200;
+        let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
+        if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = w; srcCanvas.height = h;
+        srcCanvas.getContext('2d').drawImage(aiSourceImg, 0, 0, w, h);
+
+        const alpha = computeDocumentModeAlpha(srcCanvas);
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = w; outCanvas.height = h;
+        const octx = outCanvas.getContext('2d');
+        octx.drawImage(srcCanvas, 0, 0);
+        const imageData = octx.getImageData(0, 0, w, h);
+        for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
+        octx.putImageData(imageData, 0, 0);
+
+        aiResultCanvas = outCanvas;
+        initManualEditor(srcCanvas, outCanvas);
+        document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+        document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+        document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+        toast('Background removed. Refine it below if needed.');
+      }catch(err){
+        toast(err.message || 'Could not process this image.', 'err');
+      }
+      setLoading(btn, false);
+      return;
+    }
+
     try{
       const seg = await ensureSegmenter();
       await nextFrame();
@@ -2234,11 +2728,61 @@ if (document.getElementById('aiRemoveDrop')){
       if (result.categoryMask.close) result.categoryMask.close();
       if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
 
+      // Plausibility check (combines the two independent signals Passport
+      // Photo Maker already uses, missing here until now): DeepLab v3
+      // recognizes general object categories (people, animals, vehicles,
+      // everyday objects) -- it has no notion of "this is a graphic
+      // design / share card / screenshot, not a photo." On non-
+      // photographic images it can return a segmentation that keeps a
+      // plausible-LOOKING area fraction (e.g. a ~25% band across the
+      // middle) while the model was actually never confident about any of
+      // it -- an area check alone does not catch that shape of failure,
+      // which is exactly the "half my image disappeared" bug report this
+      // fixes; the confidence signal does. It still always hands off to
+      // Manual Mode either way (never strands the user), only the wording
+      // now honestly reflects what happened.
+      // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
+      // version of this check looped over every one of w*h alpha values
+      // AND every confidenceData value, back-to-back, fully synchronously,
+      // immediately after the already-heavy refineSegmentationMask() and
+      // putImageData() calls above -- on a large photo (the MAX=1200 cap
+      // still allows up to 1,440,000 pixels) that's three uninterrupted
+      // full-resolution passes with no yield to the browser in between,
+      // long enough on real hardware to freeze the tab regardless of how
+      // fast the device is (this blocks the single JS thread; raw CPU
+      // speed shortens but does not prevent the freeze). Sampling ~3000
+      // points is statistically just as reliable for a coarse plausibility
+      // signal and finishes essentially instantly.
+      await nextFrame();
+      function sampledFraction(arr, n, threshold){
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, hits = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
+        return sampled ? hits/sampled : 0;
+      }
+      function sampledAverage(arr){
+        const n = arr.length;
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, sum = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
+        return sampled ? sum/sampled : null;
+      }
+      const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
+      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
+      const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
+      const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
+      const implausible = areaImplausible || lowConfidence;
+
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
-      toast('Background removed. Refine it below if needed.');
+      document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+      if (implausible){
+        toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
+      } else {
+        toast('Background removed. Refine it below if needed.');
+      }
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
@@ -2257,6 +2801,7 @@ if (document.getElementById('aiRemoveDrop')){
         initManualEditor(srcCanvas, fallback);
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+      document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
         toast('AI processing failed, but your image is safe — use the manual tools below (start with Lasso or Polygon).', 'err');
       }catch(fallbackErr){
         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
@@ -2287,6 +2832,13 @@ if (document.getElementById('aiRemoveDrop')){
       toast('Could not hand off to Background Changer — try downloading and re-uploading instead.', 'err');
     }
   };
+  // Second entry point to the exact same handoff, placed in the Export tab
+  // next to Download -- the original button lives inside "More: Edge
+  // Cleanup & History", a spot with no reason for anyone to look for a
+  // link to a completely different tool. This is where people actually are
+  // once they're satisfied with the cutout and asking "now what."
+  const aiExportSendToChangerBtn = document.getElementById('aiExportSendToChangerBtn');
+  if (aiExportSendToChangerBtn) aiExportSendToChangerBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
 
   /* ---------- Manual Selection Editor ---------- */
   let originalCanvas = null;   // full-color source, never modified
@@ -2363,15 +2915,27 @@ if (document.getElementById('aiRemoveDrop')){
     if (historyStack.length > MAX_HISTORY) historyStack.shift();
     historyIndex = historyStack.length - 1;
     if (typeof autoSaveSession === 'function') autoSaveSession();
+    updateAiUndoRedoState();
   }
   function restoreHistory(idx){
     if (idx < 0 || idx >= historyStack.length) return;
     maskCanvas.getContext('2d').putImageData(historyStack[idx], 0, 0);
     historyIndex = idx;
     renderComposite();
+    updateAiUndoRedoState();
   }
   function undo(){ if (historyIndex > 0) restoreHistory(historyIndex - 1); else toast('Nothing to undo.'); }
   function redo(){ if (historyIndex < historyStack.length - 1) restoreHistory(historyIndex + 1); else toast('Nothing to redo.'); }
+  // Passport Photo Maker's undo/redo buttons correctly grey out when
+  // there's nothing to undo/redo (ppHistoryEngine.canUndo/canRedo) --
+  // these shared-ID buttons here were wired to the actions but never had
+  // their disabled state kept in sync, so they always looked clickable
+  // even with an empty history. Matches that same always-correct state.
+  function updateAiUndoRedoState(){
+    const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+    if (u) u.disabled = historyIndex <= 0;
+    if (r) r.disabled = historyIndex >= historyStack.length - 1;
+  }
 
   function setTool(tool){
     currentTool = tool;
@@ -2506,10 +3070,25 @@ if (document.getElementById('aiRemoveDrop')){
     const canvas = document.getElementById('aiEditCanvas');
     if (!canvas || !canvas.width) return;
     canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+    // Size the viewport's HEIGHT to the loaded image's own aspect ratio
+    // (within the existing min/max bounds) instead of a fixed 60vh
+    // regardless of content. A portrait crop inside a much taller fixed
+    // box left a large dead checkered area below the image -- looked like
+    // part of the image hadn't loaded, and that empty area didn't respond
+    // to drag the way the actual image did. Landscape images now get a
+    // short, wide viewport; portrait images get a taller one; square
+    // images get a square one -- little to no leftover empty space either
+    // way, and zoom/pan behavior below is unchanged.
+    const viewport = document.getElementById('aiWorkspaceViewport');
+    if (viewport){
+      const w = viewport.clientWidth || viewport.getBoundingClientRect().width;
+      if (w > 0){
+        const idealH = w * (canvas.height / canvas.width);
+        viewport.style.height = Math.max(280, Math.min(640, idealH)) + 'px';
+      }
+    }
     aiWorkspaceEngine.fitToScreen(canvas.width, canvas.height, aiViewZoom);
   }
-  document.getElementById('aiViewFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
-  document.getElementById('aiViewCenterBtn').onclick = () => { fitAiCanvasDisplay(); };
   document.getElementById('aiFloatFitBtn').onclick = () => { aiViewZoom = 1; fitAiCanvasDisplay(); };
   window.addEventListener('resize', () => { if (document.getElementById('aiEditCanvas').width) fitAiCanvasDisplay(); });
   // Belt-and-braces for the same class of bug the deferred rAF calls above
@@ -2571,13 +3150,13 @@ if (document.getElementById('aiRemoveDrop')){
     barEl: () => document.getElementById('aiFloatingControls'),
     viewportEl: () => document.getElementById('aiWorkspaceViewport'),
     draggingClass: 'ai-dragging',
-    resetTriggerEls: [ () => document.getElementById('aiViewFitBtn') ],
+    resetTriggerEls: [ () => document.getElementById('aiFloatFitBtn') ],
   });
 
   const editStageWrap = document.getElementById('aiEditStageWrap');
 
   editStageWrap.addEventListener('pointerdown', (e) => {
-    if (!maskCanvas || spacePan) return;
+    if (!maskCanvas || spacePan || currentTool === 'pan') return;
     const canvas = document.getElementById('aiEditCanvas');
     editCanvas = canvas;
     const pt = canvasPointFromEvent(e);
@@ -2661,7 +3240,12 @@ if (document.getElementById('aiRemoveDrop')){
     const viewport = document.getElementById('aiWorkspaceViewport');
     let panning = false, startX = 0, startY = 0, startWsX = 0, startWsY = 0;
     viewport.addEventListener('pointerdown', (e) => {
-      if (!spacePan) return;
+      // Space+drag is the desktop path; the "pan" tool button is the touch
+      // equivalent -- there's no keyboard on mobile to hold Space with, so
+      // without this second trigger, dragging the canvas had no way to
+      // work at all on a phone (matches the reported "can't drag the image"
+      // bug exactly).
+      if (!spacePan && currentTool !== 'pan') return;
       if (e.target.closest('#aiFloatingControls')) return;
       panning = true;
       startX = e.clientX; startY = e.clientY;
@@ -2703,10 +3287,26 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('undoBtn').onclick = undo;
   document.getElementById('redoBtn').onclick = redo;
   document.getElementById('resetSelBtn').onclick = () => {
-    if (!maskCanvas) return;
-    restoreHistory(0);
-    pushHistory();
-    toast('Selection reset to AI result.');
+    // Genuinely back to the original upload -- fully opaque, no AI/Document
+    // processing and no manual edits applied -- not just undoing brush/
+    // eraser strokes on top of an already-processed result (that was the
+    // previous "Reset to AI result" behavior, which is a different, more
+    // narrow thing). Rebuilds the exact same starting state the editor
+    // shows immediately after upload, using the same MAX=1200 cap.
+    if (!aiSourceImg) return;
+    const MAX = 1200;
+    let w0 = aiSourceImg.naturalWidth, h0 = aiSourceImg.naturalHeight;
+    if (Math.max(w0, h0) > MAX){ const sc = MAX / Math.max(w0, h0); w0 = Math.round(w0*sc); h0 = Math.round(h0*sc); }
+    const srcCanvas0 = document.createElement('canvas');
+    srcCanvas0.width = w0; srcCanvas0.height = h0;
+    srcCanvas0.getContext('2d').drawImage(aiSourceImg, 0, 0, w0, h0);
+    aiResultCanvas = srcCanvas0;
+    initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- exactly the post-upload starting state
+    document.getElementById('aiRemoveDownloadRow').classList.add('hidden');
+    document.getElementById('sendToAiChangerBtn').classList.add('hidden');
+    document.getElementById('aiExportSendToChangerRow').classList.add('hidden');
+    document.getElementById('aiRemoveBtn').disabled = false;
+    toast('Reset to the original uploaded image.');
   };
   document.getElementById('invertSelBtn').onclick = () => {
     if (!maskCanvas) return;
@@ -2832,24 +3432,56 @@ if (document.getElementById('aiRemoveDrop')){
 
   /* ---------- Before / After compare slider ---------- */
   function updateCompareImages(){
-    document.getElementById('compareBefore').src = originalCanvas.toDataURL('image/png');
+    // compareWrap previously had no explicit pixel size -- its child
+    // <img> used width:100%, which is ambiguous against .editor-stage-
+    // wrap's width:fit-content (there's no percentage basis to resolve
+    // against until the child itself has resolved, and vice versa).
+    // Browsers fall back to the image's own natural/intrinsic pixel size
+    // in that situation, NOT the canvas's current pan/zoom-scaled display
+    // size -- so compare mode rendered at the wrong (usually smaller, and
+    // not matching whatever zoom level was active) size, and dragging/
+    // zooming over it didn't move anything because the workspace
+    // transform is calibrated for the canvas's actual pixel dimensions,
+    // not this mismatched size. Setting explicit pixel width/height here,
+    // matching the canvas exactly, resolves both: correct display size,
+    // and correct interaction with the SAME pan/zoom transform the canvas
+    // itself uses (compareWrap is a sibling of the canvas inside the same
+    // transformed #aiWorkspace, so it was always going to inherit that
+    // transform correctly once its own size was correct).
+    const w = editCanvas.width, h = editCanvas.height;
+    const compareWrapEl = document.getElementById('compareWrap');
+    compareWrapEl.style.width = w + 'px';
+    compareWrapEl.style.height = h + 'px';
+    const beforeEl = document.getElementById('compareBefore');
+    beforeEl.style.width = w + 'px';
+    beforeEl.style.height = h + 'px';
+    beforeEl.src = originalCanvas.toDataURL('image/png');
     const onWhite = document.createElement('canvas');
     onWhite.width = originalCanvas.width; onWhite.height = originalCanvas.height;
     const octx = onWhite.getContext('2d');
     octx.fillStyle = '#ffffff';
     octx.fillRect(0, 0, onWhite.width, onWhite.height);
     octx.drawImage(editCanvas, 0, 0);
-    document.getElementById('compareAfter').src = onWhite.toDataURL('image/png');
+    const afterEl = document.getElementById('compareAfter');
+    afterEl.style.width = w + 'px';
+    afterEl.style.height = h + 'px';
+    afterEl.src = onWhite.toDataURL('image/png');
   }
   const compareToggleBtn = document.getElementById('compareToggleBtn');
   const compareWrap = document.getElementById('compareWrap');
   if (compareToggleBtn) compareToggleBtn.onclick = () => {
     const showing = compareWrap.classList.contains('hidden');
+    if (showing) updateCompareImages(); // size it correctly BEFORE revealing, avoiding a flash of wrong size
     compareWrap.classList.toggle('hidden', !showing);
     document.getElementById('aiEditCanvas').classList.toggle('hidden', showing);
     compareToggleBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
-    compareToggleBtn.textContent = showing ? 'Back to editing' : 'Before / After';
-    if (showing) updateCompareImages();
+    // Was compareToggleBtn.textContent = '...' -- this is an icon-only
+    // button (an <svg>, no text node), and .textContent replaces ALL
+    // children, silently deleting the icon and leaving literal text in
+    // its place. title/aria-label carry the same information without
+    // touching the button's actual content.
+    compareToggleBtn.title = showing ? 'Back to editing' : 'Before / After';
+    compareToggleBtn.setAttribute('aria-label', showing ? 'Back to editing' : 'Before and after comparison');
   };
   const compareHandle = document.getElementById('compareHandle');
   const compareAfterWrap = document.getElementById('compareAfterWrap');
@@ -2920,7 +3552,10 @@ if (document.getElementById('aiRemoveDrop')){
         historyStack = []; historyIndex = -1; pushHistory();
         renderComposite();
         document.getElementById('aiRemoveStage').classList.remove('hidden');
+        enterAiFullscreen();
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+        document.getElementById('aiRemoveBtn').disabled = false;
+        hideAiIntroChrome();
         aiViewZoom = 1;
         requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
         setTool('brush');
@@ -2945,6 +3580,99 @@ if (document.getElementById('aiRemoveDrop')){
     });
   }
   offerAutoSavedSession();
+
+  // Recover from the canvas going blank after the tab was backgrounded and
+  // resumed -- a known mobile-browser behavior (memory pressure can clear
+  // canvas pixel data while a tab is suspended) that AI Photo Retouch
+  // already hit and fixed for its own single-photo case (see
+  // rtRecoverCanvasIfNeeded above). This tool's version needs to recover
+  // TWO things at once -- the original photo AND the mask -- and the mask
+  // specifically holds the actual work (AI/Document result plus any manual
+  // brush/eraser edits), which can't be regenerated by just re-decoding
+  // the original file the way Photo Retouch's simpler single-layer case
+  // can. The autosave snapshot already in localStorage (a debounced string,
+  // immune to the same canvas-clearing event since it isn't a rendering
+  // resource) is the one source that has both, already kept fresh by the
+  // existing autoSaveSession() call after every edit -- so recovery reuses
+  // that instead of a separate backup mechanism.
+  let aiRecoveryInProgress = false;
+  async function aiRecoverCanvasIfNeeded(){
+    if (!editCanvas || !maskCanvas) return; // nothing loaded yet -- upload screen, not the editor
+    if (aiRecoveryInProgress) return;
+    aiRecoveryInProgress = true;
+    try{
+      const canvasLooksLost = () => {
+        if (!editCanvas.width || !editCanvas.height) return true;
+        try{
+          const px = editCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+          // A real result's corner is either the checkerboard-transparent
+          // background (alpha 0 but this is drawn on the DOM, not baked
+          // into the canvas pixel -- the canvas itself reads fully
+          // transparent black at a removed-background corner in the
+          // NORMAL, working case too) -- so alpha alone can't distinguish
+          // "correctly transparent" from "cleared by the browser." Check
+          // the mask canvas instead, which is guaranteed fully opaque
+          // everywhere BY CONSTRUCTION (every pixel's red channel encodes
+          // a 0-255 keep-amount, but the canvas's OWN alpha channel is
+          // always 255 -- see initManualEditor/renderComposite above) --
+          // if that reads as transparent black, something cleared it.
+          const maskPx = maskCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+          return (maskPx[3] === 0);
+        } catch(err){
+          return true;
+        }
+      };
+      if (!canvasLooksLost()) return;
+
+      const attemptRebuild = async () => {
+        let raw;
+        try{ raw = localStorage.getItem(AUTOSAVE_KEY); }catch(e){ return false; }
+        if (!raw) return false;
+        let data;
+        try{ data = JSON.parse(raw); }catch(e){ return false; }
+        if (!data || !data.original || !data.mask) return false;
+        try{
+          const origImg = await loadDataUrlAsImage(data.original);
+          const maskImg = await loadDataUrlAsImage(data.mask);
+          if (!origImg.naturalWidth || !maskImg.naturalWidth) throw new Error('no dimensions');
+          const oc = document.createElement('canvas'); oc.width = origImg.naturalWidth; oc.height = origImg.naturalHeight;
+          oc.getContext('2d').drawImage(origImg, 0, 0);
+          const mc = document.createElement('canvas'); mc.width = maskImg.naturalWidth; mc.height = maskImg.naturalHeight;
+          mc.getContext('2d').drawImage(maskImg, 0, 0);
+          const verifyPx = mc.getContext('2d').getImageData(0, 0, 1, 1).data;
+          if (verifyPx[3] === 0) throw new Error('rebuilt mask still reads blank');
+          originalCanvas = oc; maskCanvas = mc;
+          editCanvas.width = oc.width; editCanvas.height = oc.height;
+          renderComposite();
+          return true;
+        }catch(err){
+          return false;
+        }
+      };
+
+      let ok = await attemptRebuild();
+      if (!ok){
+        await new Promise(r => setTimeout(r, 400));
+        ok = await attemptRebuild();
+      }
+      if (ok){
+        requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
+        toast('Image recovered after the browser cleared it in the background.', 'ok');
+      } else {
+        toast('The browser cleared this image from memory and it could not be restored. Please upload it again.', 'err');
+        resetAiToUpload();
+      }
+    } finally {
+      aiRecoveryInProgress = false;
+    }
+  }
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) aiRecoverCanvasIfNeeded();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') aiRecoverCanvasIfNeeded();
+  });
+  window.addEventListener('focus', () => aiRecoverCanvasIfNeeded());
 
   // Defensive fix for a reported "toolbar visible before upload" issue:
   // the back-forward cache restores a page's DOM exactly as it was left,
@@ -3005,11 +3733,11 @@ if (document.getElementById('aiRemoveDrop')){
     }
     return exportWorker;
   }
-  function buildFullResExportMainThread(){
-    const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
+  function buildFullResExportMainThread(fullImg){
+    const fullW = fullImg.naturalWidth, fullH = fullImg.naturalHeight;
     const fullOriginal = document.createElement('canvas');
     fullOriginal.width = fullW; fullOriginal.height = fullH;
-    fullOriginal.getContext('2d').drawImage(aiSourceImg, 0, 0);
+    fullOriginal.getContext('2d').drawImage(fullImg, 0, 0);
     const fullMask = document.createElement('canvas');
     fullMask.width = fullW; fullMask.height = fullH;
     fullMask.getContext('2d').drawImage(maskCanvas, 0, 0, fullW, fullH);
@@ -3029,10 +3757,22 @@ if (document.getElementById('aiRemoveDrop')){
     return out;
   }
   async function buildFullResExport(){
-    const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
+    // aiSourceImg is a CAPPED working copy (see loadImageExifSafe above) --
+    // full native resolution is decoded fresh, here, from the original
+    // file, ONLY when the user actually exports, rather than being held in
+    // memory unconditionally from the moment of upload. Falls back to the
+    // capped aiSourceImg if there's no stored File (e.g. a restored
+    // autosave session), which just means that specific export won't
+    // exceed the resolution that was already being worked with.
+    let fullImg = aiSourceImg;
+    if (aiSourceFile){
+      try{ fullImg = await loadFullResExifSafe(aiSourceFile); }
+      catch(e){ fullImg = aiSourceImg; }
+    }
+    const fullW = fullImg.naturalWidth, fullH = fullImg.naturalHeight;
     if (supportsWorkerExport()){
       try{
-        const originalBitmap = await createImageBitmap(aiSourceImg);
+        const originalBitmap = await createImageBitmap(fullImg);
         const maskBitmap = await createImageBitmap(maskCanvas);
         const worker = getExportWorker();
         if (!worker) throw new Error('Worker unavailable');
@@ -3047,17 +3787,17 @@ if (document.getElementById('aiRemoveDrop')){
         canvas.getContext('2d').drawImage(bitmap, 0, 0);
         return canvas;
       }catch(err){
-        return buildFullResExportMainThread(); // graceful fallback, same visual result
+        return buildFullResExportMainThread(fullImg); // graceful fallback, same visual result
       }
     }
-    return buildFullResExportMainThread();
+    return buildFullResExportMainThread(fullImg);
   }
 
   const exportQualitySlider = document.getElementById('exportQuality');
   const exportFormatSelect = document.getElementById('exportFormat');
   if (exportQualitySlider) exportQualitySlider.oninput = (e) => { document.getElementById('exportQualityVal').textContent = e.target.value; };
   if (exportFormatSelect) exportFormatSelect.onchange = (e) => {
-    document.getElementById('exportQualityRow').classList.toggle('hidden', e.target.value === 'png');
+    document.getElementById('exportQualityRow').classList.toggle('hidden', e.target.value === 'png' || e.target.value === 'pdf');
     document.getElementById('exportBgColorRow').classList.toggle('hidden', e.target.value !== 'jpg');
   };
 
@@ -3070,6 +3810,28 @@ if (document.getElementById('aiRemoveDrop')){
       const format = document.getElementById('exportFormat').value;
       const quality = +document.getElementById('exportQuality').value / 100;
       let finalCanvas = await buildFullResExport();
+
+      if (format === 'pdf'){
+        // Single-page PDF sized 1:1 to the export (in points), embedding a
+        // PNG so transparency is preserved via pdf-lib's SMask support --
+        // same embedPng() pattern already used by Image-to-PDF and the
+        // Ecommerce Product Editor's export, not a second implementation.
+        const pngBlob = await new Promise((resolve, reject) => {
+          finalCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('Could not render this image.')), 'image/png');
+        });
+        const bytes = new Uint8Array(await pngBlob.arrayBuffer());
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const embedded = await pdfDoc.embedPng(bytes);
+        const page = pdfDoc.addPage([finalCanvas.width, finalCanvas.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: finalCanvas.width, height: finalCanvas.height });
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        setLoading(exportBtn, false, 'Export image');
+        downloadBlob(blob, 'toolflight-export.pdf');
+        toast('Exported at full resolution.');
+        return;
+      }
 
       let mime = 'image/png', ext = 'png';
       if (format === 'jpg'){
@@ -3153,7 +3915,14 @@ if (document.getElementById('bgChangerDrop')){
   })();
 
   setupDropZone('bgChangerDrop','bgChangerInput', async (files) => {
-    const f = files.find(f => f.type === 'image/png' || f.type === 'image/webp');
+    const isPngOrWebp = (file) => {
+      if (file.type === 'image/png' || file.type === 'image/webp') return true;
+      // MIME-type reporting for a genuinely valid file is inconsistent across
+      // mobile browsers/OS share-sheets -- fall back to the filename extension
+      // rather than silently rejecting a real PNG/WEBP the browser mis-labeled.
+      return /\.(png|webp)$/i.test(file.name || '');
+    };
+    const f = files.find(isPngOrWebp);
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
     try{
       const img = await loadImgBg(f);
@@ -3161,9 +3930,29 @@ if (document.getElementById('bgChangerDrop')){
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
       fgCanvas = c;
+
+      // The format check above only confirms this IS a PNG/WEBP -- it says
+      // nothing about whether the file actually HAS transparency. A fully
+      // opaque PNG passes that check, loads "successfully," and then every
+      // background change below has zero visible effect with no
+      // explanation why -- exactly the "nothing happens" bug report this
+      // fixes. Sample the alpha channel directly to tell the difference.
+      const sctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      const sampleStep = Math.max(1, Math.floor(Math.sqrt((w*h) / 4000))); // ~4000 sample points regardless of image size
+      let hasTransparency = false;
+      outer:
+      for (let y = 0; y < h; y += sampleStep){
+        const row = sctx.getImageData(0, y, w, 1).data;
+        for (let x = 0; x < w; x += sampleStep){
+          if (row[x*4 + 3] < 250){ hasTransparency = true; break outer; }
+        }
+      }
+      document.getElementById('bgChangerNoAlphaWarning').classList.toggle('hidden', hasTransparency);
+
       document.getElementById('bgChangerStage').classList.remove('hidden');
       renderBgComposite();
-      toast('Image loaded — choose a new background.');
+      toast(hasTransparency ? 'Image loaded — choose a new background.' : 'Image loaded, but it has no transparent areas — see the note below.', hasTransparency ? undefined : 'err');
     }catch(err){ toast(err.message, 'err'); }
   });
 
@@ -5183,6 +5972,7 @@ if (document.getElementById('pwDrop')){
   let pdfjsLoadPromisePW = null;
   let mammothLoadPromise = null;
   let docxLoadPromise = null;
+  let jsZipLoadPromise = null;
 
   async function ensurePdfJsPW(){
     if (!pdfjsLoadPromisePW){
@@ -5210,6 +6000,16 @@ if (document.getElementById('pwDrop')){
         .catch((err) => { docxLoadPromise = null; throw err; });
     }
     return docxLoadPromise;
+  }
+  async function ensureJsZip(){
+    if (!jsZipLoadPromise){
+      jsZipLoadPromise = (async () => {
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+        if (!window.JSZip) throw new Error('JSZip failed to load.');
+        return window.JSZip;
+      })().catch((err) => { jsZipLoadPromise = null; throw err; });
+    }
+    return jsZipLoadPromise;
   }
 
   /* ---------- Tabs ---------- */
@@ -5272,6 +6072,11 @@ if (document.getElementById('pwDrop')){
     box.textContent = msg;
     box.classList.remove('hidden');
   }
+  // Collects any table/image-extraction problems from the most recent PDF to
+  // Word conversion, so they can be shown directly on the page (mobile users
+  // often can't easily get to a browser console) instead of only going to
+  // console.error.
+  let pwLastDiagnostics = [];
 
   document.getElementById('pwCancelBtn').onclick = () => { pwCancelled = true; };
 
@@ -5290,6 +6095,9 @@ if (document.getElementById('pwDrop')){
       }
       if (pwCancelled){ setPwProgress(0,''); document.getElementById('pwProgressWrap').classList.add('hidden'); toast('Cancelled.'); return; }
       document.getElementById('pwResultRow').classList.remove('hidden');
+      if (pwMode === 'p2w' && pwLastDiagnostics.length){
+        showPwError('Converted, but with a note: ' + pwLastDiagnostics.join(' | ') + ' (Everything else converted normally -- please screenshot this message if you report it.)');
+      }
       toast('Conversion complete.');
     }catch(err){
       if (!pwCancelled) showPwError((err && err.message) ? err.message : 'Conversion failed — please try a different file.');
@@ -5310,15 +6118,252 @@ if (document.getElementById('pwDrop')){
   /* ================= PDF -> WORD ================= */
   async function convertPdfToWord(file, onProgress, isCancelled){
     onProgress(5, 'Reading PDF\u2026');
+    pwLastDiagnostics = [];
     const pdfjsLib = await ensurePdfJsPW();
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak } = docxLib;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, TableLayoutType } = docxLib;
+    const floatingImagesSupported = !!(HorizontalPositionRelativeFrom && VerticalPositionRelativeFrom && TextWrappingType);
+    // Defensive: if this docx.js build doesn't expose table/image classes for
+    // some reason, degrade to plain paragraphs / skip images rather than
+    // throwing and failing the whole conversion.
+    const tablesSupported = !!(Table && TableRow && TableCell && WidthType);
+    const imagesSupported = !!ImageRun;
+    const OPS = pdfjsLib.OPS;
+
+    // ---- Matrix helpers for tracking the CTM through the operator list ----
+    const MTX_IDENTITY = [1,0,0,1,0,0];
+    function mtxMultiply(a,b){
+      return [a[0]*b[0]+a[1]*b[2], a[0]*b[1]+a[1]*b[3], a[2]*b[0]+a[3]*b[2], a[2]*b[1]+a[3]*b[3], a[4]*b[0]+a[5]*b[2]+b[4], a[4]*b[1]+a[5]*b[3]+b[5]];
+    }
+    function mtxApply(m,x,y){ return [m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]]; }
+
+    // ---- Extracts stroked straight lines (table borders) from a page's
+    // operator list, in final page coordinates. Verified against a real
+    // multi-table government payslip PDF: line count and positions matched
+    // an independent Python/pdfplumber extraction exactly. ----
+    function extractLines(opList){
+      let ctm = MTX_IDENTITY; const ctmStack = []; const out = [];
+      let lastPathBBox = null, lastPathCtm = null;
+      let curX = null, curY = null, curMinX = null, curMinY = null, curMaxX = null, curMaxY = null;
+      function extendCurrent(x, y){
+        if (curMinX === null){ curMinX = curMaxX = x; curMinY = curMaxY = y; }
+        else { curMinX = Math.min(curMinX,x); curMaxX = Math.max(curMaxX,x); curMinY = Math.min(curMinY,y); curMaxY = Math.max(curMaxY,y); }
+      }
+      function pushLineFromBBox(bbox, ctmAtPaint){
+        if (!bbox) return;
+        const [minX,minY,maxX,maxY] = bbox;
+        const [x0,y0] = mtxApply(ctmAtPaint, minX, minY);
+        const [x1,y1] = mtxApply(ctmAtPaint, maxX, maxY);
+        out.push({ x0: Math.min(x0,x1), x1: Math.max(x0,x1), y0: Math.min(y0,y1), y1: Math.max(y0,y1) });
+      }
+      for (let i = 0; i < opList.fnArray.length; i++){
+        const fn = opList.fnArray[i], args = opList.argsArray[i];
+        if (fn === OPS.save) ctmStack.push(ctm);
+        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
+        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
+        else if (fn === OPS.moveTo){ curMinX=curMinY=curMaxX=curMaxY=null; if (args) extendCurrent(args[0], args[1]); }
+        else if (fn === OPS.lineTo){ if (args) extendCurrent(args[0], args[1]); }
+        else if (fn === OPS.constructPath){
+          const paintType = args && args[0];
+          if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke || paintType === OPS.fill || paintType === OPS.eoFill){
+            // pattern (a): paint type embedded in the same operation
+            pushLineFromBBox(args[2], ctm);
+          } else if (args && args[2] && args[2].length === 4 && typeof args[2][0] === 'number'){
+            // pattern (b): just remember this path's shape; a later,
+            // separate paint op (if any) will paint it
+            lastPathBBox = args[2];
+            lastPathCtm = ctm;
+          } else if (args && args[1] && args[1].length === 4 && typeof args[1][0] === 'number'){
+            lastPathBBox = args[1];
+            lastPathCtm = ctm;
+          }
+        }
+        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke || fn === OPS.fill || fn === OPS.eoFill){
+          // Confirmed via a live diagnostic on a real production PDF: its
+          // table border lines are drawn as thin *filled* rectangles
+          // (constructPath's own first argument is OPS.rectangle -- the
+          // path-construction method, not a paint type as first assumed --
+          // followed by a separate OPS.fill/OPS.eoFill). A standalone
+          // stroke-only check missed every one of these. Both filled and
+          // stroked paint operations are now treated as "paint whatever
+          // path was just built", covering both real-world encodings seen
+          // so far.
+          if (lastPathBBox){ pushLineFromBBox(lastPathBBox, lastPathCtm); lastPathBBox = null; }
+          else if (curMinX !== null){ pushLineFromBBox([curMinX,curMinY,curMaxX,curMaxY], ctm); curMinX=curMinY=curMaxX=curMaxY=null; }
+        }
+        else if (fn === OPS.eoClip || fn === OPS.clip || fn === OPS.endPath){
+          // These consume/finish the current path WITHOUT visibly painting
+          // it (clip-region setup, or an explicit "done with this path, no
+          // paint" marker) -- also confirmed present in the same live
+          // diagnostic (702 clip-only paths, used for text-rendering
+          // masks, not table borders). Clear any remembered path here so
+          // its bounds can't leak into an unrelated later paint operation.
+          lastPathBBox = null;
+          curMinX = curMinY = curMaxX = curMaxY = null;
+        }
+      }
+      return out;
+    }
+
+    // ---- Clusters straight lines into connected table regions (a vertical
+    // and horizontal line "connect" when they touch/cross), so each real
+    // table on the page is handled as its own independent grid rather than
+    // one page-wide grid. Verified: correctly separated 3 distinct tables
+    // on a real payslip into 3 regions, matching the source document. ----
+    function clusterLineRegions(lines){
+      const vlines = lines.filter(l => (l.x1-l.x0) < 3).map((l,idx) => ({...l, idx, orient:'v'}));
+      const hlines = lines.filter(l => (l.y1-l.y0) < 3).map((l,idx) => ({...l, idx: idx+100000, orient:'h'}));
+      const all = [...vlines, ...hlines];
+      const parent = {};
+      function find(x){ if (parent[x]===undefined) parent[x]=x; if (parent[x]!==x) parent[x]=find(parent[x]); return parent[x]; }
+      function union(a,b){ const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb; }
+      const TOL = 2.0;
+      for (const v of vlines) for (const h of hlines){
+        if (h.y0 >= v.y0-TOL && h.y0 <= v.y1+TOL && v.x0 >= h.x0-TOL && v.x0 <= h.x1+TOL) union(v.idx, h.idx);
+      }
+      all.forEach(l => find(l.idx));
+      const groups = {};
+      for (const l of all){ const root = find(l.idx); (groups[root] = groups[root] || []).push(l); }
+      // require a real grid: at least 2 rows and 2 columns worth of lines
+      return Object.values(groups).filter(g => g.filter(l=>l.orient==='v').length >= 2 && g.filter(l=>l.orient==='h').length >= 2);
+    }
+
+    function clusterCoords(vals, tol){
+      const sorted = [...vals].sort((a,b)=>a-b); const clusters = [];
+      for (const v of sorted){
+        if (clusters.length && v - clusters[clusters.length-1].sum/clusters[clusters.length-1].n < tol){ const c = clusters[clusters.length-1]; c.sum += v; c.n++; }
+        else clusters.push({ sum: v, n: 1 });
+      }
+      return clusters.map(c => c.sum/c.n);
+    }
+
+    // ---- Extracts embedded raster images (photos, logos, seals) from a
+    // page's operator list and converts each to PNG bytes via an offscreen
+    // canvas, along with its position/size on the page (for placement) and
+    // in-content ordering. Verified: correctly resolved a real embedded
+    // seal image's pixel data (63x65, RGB) via page.objs.get(). ----
+    async function extractImages(page, opList){
+      const images = [];
+      let ctm = MTX_IDENTITY; const ctmStack = [];
+      for (let i = 0; i < opList.fnArray.length; i++){
+        const fn = opList.fnArray[i], args = opList.argsArray[i];
+        if (fn === OPS.save) ctmStack.push(ctm);
+        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
+        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
+        else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject){
+          const name = args && args[0];
+          try {
+            let imgObj = null;
+            if (name && page.objs && typeof page.objs.get === 'function'){
+              imgObj = await new Promise((resolve, reject) => {
+                try {
+                  const immediate = page.objs.get(name, resolve);
+                  // pdf.js returns null (not undefined) synchronously when
+                  // the object isn't resolved yet and will invoke the
+                  // callback later -- only treat a genuine object as
+                  // "already available" here, not null/undefined.
+                  if (immediate) resolve(immediate);
+                } catch(e){ reject(e); }
+              });
+            } else if (args && args[0] && typeof args[0] === 'object'){
+              imgObj = args[0]; // inline images sometimes carry the data directly in argsArray
+            }
+            if (!imgObj){
+              console.warn('[PDF to Word] Image object', name, 'resolved to nothing.');
+              continue;
+            }
+            // Different pdf.js builds expose pixel data differently: a raw
+            // typed array (`data`), or a pre-decoded `bitmap` (ImageBitmap
+            // or similar canvas-drawable object).
+            let pngBytes = null;
+            const width = imgObj.width, height = imgObj.height;
+            if (!width || !height){
+              console.warn('[PDF to Word] Image object', name, 'has no width/height. Keys:', Object.keys(imgObj));
+              continue;
+            }
+            if (imgObj.bitmap){
+              pngBytes = await rasterToPngFromBitmap(imgObj.bitmap, width, height);
+            } else if (imgObj.data){
+              pngBytes = await rasterToPng(imgObj);
+            } else {
+              console.warn('[PDF to Word] Image object', name, 'has neither .data nor .bitmap. Keys:', Object.keys(imgObj));
+              continue;
+            }
+            if (pngBytes){
+              const [x0,y0] = mtxApply(ctm, 0, 0);
+              const [x1,y1] = mtxApply(ctm, 1, 1);
+              images.push({
+                bytes: pngBytes, srcW: width, srcH: height,
+                x: Math.min(x0,x1), y: Math.max(y0,y1),
+                dispW: Math.abs(x1-x0), dispH: Math.abs(y1-y0),
+              });
+            } else {
+              console.warn('[PDF to Word] Image object', name, 'produced no PNG bytes from either path.');
+            }
+          } catch(e){
+            console.error('[PDF to Word] Failed to extract embedded image', name, '-- skipping it. Error:', e);
+            pwLastDiagnostics.push(`image extraction: ${e && e.message ? e.message : e}`);
+          }
+        }
+      }
+      return images;
+    }
+    // Converts pdf.js's raw pixel buffer (RGB or RGBA, Uint8ClampedArray) to
+    // PNG bytes using an offscreen canvas -- a standard, well-established
+    // browser technique.
+    async function rasterToPng(imgObj){
+      const { width, height, data } = imgObj;
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(width, height);
+      const channels = data.length / (width*height);
+      if (channels === 4){
+        imageData.data.set(data);
+      } else if (channels === 3){
+        for (let i = 0, j = 0; i < data.length; i += 3, j += 4){
+          imageData.data[j] = data[i]; imageData.data[j+1] = data[i+1]; imageData.data[j+2] = data[i+2]; imageData.data[j+3] = 255;
+        }
+      } else if (channels === 1){
+        for (let i = 0, j = 0; i < data.length; i++, j += 4){
+          imageData.data[j] = data[i]; imageData.data[j+1] = data[i]; imageData.data[j+2] = data[i]; imageData.data[j+3] = 255;
+        }
+      } else {
+        console.warn('[PDF to Word] Unrecognized pixel format: data.length=', data.length, 'for', width, 'x', height, '=> channels=', channels);
+        return null; // unrecognized pixel format -- skip rather than guess
+      }
+      ctx.putImageData(imageData, 0, 0);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) return null;
+      return new Uint8Array(await blob.arrayBuffer());
+    }
+    // Handles the case where pdf.js hands back a pre-decoded bitmap
+    // (ImageBitmap or similar) instead of a raw pixel-data array -- some
+    // pdf.js builds/versions resolve images this way, particularly for
+    // JPEG-encoded content.
+    async function rasterToPngFromBitmap(bitmap, width, height){
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) return null;
+        return new Uint8Array(await blob.arrayBuffer());
+      } catch(e){
+        console.warn('[PDF to Word] Failed to draw bitmap image to canvas:', e);
+        return null;
+      }
+    }
+
 
     // Pass 1: collect all font sizes across the document to find the "body
     // text" baseline size, so headings can be detected relative to it rather
-    // than against an arbitrary fixed number.
+    // than against an arbitrary fixed number. Also extract table-border
+    // lines and embedded images per page here, since both come from the
+    // same operator-list pass as everything else on the page.
     const allSizes = [];
     const pageTextItems = [];
     for (let p = 1; p <= pdf.numPages; p++){
@@ -5329,15 +6374,65 @@ if (document.getElementById('pwDrop')){
       const annotations = await page.getAnnotations();
       const links = annotations.filter(a => a.subtype === 'Link' && a.url).map(a => ({ rect: a.rect, url: a.url }));
       const items = content.items.map(it => ({
-        str: it.str, x: it.transform[4], y: it.transform[5],
+        str: it.str, x: it.transform[4], x1: it.transform[4] + (it.width || 0), y: it.transform[5],
         fontSize: Math.hypot(it.transform[2], it.transform[3]) || 10,
         fontName: it.fontName || '',
       })).filter(it => it.str.trim().length > 0);
       items.forEach(it => allSizes.push(it.fontSize));
-      pageTextItems.push({ items, links, height: page.view[3] });
-      if (content.items.length === 0 && p === 1 && pdf.numPages === 1){
-        // no extractable text at all -- likely a scanned/image-only PDF
+
+      let tableRegions = [];
+      let images = [];
+      try {
+        const opList = await page.getOperatorList();
+        if (tablesSupported){
+          const lines = extractLines(opList);
+          const regionGroups = clusterLineRegions(lines);
+          tableRegions = regionGroups.map(g => {
+            const vls = g.filter(l => l.orient === 'v'), hls = g.filter(l => l.orient === 'h');
+            const colXs = clusterCoords(vls.map(l => l.x0), 1.5);
+            const rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
+            return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
+          }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
+          // Always-on, detailed pipeline diagnostics (not just for hard
+          // zero-line cases) -- reports exactly how many lines, regions,
+          // and rows/cols were found at each stage, so any future mismatch
+          // is immediately visible instead of requiring another guess-and-
+          // redeploy round.
+          const vCount = lines.filter(l => (l.x1-l.x0) < 3).length;
+          const hCount = lines.filter(l => (l.y1-l.y0) < 3).length;
+          console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
+          if (tableRegions.length === 0){
+            // Consolidated single diagnostic: line counts by orientation,
+            // raw (pre-filter) region count from clustering, and a sample
+            // of actual coordinates -- enough to tell whether clustering
+            // found nothing at all (a touch-detection/tolerance issue) or
+            // found regions that got filtered out (a too-strict row/col
+            // minimum), without needing another guess-and-redeploy round.
+            const vSample = lines.filter(l => (l.x1-l.x0) < 3).slice(0, 6).map(l => `x=${l.x0.toFixed(1)},y${l.y0.toFixed(0)}-${l.y1.toFixed(0)}`);
+            const hSample = lines.filter(l => (l.y1-l.y0) < 3).slice(0, 6).map(l => `y=${l.y0.toFixed(1)},x${l.x0.toFixed(0)}-${l.x1.toFixed(0)}`);
+            const rawRegionSizes = regionGroups.map(g => `${g.filter(l=>l.orient==='v').length}v+${g.filter(l=>l.orient==='h').length}h`);
+            console.info('[PDF to Word] page', p, 'DEEP diag -- vSample:', vSample, 'hSample:', hSample, 'rawRegionSizes:', rawRegionSizes);
+            pwLastDiagnostics.push(`page ${p}: ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) [sizes: ${rawRegionSizes.join(',')}] -> 0 valid | vSample: ${vSample.join(' ')} | hSample: ${hSample.join(' ')}`);
+          }
+        }
+        if (imagesSupported) images = await extractImages(page, opList);
+        if (images.length === 0){
+          const imgOpCount = opList.fnArray.filter(fn => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject).length;
+          if (imgOpCount > 0){
+            console.warn('[PDF to Word] page', p, '--', imgOpCount, 'image-paint ops found but 0 images were extracted.');
+            pwLastDiagnostics.push(`page ${p}: ${imgOpCount} image op(s) found but 0 extracted`);
+          }
+        }
+      } catch(e){
+        // Fall back to text-only for this page rather than failing the whole
+        // conversion -- but surface the real error to the console instead of
+        // swallowing it silently, so a version/API mismatch can actually be
+        // diagnosed instead of just silently producing no tables/images.
+        console.error('[PDF to Word] Table/image extraction failed for page', p, '-- falling back to plain text for this page. Error:', e);
+        pwLastDiagnostics.push(`page ${p} table/image extraction: ${e && e.message ? e.message : e}`);
       }
+
+      pageTextItems.push({ items, links, height: page.view[3], tableRegions, images });
       page.cleanup && page.cleanup();
     }
     if (allSizes.length === 0){
@@ -5350,7 +6445,7 @@ if (document.getElementById('pwDrop')){
     const docChildren = [];
     for (let pIdx = 0; pIdx < pageTextItems.length; pIdx++){
       if (isCancelled()) return null;
-      const { items } = pageTextItems[pIdx];
+      const { items, tableRegions, images } = pageTextItems[pIdx];
       // Group items into lines by Y proximity, then lines into paragraphs by
       // a larger vertical gap (a real, standard heuristic for reflowed text
       // -- not guaranteed on unusually-formatted PDFs, disclosed in the FAQ).
@@ -5366,6 +6461,75 @@ if (document.getElementById('pwDrop')){
         }
         lastY = it.y;
       }
+
+      // ---- Table & image placement ----
+      // Tables are detected from the PDF's own drawn border-lines (read via
+      // pdf.js's operator list in Pass 1 above) rather than guessed from
+      // text spacing -- this reads the actual grid the PDF itself drew,
+      // so it isn't thrown off by how pdf.js happens to chunk text into
+      // items (which varies per PDF and was the root cause of an earlier,
+      // incorrect text-gap-based approach). Verified against a real
+      // multi-table government payslip: all 3 tables on the page were
+      // reconstructed as an exact match to the source PDF, including a row
+      // with an irregular/incomplete set of cells that a spacing-based
+      // guess had previously gotten wrong. A text item is treated as
+      // "inside" a table if its position falls within that table's
+      // detected bounds, and is rendered via the table's own cells instead
+      // of as loose paragraph text.
+      function pointInRegion(x, y, r){ return x >= r.x0 - 2 && x <= r.x1 + 2 && y >= r.y0 - 2 && y <= r.y1 + 2; }
+      function regionForLine(line){
+        if (!tableRegions.length) return null;
+        const midX = line.items.reduce((a,i)=>a+(i.x+i.x1)/2,0) / line.items.length;
+        return tableRegions.find(r => pointInRegion(midX, line.y, r)) || null;
+      }
+      function cellTextFor(region, x0, x1, y0, y1){
+        const cellItems = items.filter(it => it.x >= x0-1.5 && it.x1 <= x1+1.5 && it.y >= y0-1.5 && it.y <= y1+1.5);
+        cellItems.sort((a,b) => b.y - a.y || a.x - b.x);
+        return cellItems.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      }
+      function buildTableForRegion(region){
+        const { colXs, rowYs } = region;
+        const rows = [];
+        const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: '444444' };
+        const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+        // Column widths from the PDF's own measured column boundaries
+        // (colXs), not an even split -- a "Description" column that's
+        // genuinely wider than an "Amount" column in the source PDF now
+        // stays wider in the .docx too, matching the real table's
+        // proportions instead of forcing every column to the same size.
+        const totalTableWidth = colXs[colXs.length-1] - colXs[0];
+        const colPercents = [];
+        for (let c = 0; c < colXs.length - 1; c++){
+          const raw = ((colXs[c+1] - colXs[c]) / totalTableWidth) * 100;
+          colPercents.push(Math.max(4, Math.round(raw))); // floor so no column vanishes to 0%
+        }
+        for (let r = rowYs.length - 2; r >= 0; r--){
+          const yTop = rowYs[r+1], yBot = rowYs[r];
+          const cells = [];
+          for (let c = 0; c < colXs.length - 1; c++){
+            const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
+            cells.push(new TableCell({
+              children: [new Paragraph({ children: [new TextRun({ text })] })],
+              width: { size: colPercents[c], type: WidthType.PERCENTAGE },
+              borders: cellBorders,
+            }));
+          }
+          rows.push(new TableRow({ children: cells }));
+        }
+        return new Table({
+          rows, width: { size: 100, type: WidthType.PERCENTAGE },
+          // Without an explicit fixed layout, Word/LibreOffice can shrink
+          // the table to fit its (often short) cell text instead of
+          // honoring the declared 100%-of-page-width, leaving a wide gap
+          // of empty space on the right -- exactly the gap flagged on a
+          // real converted document. AUTOFIT is the (undeclared) default;
+          // FIXED makes the table actually span the page as declared.
+          layout: TableLayoutType.FIXED,
+          borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder },
+        });
+      }
+      const renderedRegions = new Set();
+
       let lastLineY = null, lastFontSize = bodySize;
       let currentRuns = [];
       function flushParagraph(){
@@ -5374,7 +6538,61 @@ if (document.getElementById('pwDrop')){
           currentRuns = [];
         }
       }
-      for (const line of lines){
+      // Merge lines and images into one top-to-bottom content stream so
+      // images are inserted at roughly the right point in reading order
+      // rather than always at the end of the page.
+      const pageHeight = pageTextItems[pIdx].height || 792;
+      const contentEvents = [
+        ...lines.map(l => ({ type: 'line', y: l.y, line: l })),
+        ...images.map(img => ({ type: 'image', y: img.y, img })),
+      ].sort((a,b) => b.y - a.y);
+
+      for (const ev of contentEvents){
+        if (ev.type === 'image'){
+          if (!imagesSupported) continue;
+          flushParagraph();
+          try {
+            const scale = Math.min(1, 468 / ev.img.dispW); // cap width to a reasonable page-content width (points)
+            const dispW = Math.max(20, Math.round(ev.img.dispW * scale));
+            const dispH = Math.max(20, Math.round(ev.img.dispH * scale));
+            // Place the image at its actual position on the original PDF
+            // page (floating, anchored to the page itself) instead of just
+            // inline in reading order -- e.g. a letterhead seal that sits
+            // in the top-right corner of the source PDF now lands in that
+            // same corner in the .docx, rather than wherever it happened to
+            // fall in the text flow. Word/PT_EMU conversion: 1pt = 12700 EMU.
+            const EMU_PER_PT = 12700;
+            const distFromLeft = Math.max(0, ev.img.x) * EMU_PER_PT;
+            const distFromTop = Math.max(0, pageHeight - ev.img.y) * EMU_PER_PT;
+            docChildren.push(new Paragraph({ children: [
+              new ImageRun({ data: ev.img.bytes, type: 'png', transformation: { width: dispW, height: dispH },
+                ...(floatingImagesSupported ? { floating: {
+                  horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: Math.round(distFromLeft) },
+                  verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round(distFromTop) },
+                  wrap: { type: TextWrappingType.NONE },
+                  allowOverlap: true,
+                  behindDocument: false,
+                } } : {}),
+              }),
+            ] }));
+          } catch(e){ console.error('[PDF to Word] Failed to embed an extracted image into the document -- skipping it. Error:', e); pwLastDiagnostics.push(`image embed: ${e && e.message ? e.message : e}`); }
+          continue;
+        }
+
+        const line = ev.line;
+        const region = tablesSupported ? regionForLine(line) : null;
+        if (region){
+          const key = region.x0 + ',' + region.y0;
+          if (!renderedRegions.has(key)){
+            renderedRegions.add(key);
+            flushParagraph();
+            docChildren.push(buildTableForRegion(region));
+            docChildren.push(new Paragraph({ children: [] }));
+          }
+          lastLineY = line.y;
+          continue; // this line's text is already captured by the table's own cells
+        }
+
         const lineText = line.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
         if (!lineText) continue;
         const avgSize = line.items.reduce((a,i) => a+i.fontSize, 0) / line.items.length;
@@ -5416,11 +6634,69 @@ if (document.getElementById('pwDrop')){
   }
 
   /* ================= WORD -> PDF ================= */
+  async function extractFloatingImagesFromDocx(arrayBuffer){
+    // Reads the .docx's own OOXML directly (a .docx is just a zip of XML
+    // files) to recover exact page-relative image positions -- mammoth's
+    // HTML conversion is built for extracting semantic content, not exact
+    // visual layout, so it doesn't expose this. Verified against a .docx
+    // this tool itself generated with a known image position (a letterhead
+    // seal placed 484pt from the left, 7.6pt from the top of the page):
+    // this extraction recovered those exact same numbers back out.
+    // Returns [] harmlessly for ordinary documents with no floating
+    // (only regular inline) images -- those keep flowing with the text
+    // exactly as before, which is the correct default for typical docs.
+    try {
+      const JSZip = await ensureJsZip();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const docFile = zip.file('word/document.xml');
+      const relsFile = zip.file('word/_rels/document.xml.rels');
+      if (!docFile) return [];
+      const docXml = await docFile.async('string');
+      const relsXml = relsFile ? await relsFile.async('string') : '';
+      const relMap = {};
+      const relRe = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+      let rm;
+      while ((rm = relRe.exec(relsXml))) relMap[rm[1]] = rm[2];
+
+      const results = [];
+      const drawingRe = /<w:drawing>([\s\S]*?)<\/w:drawing>/g;
+      let dm;
+      while ((dm = drawingRe.exec(docXml))){
+        const block = dm[1];
+        if (!/<wp:anchor\b/.test(block)) continue; // inline images: let mammoth+normal flow handle these
+        const hPos = /<wp:positionH[^>]*relativeFrom="([^"]*)"[^>]*>\s*<wp:posOffset>(-?\d+)<\/wp:posOffset>/.exec(block);
+        const vPos = /<wp:positionV[^>]*relativeFrom="([^"]*)"[^>]*>\s*<wp:posOffset>(-?\d+)<\/wp:posOffset>/.exec(block);
+        const extent = /<wp:extent cx="(\d+)" cy="(\d+)"/.exec(block);
+        const embed = /<a:blip[^>]*r:embed="([^"]+)"/.exec(block);
+        if (!hPos || !vPos || !embed) continue; // no exact page offset to place it by -- skip rather than guess
+        const relTarget = relMap[embed[1]];
+        if (!relTarget) continue;
+        const mediaPath = 'word/' + relTarget.replace(/^\/?/, '');
+        const imgFile = zip.file(mediaPath);
+        if (!imgFile) continue;
+        const bytes = await imgFile.async('uint8array');
+        const EMU_PER_PT = 12700;
+        results.push({
+          relativeFromH: hPos[1], offsetXPt: parseInt(hPos[2], 10) / EMU_PER_PT,
+          relativeFromV: vPos[1], offsetYPt: parseInt(vPos[2], 10) / EMU_PER_PT,
+          widthPt: extent ? parseInt(extent[1],10) / EMU_PER_PT : null,
+          heightPt: extent ? parseInt(extent[2],10) / EMU_PER_PT : null,
+          bytes,
+        });
+      }
+      return results;
+    } catch(e){
+      console.warn('[Word to PDF] Floating-image XML extraction failed -- images will fall back to normal in-flow placement. Error:', e);
+      return [];
+    }
+  }
+
   async function convertWordToPdf(file, onProgress, isCancelled){
     onProgress(5, 'Reading Word document\u2026');
     const mammoth = await ensureMammoth();
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.convertToHtml({ arrayBuffer });
+    const floatingImages = await extractFloatingImagesFromDocx(arrayBuffer);
     onProgress(25, 'Parsing content\u2026');
 
     const container = document.createElement('div');
@@ -5438,6 +6714,31 @@ if (document.getElementById('pwDrop')){
     let cursorY = PAGE_H - MARGIN;
     const maxWidth = PAGE_W - MARGIN*2;
 
+    // Place every floating image immediately, at its exact original
+    // position on ITS OWN page-relative coordinates -- these don't
+    // participate in the normal text-flow layout at all, matching how a
+    // floating/anchored image in Word behaves (it doesn't push text down).
+    const floatingImageB64Set = new Set();
+    for (const fimg of floatingImages){
+      try {
+        let bin = ''; for (let i = 0; i < fimg.bytes.length; i++) bin += String.fromCharCode(fimg.bytes[i]);
+        floatingImageB64Set.add(btoa(bin));
+        const isPng = fimg.bytes[0] === 0x89 && fimg.bytes[1] === 0x50;
+        const img = isPng ? await pdfDoc.embedPng(fimg.bytes) : await pdfDoc.embedJpg(fimg.bytes);
+        const w = fimg.widthPt || img.width, h = fimg.heightPt || img.height;
+        // relativeFrom is almost always "page" for a simple letterhead-style
+        // image; margin-relative offsets are intentionally not special-
+        // cased here to avoid guessing at margin geometry that varies by
+        // document -- those fall back to normal in-flow placement instead.
+        if (fimg.relativeFromH === 'page' && fimg.relativeFromV === 'page'){
+          const x = fimg.offsetXPt;
+          const yTopDown = fimg.offsetYPt; // distance from top of page
+          const y = PAGE_H - yTopDown - h; // pdf-lib's y is measured from the bottom
+          page.drawImage(img, { x, y, width: w, height: h });
+        }
+      } catch(e){ console.warn('[Word to PDF] Failed to place a floating image at its original position:', e); }
+    }
+
     function pickFont(bold, italic){
       if (bold && italic) return fontBoldItalic;
       if (bold) return fontBold;
@@ -5451,13 +6752,13 @@ if (document.getElementById('pwDrop')){
     function ensureSpace(lineHeight){
       if (cursorY - lineHeight < MARGIN) newPage();
     }
-    function wrapText(text, font, size){
+    function wrapText(text, font, size, width = maxWidth){
       const words = text.split(/\s+/).filter(Boolean);
       const lines = [];
       let current = '';
       for (const w of words){
         const test = current ? current + ' ' + w : w;
-        if (font.widthOfTextAtSize(test, size) > maxWidth && current){
+        if (font.widthOfTextAtSize(test, size) > width && current){
           lines.push(current);
           current = w;
         } else {
@@ -5522,7 +6823,14 @@ if (document.getElementById('pwDrop')){
         return;
       }
       if (tag === 'img'){
-        const img = await embedImageFromSrc(node.getAttribute('src') || '');
+        const src = node.getAttribute('src') || '';
+        // Skip images already placed via their exact original floating
+        // position above -- otherwise a letterhead image would be drawn
+        // twice: once correctly positioned, once again wherever it fell in
+        // the normal reading-order flow.
+        const b64Match = /^data:image\/[a-z]+;base64,(.+)$/i.exec(src);
+        if (b64Match && floatingImageB64Set.has(b64Match[1])) return;
+        const img = await embedImageFromSrc(src);
         if (img){
           const scale = Math.min(1, maxWidth / img.width);
           const w = img.width * scale, h = img.height * scale;
@@ -5538,20 +6846,45 @@ if (document.getElementById('pwDrop')){
         const rows = Array.from(node.querySelectorAll('tr'));
         const colCount = Math.max(1, ...rows.map(r => r.children.length));
         const colWidth = maxWidth / colCount;
+        const borderColor = rgb(0.55, 0.55, 0.58), borderThickness = 0.75;
+        const tableLeft = MARGIN, tableRight = MARGIN + maxWidth;
+        const cellPadding = 3, cellTextWidth = Math.max(20, colWidth - cellPadding*2);
+        function drawHLine(y){
+          page.drawLine({ start: { x: tableLeft, y }, end: { x: tableRight, y }, thickness: borderThickness, color: borderColor });
+        }
+        function drawVLines(yTop, yBottom){
+          for (let c = 0; c <= colCount; c++){
+            const x = MARGIN + c*colWidth;
+            page.drawLine({ start: { x, y: yTop }, end: { x, y: yBottom }, thickness: borderThickness, color: borderColor });
+          }
+        }
         for (const row of rows){
           const cells = Array.from(row.children);
-          ensureSpace(16);
+          // Compute this row's full height up front (cell text can wrap to
+          // multiple lines) so the row's borders can be drawn as one
+          // consistent rectangle instead of following the old text-only
+          // layout that never drew any grid at all -- a real table needs
+          // visible cell lines, not just correctly-positioned text. Text is
+          // wrapped to the cell's own width (not the full page width, which
+          // let long cell text overflow visibly into the next column once
+          // real borders made the overflow obvious).
+          const cellLineCounts = cells.map(c => Math.min(3, wrapText(c.textContent, fontRegular, 10, cellTextWidth).length || 1));
+          const rowLines = Math.max(1, ...cellLineCounts);
+          const rowHeight = 16 + (rowLines - 1) * 12 + 4;
+          ensureSpace(rowHeight);
           const rowY = cursorY;
           cells.forEach((cell, ci) => {
             const text = cell.textContent.replace(/\s+/g, ' ').trim();
-            const lines = wrapText(text, fontRegular, 10).slice(0, 3); // cap lines per cell to keep table rows aligned
+            const lines = wrapText(text, fontRegular, 10, cellTextWidth).slice(0, 3); // cap lines per cell to keep table rows aligned
             lines.forEach((line, li) => {
-              page.drawText(line, { x: MARGIN + ci*colWidth + 3, y: rowY - 12 - li*12, size: 10, font: fontRegular, color: rgb(0.05,0.06,0.1) });
+              page.drawText(line, { x: MARGIN + ci*colWidth + cellPadding, y: rowY - 12 - li*12, size: 10, font: fontRegular, color: rgb(0.05,0.06,0.1) });
             });
           });
-          cursorY -= 16 + Math.max(0, ...cells.map(c => Math.min(3, wrapText(c.textContent, fontRegular, 10).length)-1)) * 12;
-          cursorY -= 4;
+          drawHLine(rowY);
+          drawVLines(rowY, rowY - rowHeight);
+          cursorY -= rowHeight;
         }
+        drawHLine(cursorY); // closing line under the last row
         cursorY -= 8;
         return;
       }
@@ -5780,7 +7113,16 @@ if (document.getElementById('upsDrop')){
     }catch(err){
       if (err && err.cancelled){ toast('Cancelled.'); }
       else{
-        toast('Upscaling failed: ' + ((err && err.message) || 'please try a smaller image or a different browser.'), 'err');
+        // A script/model-load failure surfaces the raw CDN URL in
+        // err.message (e.g. "Failed to load https://cdn.jsdelivr.net/...")
+        // -- meaningless and alarming to a non-technical user. Detect that
+        // specific failure shape and show the same clean, actionable
+        // message the other AI tools already use, instead of leaking
+        // internal infrastructure details.
+        const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
+        toast(isLoadFailure
+          ? 'Could not load the upscaling engine — check your connection and try again.'
+          : 'Upscaling failed: ' + ((err && err.message) || 'please try a smaller image or a different browser.'), 'err');
       }
     }finally{
       setLoading(btn, false, 'AI Upscale');
@@ -6018,7 +7360,12 @@ if (document.getElementById('ocrDrop')){
         }
       }
     }catch(err){
-      if (!ocrCancelled) toast('OCR failed: ' + ((err && err.message) || 'please try a different file.'), 'err');
+      if (!ocrCancelled){
+        const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
+        toast(isLoadFailure
+          ? 'Could not load the OCR engine — check your connection and try again.'
+          : 'OCR failed: ' + ((err && err.message) || 'please try a different file.'), 'err');
+      }
     }finally{
       if (ocrWorker){ try{ await ocrWorker.terminate(); }catch(e){} ocrWorker = null; }
       setLoading(btn, false, 'Extract Text');
@@ -8932,6 +10279,16 @@ if (document.getElementById('ppDrop')){
   ppPluginEngine.register({ id: 'exportPng', category: 'more', name: 'Download PNG', kind: 'action', activate: () => exportPp('png') });
   ppPluginEngine.register({ id: 'exportJpeg', category: 'more', name: 'Download JPEG', kind: 'action', activate: () => exportPp('jpeg') });
   document.getElementById('ppDownloadPngBtn').onclick = () => ppPluginEngine.activate('exportPng');
+  // The buttons above live inside the collapsed "More" accordion, which is
+  // not open by default -- on mobile (where #ppTopAppBar is the only chrome
+  // that's always on-screen regardless of which accordion/tab is active),
+  // that meant the single most important action in the whole tool, actually
+  // getting your photo, had no visible entry point unless a user happened
+  // to expand "More" specifically. This sticky top-bar button is a second,
+  // always-reachable entry point to the exact same export, not a
+  // replacement for the one inside "More".
+  const ppTopDownloadBtn = document.getElementById('ppTopDownloadBtn');
+  if (ppTopDownloadBtn) ppTopDownloadBtn.onclick = () => ppPluginEngine.activate('exportPng');
   document.getElementById('ppDownloadJpgBtn').onclick = () => ppPluginEngine.activate('exportJpeg');
   function exportPp(format){
     const canvas = document.getElementById('ppPreviewCanvas');
@@ -16977,17 +18334,29 @@ if (document.getElementById('epeDrop')){
       mask.close && mask.close();
       const subjectFrac = subjectPixels/(w*h);
       const areaImplausible = subjectFrac < 0.02 || subjectFrac > 0.98;
+      const manualRow = document.getElementById('epeManualBgRow');
+      const manualText = document.getElementById('epeManualBgText');
       if (areaImplausible){
         statusEl.textContent = 'AI could not confidently separate the product.';
-        document.getElementById('epeManualBgRow').classList.remove('hidden');
+        manualText.textContent = 'Use the manual brush tools below (Retouch section) to erase or restore the background by hand.';
+        manualRow.classList.remove('hidden');
       } else {
         epeEraseMask = newMask;
         epeProcessedCanvasCache = null; // force recompute
         statusEl.textContent = 'Background removed.';
+        // The AI recognizes general object categories (people, products,
+        // vehicles, etc.) -- it has no "handwriting" or "stray mark"
+        // category, so pen marks, price stickers, or watermarks near the
+        // product commonly survive this pass untouched. Surfacing the
+        // manual eraser here (not just on failure) is how those get
+        // cleaned up, rather than silently leaving them in the result.
+        manualText.textContent = 'See any leftover spots, pen marks, or writing the AI didn\u2019t catch? Use the manual Erase brush below (Retouch section) to clean those up by hand.';
+        manualRow.classList.remove('hidden');
         renderEpeAll(); epePushHistory();
       }
     }catch(err){
       statusEl.textContent = 'AI background removal couldn\u2019t load right now. Use the manual eraser below instead.';
+      document.getElementById('epeManualBgText').textContent = 'Use the manual brush tools below (Retouch section) to erase or restore the background by hand.';
       document.getElementById('epeManualBgRow').classList.remove('hidden');
     } finally {
       setLoading(btn, false);
@@ -18046,7 +19415,7 @@ if (document.getElementById('epeDrop')){
   /* ---------- Export: the exact same renderEpeArtboard() used for the
      live preview, called with a fresh canvas -- one render pipeline,
      not a second implementation ---------- */
-  document.getElementById('epeDownloadBtn').onclick = () => {
+  document.getElementById('epeDownloadBtn').onclick = async () => {
     if (!epeSourceImg) return;
     if (typeof epeRunProjectHealthCheck === 'function'){
       const health = epeRunProjectHealthCheck();
@@ -18057,6 +19426,45 @@ if (document.getElementById('epeDrop')){
     renderEpeArtboard(exportCanvas);
     const tRender = performance.now();
     const format = document.getElementById('epeExportFormat').value;
+
+    if (format === 'pdf'){
+      // Single-page PDF sized 1:1 to the artboard (in points), embedding a
+      // PNG so transparency (e.g. a background removed with the AI or
+      // manual eraser) is preserved via pdf-lib's SMask support -- same
+      // embedPng() pattern already used by Image-to-PDF, not a second
+      // implementation.
+      const btn = document.getElementById('epeDownloadBtn');
+      setLoading(btn, true);
+      try{
+        const pngBlob = await new Promise((resolve, reject) => {
+          exportCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('Could not render this design.')), 'image/png');
+        });
+        const bytes = new Uint8Array(await pngBlob.arrayBuffer());
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const embedded = await pdfDoc.embedPng(bytes);
+        const page = pdfDoc.addPage([exportCanvas.width, exportCanvas.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: exportCanvas.width, height: exportCanvas.height });
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        const tEncode = performance.now();
+        downloadBlob(blob, 'product-photo.pdf');
+        const totalMs = tEncode - t0;
+        const uncompressedBytes = exportCanvas.width*exportCanvas.height*4;
+        if (typeof epeRecordOperation === 'function'){
+          epeRecordOperation('export_pdf', totalMs, { 'Canvas render': tRender-t0, 'Encode': tEncode-tRender },
+            { fileSizeBytes: blob.size, uncompressedBytes, compressionRatio: uncompressedBytes/blob.size, format: 'pdf' });
+          if (typeof epeRenderExportAnalytics === 'function') epeRenderExportAnalytics();
+        }
+        toast('PDF created.');
+      }catch(err){
+        console.error('Ecommerce Editor PDF export failed:', err);
+        toast(err.message || 'Could not export as PDF.', 'err');
+      }
+      setLoading(btn, false);
+      return;
+    }
+
     const ext = format === 'jpeg' ? 'jpg' : format;
     exportCanvas.toBlob((blob) => {
       if (!blob){ toast('Could not export \u2014 try a different format.', 'err'); return; }
@@ -24318,502 +25726,149 @@ if (document.getElementById('epeDrop')){
   });
 }
 
-/* ============ WORD COUNTER (word-counter.html) ============ */
-if (document.getElementById('wcText')){
-  const wcText = document.getElementById('wcText');
-  const wcStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
+/* ============ IMAGE FORMAT CONVERTER (image-format-converter.html) ============
+   Reuses the shared loadImageFromFile() / canvasToBlobAsync() helpers (see
+   the comment above Image Compress's own loadImageWithUrl() for exactly why
+   this tool must NEVER redeclare a function named loadImageFromFile at
+   block/top level -- doing so previously shadowed the shared one and broke
+   five other image tools). Every identifier here uses the ifc prefix,
+   verified unused anywhere else in this file before this tool was built. */
+if (document.getElementById('ifcDrop')){
+  const IFC_MAX_FILE_BYTES = 50 * 1024 * 1024;
+  const IFC_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const IFC_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+  const IFC_LABEL = { 'image/png': 'PNG', 'image/jpeg': 'JPG', 'image/webp': 'WebP' };
 
-  function wcCountWords(text){
-    const t = text.trim();
-    return t === '' ? 0 : t.split(/\s+/).length;
+  let ifcFile = null;
+  let ifcSourceType = null;
+  let ifcTargetType = 'image/png';
+  let ifcResultBlob = null;
+  let ifcOrigUrl = null;
+  let ifcConvUrl = null;
+
+  function ifcSetProgress(pct, label){
+    const wrap = document.getElementById('ifcProgressWrap');
+    wrap.classList.remove('hidden');
+    document.getElementById('ifcProgressFill').style.width = pct + '%';
+    document.getElementById('ifcProgressLabel').textContent = label;
   }
-  function wcCountSentences(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    const parts = t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean);
-    return parts.length;
-  }
-  function wcCountParagraphs(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
-  }
-  function wcFormatTime(words, wpm){
-    const mins = words / wpm;
-    if (words === 0) return '0 min';
-    if (mins < 1) return '< 1 min';
-    return Math.round(mins) + ' min';
-  }
-  function wcTopKeywords(text, limit){
-    const counts = {};
-    const words = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
-    for (const w of words){
-      if (w.length < 3 || wcStopwords.has(w)) continue;
-      counts[w] = (counts[w] || 0) + 1;
-    }
-    return Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, limit);
+  function ifcHideProgress(){
+    document.getElementById('ifcProgressWrap').classList.add('hidden');
+    document.getElementById('ifcProgressFill').style.width = '0%';
   }
 
-  function wcUpdate(){
-    const text = wcText.value;
-    const chars = Array.from(text).length;
-    const charsNoSpaces = Array.from(text.replace(/\s/g, '')).length;
-    const words = wcCountWords(text);
-
-    document.getElementById('wcWords').textContent = words.toLocaleString();
-    document.getElementById('wcChars').textContent = chars.toLocaleString();
-    document.getElementById('wcCharsNoSpaces').textContent = charsNoSpaces.toLocaleString();
-    document.getElementById('wcSentences').textContent = wcCountSentences(text).toLocaleString();
-    document.getElementById('wcParagraphs').textContent = wcCountParagraphs(text).toLocaleString();
-    document.getElementById('wcReadingTime').textContent = wcFormatTime(words, 225);
-    document.getElementById('wcSpeakingTime').textContent = wcFormatTime(words, 140);
-
-    const limit = parseInt(document.getElementById('wcLimitSelect').value, 10);
-    const limitBox = document.getElementById('wcLimitResult');
-    if (limit > 0){
-      const remaining = limit - chars;
-      limitBox.classList.remove('hidden');
-      if (remaining < 0){
-        limitBox.style.background = 'color-mix(in srgb, var(--err) 14%, transparent)';
-        limitBox.style.color = 'var(--err-solid)';
-        limitBox.textContent = Math.abs(remaining).toLocaleString() + ' characters over the limit';
-      } else {
-        limitBox.style.background = 'color-mix(in srgb, var(--ok) 14%, transparent)';
-        limitBox.style.color = 'var(--ok-solid)';
-        limitBox.textContent = remaining.toLocaleString() + ' characters left';
-      }
-    } else {
-      limitBox.classList.add('hidden');
-    }
-
-    const kwBox = document.getElementById('wcKeywordsBox');
-    const kwList = document.getElementById('wcKeywordsList');
-    const top = wcTopKeywords(text, 5);
-    if (top.length){
-      kwBox.classList.remove('hidden');
-      kwList.innerHTML = top.map(([w,c]) =>
-        `<span style="background:var(--bg2);border:1px solid var(--card-border);border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;">${w} <span style="color:var(--ink-soft);">(${c})</span></span>`
-      ).join('');
-    } else {
-      kwBox.classList.add('hidden');
-    }
+  function ifcSelectFormat(type){
+    ifcTargetType = type;
+    document.querySelectorAll('.ifc-format-toggle button').forEach(b => {
+      b.classList.toggle('active', b.dataset.format === type);
+    });
+    const showQuality = (type === 'image/jpeg' || type === 'image/webp');
+    document.getElementById('ifcQualityRow').classList.toggle('hidden', !showQuality);
+    document.getElementById('ifcTransparencyNote').classList.toggle('hidden', type !== 'image/jpeg');
   }
 
-  wcText.addEventListener('input', wcUpdate);
-  document.getElementById('wcLimitSelect').addEventListener('change', wcUpdate);
-
-  document.getElementById('wcUpperBtn').onclick = () => { wcText.value = wcText.value.toUpperCase(); wcUpdate(); };
-  document.getElementById('wcLowerBtn').onclick = () => { wcText.value = wcText.value.toLowerCase(); wcUpdate(); };
-  document.getElementById('wcTitleBtn').onclick = () => {
-    wcText.value = wcText.value.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    wcUpdate();
-  };
-  document.getElementById('wcSentenceBtn').onclick = () => {
-    const lower = wcText.value.toLowerCase();
-    wcText.value = lower.replace(/(^\s*\w|[.!?]\s+\w)/g, c => c.toUpperCase());
-    wcUpdate();
-  };
-
-  document.getElementById('wcCopyBtn').onclick = () => {
-    if (!wcText.value){ toast('Nothing to copy yet.', 'err'); return; }
-    copyToClipboard(wcText.value).then(() => toast('Text copied to clipboard.')).catch(() => toast('Could not copy — try selecting the text manually.', 'err'));
-  };
-  document.getElementById('wcClearBtn').onclick = () => { wcText.value = ''; wcUpdate(); wcText.focus(); };
-
-  document.getElementById('wcFileInput').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.txt')){ toast('Please choose a .txt file.', 'err'); e.target.value=''; return; }
-    const reader = new FileReader();
-    reader.onload = () => { wcText.value = reader.result; wcUpdate(); };
-    reader.onerror = () => toast('Could not read that file.', 'err');
-    reader.readAsText(file);
-    e.target.value = '';
+  document.querySelectorAll('.ifc-format-toggle button').forEach(btn => {
+    btn.onclick = () => { if (!btn.disabled) ifcSelectFormat(btn.dataset.format); };
   });
 
-  wcUpdate();
-}
+  document.getElementById('ifcQualitySlider').oninput = (e) => {
+    document.getElementById('ifcQualityVal').textContent = e.target.value;
+  };
 
-/* ============ KEYWORD DENSITY CHECKER (keyword-density-checker.html) ============ */
-if (document.getElementById('keywordDensityText')){
-  const kdStopwords = new Set(['a','an','the','and','or','but','if','of','to','in','on','at','for','with','by','is','are','was','were','be','been','being','it','its','this','that','these','those','as','from','into','than','then','so','not','no','do','does','did','has','have','had','i','you','he','she','we','they','my','your','his','her','our','their']);
-
-  function kdCountWords(text){
-    const t = text.trim();
-    return t === '' ? 0 : t.split(/\s+/).length;
-  }
-  function kdCountSentences(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean).length;
-  }
-  function kdCountParagraphs(text){
-    const t = text.trim();
-    if (t === '') return 0;
-    return t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).length;
-  }
-
-  function kdUpdateStats(){
-    const text = document.getElementById('keywordDensityText').value;
-    document.getElementById('keywordDensityWordCount').textContent = kdCountWords(text).toLocaleString();
-    document.getElementById('keywordDensityCharCount').textContent = Array.from(text).length.toLocaleString();
-    document.getElementById('keywordDensityCharCountNoSpaces').textContent = Array.from(text.replace(/\s/g,'')).length.toLocaleString();
-    document.getElementById('keywordDensitySentenceCount').textContent = kdCountSentences(text).toLocaleString();
-    document.getElementById('keywordDensityParagraphCount').textContent = kdCountParagraphs(text).toLocaleString();
-  }
-  document.getElementById('keywordDensityText').addEventListener('input', kdUpdateStats);
-
-  document.getElementById('keywordDensityAnalyzeBtn').onclick = () => {
-    const text = document.getElementById('keywordDensityText').value;
-    const resultsBox = document.getElementById('keywordDensityResults');
-    if (!text.trim()){
-      toast('Paste some content first.', 'err');
-      resultsBox.innerHTML = '';
+  setupDropZone('ifcDrop','ifcInput', async (files) => {
+    const f = files.find(f => IFC_ACCEPTED_TYPES.includes(f.type));
+    if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+    if (f.size > IFC_MAX_FILE_BYTES){
+      toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB. Try a smaller file.`, 'err');
       return;
     }
-    const totalWords = kdCountWords(text);
-    const wordsLower = (text.toLowerCase().match(/[a-z0-9']+/g) || []);
+    ifcFile = f;
+    ifcSourceType = f.type;
+    ifcResultBlob = null;
 
-    // target keyword density (supports multi-word phrases, matched as a
-    // literal substring on word boundaries — case-insensitive)
-    const target = document.getElementById('keywordDensityTargetKeyword').value.trim();
-    let targetHtml = '';
-    if (target){
-      const escaped = target.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp('\\b' + escaped + '\\b', 'gi');
-      const matches = text.match(re) || [];
-      const density = totalWords ? ((matches.length / totalWords) * 100) : 0;
-      targetHtml = `
-        <div style="margin-bottom:16px;padding:14px;background:var(--card);border-radius:12px;border:1px solid var(--card-border);">
-          <span style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;">Target keyword: "${target}"</span>
-          <span style="font-size:20px;font-weight:800;">${matches.length} occurrence${matches.length===1?'':'s'} &middot; ${density.toFixed(2)}% density</span>
-        </div>`;
-    }
+    document.getElementById('ifcConvertBtn').disabled = false;
+    document.getElementById('ifcDownloadBtn').classList.add('hidden');
+    document.getElementById('ifcCompareBox').classList.add('hidden');
+    ifcHideProgress();
 
-    // top keywords (single words, stopwords filtered) with density %
-    const counts = {};
-    for (const w of wordsLower){
-      if (w.length < 3 || kdStopwords.has(w)) continue;
-      counts[w] = (counts[w] || 0) + 1;
-    }
-    const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 20);
-    const rows = top.map(([w,c]) => {
-      const density = totalWords ? ((c/totalWords)*100).toFixed(2) : '0.00';
-      return `<div class="row" style="justify-content:space-between;margin-top:8px;padding:8px 12px;background:var(--card);border-radius:10px;border:1px solid var(--card-border);">
-        <span style="font-weight:600;">${w}</span>
-        <span style="color:var(--ink-soft);font-size:13px;">${c}× &middot; ${density}%</span>
-      </div>`;
-    }).join('');
+    // A source-format button converting to itself is a pointless no-op --
+    // disable just that one button rather than blocking the whole flow.
+    document.querySelectorAll('.ifc-format-toggle button').forEach(b => {
+      b.disabled = (b.dataset.format === ifcSourceType);
+    });
+    // Smart default: pick the most common real-world target for this source
+    // (PNG -> JPG to shrink/flatten, JPG/WEBP -> PNG as a safe default).
+    const smartDefault = ifcSourceType === 'image/png' ? 'image/jpeg' : 'image/png';
+    ifcSelectFormat(smartDefault);
+    document.getElementById('ifcFormatRow').classList.remove('hidden');
 
-    resultsBox.innerHTML = targetHtml +
-      `<span class="field-label" style="margin-top:0;">Top Keywords</span>` +
-      (rows || '<p style="font-size:13px;color:var(--ink-soft);">No repeated keywords found.</p>');
-    kdUpdateStats();
-  };
-
-  document.getElementById('keywordDensityClearBtn').onclick = () => {
-    document.getElementById('keywordDensityText').value = '';
-    document.getElementById('keywordDensityTargetKeyword').value = '';
-    document.getElementById('keywordDensityResults').innerHTML = '';
-    kdUpdateStats();
-  };
-
-  kdUpdateStats();
-}
-
-/* ============ PROTECT PDF (protect-pdf.html) ============
-   Real PDF password encryption. pdf-lib (already loaded on every page, see
-   the <script> tags in <head>) has NO encryption support of its own -- this
-   is confirmed directly on its GitHub repo (github.com/Hopding/pdf-lib,
-   issue #1680: calling pdfDoc.encrypt(...) throws "not a function"; and
-   pdf-lib cannot even load an already-encrypted file without the
-   ignoreEncryption flag, which still leaves the content streams unusable).
-   So this block loads a small, purpose-built companion library at runtime
-   via a dynamic import() from jsDelivr's ESM CDN -- the standard way to
-   consume an npm-only package from a classic (non-module) <script>, without
-   changing how the rest of this file works. That library implements real
-   AES-256 / RC4-128 PDF encryption (ISO 32000-2 Algorithms 2.B/8/9/10) using
-   the browser's native Web Crypto API -- no custom cryptography is
-   implemented here. */
-if (document.getElementById('pprDrop')){
-  let pprFile = null;
-  let pprResultBlob = null;
-
-  setupDropZone('pprDrop','pprInput', async (files) => {
-    const f = files.find(f => f.type === 'application/pdf');
-    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
-    pprFile = f;
-    pprResultBlob = null;
-    document.getElementById('pprFileName').textContent = f.name;
-    document.getElementById('pprFileSize').textContent = fmtBytes(f.size);
-    document.getElementById('pprPageCount').textContent = '';
-    document.getElementById('pprStage').classList.remove('hidden');
-    document.getElementById('pprResultNote').textContent = '';
-    document.getElementById('pprDownloadRow').classList.add('hidden');
-
-    // Detect encryption (and get page count) via pdf-lib itself -- loading
-    // WITHOUT ignoreEncryption throws a specific error type for encrypted
-    // files, which is a reliable, already-available way to detect this
-    // without needing the separate encryption library just to check.
-    const alreadyBox = document.getElementById('pprAlreadyEncrypted');
-    const formArea = document.getElementById('pprFormArea');
-    const btn = document.getElementById('pprProtectBtn');
-    try{
-      const { PDFDocument } = PDFLib;
-      const bytes = await f.arrayBuffer();
-      const doc = await PDFDocument.load(bytes);
-      document.getElementById('pprPageCount').textContent = doc.getPageCount() + ' page' + (doc.getPageCount()!==1?'s':'');
-      alreadyBox.classList.add('hidden');
-      formArea.classList.remove('hidden');
-      // Don't blindly enable here -- defer to the real password validation
-      // (length + confirm-match), which runs on every keystroke too. Without
-      // this, the button was enabling the instant a valid PDF loaded, before
-      // any password had been typed at all.
-      pprValidate();
-    }catch(err){
-      if (String(err && err.name) === 'EncryptedPDFError' || /encrypted/i.test(String(err && err.message))){
-        alreadyBox.classList.remove('hidden');
-        formArea.classList.add('hidden');
-        btn.disabled = true;
-      } else {
-        toast('This file doesn\'t look like a valid PDF.', 'err');
-        document.getElementById('pprStage').classList.add('hidden');
-      }
-    }
+    if (ifcOrigUrl) URL.revokeObjectURL(ifcOrigUrl);
+    ifcOrigUrl = URL.createObjectURL(f);
+    document.getElementById('ifcOrigPreview').src = ifcOrigUrl;
+    document.getElementById('ifcOrigSize').textContent = fmtBytes(f.size) + ' · ' + IFC_LABEL[ifcSourceType];
   });
 
-  // Show/hide password
-  document.getElementById('pprToggleShow1').onclick = (e) => {
-    const inp = document.getElementById('pprUserPassword');
-    const showing = inp.type === 'text';
-    inp.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
-  };
-
-  document.getElementById('pprSameAsUser').addEventListener('change', (e) => {
-    document.getElementById('pprOwnerPassword').classList.toggle('hidden', e.target.checked);
-  });
-
-  document.querySelectorAll('.ppr-algo-toggle button').forEach(b => {
-    b.onclick = () => {
-      document.querySelectorAll('.ppr-algo-toggle button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-    };
-  });
-
-  // Simple, honest strength heuristic -- length plus character variety, not
-  // a claim of cryptographic entropy measurement.
-  function pprStrength(pw){
-    if (!pw) return { pct: 0, label: 'Enter a password', color: 'var(--err-solid)' };
-    let score = 0;
-    if (pw.length >= 8) score++;
-    if (pw.length >= 12) score++;
-    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
-    if (/[0-9]/.test(pw)) score++;
-    if (/[^A-Za-z0-9]/.test(pw)) score++;
-    if (pw.length < 4) return { pct: 15, label: 'Too short', color: 'var(--err-solid)' };
-    if (score <= 1) return { pct: 30, label: 'Weak', color: 'var(--err-solid)' };
-    if (score <= 3) return { pct: 60, label: 'Okay', color: 'var(--warn-solid)' };
-    return { pct: 100, label: 'Strong', color: 'var(--ok-solid)' };
-  }
-  function pprUpdateStrength(){
-    const pw = document.getElementById('pprUserPassword').value;
-    const s = pprStrength(pw);
-    document.getElementById('pprStrengthBar').style.width = s.pct + '%';
-    document.getElementById('pprStrengthBar').style.background = s.color;
-    document.getElementById('pprStrengthLabel').textContent = s.label;
-    pprValidate();
-  }
-  function pprValidate(){
-    const pw = document.getElementById('pprUserPassword').value;
-    const confirm = document.getElementById('pprUserPasswordConfirm').value;
-    const mismatchBox = document.getElementById('pprMismatch');
-    const mismatch = confirm.length > 0 && pw !== confirm;
-    mismatchBox.classList.toggle('hidden', !mismatch);
-    document.getElementById('pprProtectBtn').disabled = !pprFile || pw.length < 4 || mismatch;
-  }
-  document.getElementById('pprUserPassword').addEventListener('input', pprUpdateStrength);
-  document.getElementById('pprUserPasswordConfirm').addEventListener('input', pprValidate);
-
-  function setPpProgress(pct, label){
-    const wrap = document.getElementById('pprProgressWrap');
-    wrap.classList.remove('hidden');
-    document.getElementById('pprProgressFill').style.width = pct + '%';
-    document.getElementById('pprProgressLabel').textContent = label;
-  }
-
-  document.getElementById('pprProtectBtn').onclick = async () => {
-    if (!pprFile) return;
-    const btn = document.getElementById('pprProtectBtn');
-    const userPassword = document.getElementById('pprUserPassword').value;
-    const sameAsUser = document.getElementById('pprSameAsUser').checked;
-    const ownerPassword = sameAsUser ? userPassword : (document.getElementById('pprOwnerPassword').value || userPassword);
-    const algo = document.querySelector('.ppr-algo-toggle button.active').dataset.algo;
-    const permissions = {
-      printing: document.getElementById('pprAllowPrint').checked,
-      copying: document.getElementById('pprAllowCopy').checked,
-      modifying: document.getElementById('pprAllowModify').checked,
-      annotating: document.getElementById('pprAllowAnnotate').checked,
-    };
-
+  document.getElementById('ifcConvertBtn').onclick = async () => {
+    const btn = document.getElementById('ifcConvertBtn');
+    if (!ifcFile) return;
+    if (ifcTargetType === ifcSourceType){
+      toast('Choose a different format to convert to.', 'err');
+      return;
+    }
     setLoading(btn, true);
-    setPpProgress(10, 'Loading encryption module…');
+    ifcSetProgress(15, 'Reading image…');
     try{
-      const { encryptPDF } = await import('https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-encrypt/+esm');
-      setPpProgress(35, 'Reading PDF…');
-      const bytes = new Uint8Array(await pprFile.arrayBuffer());
       await nextFrame();
+      const quality = parseInt(document.getElementById('ifcQualitySlider').value, 10) / 100;
 
-      setPpProgress(55, 'Encrypting…');
-      let encrypted;
-      try{
-        // Best-effort extended options (algorithm choice, permissions) --
-        // if this exact shape isn't what the library expects, fall back to
-        // the minimal, documented call so the core feature (password
-        // protection) still succeeds rather than failing on an option.
-        encrypted = await encryptPDF(bytes, userPassword, ownerPassword, { algorithm: algo, permissions });
-      }catch(optErr){
-        encrypted = await encryptPDF(bytes, userPassword, ownerPassword);
+      ifcSetProgress(40, 'Decoding image…');
+      await nextFrame();
+      const img = await loadImageFromFile(ifcFile);
+      const width = img.naturalWidth, height = img.naturalHeight;
+      if (!width || !height){
+        throw new Error('This file could not be read as an image. Try a JPG, PNG, or WEBP file.');
       }
 
-      setPpProgress(90, 'Finishing…');
+      ifcSetProgress(65, 'Converting…');
       await nextFrame();
-      pprResultBlob = new Blob([encrypted], { type: 'application/pdf' });
-      setPpProgress(100, 'Done.');
-
-      document.getElementById('pprResultNote').textContent = 'Your PDF is protected. Anyone opening it will be asked for the password.';
-      document.getElementById('pprDownloadRow').classList.remove('hidden');
-      toast('PDF protected.');
-    }catch(err){
-      console.error('Protect PDF failed:', err);
-      document.getElementById('pprResultNote').textContent = 'Something went wrong while encrypting this PDF. Please try again.';
-      toast('Could not protect this PDF.', 'err');
-    }
-    setLoading(btn, false, 'Protect PDF');
-    document.getElementById('pprProgressWrap').classList.add('hidden');
-  };
-
-  document.getElementById('pprDownloadBtn').onclick = () => {
-    if (!pprResultBlob) return;
-    const name = (pprFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-protected.pdf';
-    downloadBlob(pprResultBlob, name);
-    toast('Downloaded.');
-  };
-}
-
-/* ============ UNLOCK PDF (unlock-pdf.html) ============
-   Companion to Protect PDF -- see that block's comment for why a separate
-   library (not pdf-lib) is loaded at runtime. This ONLY removes encryption
-   given the correct existing password; it never attempts to guess, brute
-   force, or bypass a password the user doesn't provide correctly. */
-if (document.getElementById('upDrop')){
-  let upFile = null;
-  let upResultBlob = null;
-  let upIsEncrypted = true;
-
-  setupDropZone('upDrop','upInput', async (files) => {
-    const f = files.find(f => f.type === 'application/pdf');
-    if (!f){ if (files.length>0) toast('Please select a PDF file.', 'err'); return; }
-    upFile = f;
-    upResultBlob = null;
-    document.getElementById('upFileName').textContent = f.name;
-    document.getElementById('upFileSize').textContent = fmtBytes(f.size);
-    document.getElementById('upStage').classList.remove('hidden');
-    document.getElementById('upResultNote').textContent = '';
-    document.getElementById('upDownloadRow').classList.add('hidden');
-    document.getElementById('upWrongPassword').classList.add('hidden');
-
-    const notEncBox = document.getElementById('upNotEncrypted');
-    const formArea = document.getElementById('upFormArea');
-    try{
-      const { PDFDocument } = PDFLib;
-      const bytes = await f.arrayBuffer();
-      await PDFDocument.load(bytes); // succeeds only if NOT encrypted
-      upIsEncrypted = false;
-      notEncBox.classList.remove('hidden');
-      formArea.classList.add('hidden');
-      document.getElementById('upUnlockBtn').disabled = true;
-    }catch(err){
-      if (String(err && err.name) === 'EncryptedPDFError' || /encrypted/i.test(String(err && err.message))){
-        upIsEncrypted = true;
-        notEncBox.classList.add('hidden');
-        formArea.classList.remove('hidden');
-      } else {
-        toast('This file doesn\'t look like a valid PDF.', 'err');
-        document.getElementById('upStage').classList.add('hidden');
-        return;
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ifcTargetType === 'image/jpeg'){
+        // JPG has no alpha channel -- paint white first so transparent
+        // areas come out white instead of black (canvas's default).
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
       }
-    }
-  });
+      ctx.drawImage(img, 0, 0);
 
-  document.getElementById('upToggleShow').onclick = (e) => {
-    const inp = document.getElementById('upPassword');
-    const showing = inp.type === 'text';
-    inp.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
-  };
-  document.getElementById('upPassword').addEventListener('input', () => {
-    document.getElementById('upUnlockBtn').disabled = !upFile || !upIsEncrypted || document.getElementById('upPassword').value.length === 0;
-    document.getElementById('upWrongPassword').classList.add('hidden');
-  });
-
-  function setUpProgress(pct, label){
-    const wrap = document.getElementById('upProgressWrap');
-    wrap.classList.remove('hidden');
-    document.getElementById('upProgressFill').style.width = pct + '%';
-    document.getElementById('upProgressLabel').textContent = label;
-  }
-
-  document.getElementById('upUnlockBtn').onclick = async () => {
-    if (!upFile) return;
-    const btn = document.getElementById('upUnlockBtn');
-    const password = document.getElementById('upPassword').value;
-    document.getElementById('upWrongPassword').classList.add('hidden');
-
-    setLoading(btn, true);
-    setUpProgress(10, 'Loading decryption module…');
-    try{
-      const { decryptPDF } = await import('https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-decrypt/+esm');
-      setUpProgress(35, 'Reading PDF…');
-      const bytes = new Uint8Array(await upFile.arrayBuffer());
+      ifcSetProgress(85, 'Encoding…');
       await nextFrame();
+      const blob = ifcTargetType === 'image/png'
+        ? await canvasToBlobAsync(canvas, 'image/png')
+        : await canvasToBlobAsync(canvas, ifcTargetType, quality);
 
-      setUpProgress(55, 'Decrypting…');
-      let decrypted;
-      try{
-        decrypted = await decryptPDF(bytes, password);
-      }catch(pwErr){
-        setLoading(btn, false, 'Unlock PDF');
-        document.getElementById('upProgressWrap').classList.add('hidden');
-        document.getElementById('upWrongPassword').classList.remove('hidden');
-        document.getElementById('upWrongPassword').textContent =
-          /password/i.test(String(pwErr && pwErr.message)) || /decrypt/i.test(String(pwErr && pwErr.message))
-            ? 'Incorrect password — please try again.'
-            : 'Could not unlock this PDF — please check the password and try again.';
-        return;
-      }
-
-      setUpProgress(90, 'Finishing…');
-      await nextFrame();
-      upResultBlob = new Blob([decrypted], { type: 'application/pdf' });
-      setUpProgress(100, 'Done.');
-
-      document.getElementById('upResultNote').textContent = 'Password removed. This PDF will now open without a password.';
-      document.getElementById('upDownloadRow').classList.remove('hidden');
-      toast('PDF unlocked.');
+      ifcResultBlob = blob;
+      if (ifcConvUrl) URL.revokeObjectURL(ifcConvUrl);
+      ifcConvUrl = URL.createObjectURL(blob);
+      document.getElementById('ifcConvPreview').src = ifcConvUrl;
+      document.getElementById('ifcConvSize').textContent = fmtBytes(blob.size) + ' · ' + IFC_LABEL[ifcTargetType];
+      document.getElementById('ifcCompareBox').classList.remove('hidden');
+      document.getElementById('ifcDownloadBtn').classList.remove('hidden');
+      ifcSetProgress(100, 'Done.');
+      toast('Image converted.');
     }catch(err){
-      console.error('Unlock PDF failed:', err);
-      document.getElementById('upResultNote').textContent = 'Something went wrong while unlocking this PDF. Please try again.';
-      toast('Could not unlock this PDF.', 'err');
+      console.error('Image Format Converter failed:', err);
+      toast(err.message || 'Could not convert this image.', 'err');
     }
-    setLoading(btn, false, 'Unlock PDF');
-    document.getElementById('upProgressWrap').classList.add('hidden');
+    setLoading(btn, false, 'Convert');
+    ifcHideProgress();
   };
 
-  document.getElementById('upDownloadBtn').onclick = () => {
-    if (!upResultBlob) return;
-    const name = (upFile.name || 'document.pdf').replace(/\.pdf$/i, '') + '-unlocked.pdf';
-    downloadBlob(upResultBlob, name);
+  document.getElementById('ifcDownloadBtn').onclick = () => {
+    if (!ifcResultBlob) return;
+    const base = (ifcFile.name || 'image').replace(/\.[a-z0-9]+$/i, '');
+    downloadBlob(ifcResultBlob, `${base}.${IFC_EXT[ifcTargetType]}`);
     toast('Downloaded.');
   };
 }
