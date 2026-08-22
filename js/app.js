@@ -6133,22 +6133,44 @@ if (document.getElementById('pwDrop')){
     // an independent Python/pdfplumber extraction exactly. ----
     function extractLines(opList){
       let ctm = MTX_IDENTITY; const ctmStack = []; const out = [];
+      let lastPathBBox = null, lastPathCtm = null;
+      let curX = null, curY = null, curMinX = null, curMinY = null, curMaxX = null, curMaxY = null;
+      function extendCurrent(x, y){
+        if (curMinX === null){ curMinX = curMaxX = x; curMinY = curMaxY = y; }
+        else { curMinX = Math.min(curMinX,x); curMaxX = Math.max(curMaxX,x); curMinY = Math.min(curMinY,y); curMaxY = Math.max(curMaxY,y); }
+      }
+      function pushLineFromBBox(bbox, ctmAtPaint){
+        if (!bbox) return;
+        const [minX,minY,maxX,maxY] = bbox;
+        const [x0,y0] = mtxApply(ctmAtPaint, minX, minY);
+        const [x1,y1] = mtxApply(ctmAtPaint, maxX, maxY);
+        out.push({ x0: Math.min(x0,x1), x1: Math.max(x0,x1), y0: Math.min(y0,y1), y1: Math.max(y0,y1) });
+      }
       for (let i = 0; i < opList.fnArray.length; i++){
         const fn = opList.fnArray[i], args = opList.argsArray[i];
         if (fn === OPS.save) ctmStack.push(ctm);
         else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
         else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
+        else if (fn === OPS.moveTo){ curMinX=curMinY=curMaxX=curMaxY=null; if (args) extendCurrent(args[0], args[1]); }
+        else if (fn === OPS.lineTo){ if (args) extendCurrent(args[0], args[1]); }
         else if (fn === OPS.constructPath){
-          const paintType = args[0];
+          const paintType = args && args[0];
           if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke){
-            const bbox = args[2];
-            if (bbox){
-              const [minX,minY,maxX,maxY] = bbox;
-              const [x0,y0] = mtxApply(ctm, minX, minY);
-              const [x1,y1] = mtxApply(ctm, maxX, maxY);
-              out.push({ x0: Math.min(x0,x1), x1: Math.max(x0,x1), y0: Math.min(y0,y1), y1: Math.max(y0,y1) });
-            }
+            // pattern (a): paint type embedded in the same operation
+            pushLineFromBBox(args[2], ctm);
+          } else if (args && args[2] && args[2].length === 4 && typeof args[2][0] === 'number'){
+            // pattern (b): just remember this path's shape; a later,
+            // separate stroke op (if any) will paint it
+            lastPathBBox = args[2];
+            lastPathCtm = ctm;
+          } else if (args && args[1] && args[1].length === 4 && typeof args[1][0] === 'number'){
+            lastPathBBox = args[1];
+            lastPathCtm = ctm;
           }
+        }
+        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke){
+          if (lastPathBBox){ pushLineFromBBox(lastPathBBox, lastPathCtm); lastPathBBox = null; }
+          else if (curMinX !== null){ pushLineFromBBox([curMinX,curMinY,curMaxX,curMaxY], ctm); curMinX=curMinY=curMaxX=curMaxY=null; }
         }
       }
       return out;
@@ -6199,22 +6221,55 @@ if (document.getElementById('pwDrop')){
         if (fn === OPS.save) ctmStack.push(ctm);
         else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
         else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
-        else if (fn === OPS.paintImageXObject){
-          const name = args[0];
+        else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject){
+          const name = args && args[0];
           try {
-            const imgObj = await new Promise((resolve, reject) => {
-              try { page.objs.get(name, resolve); } catch(e){ reject(e); }
-            });
-            if (!imgObj || !imgObj.width || !imgObj.height || !imgObj.data) continue;
-            const [x0,y0] = mtxApply(ctm, 0, 0);
-            const [x1,y1] = mtxApply(ctm, 1, 1);
-            const pngBytes = await rasterToPng(imgObj);
+            let imgObj = null;
+            if (name && page.objs && typeof page.objs.get === 'function'){
+              imgObj = await new Promise((resolve, reject) => {
+                try {
+                  const immediate = page.objs.get(name, resolve);
+                  // pdf.js returns null (not undefined) synchronously when
+                  // the object isn't resolved yet and will invoke the
+                  // callback later -- only treat a genuine object as
+                  // "already available" here, not null/undefined.
+                  if (immediate) resolve(immediate);
+                } catch(e){ reject(e); }
+              });
+            } else if (args && args[0] && typeof args[0] === 'object'){
+              imgObj = args[0]; // inline images sometimes carry the data directly in argsArray
+            }
+            if (!imgObj){
+              console.warn('[PDF to Word] Image object', name, 'resolved to nothing.');
+              continue;
+            }
+            // Different pdf.js builds expose pixel data differently: a raw
+            // typed array (`data`), or a pre-decoded `bitmap` (ImageBitmap
+            // or similar canvas-drawable object).
+            let pngBytes = null;
+            const width = imgObj.width, height = imgObj.height;
+            if (!width || !height){
+              console.warn('[PDF to Word] Image object', name, 'has no width/height. Keys:', Object.keys(imgObj));
+              continue;
+            }
+            if (imgObj.bitmap){
+              pngBytes = await rasterToPngFromBitmap(imgObj.bitmap, width, height);
+            } else if (imgObj.data){
+              pngBytes = await rasterToPng(imgObj);
+            } else {
+              console.warn('[PDF to Word] Image object', name, 'has neither .data nor .bitmap. Keys:', Object.keys(imgObj));
+              continue;
+            }
             if (pngBytes){
+              const [x0,y0] = mtxApply(ctm, 0, 0);
+              const [x1,y1] = mtxApply(ctm, 1, 1);
               images.push({
-                bytes: pngBytes, srcW: imgObj.width, srcH: imgObj.height,
+                bytes: pngBytes, srcW: width, srcH: height,
                 x: Math.min(x0,x1), y: Math.max(y0,y1),
                 dispW: Math.abs(x1-x0), dispH: Math.abs(y1-y0),
               });
+            } else {
+              console.warn('[PDF to Word] Image object', name, 'produced no PNG bytes from either path.');
             }
           } catch(e){
             console.error('[PDF to Word] Failed to extract embedded image', name, '-- skipping it. Error:', e);
@@ -6245,12 +6300,31 @@ if (document.getElementById('pwDrop')){
           imageData.data[j] = data[i]; imageData.data[j+1] = data[i]; imageData.data[j+2] = data[i]; imageData.data[j+3] = 255;
         }
       } else {
+        console.warn('[PDF to Word] Unrecognized pixel format: data.length=', data.length, 'for', width, 'x', height, '=> channels=', channels);
         return null; // unrecognized pixel format -- skip rather than guess
       }
       ctx.putImageData(imageData, 0, 0);
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) return null;
       return new Uint8Array(await blob.arrayBuffer());
+    }
+    // Handles the case where pdf.js hands back a pre-decoded bitmap
+    // (ImageBitmap or similar) instead of a raw pixel-data array -- some
+    // pdf.js builds/versions resolve images this way, particularly for
+    // JPEG-encoded content.
+    async function rasterToPngFromBitmap(bitmap, width, height){
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) return null;
+        return new Uint8Array(await blob.arrayBuffer());
+      } catch(e){
+        console.warn('[PDF to Word] Failed to draw bitmap image to canvas:', e);
+        return null;
+      }
     }
 
 
