@@ -6371,7 +6371,20 @@ if (document.getElementById('pwDrop')){
           const hCount = lines.filter(l => (l.y1-l.y0) < 0.5).length;
           console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
           if (tableRegions.length === 0){
-            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) -> 0 valid tables`);
+            // A near-total detection failure despite thousands of ops means
+            // this PDF's lines aren't drawn as strokes at all (the only
+            // thing this code currently looks for) -- most likely as thin
+            // *filled* rectangles instead (a common alternative technique
+            // for crisp table borders). Build a full operation-type
+            // histogram so the real composition is visible directly,
+            // instead of guessing at another specific pattern blind.
+            const opNames = {};
+            for (const key in OPS) opNames[OPS[key]] = key;
+            const counts = {};
+            for (const fn of opList.fnArray) counts[opNames[fn] || ('op'+fn)] = (counts[opNames[fn] || ('op'+fn)] || 0) + 1;
+            const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 12);
+            console.info('[PDF to Word] page', p, 'full op histogram:', JSON.stringify(counts));
+            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) -> 0 valid tables | top ops: ${top.map(([n,c]) => n+'='+c).join(', ')}`);
           }
         }
         if (imagesSupported) images = await extractImages(page, opList);
