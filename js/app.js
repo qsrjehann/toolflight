@@ -6061,6 +6061,11 @@ if (document.getElementById('pwDrop')){
     box.textContent = msg;
     box.classList.remove('hidden');
   }
+  // Collects any table/image-extraction problems from the most recent PDF to
+  // Word conversion, so they can be shown directly on the page (mobile users
+  // often can't easily get to a browser console) instead of only going to
+  // console.error.
+  let pwLastDiagnostics = [];
 
   document.getElementById('pwCancelBtn').onclick = () => { pwCancelled = true; };
 
@@ -6079,6 +6084,9 @@ if (document.getElementById('pwDrop')){
       }
       if (pwCancelled){ setPwProgress(0,''); document.getElementById('pwProgressWrap').classList.add('hidden'); toast('Cancelled.'); return; }
       document.getElementById('pwResultRow').classList.remove('hidden');
+      if (pwMode === 'p2w' && pwLastDiagnostics.length){
+        showPwError('Converted, but with a note: ' + pwLastDiagnostics.join(' | ') + ' (Everything else converted normally -- please screenshot this message if you report it.)');
+      }
       toast('Conversion complete.');
     }catch(err){
       if (!pwCancelled) showPwError((err && err.message) ? err.message : 'Conversion failed — please try a different file.');
@@ -6099,6 +6107,7 @@ if (document.getElementById('pwDrop')){
   /* ================= PDF -> WORD ================= */
   async function convertPdfToWord(file, onProgress, isCancelled){
     onProgress(5, 'Reading PDF\u2026');
+    pwLastDiagnostics = [];
     const pdfjsLib = await ensurePdfJsPW();
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
@@ -6207,7 +6216,10 @@ if (document.getElementById('pwDrop')){
                 dispW: Math.abs(x1-x0), dispH: Math.abs(y1-y0),
               });
             }
-          } catch(e){ /* skip images that fail to resolve rather than failing the whole conversion */ }
+          } catch(e){
+            console.error('[PDF to Word] Failed to extract embedded image', name, '-- skipping it. Error:', e);
+            pwLastDiagnostics.push(`image extraction: ${e && e.message ? e.message : e}`);
+          }
         }
       }
       return images;
@@ -6278,7 +6290,14 @@ if (document.getElementById('pwDrop')){
           }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
         }
         if (imagesSupported) images = await extractImages(page, opList);
-      } catch(e){ /* if operator-list parsing fails for any reason, fall back to text-only for this page rather than failing the whole conversion */ }
+      } catch(e){
+        // Fall back to text-only for this page rather than failing the whole
+        // conversion -- but surface the real error to the console instead of
+        // swallowing it silently, so a version/API mismatch can actually be
+        // diagnosed instead of just silently producing no tables/images.
+        console.error('[PDF to Word] Table/image extraction failed for page', p, '-- falling back to plain text for this page. Error:', e);
+        pwLastDiagnostics.push(`page ${p} table/image extraction: ${e && e.message ? e.message : e}`);
+      }
 
       pageTextItems.push({ items, links, height: page.view[3], tableRegions, images });
       page.cleanup && page.cleanup();
@@ -6383,7 +6402,7 @@ if (document.getElementById('pwDrop')){
                 height: Math.max(20, Math.round(ev.img.dispH * scale)),
               } }),
             ] }));
-          } catch(e){ /* skip an individual image that fails to embed rather than failing the whole conversion */ }
+          } catch(e){ console.error('[PDF to Word] Failed to embed an extracted image into the document -- skipping it. Error:', e); pwLastDiagnostics.push(`image embed: ${e && e.message ? e.message : e}`); }
           continue;
         }
 
