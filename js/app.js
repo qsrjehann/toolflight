@@ -6362,15 +6362,16 @@ if (document.getElementById('pwDrop')){
             const rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
             return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
           }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
-          // Diagnostic (no exception, just an unexpected zero-result): the
-          // operator list had real drawing content but nothing was
-          // recognized as a stroked line -- most likely means this pdf.js
-          // build's constructPath/OPS encoding doesn't match what this code
-          // expects, which needs to be visible rather than silently
-          // producing a table-free, image-free document.
-          if (lines.length === 0 && opList.fnArray.length > 50){
-            console.warn('[PDF to Word] page', p, '-- operator list has', opList.fnArray.length, 'ops but 0 lines were recognized as stroked paths. Sample fnArray values:', Array.from(new Set(opList.fnArray)).slice(0,20), 'OPS.stroke=', OPS.stroke, 'OPS.constructPath=', OPS.constructPath);
-            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} drawing ops found but 0 recognized as table lines (opStroke=${OPS.stroke}, opConstructPath=${OPS.constructPath})`);
+          // Always-on, detailed pipeline diagnostics (not just for hard
+          // zero-line cases) -- reports exactly how many lines, regions,
+          // and rows/cols were found at each stage, so any future mismatch
+          // is immediately visible instead of requiring another guess-and-
+          // redeploy round.
+          const vCount = lines.filter(l => (l.x1-l.x0) < 0.5).length;
+          const hCount = lines.filter(l => (l.y1-l.y0) < 0.5).length;
+          console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
+          if (tableRegions.length === 0){
+            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} ops -> ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) -> 0 valid tables`);
           }
         }
         if (imagesSupported) images = await extractImages(page, opList);
