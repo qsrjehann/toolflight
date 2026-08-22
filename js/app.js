@@ -6112,7 +6112,7 @@ if (document.getElementById('pwDrop')){
     const bytes = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
     const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun } = docxLib;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle } = docxLib;
     // Defensive: if this docx.js build doesn't expose table/image classes for
     // some reason, degrade to plain paragraphs / skip images rather than
     // throwing and failing the whole conversion.
@@ -6448,6 +6448,8 @@ if (document.getElementById('pwDrop')){
       function buildTableForRegion(region){
         const { colXs, rowYs } = region;
         const rows = [];
+        const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: '444444' };
+        const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
         for (let r = rowYs.length - 2; r >= 0; r--){
           const yTop = rowYs[r+1], yBot = rowYs[r];
           const cells = [];
@@ -6456,11 +6458,15 @@ if (document.getElementById('pwDrop')){
             cells.push(new TableCell({
               children: [new Paragraph({ children: [new TextRun({ text })] })],
               width: { size: Math.round(100/(colXs.length-1)), type: WidthType.PERCENTAGE },
+              borders: cellBorders,
             }));
           }
           rows.push(new TableRow({ children: cells }));
         }
-        return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } });
+        return new Table({
+          rows, width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder },
+        });
       }
       const renderedRegions = new Set();
 
