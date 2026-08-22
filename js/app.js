@@ -6288,8 +6288,25 @@ if (document.getElementById('pwDrop')){
             const rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
             return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
           }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
+          // Diagnostic (no exception, just an unexpected zero-result): the
+          // operator list had real drawing content but nothing was
+          // recognized as a stroked line -- most likely means this pdf.js
+          // build's constructPath/OPS encoding doesn't match what this code
+          // expects, which needs to be visible rather than silently
+          // producing a table-free, image-free document.
+          if (lines.length === 0 && opList.fnArray.length > 50){
+            console.warn('[PDF to Word] page', p, '-- operator list has', opList.fnArray.length, 'ops but 0 lines were recognized as stroked paths. Sample fnArray values:', Array.from(new Set(opList.fnArray)).slice(0,20), 'OPS.stroke=', OPS.stroke, 'OPS.constructPath=', OPS.constructPath);
+            pwLastDiagnostics.push(`page ${p}: ${opList.fnArray.length} drawing ops found but 0 recognized as table lines (opStroke=${OPS.stroke}, opConstructPath=${OPS.constructPath})`);
+          }
         }
         if (imagesSupported) images = await extractImages(page, opList);
+        if (images.length === 0){
+          const imgOpCount = opList.fnArray.filter(fn => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject).length;
+          if (imgOpCount > 0){
+            console.warn('[PDF to Word] page', p, '--', imgOpCount, 'image-paint ops found but 0 images were extracted.');
+            pwLastDiagnostics.push(`page ${p}: ${imgOpCount} image op(s) found but 0 extracted`);
+          }
+        }
       } catch(e){
         // Fall back to text-only for this page rather than failing the whole
         // conversion -- but surface the real error to the console instead of
