@@ -2151,6 +2151,12 @@ if (document.getElementById('aiRemoveDrop')){
   let aiSourceFile = null;  // raw File, kept so a full-resolution bitmap can be
                             // decoded lazily at export time instead of eagerly
                             // on every upload -- see loadImageExifSafe below.
+  // Bumped on every new upload / "New Image" reset. AI segmentation (model
+  // download + inference) can take a while; if the user uploads a different
+  // image or resets before it resolves, a stale result must not overwrite
+  // the editor the user is now looking at. Same pattern as AI Image
+  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
+  let aiGeneration = 0;
   let aiResultCanvas = null;
   // EXIF-orientation-safe image load, used only for this tool's uploads.
   // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
@@ -2260,6 +2266,7 @@ if (document.getElementById('aiRemoveDrop')){
     try{
       aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
+      aiGeneration++; // invalidate any AI-remove run still in flight for the previous image
       document.getElementById('aiRemoveStage').classList.remove('hidden');
       enterAiFullscreen();
       // Show the uploaded image immediately in the SAME canvas that will
@@ -2349,6 +2356,7 @@ if (document.getElementById('aiRemoveDrop')){
     document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
   }
   function resetAiToUpload(){
+    aiGeneration++; // invalidate any AI-remove run still in flight
     document.getElementById('aiRemoveStage').classList.add('hidden');
     exitAiFullscreen();
     document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
@@ -2631,6 +2639,7 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('aiRemoveBtn').onclick = async () => {
     const btn = document.getElementById('aiRemoveBtn');
     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
+    const myGeneration = aiGeneration;
     setLoading(btn, true);
 
     if (bgRemoveMode === 'document'){
@@ -2652,6 +2661,12 @@ if (document.getElementById('aiRemoveDrop')){
         for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
         octx.putImageData(imageData, 0, 0);
 
+        if (myGeneration !== aiGeneration){
+          // A different image was loaded (or the tool was reset) while this
+          // ran -- drop the stale result instead of overwriting the editor.
+          setLoading(btn, false);
+          return;
+        }
         aiResultCanvas = outCanvas;
         initManualEditor(srcCanvas, outCanvas);
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
@@ -2777,6 +2792,12 @@ if (document.getElementById('aiRemoveDrop')){
       const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
       const implausible = areaImplausible || lowConfidence;
 
+      if (myGeneration !== aiGeneration){
+        // A different image was loaded (or the tool was reset) while this
+        // ran -- drop the stale result instead of overwriting the editor.
+        // (categoryMask/confidenceMasks were already closed above.)
+        return;
+      }
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
@@ -2788,6 +2809,12 @@ if (document.getElementById('aiRemoveDrop')){
         toast('Background removed. Refine it below if needed.');
       }
     }catch(err){
+      if (myGeneration !== aiGeneration){
+        // A different image was loaded (or the tool was reset) while this
+        // run was in flight -- don't resurrect the old image via the error
+        // fallback below; just let it fade away.
+        return;
+      }
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
       try{
@@ -5364,6 +5391,13 @@ if (document.getElementById('apeDrop')){
   const APE_MAX_HISTORY = 20;
   let apeFaceLandmarkerPromise = null;
   let apeResultCanvasFullRes = null; // set once "Apply / Export" builds the full-resolution result
+  // Bumped on every new upload / Reset. Live preview involves an async face-
+  // detection model load + a pipeline with several await-yield points, and
+  // full-res export re-runs that pipeline again; if a newer image is loaded
+  // or Reset is clicked while one of those is still in flight, its result
+  // must not land on top of what's now on screen. Same pattern as AI Image
+  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
+  let apeGeneration = 0;
 
   const apeSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, noise:0, smoothing:0 };
   let apeStrength = 100;
@@ -5679,6 +5713,7 @@ if (document.getElementById('apeDrop')){
   });
 
   async function initApeEditor(){
+    apeGeneration++; // invalidate any live-preview/export run still in flight for the previous image
     const ow = apeOriginalImg.naturalWidth, oh = apeOriginalImg.naturalHeight;
     const scale = Math.min(1, APE_MAX_DIM / Math.max(ow, oh));
     const w = Math.round(ow*scale), h = Math.round(oh*scale);
@@ -5720,6 +5755,7 @@ if (document.getElementById('apeDrop')){
 
   async function applyLivePreview(){
     if (!apeWorkCanvas) return;
+    const myGeneration = apeGeneration;
     const controls = apeGetControls();
     const preview = document.createElement('canvas');
     preview.width = apeWorkCanvas.width; preview.height = apeWorkCanvas.height;
@@ -5730,6 +5766,7 @@ if (document.getElementById('apeDrop')){
         document.getElementById('apeModelStatus').textContent = 'Loading face detection model…';
         document.getElementById('apeModelStatus').classList.remove('hidden');
         const landmarker = await ensureFaceLandmarker();
+        if (myGeneration !== apeGeneration) return; // a newer image/reset arrived while the model loaded
         const result = landmarker.detect(preview);
         if (result.faceLandmarks && result.faceLandmarks.length){
           apeFaceLandmarks = result.faceLandmarks[0];
@@ -5744,7 +5781,9 @@ if (document.getElementById('apeDrop')){
       setTimeout(() => document.getElementById('apeModelStatus').classList.add('hidden'), 3500);
     }
 
+    if (myGeneration !== apeGeneration) return; // a newer image was loaded (or Reset was clicked) mid-run
     await runEnhancementPipeline(preview, controls, apeFaceLandmarks, apeSkinMask);
+    if (myGeneration !== apeGeneration) return; // dropped again after the pipeline itself yielded
     apeEditCanvas.getContext('2d').clearRect(0, 0, apeEditCanvas.width, apeEditCanvas.height);
     apeEditCanvas.getContext('2d').drawImage(preview, 0, 0);
   }
@@ -5798,6 +5837,7 @@ if (document.getElementById('apeDrop')){
   };
 
   document.getElementById('apeResetBtn').onclick = () => {
+    apeGeneration++; // invalidate any live-preview run still in flight
     ['apeBrightness','apeContrast','apeSaturation','apeSharpness','apeNoise','apeSmoothing'].forEach(id => {
       document.getElementById(id).value = 0;
       document.getElementById(id + 'Val').textContent = 0;
@@ -5926,6 +5966,7 @@ if (document.getElementById('apeDrop')){
 
   async function exportApe(format){
     if (!apeOriginalImg){ toast('Upload an image first.', 'err'); return; }
+    const myGeneration = apeGeneration;
     const btnId = format === 'png' ? 'apeDownloadPngBtn' : format === 'jpg' ? 'apeDownloadJpgBtn' : 'apeDownloadWebpBtn';
     const btn = document.getElementById(btnId);
     setLoading(btn, true);
@@ -5934,7 +5975,14 @@ if (document.getElementById('apeDrop')){
     progressWrap.classList.remove('hidden');
     try{
       progressLabel.textContent = 'Rebuilding at full resolution…';
-      apeResultCanvasFullRes = await buildFullResResult((msg) => { progressLabel.textContent = msg; });
+      const rebuilt = await buildFullResResult((msg) => { progressLabel.textContent = msg; });
+      if (myGeneration !== apeGeneration){
+        // A different image was loaded (or Reset was clicked) while this
+        // rebuild was in flight -- don't hand the user a download that
+        // doesn't match what's now on screen.
+        return;
+      }
+      apeResultCanvasFullRes = rebuilt;
       const quality = +document.getElementById('apeQuality').value / 100;
       const mime = format === 'png' ? 'image/png' : format === 'jpg' ? 'image/jpeg' : 'image/webp';
       const ext = format === 'jpg' ? 'jpg' : format;
@@ -7303,6 +7351,13 @@ if (document.getElementById('ocrDrop')){
   let ocrCancelled = false;
   let ocrWorker = null;
   let pdfjsLoadPromiseOcr = null;
+  // Bumped on every new upload / "Extract from another file" reset. Unlike
+  // Cancel, dropping a new file or resetting during an extraction doesn't
+  // stop the in-flight run (the drop zone and reset button both stay live
+  // while Extract Text is disabled) -- so a still-running extraction must
+  // not write its result over whatever the user is now looking at. Same
+  // pattern as AI Image Upscaler's upsGeneration / Magic Eraser's meGeneration.
+  let ocrGeneration = 0;
 
   async function ensurePdfJsOcr(){
     if (!pdfjsLoadPromiseOcr){
@@ -7338,6 +7393,7 @@ if (document.getElementById('ocrDrop')){
 
   async function loadOcrFile(f){
     if (f.size > 30*1024*1024){ toast(`That file is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
+    ocrGeneration++; // invalidate any extraction still in flight for the previous file
     ocrFile = f;
     ocrFullText = ''; ocrPageTexts = [];
     document.getElementById('ocrStage').classList.remove('hidden');
@@ -7395,6 +7451,8 @@ if (document.getElementById('ocrDrop')){
     if (!ocrFile) return;
     const langs = ocrSelectedLangs();
     if (!langs.length){ toast('Choose at least one language first.', 'err'); return; }
+    const myGeneration = ocrGeneration;
+    const file = ocrFile; // snapshot -- a new drop/reset mid-run must not make this run read a second file partway through
     ocrCancelled = false;
     const btn = document.getElementById('ocrExtractBtn');
     setLoading(btn, true);
@@ -7410,13 +7468,13 @@ if (document.getElementById('ocrDrop')){
       if (!window.Tesseract) throw new Error('OCR engine failed to load.');
 
       ocrPageTexts = [];
-      if (ocrFile.type === 'application/pdf'){
+      if (file.type === 'application/pdf'){
         progressLabel.textContent = 'Reading PDF\u2026';
         const pdfjsLib = await ensurePdfJsOcr();
-        const bytes = await ocrFile.arrayBuffer();
+        const bytes = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
         for (let p = 1; p <= pdf.numPages; p++){
-          if (ocrCancelled) break;
+          if (ocrCancelled || myGeneration !== ocrGeneration) break;
           progressLabel.textContent = `Rendering page ${p} of ${pdf.numPages}\u2026`;
           const page = await pdf.getPage(p);
           const scale = Math.min(2.5, OCR_MAX_DIM / Math.max(page.view[2], page.view[3]));
@@ -7425,7 +7483,7 @@ if (document.getElementById('ocrDrop')){
           canvas.width = viewport.width; canvas.height = viewport.height;
           await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
           page.cleanup && page.cleanup();
-          if (ocrCancelled) break;
+          if (ocrCancelled || myGeneration !== ocrGeneration) break;
 
           progressLabel.textContent = `Running OCR \u2014 page ${p} of ${pdf.numPages}\u2026`;
           const pageText = await ocrImageSource(canvas, langs, (frac) => {
@@ -7438,7 +7496,7 @@ if (document.getElementById('ocrDrop')){
         }
       } else {
         progressLabel.textContent = 'Running OCR\u2026';
-        const img = await loadImageFromFile(ocrFile);
+        const img = await loadImageFromFile(file);
         const canvas = document.createElement('canvas');
         let w = img.naturalWidth, h = img.naturalHeight;
         if (Math.max(w,h) > OCR_MAX_DIM){ const sc = OCR_MAX_DIM/Math.max(w,h); w = Math.round(w*sc); h = Math.round(h*sc); }
@@ -7450,7 +7508,11 @@ if (document.getElementById('ocrDrop')){
         ocrPageTexts.push({ page: 1, text: text.trim() });
       }
 
-      if (ocrCancelled){
+      if (myGeneration !== ocrGeneration){
+        // A different file was dropped, or "Extract from another file" was
+        // clicked, while this extraction was still running -- drop the
+        // stale result instead of overwriting what's now on screen.
+      } else if (ocrCancelled){
         toast('Cancelled.');
       } else {
         ocrFullText = ocrPageTexts.length > 1
@@ -7467,7 +7529,7 @@ if (document.getElementById('ocrDrop')){
         }
       }
     }catch(err){
-      if (!ocrCancelled){
+      if (!ocrCancelled && myGeneration === ocrGeneration){
         const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
         toast(isLoadFailure
           ? 'Could not load the OCR engine — check your connection and try again.'
@@ -7517,6 +7579,7 @@ if (document.getElementById('ocrDrop')){
     }
   };
   document.getElementById('ocrConvertAnotherBtn').onclick = () => {
+    ocrGeneration++; // invalidate any extraction still in flight
     ocrFile = null; ocrFullText = ''; ocrPageTexts = [];
     document.getElementById('ocrStage').classList.add('hidden');
     document.getElementById('ocrInput').value = '';
@@ -8335,6 +8398,13 @@ if (document.getElementById('ppDrop')){
   const ppSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, temperature:0 };
   let ppZoom = 1, ppOffsetX = 0, ppOffsetY = 0;
   let faceLandmarkerPromisePP = null, segmenterPromisePP = null;
+  // Bumped on every new upload / "Start Over". Both AI steps here (face
+  // detect + auto-position on upload, and AI background replacement) load a
+  // model asynchronously and then write into shared mask/landmark/zoom
+  // state; if a different photo is loaded (or Start Over is used) while one
+  // is still running, its result must not land on the new photo. Same
+  // pattern as AI Image Upscaler's upsGeneration / Magic Eraser's meGeneration.
+  let ppGeneration = 0;
 
   /* ---------- Non-destructive edit layer: single-channel erase mask ----------
      0 = fully original pixel, 255 = fully replaced by the background color,
@@ -8566,6 +8636,7 @@ if (document.getElementById('ppDrop')){
     document.documentElement.classList.remove('pp-editing-mode');
     document.getElementById('ppStage').classList.add('hidden');
     document.getElementById('ppInput').value = '';
+    ppGeneration++; // invalidate any AI face-detect/background-replace run still in flight
     ppSourceCanvas = null; ppOriginalImg = null; ppFaceLandmarks = null;
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -8574,6 +8645,7 @@ if (document.getElementById('ppDrop')){
     if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
     try{ ppOriginalImg = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+    ppGeneration++; // invalidate any AI run still in flight for the previous photo
     // EXIF orientation: re-drawing through <img> + canvas (as loadImageFromFile does)
     // already applies the browser's own EXIF-aware decode in every current
     // browser we support (Chrome, Edge, Firefox, Safari all auto-rotate on
@@ -8790,12 +8862,15 @@ if (document.getElementById('ppDrop')){
 
   /* ---------- Face detection + auto-position (real AI, reused MediaPipe infra) ---------- */
   async function runFaceDetectAndAutoPosition(){
+    const myGeneration = ppGeneration;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
     statusEl.textContent = 'Loading face detection model\u2026';
     try{
       const landmarker = await ensureFaceLandmarkerPP();
+      if (myGeneration !== ppGeneration || !ppSourceCanvas) return; // a different photo was loaded (or Start Over was used) while the model loaded
       const result = landmarker.detect(ppSourceCanvas);
+      if (myGeneration !== ppGeneration || !ppSourceCanvas) return;
       if (result.faceLandmarks && result.faceLandmarks.length){
         ppFaceLandmarks = result.faceLandmarks[0];
         autoPositionFromFace();
@@ -8804,6 +8879,7 @@ if (document.getElementById('ppDrop')){
         statusEl.textContent = 'No face detected \u2014 adjust zoom and position manually below.';
       }
     }catch(err){
+      if (myGeneration !== ppGeneration) return;
       statusEl.textContent = 'Face detection unavailable \u2014 adjust zoom and position manually below.';
     }
     setTimeout(() => statusEl.classList.add('hidden'), 4000);
@@ -9675,11 +9751,13 @@ if (document.getElementById('ppDrop')){
 
   async function ppReplaceBackgroundAI(){
     if (!ppSourceCanvas) return;
+    const myGeneration = ppGeneration;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
     statusEl.textContent = 'Loading background segmentation model\u2026';
     try{
       const segmenter = await ensureSegmenterPP();
+      if (myGeneration !== ppGeneration || !ppSourceCanvas) return; // a different photo was loaded (or Start Over was used) while the model loaded
       const result = segmenter.segment(ppSourceCanvas);
       const mask = result.categoryMask;
       const maskData = mask.getAsUint8Array();
@@ -10791,6 +10869,13 @@ if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
   let rtOriginalImageBytes = null; // raw ArrayBuffer of the original file -- plain JS heap memory, no browser resource-registry dependency (unlike a Blob URL, which can be silently invalidated by the same memory pressure that clears canvases -- this was the real root cause of the false "recovered" result)
   let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
+  // Bumped on every new photo upload / "Change Photo" (return to upload
+  // screen). The AI Magic pipeline chains several model loads (face,
+  // background, hair segmentation) and can take a while; if a different
+  // photo is loaded while it's still running, its result must not land on
+  // the new photo. Same pattern as AI Image Upscaler's upsGeneration /
+  // Magic Eraser's meGeneration.
+  let rtGeneration = 0;
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
   // (rtFaceLandmarks above) remains the source of truth for every
@@ -13621,6 +13706,7 @@ if (document.getElementById('rtDrop')){
     const active = rtGetActiveLayer();
     if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
     if (!rtSourceCanvas){ toast('Upload a photo first, then tap AI Magic to get started.', 'ok'); return null; }
+    const myGeneration = rtGeneration;
     const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
     const maxDim = 900;
     let w = sw, h = sh;
@@ -13634,6 +13720,12 @@ if (document.getElementById('rtDrop')){
     const collection = (rtCachedAiMagicCollection && rtCachedAiMagicDims && rtCachedAiMagicDims.w === w && rtCachedAiMagicDims.h === h)
       ? rtCachedAiMagicCollection
       : await rtGenerateAiMagicPlanCollection(w, h);
+    if (myGeneration !== rtGeneration){
+      // A different photo was loaded (or "Change Photo" was tapped) while
+      // this analysis was running -- drop it instead of applying a plan
+      // computed from a photo that's no longer on screen.
+      return null;
+    }
     const primary = collection[0];
     const { plan } = primary;
     if (!Object.keys(plan).length){
@@ -13654,6 +13746,12 @@ if (document.getElementById('rtDrop')){
       { face: faceGroup, hair: hairGroup, background: backgroundGroup, general: generalGroup },
       'AI Magic'
     );
+    if (myGeneration !== rtGeneration){
+      // Also guard the (much rarer) case where the photo changed during
+      // rtApplyCoordinatedEnhancement's own render -- report as not-applied
+      // rather than let the caller show a misleading success toast.
+      return { collection, primary, applied:false };
+    }
     return { collection, primary, applied };
   }
 
@@ -14291,6 +14389,7 @@ if (document.getElementById('rtDrop')){
   };
 
   function rtReturnToUploadScreen(){
+    rtGeneration++; // invalidate any AI Magic run still in flight
     document.getElementById('rtStage').classList.add('hidden');
     const uploadSectionEl = document.getElementById('rtUploadSection');
     if (uploadSectionEl) uploadSectionEl.classList.remove('hidden');
@@ -14869,6 +14968,7 @@ if (document.getElementById('rtDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
+    rtGeneration++; // invalidate any AI Magic run still in flight for the previous photo
     rtOriginalImageBytes = await f.arrayBuffer();
     rtOriginalImageType = f.type;
     rtSourceCanvas = document.createElement('canvas');
@@ -17555,6 +17655,12 @@ if (document.getElementById('epeDrop')){
   let epeArtboardW = 0, epeArtboardH = 0;
   let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
   let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
+  // Bumped on every new upload / Reset. AI background removal loads a
+  // segmentation model asynchronously and then writes epeEraseMask; if a
+  // different image is loaded (or Reset is used) while it's still running,
+  // its result must not land on the new image. Same pattern as AI Image
+  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
+  let epeGeneration = 0;
   /* ============================================================
      TOOLFLIGHT WORKSPACE ENGINE (shared architecture, Phase 1 of
      the multi-editor migration plan). Tool-agnostic: takes viewport/
@@ -18407,12 +18513,14 @@ if (document.getElementById('epeDrop')){
 
   async function epeRemoveBackground(){
     if (!epeSourceImg) return;
+    const myGeneration = epeGeneration;
     const statusEl = document.getElementById('epeBgStatus');
     const btn = document.getElementById('epeRemoveBgBtn');
     setLoading(btn, true);
     statusEl.textContent = 'Loading AI model\u2026';
     try{
       const seg = await ensureEpeSegmenter();
+      if (myGeneration !== epeGeneration || !epeSourceImg) return; // a different image was loaded (or Reset was used) while the model loaded
       statusEl.textContent = 'Analyzing image\u2026';
       const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
       const result = seg.segment(epeSourceImg);
@@ -19594,6 +19702,8 @@ if (document.getElementById('epeDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image \u2014 your browser may not support this format.', 'err'); return; }
+    epeGeneration++; // invalidate any AI background-removal run still in flight for the previous image
+    epeFaceLandmarksCache = null; // stale face landmarks belong to the previous image, not this one
     epeSourceImg = img;
     epeArtboardW = img.naturalWidth; epeArtboardH = img.naturalHeight;
     epeLayer = { x: epeArtboardW/2, y: epeArtboardH/2, scale:1, rotation:0, flipH:false, flipV:false };
@@ -19630,6 +19740,8 @@ if (document.getElementById('epeDrop')){
   });
   document.getElementById('epeReplaceBtn').onclick = () => document.getElementById('epeInput').click();
   document.getElementById('epeResetBtn').onclick = () => {
+    epeGeneration++; // invalidate any AI background-removal run still in flight
+    epeFaceLandmarksCache = null;
     epeSourceImg = null; epeArtboardW = 0; epeArtboardH = 0;
     document.getElementById('epeStage').classList.add('hidden');
     document.getElementById('epeInput').value = '';
