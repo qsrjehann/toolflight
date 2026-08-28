@@ -2386,16 +2386,54 @@ if (document.getElementById('aiRemoveDrop')){
   // region, not stray pixels that were about to be discarded anyway.
   function keepPrimaryForegroundComponent(maskData, w, h, isFg){
     const n = w*h;
-    const labels = new Int32Array(n).fill(-1);
-    const stack = new Int32Array(n);
     // "Central" is deliberately generous (20-80% width, 8-92% height) --
     // this only needs to distinguish the real subject from a clearly
     // off-to-the-side/corner stray blob, not demand perfect centering.
     const cx0 = Math.floor(w*0.2), cx1 = Math.ceil(w*0.8);
     const cy0 = Math.floor(h*0.08), cy1 = Math.ceil(h*0.92);
-    let bestLabel = -1, bestScore = -1, label = 0;
+
+    // AUDIT FIX round 2: plain 4-connectivity alone doesn't separate two
+    // things that are touching in the mask -- e.g. a second, unrelated
+    // person standing close enough behind/beside the subject that their
+    // outlines merge into ONE foreground blob at the model's (low)
+    // output resolution. A real single subject is many pixels thick
+    // everywhere, while an accidental merge like that touches through a
+    // narrow neck only a pixel or two wide. So: erode the foreground
+    // first (a pixel only survives if its full r-pixel neighborhood is
+    // also foreground) -- this breaks any such narrow neck while leaving
+    // a genuinely solid single subject intact -- label CONNECTED
+    // COMPONENTS on that eroded "core" set, then grow each core back out
+    // to its true, non-eroded extent via a multi-source flood fill over
+    // the original mask. The net effect: two blobs joined only by a thin
+    // bridge come out as two separate regions with their real sizes;
+    // one solid blob comes out exactly as it would have without this
+    // step.
+    const r = Math.max(1, Math.round(Math.min(w, h) * 0.01));
+    const eroded = new Uint8Array(n);
+    for (let y = 0; y < h; y++){
+      for (let x = 0; x < w; x++){
+        const idx = y*w+x;
+        if (!isFg(idx)) continue;
+        let ok = true;
+        for (let dy = -r; dy <= r && ok; dy++){
+          const yy = y+dy;
+          if (yy < 0 || yy >= h){ ok = false; break; }
+          const rowBase = yy*w;
+          for (let dx = -r; dx <= r; dx++){
+            const xx = x+dx;
+            if (xx < 0 || xx >= w || !isFg(rowBase+xx)){ ok = false; break; }
+          }
+        }
+        eroded[idx] = ok ? 1 : 0;
+      }
+    }
+
+    const labels = new Int32Array(n).fill(-1);
+    const stack = new Int32Array(n);
+    const areas = [], centerHitsArr = [];
+    let label = 0;
     for (let start = 0; start < n; start++){
-      if (labels[start] !== -1 || !isFg(start)) continue;
+      if (eroded[start] !== 1 || labels[start] !== -1) continue;
       let sp = 0;
       stack[sp++] = start;
       labels[start] = label;
@@ -2405,20 +2443,82 @@ if (document.getElementById('aiRemoveDrop')){
         area++;
         const x = idx % w, y = (idx / w) | 0;
         if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
-        if (x > 0){ const m = idx-1; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
-        if (x < w-1){ const m = idx+1; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
-        if (y > 0){ const m = idx-w; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
-        if (y < h-1){ const m = idx+w; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
+        if (x > 0){ const m = idx-1; if (eroded[m]===1 && labels[m]===-1){ labels[m]=label; stack[sp++]=m; } }
+        if (x < w-1){ const m = idx+1; if (eroded[m]===1 && labels[m]===-1){ labels[m]=label; stack[sp++]=m; } }
+        if (y > 0){ const m = idx-w; if (eroded[m]===1 && labels[m]===-1){ labels[m]=label; stack[sp++]=m; } }
+        if (y < h-1){ const m = idx+w; if (eroded[m]===1 && labels[m]===-1){ labels[m]=label; stack[sp++]=m; } }
       }
-      // Center-overlap dominates the score -- a blob that actually sits
-      // in the central region wins even against a larger but off-center
-      // one (e.g. a big dark corner artifact); raw area only breaks ties
-      // between two similarly-central blobs.
-      const score = centerHits * 1000 + area;
-      if (score > bestScore){ bestScore = score; bestLabel = label; }
+      areas.push(area); centerHitsArr.push(centerHits);
       label++;
     }
-    return { labels, bestLabel };
+
+    if (label === 0){
+      // Nothing survived erosion at all (every foreground region is
+      // thinner than the erosion radius, e.g. a very small or wispy
+      // subject) -- fall back to plain 4-connectivity on the
+      // un-eroded mask rather than discarding everything.
+      const plainLabels = new Int32Array(n).fill(-1);
+      let bestLabel = -1, bestScore = -1, plainLabel = 0;
+      for (let start = 0; start < n; start++){
+        if (plainLabels[start] !== -1 || !isFg(start)) continue;
+        let sp = 0;
+        stack[sp++] = start;
+        plainLabels[start] = plainLabel;
+        let area = 0, centerHits = 0;
+        while (sp > 0){
+          const idx = stack[--sp];
+          area++;
+          const x = idx % w, y = (idx / w) | 0;
+          if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
+          if (x > 0){ const m = idx-1; if (isFg(m) && plainLabels[m]===-1){ plainLabels[m]=plainLabel; stack[sp++]=m; } }
+          if (x < w-1){ const m = idx+1; if (isFg(m) && plainLabels[m]===-1){ plainLabels[m]=plainLabel; stack[sp++]=m; } }
+          if (y > 0){ const m = idx-w; if (isFg(m) && plainLabels[m]===-1){ plainLabels[m]=plainLabel; stack[sp++]=m; } }
+          if (y < h-1){ const m = idx+w; if (isFg(m) && plainLabels[m]===-1){ plainLabels[m]=plainLabel; stack[sp++]=m; } }
+        }
+        const score = centerHits * 1000 + area;
+        if (score > bestScore){ bestScore = score; bestLabel = plainLabel; }
+        plainLabel++;
+      }
+      return { labels: plainLabels, bestLabel };
+    }
+
+    // Grow each eroded core back out to its true extent: multi-source
+    // flood fill over the ORIGINAL (non-eroded) foreground, seeded from
+    // every core pixel at once. A foreground pixel is claimed by
+    // whichever core's expanding wave reaches it first -- which, for two
+    // real regions joined only by a thin bridge, means the bridge itself
+    // (and anything past it) is claimed by whichever side's wave gets
+    // there first, correctly keeping the two sides apart as separate
+    // regions with their real sizes.
+    const fullLabels = labels;
+    const fullAreas = areas;
+    const fullCenterHits = centerHitsArr;
+    const queue = new Int32Array(n);
+    let qHead = 0, qTail = 0;
+    for (let i = 0; i < n; i++){ if (fullLabels[i] !== -1) queue[qTail++] = i; }
+    while (qHead < qTail){
+      const idx = queue[qHead++];
+      const lab = fullLabels[idx];
+      const x = idx % w, y = (idx / w) | 0;
+      if (x > 0){ const m = idx-1; if (fullLabels[m]===-1 && isFg(m)){ fullLabels[m]=lab; fullAreas[lab]++; const mx=x-1; if (mx>=cx0&&mx<cx1&&y>=cy0&&y<cy1) fullCenterHits[lab]++; queue[qTail++]=m; } }
+      if (x < w-1){ const m = idx+1; if (fullLabels[m]===-1 && isFg(m)){ fullLabels[m]=lab; fullAreas[lab]++; const mx=x+1; if (mx>=cx0&&mx<cx1&&y>=cy0&&y<cy1) fullCenterHits[lab]++; queue[qTail++]=m; } }
+      if (y > 0){ const m = idx-w; if (fullLabels[m]===-1 && isFg(m)){ fullLabels[m]=lab; fullAreas[lab]++; const my=y-1; if (x>=cx0&&x<cx1&&my>=cy0&&my<cy1) fullCenterHits[lab]++; queue[qTail++]=m; } }
+      if (y < h-1){ const m = idx+w; if (fullLabels[m]===-1 && isFg(m)){ fullLabels[m]=lab; fullAreas[lab]++; const my=y+1; if (x>=cx0&&x<cx1&&my>=cy0&&my<cy1) fullCenterHits[lab]++; queue[qTail++]=m; } }
+    }
+
+    // Center-overlap dominates the score -- a blob that actually sits in
+    // the central region wins even against a larger but off-center one
+    // (e.g. a big dark corner artifact); raw area only breaks ties
+    // between two similarly-central blobs. A foreground pixel that never
+    // got claimed (isFg but unreachable from any core -- a fragment
+    // entirely thinner than the erosion radius everywhere) stays -1,
+    // i.e. not the winner, same as before: dropped as a stray fragment.
+    let bestLabel = -1, bestScore = -1;
+    for (let lab = 0; lab < label; lab++){
+      const score = fullCenterHits[lab] * 1000 + fullAreas[lab];
+      if (score > bestScore){ bestScore = score; bestLabel = lab; }
+    }
+    return { labels: fullLabels, bestLabel };
   }
 
   async function trySelfieSegmentation(srcCanvas, w, h, myGeneration){
