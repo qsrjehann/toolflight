@@ -2367,6 +2367,60 @@ if (document.getElementById('aiRemoveDrop')){
   // minority-area vote (the subject is virtually always the
   // smaller-area category in a background-removal photo), and take the
   // majority verdict across all of them.
+
+  // AUDIT FIX: suppresses disconnected foreground regions other than the
+  // one most likely to BE the subject. Added after real bug reports where
+  // a distinct, separate object was kept as if it were part of the
+  // subject -- a chunk of dim background near the hair on a full-body
+  // photo, and (worse) an unrelated second person's sleeve/arm on a
+  // portrait. Both segmenters used here only answer "is this pixel
+  // person/foreground," with no notion of "which blob is THE subject" --
+  // so any other foreground-classified region, however the model arrived
+  // at it, is kept in full right alongside the real one. This tool is
+  // for single-subject photos, where the true subject is virtually
+  // always ONE 4-connected blob roughly centered in frame; anything else
+  // disconnected from that blob is a stray misclassification, so it's
+  // dropped. Runs on the raw category/binary mask, before feathering, so
+  // refineSegmentationMask only ever sees a single clean region -- and
+  // the plausibility/confidence checks below only ever score that same
+  // region, not stray pixels that were about to be discarded anyway.
+  function keepPrimaryForegroundComponent(maskData, w, h, isFg){
+    const n = w*h;
+    const labels = new Int32Array(n).fill(-1);
+    const stack = new Int32Array(n);
+    // "Central" is deliberately generous (20-80% width, 8-92% height) --
+    // this only needs to distinguish the real subject from a clearly
+    // off-to-the-side/corner stray blob, not demand perfect centering.
+    const cx0 = Math.floor(w*0.2), cx1 = Math.ceil(w*0.8);
+    const cy0 = Math.floor(h*0.08), cy1 = Math.ceil(h*0.92);
+    let bestLabel = -1, bestScore = -1, label = 0;
+    for (let start = 0; start < n; start++){
+      if (labels[start] !== -1 || !isFg(start)) continue;
+      let sp = 0;
+      stack[sp++] = start;
+      labels[start] = label;
+      let area = 0, centerHits = 0;
+      while (sp > 0){
+        const idx = stack[--sp];
+        area++;
+        const x = idx % w, y = (idx / w) | 0;
+        if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
+        if (x > 0){ const m = idx-1; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
+        if (x < w-1){ const m = idx+1; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
+        if (y > 0){ const m = idx-w; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
+        if (y < h-1){ const m = idx+w; if (labels[m]===-1 && isFg(m)){ labels[m]=label; stack[sp++]=m; } }
+      }
+      // Center-overlap dominates the score -- a blob that actually sits
+      // in the central region wins even against a larger but off-center
+      // one (e.g. a big dark corner artifact); raw area only breaks ties
+      // between two similarly-central blobs.
+      const score = centerHits * 1000 + area;
+      if (score > bestScore){ bestScore = score; bestLabel = label; }
+      label++;
+    }
+    return { labels, bestLabel };
+  }
+
   async function trySelfieSegmentation(srcCanvas, w, h, myGeneration){
     try{
       const seg = await ensureSelfieSegmenter();
@@ -2421,6 +2475,22 @@ if (document.getElementById('aiRemoveDrop')){
         personCategoryValue = +sorted[0][0];
       }
 
+      // Drop any foreground blob other than the primary subject (see
+      // keepPrimaryForegroundComponent above) before the mask is fed into
+      // refinement, so a stray disconnected region -- a second person, an
+      // unrelated object the model also called "person" -- never reaches
+      // the output at all, and never dilutes the confidence check below.
+      const { labels: fgLabels, bestLabel: fgBestLabel } =
+        keepPrimaryForegroundComponent(maskData, maskW, maskH, (i) => maskData[i] === personCategoryValue);
+      const filteredMaskData = fgBestLabel === -1 ? maskData : (() => {
+        const out = maskData.slice();
+        const otherValue = personCategoryValue === 1 ? 0 : 1;
+        for (let i=0; i<out.length; i++){
+          if (out[i] === personCategoryValue && fgLabels[i] !== fgBestLabel) out[i] = otherValue;
+        }
+        return out;
+      })();
+
       const guideCanvas = document.createElement('canvas');
       guideCanvas.width = maskW; guideCanvas.height = maskH;
       const gctx = guideCanvas.getContext('2d');
@@ -2432,7 +2502,7 @@ if (document.getElementById('aiRemoveDrop')){
       }
 
       const alpha = refineSegmentationMask({
-        maskData, maskW, maskH,
+        maskData: filteredMaskData, maskW, maskH,
         confidenceData: rawConf, confW: cw, confH: ch,
         outW: w, outH: h,
         personCategoryValue,
@@ -2455,28 +2525,40 @@ if (document.getElementById('aiRemoveDrop')){
       }
       const keptFrac = sampledFraction(alpha, w*h, 32);
       const areaOk = keptFrac >= 0.03 && keptFrac <= 0.97;
+      // AUDIT FIX (root cause of the "AI couldn't confidently find a clear
+      // subject" warning firing even on visually good results): this used
+      // to average personConf across EVERY sampled point in the whole
+      // frame, foreground and background alike. Background pixels the
+      // model is (correctly, confidently) near-certain are NOT the
+      // subject drag that average toward zero -- so on any photo where
+      // the subject occupies less than roughly two-thirds of the frame
+      // (basically any full-body or moderately-zoomed-out shot), the
+      // average fell under the 0.65 bar even when the model was completely
+      // confident about the subject itself. What actually answers "how
+      // confident is the model about the subject it found" is the average
+      // confidence AT the pixels the mask actually kept (alpha > 128) --
+      // computed here instead, using the FINAL alpha (after the
+      // component-filtering above), so a stray blob that got dropped
+      // can't drag this down either. The bounding box (for the
+      // full-body composition gate below) is computed from that same
+      // kept region for the same reason -- it now reflects what will
+      // actually ship, not raw pre-filter/pre-refine confidence noise.
       let avgPersonConfidence = null;
-      // Bounding box of confidently-kept raw-confidence pixels (>0.5),
-      // normalized to 0-1 fractions of the confidence map's own
-      // dimensions -- computed alongside the average in the same pass,
-      // resolution-independent so it can be compared directly against the
-      // composition thresholds below regardless of cw/ch.
       let bbMinXFrac = null, bbMaxXFrac = null, bbMinYFrac = null, bbMaxYFrac = null;
       if (rawConf){
-        const n = rawConf.length;
-        const stride = Math.max(1, Math.floor(n / 3000));
+        const stride = Math.max(1, Math.floor((w*h) / 3000));
         let sampled = 0, sum = 0;
         let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
-        for (let i = 0; i < n; i += stride){
-          sampled++;
-          const personConf = personCategoryValue === 1 ? rawConf[i] : (1 - rawConf[i]);
-          sum += personConf;
-          if (personConf > 0.5){
-            const px = i % cw, py = Math.floor(i / cw);
-            const xf = px / cw, yf = py / ch;
-            if (xf < bbMinX) bbMinX = xf; if (xf > bbMaxX) bbMaxX = xf;
-            if (yf < bbMinY) bbMinY = yf; if (yf > bbMaxY) bbMaxY = yf;
-          }
+        for (let i = 0; i < w*h; i += stride){
+          if (alpha[i] <= 128) continue; // only score pixels the mask actually kept
+          const x = i % w, y = Math.floor(i / w);
+          const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
+          const rawC = rawConf[cy*cw+cx];
+          const personConf = personCategoryValue === 1 ? rawC : (1 - rawC);
+          sampled++; sum += personConf;
+          const xf = x/w, yf = y/h;
+          if (xf < bbMinX) bbMinX = xf; if (xf > bbMaxX) bbMaxX = xf;
+          if (yf < bbMinY) bbMinY = yf; if (yf > bbMaxY) bbMaxY = yf;
         }
         avgPersonConfidence = sampled ? sum/sampled : null;
         if (bbMaxX >= bbMinX){ bbMinXFrac = bbMinX; bbMaxXFrac = bbMaxX; bbMinYFrac = bbMinY; bbMaxYFrac = bbMaxY; }
@@ -2987,6 +3069,25 @@ if (document.getElementById('aiRemoveDrop')){
         const normalizedMask = new Uint8ClampedArray(maskW*maskH);
         for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
+        // AUDIT FIX: same stray-blob suppression as the selfie_segmenter
+        // path above (see keepPrimaryForegroundComponent) -- DeepLab v3
+        // treats ANY non-background category as foreground, so a second
+        // person, an unrelated object, or a misclassified background
+        // region anywhere in frame is kept in full alongside the real
+        // subject unless something narrows it down to one blob. Applied
+        // in place, before refineSegmentationMask, so only a single
+        // central region ever reaches the mask -- and the confidence
+        // check below.
+        {
+          const { labels: fgLabels, bestLabel: fgBestLabel } =
+            keepPrimaryForegroundComponent(normalizedMask, maskW, maskH, (i) => normalizedMask[i] === 1);
+          if (fgBestLabel !== -1){
+            for (let i=0; i<normalizedMask.length; i++){
+              if (normalizedMask[i] === 1 && fgLabels[i] !== fgBestLabel) normalizedMask[i] = 0;
+            }
+          }
+        }
+
         // BUG FIX (root cause of the implausibility toast firing on
         // essentially every DeepLab v3 result, regardless of actual mask
         // quality): this previously read result.confidenceMasks[1] and
@@ -3074,16 +3175,34 @@ if (document.getElementById('aiRemoveDrop')){
           for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
           return sampled ? hits/sampled : 0;
         }
-        function sampledAverage(arr){
-          const n = arr.length;
-          const stride = Math.max(1, Math.floor(n / 3000));
-          let sampled = 0, sum = 0;
-          for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
-          return sampled ? sum/sampled : null;
-        }
         const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
         const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
-        const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
+        // AUDIT FIX (root cause of the implausibility toast firing on
+        // essentially every result, independent of the confidenceMasks[1]
+        // index bug fixed separately above): this used to average
+        // confidenceData across EVERY sampled pixel in the whole frame.
+        // Background pixels the model is correctly, confidently near-zero
+        // on drag that average down -- so on any photo where the subject
+        // occupies less than roughly two-thirds of the frame, the average
+        // fell under the 0.65 bar no matter how confident the model
+        // actually was about the subject itself. Restricting the average
+        // to pixels the mask actually kept (refinedAlpha > 128) measures
+        // what this check is actually meant to answer -- how confident is
+        // the model about the subject it found -- and is no longer
+        // diluted by how much of the frame is background, or dragged down
+        // by a stray blob (already removed above, before refinement).
+        let avgConfidence = null;
+        if (confidenceData){
+          const stride = Math.max(1, Math.floor((w*h) / 3000));
+          let sampled = 0, sum = 0;
+          for (let i = 0; i < w*h; i += stride){
+            if (refinedAlpha[i] <= 128) continue;
+            const x = i % w, y = Math.floor(i / w);
+            const cx = Math.min(confW-1, Math.round(x*confW/w)), cy = Math.min(confH-1, Math.round(y*confH/h));
+            sampled++; sum += confidenceData[cy*confW+cx];
+          }
+          avgConfidence = sampled ? sum/sampled : null;
+        }
         const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
         implausible = areaImplausible || lowConfidence;
       }
