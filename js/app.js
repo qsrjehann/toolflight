@@ -768,6 +768,7 @@ if (document.getElementById('compressDrop')){
     document.getElementById('compressBtn').disabled = false;
     document.getElementById('compressDownloadBtn').classList.add('hidden');
     document.getElementById('savedRow').classList.add('hidden');
+    document.getElementById('compressResetRow').classList.remove('hidden');
     hideCompressProgress();
     if (originalPreviewUrl) URL.revokeObjectURL(originalPreviewUrl);
     originalPreviewUrl = URL.createObjectURL(f);
@@ -882,6 +883,26 @@ if (document.getElementById('compressDrop')){
     const a = document.createElement('a');
     a.href = compressedBlobUrl; a.download = 'compressed.' + compressedFileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+
+  // "Compress another image" -- this tool had no way at all to get back to
+  // a clean upload state; the drop zone stays live the whole time (dropping
+  // a new file directly on it already worked), but nothing told anyone
+  // that, and the old preview/result stayed on screen looking finished.
+  // Clears everything back to the exact pre-upload state, same pattern as
+  // AI OCR's "Extract from another file" (ocrConvertAnotherBtn).
+  document.getElementById('compressResetBtn').onclick = () => {
+    compressFile = null;
+    if (compressedBlobUrl){ URL.revokeObjectURL(compressedBlobUrl); compressedBlobUrl = null; }
+    if (originalPreviewUrl){ URL.revokeObjectURL(originalPreviewUrl); originalPreviewUrl = null; }
+    document.getElementById('compressInput').value = '';
+    document.getElementById('compressBtn').disabled = true;
+    document.getElementById('compressDownloadBtn').classList.add('hidden');
+    document.getElementById('savedRow').classList.add('hidden');
+    document.getElementById('compareBox').classList.add('hidden');
+    document.getElementById('compressResetRow').classList.add('hidden');
+    hideCompressProgress();
+    toast('Ready for a new image.');
   };
 }
 
@@ -1919,6 +1940,7 @@ if (document.getElementById('wmCanvas')){
     try{
       wmBaseImg = await loadImg2(f);
       document.getElementById('wmStageWrap').classList.remove('hidden');
+      document.getElementById('wmResetRow').classList.remove('hidden');
       drawWatermark();
       toast('Image loaded.');
     }catch(err){ toast(err.message, 'err'); }
@@ -2056,6 +2078,23 @@ if (document.getElementById('wmCanvas')){
       setWmLoading(false);
       toast('Watermarking failed: ' + err.message, 'err');
     }
+  };
+
+  // "Watermark another image" -- clears the loaded photo and logo and
+  // returns to the upload screen, same as OCR's "Extract from another
+  // file". Deliberately leaves the watermark TEXT/FONT/COLOR/OPACITY/
+  // POSITION/type settings untouched -- same precedent as OCR's reset not
+  // clearing the selected languages -- so applying the same watermark
+  // style to a second photo doesn't require re-entering everything.
+  document.getElementById('wmResetBtn').onclick = () => {
+    wmBaseImg = null;
+    wmLogoImg = null;
+    document.getElementById('wmInput').value = '';
+    document.getElementById('wmLogoInput').value = '';
+    document.getElementById('wmStageWrap').classList.add('hidden');
+    document.getElementById('wmDownloadBtn').classList.add('hidden');
+    document.getElementById('wmResetRow').classList.add('hidden');
+    toast('Ready for a new image.');
   };
 }
 
@@ -2257,6 +2296,178 @@ if (document.getElementById('aiRemoveDrop')){
       });
     }
     return segmenterLoadPromise;
+  }
+
+  /* ---------- Person-matting model (accuracy fix) ----------
+     DeepLab v3 above is a general 21-category segmenter (Pascal VOC
+     classes: person, animal, vehicle, various everyday objects). It works
+     on a broad range of subjects, but its masks are coarse relative to a
+     model actually built for portrait matting -- confirmed by direct code
+     inspection: Passport Photo Maker and Photo Retouch both already use
+     MediaPipe's selfie_segmenter specifically because it is far better at
+     hair/edge detail on people. This is the SAME model, tried FIRST for
+     every "photo" mode run below, on the theory it should win whenever
+     the subject is actually a person -- but selfie_segmenter has no
+     concept of anything else (animals, vehicles, products, objects), so
+     it is only trusted when it reports high confidence AND a plausible
+     kept-area; otherwise this falls straight through to the existing,
+     completely unmodified DeepLab v3 path. Real in-repo precedent for
+     why this can't be a blind full replacement: Ecommerce Product
+     Editor's own code comments (search "root cause of AI Background
+     Remove failing on real product photos" in this file) document that
+     switching ITS segmenter to selfie_segmenter alone broke every
+     product photo, because a shoe/bottle/bag has no person in it and the
+     model classified nearly the whole image as background. Dual-model
+     with confidence-gated fallback avoids that regression here. */
+  const SELFIE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+  let selfieSegmenter = null;
+  let selfieSegmenterLoadPromise = null;
+  async function ensureSelfieSegmenter(){
+    if (selfieSegmenter) return selfieSegmenter;
+    if (!selfieSegmenterLoadPromise){
+      selfieSegmenterLoadPromise = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
+        const { ImageSegmenter, FilesetResolver } = mod;
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
+        );
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: SELFIE_MODEL_URL, delegate: 'CPU' },
+          outputCategoryMask: true,
+          outputConfidenceMasks: true,
+          runningMode: 'IMAGE'
+        });
+        selfieSegmenter = seg;
+        return seg;
+      })().catch((err) => {
+        selfieSegmenterLoadPromise = null;
+        throw err;
+      });
+    }
+    return selfieSegmenterLoadPromise;
+  }
+
+  // Runs selfie_segmenter and decides whether to trust it for this image.
+  // Returns null on any error or on staleness (caller falls through to
+  // DeepLab v3 in either case -- exactly as if this model simply weren't
+  // available), or { confident, alpha }.
+  //
+  // Category-index calibration: selfie_segmenter's documented convention
+  // (category 0 = background, category 1 = person) has been PROVEN WRONG
+  // on real Android hardware elsewhere in this codebase -- see Passport
+  // Photo Maker's ppReplaceBackgroundAI (search "real debug screenshots
+  // from an actual Android device" in this file), which found the
+  // polarity flipped at runtime on an actual device despite matching the
+  // documentation. That tool cross-checks against real face-landmark
+  // positions; this tool has no face-landmark step to use as ground
+  // truth (its subjects aren't always faces -- shoulders/hands/full-body
+  // shots are explicitly in scope), so this reuses PP's OWN fallback for
+  // when no landmarks are available: sample a handful of plausible
+  // subject positions (image center, upper-center, lower-center) plus a
+  // minority-area vote (the subject is virtually always the
+  // smaller-area category in a background-removal photo), and take the
+  // majority verdict across all of them.
+  async function trySelfieSegmentation(srcCanvas, w, h, myGeneration){
+    try{
+      const seg = await ensureSelfieSegmenter();
+      if (myGeneration !== aiGeneration) return null;
+      await nextFrame();
+      const result = await new Promise((resolve, reject) => {
+        try{ seg.segment(srcCanvas, (res) => resolve(res)); }
+        catch(err){ reject(err); }
+      });
+      if (myGeneration !== aiGeneration){
+        result && result.categoryMask && result.categoryMask.close && result.categoryMask.close();
+        result && result.confidenceMasks && result.confidenceMasks.forEach(m => m.close && m.close());
+        return null;
+      }
+      if (!result || !result.categoryMask) return { confident: false, alpha: null };
+
+      const maskData = result.categoryMask.getAsUint8Array();
+      const maskW = result.categoryMask.width || w;
+      const maskH = result.categoryMask.height || h;
+      const confMasks = result.confidenceMasks;
+      const rawConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
+      const cw = confMasks && confMasks[1] ? confMasks[1].width : maskW;
+      const ch = confMasks && confMasks[1] ? confMasks[1].height : maskH;
+
+      function sampleRegionVote(cxr, cyr){
+        const radius = Math.round(Math.min(w,h) * 0.08);
+        const votes = {};
+        for (let dy=-radius; dy<=radius; dy+=Math.max(1,Math.round(radius/4))){
+          for (let dx=-radius; dx<=radius; dx+=Math.max(1,Math.round(radius/4))){
+            const x = Math.min(w-1, Math.max(0, cxr+dx)), y = Math.min(h-1, Math.max(0, cyr+dy));
+            const mx = Math.min(maskW-1, Math.round(x*maskW/w)), my = Math.min(maskH-1, Math.round(y*maskH/h));
+            votes[maskData[my*maskW+mx]] = (votes[maskData[my*maskW+mx]]||0) + 1;
+          }
+        }
+        const sorted = Object.entries(votes).sort((a,b) => b[1]-a[1]);
+        return sorted.length ? +sorted[0][0] : null;
+      }
+      const candidates = [
+        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.5)),
+        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.3)),
+        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.7)),
+      ].filter(v => v !== null);
+      let personCategoryValue = 1; // MediaPipe's documented convention -- used only if the votes below can't improve on it
+      if (candidates.length){
+        const posVotes = {};
+        candidates.forEach(v => { posVotes[v] = (posVotes[v]||0) + 1; });
+        let area0 = 0, area1 = 0;
+        for (let i=0; i<maskData.length; i++){ if (maskData[i] > 0) area1++; else area0++; }
+        const minorityCategory = area1 < area0 ? 1 : 0;
+        posVotes[minorityCategory] = (posVotes[minorityCategory]||0) + 1;
+        const sorted = Object.entries(posVotes).sort((a,b) => b[1]-a[1]);
+        personCategoryValue = +sorted[0][0];
+      }
+
+      const guideCanvas = document.createElement('canvas');
+      guideCanvas.width = maskW; guideCanvas.height = maskH;
+      const gctx = guideCanvas.getContext('2d');
+      gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
+      const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
+      const guideGray = new Float32Array(maskW*maskH);
+      for (let i=0; i<guideGray.length; i++){
+        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
+      }
+
+      const alpha = refineSegmentationMask({
+        maskData, maskW, maskH,
+        confidenceData: rawConf, confW: cw, confH: ch,
+        outW: w, outH: h,
+        personCategoryValue,
+        guideGray,
+      });
+
+      if (result.categoryMask.close) result.categoryMask.close();
+      if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
+
+      // Same plausibility thresholds already proven for the DeepLab path
+      // below (0.65 confidence, 3-97% kept area), so both paths agree on
+      // what "confident" means and a run can't accidentally trust one
+      // model at a lower bar than the other.
+      await nextFrame();
+      function sampledFraction(arr, n, threshold){
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, hits = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
+        return sampled ? hits/sampled : 0;
+      }
+      const keptFrac = sampledFraction(alpha, w*h, 32);
+      const areaOk = keptFrac >= 0.03 && keptFrac <= 0.97;
+      let avgPersonConfidence = null;
+      if (rawConf){
+        const n = rawConf.length;
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, sum = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; sum += (personCategoryValue === 1 ? rawConf[i] : (1-rawConf[i])); }
+        avgPersonConfidence = sampled ? sum/sampled : null;
+      }
+      const confident = areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
+      return { confident, alpha };
+    }catch(err){
+      return null; // any failure here just falls through to DeepLab v3 below
+    }
   }
 
   setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
@@ -2672,6 +2883,7 @@ if (document.getElementById('aiRemoveDrop')){
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
         document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+        document.getElementById('aiChangeBgRow').classList.remove('hidden');
         toast('Background removed. Refine it below if needed.');
       }catch(err){
         toast(err.message || 'Could not process this image.', 'err');
@@ -2681,9 +2893,6 @@ if (document.getElementById('aiRemoveDrop')){
     }
 
     try{
-      const seg = await ensureSegmenter();
-      await nextFrame();
-
       const MAX = 1200;
       let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
       if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
@@ -2692,38 +2901,124 @@ if (document.getElementById('aiRemoveDrop')){
       srcCanvas.width = w; srcCanvas.height = h;
       srcCanvas.getContext('2d').drawImage(aiSourceImg, 0, 0, w, h);
 
-      const result = await new Promise((resolve, reject) => {
-        try{ seg.segment(srcCanvas, (res) => resolve(res)); }
-        catch(err){ reject(err); }
-      });
+      await nextFrame();
 
-      if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
-      const rawMaskData = result.categoryMask.getAsUint8Array();
-      const maskW = result.categoryMask.width || w;
-      const maskH = result.categoryMask.height || h;
-      // Normalize to the EXACT existing polarity: category 0 = background,
-      // anything else = foreground -- unchanged from before, only the
-      // mask's edge/detail QUALITY is being improved below.
-      const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-      for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+      // ACCURACY FIX: try the person-matting model (selfie_segmenter --
+      // same model Passport Photo Maker/Photo Retouch already use) first.
+      // Its result is only used when trySelfieSegmentation() itself
+      // reports high confidence AND a plausible kept-area for THIS image;
+      // otherwise this falls straight through to the DeepLab v3 path
+      // below, which is completely unmodified from before this fix, so
+      // every non-person case behaves exactly as it did previously.
+      const selfieOutcome = await trySelfieSegmentation(srcCanvas, w, h, myGeneration);
+      if (myGeneration !== aiGeneration) return;
 
-      let confidenceData = null, confW = maskW, confH = maskH;
-      if (result.confidenceMasks && result.confidenceMasks[1]){
-        confidenceData = result.confidenceMasks[1].getAsFloat32Array();
-        confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+      let refinedAlpha, implausible;
+
+      if (selfieOutcome && selfieOutcome.confident){
+        refinedAlpha = selfieOutcome.alpha;
+        implausible = false;
+      } else {
+        // ---- DeepLab v3 path: UNCHANGED from before this fix ----
+        const seg = await ensureSegmenter();
+        if (myGeneration !== aiGeneration) return;
+        await nextFrame();
+
+        const result = await new Promise((resolve, reject) => {
+          try{ seg.segment(srcCanvas, (res) => resolve(res)); }
+          catch(err){ reject(err); }
+        });
+
+        if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
+        const rawMaskData = result.categoryMask.getAsUint8Array();
+        const maskW = result.categoryMask.width || w;
+        const maskH = result.categoryMask.height || h;
+        // Normalize to the EXACT existing polarity: category 0 = background,
+        // anything else = foreground -- unchanged from before, only the
+        // mask's edge/detail QUALITY is being improved below.
+        const normalizedMask = new Uint8ClampedArray(maskW*maskH);
+        for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+
+        let confidenceData = null, confW = maskW, confH = maskH;
+        if (result.confidenceMasks && result.confidenceMasks[1]){
+          confidenceData = result.confidenceMasks[1].getAsFloat32Array();
+          confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+        }
+
+        // Grayscale luminance guide at mask resolution, for edge-aware
+        // matte refinement -- lets the alpha edge snap to real color
+        // boundaries in the source photo rather than blurring blindly.
+        const guideCanvas = document.createElement('canvas');
+        guideCanvas.width = maskW; guideCanvas.height = maskH;
+        const gctx = guideCanvas.getContext('2d');
+        gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
+        const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
+        const guideGray = new Float32Array(maskW*maskH);
+        for (let i=0; i<guideGray.length; i++){
+          guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
+        }
+
+        refinedAlpha = refineSegmentationMask({
+          maskData: normalizedMask, maskW, maskH,
+          confidenceData, confW, confH,
+          outW: w, outH: h,
+          personCategoryValue: 1,
+          guideGray,
+        });
+        if (result.categoryMask.close) result.categoryMask.close();
+        if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
+
+        // Plausibility check (combines the two independent signals Passport
+        // Photo Maker already uses, missing here until now): DeepLab v3
+        // recognizes general object categories (people, animals, vehicles,
+        // everyday objects) -- it has no notion of "this is a graphic
+        // design / share card / screenshot, not a photo." On non-
+        // photographic images it can return a segmentation that keeps a
+        // plausible-LOOKING area fraction (e.g. a ~25% band across the
+        // middle) while the model was actually never confident about any of
+        // it -- an area check alone does not catch that shape of failure,
+        // which is exactly the "half my image disappeared" bug report this
+        // fixes; the confidence signal does. It still always hands off to
+        // Manual Mode either way (never strands the user), only the wording
+        // now honestly reflects what happened.
+        // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
+        // version of this check looped over every one of w*h alpha values
+        // AND every confidenceData value, back-to-back, fully synchronously,
+        // immediately after the already-heavy refineSegmentationMask() and
+        // putImageData() calls above -- on a large photo (the MAX=1200 cap
+        // still allows up to 1,440,000 pixels) that's three uninterrupted
+        // full-resolution passes with no yield to the browser in between,
+        // long enough on real hardware to freeze the tab regardless of how
+        // fast the device is (this blocks the single JS thread; raw CPU
+        // speed shortens but does not prevent the freeze). Sampling ~3000
+        // points is statistically just as reliable for a coarse plausibility
+        // signal and finishes essentially instantly.
+        await nextFrame();
+        function sampledFraction(arr, n, threshold){
+          const stride = Math.max(1, Math.floor(n / 3000));
+          let sampled = 0, hits = 0;
+          for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
+          return sampled ? hits/sampled : 0;
+        }
+        function sampledAverage(arr){
+          const n = arr.length;
+          const stride = Math.max(1, Math.floor(n / 3000));
+          let sampled = 0, sum = 0;
+          for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
+          return sampled ? sum/sampled : null;
+        }
+        const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
+        const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
+        const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
+        const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
+        implausible = areaImplausible || lowConfidence;
       }
 
-      // Grayscale luminance guide at mask resolution, for edge-aware
-      // matte refinement -- lets the alpha edge snap to real color
-      // boundaries in the source photo rather than blurring blindly.
-      const guideCanvas = document.createElement('canvas');
-      guideCanvas.width = maskW; guideCanvas.height = maskH;
-      const gctx = guideCanvas.getContext('2d');
-      gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
-      const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
-      const guideGray = new Float32Array(maskW*maskH);
-      for (let i=0; i<guideGray.length; i++){
-        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
+      if (myGeneration !== aiGeneration){
+        // A different image was loaded (or the tool was reset) while this
+        // ran -- drop the stale result instead of overwriting the editor.
+        // (categoryMask/confidenceMasks were already closed above.)
+        return;
       }
 
       const outCanvas = document.createElement('canvas');
@@ -2732,77 +3027,17 @@ if (document.getElementById('aiRemoveDrop')){
       octx.drawImage(srcCanvas, 0, 0);
       const imageData = octx.getImageData(0, 0, w, h);
       const pixels = imageData.data;
-
-      const refinedAlpha = refineSegmentationMask({
-        maskData: normalizedMask, maskW, maskH,
-        confidenceData, confW, confH,
-        outW: w, outH: h,
-        personCategoryValue: 1,
-        guideGray,
-      });
       for (let i = 0; i < w*h; i++){
         pixels[i*4 + 3] = refinedAlpha[i];
       }
       octx.putImageData(imageData, 0, 0);
-      if (result.categoryMask.close) result.categoryMask.close();
-      if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
 
-      // Plausibility check (combines the two independent signals Passport
-      // Photo Maker already uses, missing here until now): DeepLab v3
-      // recognizes general object categories (people, animals, vehicles,
-      // everyday objects) -- it has no notion of "this is a graphic
-      // design / share card / screenshot, not a photo." On non-
-      // photographic images it can return a segmentation that keeps a
-      // plausible-LOOKING area fraction (e.g. a ~25% band across the
-      // middle) while the model was actually never confident about any of
-      // it -- an area check alone does not catch that shape of failure,
-      // which is exactly the "half my image disappeared" bug report this
-      // fixes; the confidence signal does. It still always hands off to
-      // Manual Mode either way (never strands the user), only the wording
-      // now honestly reflects what happened.
-      // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
-      // version of this check looped over every one of w*h alpha values
-      // AND every confidenceData value, back-to-back, fully synchronously,
-      // immediately after the already-heavy refineSegmentationMask() and
-      // putImageData() calls above -- on a large photo (the MAX=1200 cap
-      // still allows up to 1,440,000 pixels) that's three uninterrupted
-      // full-resolution passes with no yield to the browser in between,
-      // long enough on real hardware to freeze the tab regardless of how
-      // fast the device is (this blocks the single JS thread; raw CPU
-      // speed shortens but does not prevent the freeze). Sampling ~3000
-      // points is statistically just as reliable for a coarse plausibility
-      // signal and finishes essentially instantly.
-      await nextFrame();
-      function sampledFraction(arr, n, threshold){
-        const stride = Math.max(1, Math.floor(n / 3000));
-        let sampled = 0, hits = 0;
-        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
-        return sampled ? hits/sampled : 0;
-      }
-      function sampledAverage(arr){
-        const n = arr.length;
-        const stride = Math.max(1, Math.floor(n / 3000));
-        let sampled = 0, sum = 0;
-        for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
-        return sampled ? sum/sampled : null;
-      }
-      const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
-      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
-      const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
-      const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
-      const implausible = areaImplausible || lowConfidence;
-
-      if (myGeneration !== aiGeneration){
-        // A different image was loaded (or the tool was reset) while this
-        // ran -- drop the stale result instead of overwriting the editor.
-        // (categoryMask/confidenceMasks were already closed above.)
-        return;
-      }
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
       document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+      document.getElementById('aiChangeBgRow').classList.remove('hidden');
       if (implausible){
         toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
       } else {
@@ -2833,6 +3068,14 @@ if (document.getElementById('aiRemoveDrop')){
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
       document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+        // NOTE: deliberately NOT unhiding aiChangeBgRow here -- this is the
+        // AI-failure fallback, where aiResultCanvas is still fully OPAQUE
+        // (nothing was actually removed; see the comment above "fully
+        // opaque -- nothing removed yet"). The pre-existing, buried
+        // sendToAiChangerBtn/aiExportSendToChangerRow already had this same
+        // quirk before this change and are left as-is, but the new
+        // prominent CTA should not tell someone to "Change Background" on
+        // an image that has no transparency to composite against yet.
         toast('AI processing failed, but your image is safe — use the manual tools below (start with Lasso or Polygon).', 'err');
       }catch(fallbackErr){
         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
@@ -2870,6 +3113,13 @@ if (document.getElementById('aiRemoveDrop')){
   // once they're satisfied with the cutout and asking "now what."
   const aiExportSendToChangerBtn = document.getElementById('aiExportSendToChangerBtn');
   if (aiExportSendToChangerBtn) aiExportSendToChangerBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
+  // Third entry point, same handoff again: a prominent, always-visible
+  // "next step" CTA right in the main workspace (not inside any accordion)
+  // -- see aiChangeBgRow in the HTML. This is the one meant to actually be
+  // seen without hunting for it, per the seamless Remove -> Change
+  // Background workflow.
+  const aiChangeBgBtn = document.getElementById('aiChangeBgBtn');
+  if (aiChangeBgBtn) aiChangeBgBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
 
   /* ---------- Manual Selection Editor ---------- */
   let originalCanvas = null;   // full-color source, never modified
@@ -3336,6 +3586,7 @@ if (document.getElementById('aiRemoveDrop')){
     document.getElementById('aiRemoveDownloadRow').classList.add('hidden');
     document.getElementById('sendToAiChangerBtn').classList.add('hidden');
     document.getElementById('aiExportSendToChangerRow').classList.add('hidden');
+    document.getElementById('aiChangeBgRow').classList.add('hidden'); // back to fully opaque -- nothing to change the background of yet
     document.getElementById('aiRemoveBtn').disabled = false;
     toast('Reset to the original uploaded image.');
   };
@@ -3585,6 +3836,13 @@ if (document.getElementById('aiRemoveDrop')){
         document.getElementById('aiRemoveStage').classList.remove('hidden');
         enterAiFullscreen();
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+        // A resumed session already has a real result (that's what was
+        // saved) -- restore the same "what's next" controls a fresh
+        // successful run would show, instead of leaving them buried until
+        // the next Remove/Reset click re-triggers them.
+        document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
+        document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+        document.getElementById('aiChangeBgRow').classList.remove('hidden');
         document.getElementById('aiRemoveBtn').disabled = false;
         hideAiIntroChrome();
         aiViewZoom = 1;
@@ -3923,6 +4181,16 @@ if (document.getElementById('bgChangerDrop')){
   let bgMode = 'color';
   let customBgImg = null;
   const loadImgBg = loadImageFromFile;
+  // Bumped on every new foreground image (handoff receipt or manual
+  // upload) and on every custom-background-image upload. Guards the two
+  // async image decodes below (loadImgBg) from a stale-write race: e.g.
+  // picking a second custom background image before the first one's
+  // decode has resolved -- without this, whichever decode finishes LAST
+  // wins, which on a slow connection can be the one the user no longer
+  // wants. Same pattern as every AI tool's *Generation counters elsewhere
+  // in this file, sized to this tool's actual async surface (plain image
+  // decodes, not a model inference).
+  let bgChangerGeneration = 0;
 
   // Receive a handoff from the AI Background Remover (now a separate page) via
   // localStorage — set on that page right before it navigates here.
@@ -3931,13 +4199,21 @@ if (document.getElementById('bgChangerDrop')){
     try{ dataUrl = localStorage.getItem('toolflight_bg_handoff'); }catch(e){ return; }
     if (!dataUrl) return;
     try{ localStorage.removeItem('toolflight_bg_handoff'); }catch(e){}
+    bgChangerGeneration++;
+    const myGeneration = bgChangerGeneration;
     const img = new Image();
     img.onload = () => {
+      if (myGeneration !== bgChangerGeneration) return; // superseded by a manual upload that arrived first
       const c = document.createElement('canvas');
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
       fgCanvas = c;
       document.getElementById('bgChangerStage').classList.remove('hidden');
+      // Came from the Remover, so there IS a Remover session to go back
+      // to (its own auto-save will offer to restore it) -- surface that
+      // path instead of leaving "Back to Image Tools" as the only way out.
+      const fromRemoverRow = document.getElementById('bgChangerFromRemoverRow');
+      if (fromRemoverRow) fromRemoverRow.classList.remove('hidden');
       renderBgComposite();
       toast('Image received from Background Remover.');
     };
@@ -3955,8 +4231,11 @@ if (document.getElementById('bgChangerDrop')){
     };
     const f = files.find(isPngOrWebp);
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
+    bgChangerGeneration++;
+    const myGeneration = bgChangerGeneration;
     try{
       const img = await loadImgBg(f);
+      if (myGeneration !== bgChangerGeneration) return; // a different image was picked while this was decoding
       const c = document.createElement('canvas');
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
@@ -3982,9 +4261,16 @@ if (document.getElementById('bgChangerDrop')){
       document.getElementById('bgChangerNoAlphaWarning').classList.toggle('hidden', hasTransparency);
 
       document.getElementById('bgChangerStage').classList.remove('hidden');
+      // A fresh manual upload isn't necessarily related to any in-progress
+      // Remover session -- don't imply there's one to go back to.
+      const fromRemoverRow = document.getElementById('bgChangerFromRemoverRow');
+      if (fromRemoverRow) fromRemoverRow.classList.add('hidden');
       renderBgComposite();
       toast(hasTransparency ? 'Image loaded — choose a new background.' : 'Image loaded, but it has no transparent areas — see the note below.', hasTransparency ? undefined : 'err');
-    }catch(err){ toast(err.message, 'err'); }
+    }catch(err){
+      if (myGeneration !== bgChangerGeneration) return;
+      toast(err.message, 'err');
+    }
   });
 
   receiveForegroundForAiChanger = (canvas) => {
@@ -4023,7 +4309,11 @@ if (document.getElementById('bgChangerDrop')){
   setupDropZone('bgChangerCustomDrop','bgChangerCustomInput', async (files) => {
     const f = files.find(f => f.type.startsWith('image/'));
     if (!f) return;
-    customBgImg = await loadImgBg(f);
+    bgChangerGeneration++;
+    const myGeneration = bgChangerGeneration;
+    const img = await loadImgBg(f);
+    if (myGeneration !== bgChangerGeneration) return; // a different custom background (or a new foreground) was picked while this was decoding
+    customBgImg = img;
     renderBgComposite();
   });
 
@@ -4063,6 +4353,12 @@ if (document.getElementById('bgChangerDrop')){
     wrap.innerHTML = '';
     wrap.appendChild(out);
     document.getElementById('bgChangerDownloadRow').classList.remove('hidden');
+    // Runs on every upload AND every setting tweak, so this is the one
+    // place guaranteed to catch every path that can produce a real result
+    // (handoff receive, manual upload, custom-background change, mode
+    // switch) -- simpler and more reliable than repeating the same
+    // classList.remove('hidden') at each individual upload call site.
+    document.getElementById('bgChangerResetRow').classList.remove('hidden');
     window.__bgChangerResult = out;
   }
 
@@ -4073,6 +4369,25 @@ if (document.getElementById('bgChangerDrop')){
       if (!blob){ toast('Could not export this image.', 'err'); return; }
       downloadBlob(blob, 'background-changed.png');
     }, 'image/png');
+  };
+
+  // "Change another image" -- swaps the foreground subject back to the
+  // upload screen. Deliberately leaves bgMode/solid color/gradient/custom
+  // background image untouched, same "keep the settings, swap the photo"
+  // precedent as the Watermark and OCR reset buttons -- someone changing
+  // several product photos onto the same chosen background shouldn't have
+  // to re-pick it every time.
+  document.getElementById('bgChangerResetBtn').onclick = () => {
+    bgChangerGeneration++; // invalidate any in-flight custom-bg-image decode from before this reset
+    fgCanvas = null;
+    window.__bgChangerResult = null;
+    document.getElementById('bgChangerInput').value = '';
+    document.getElementById('bgChangerStage').classList.add('hidden');
+    document.getElementById('bgChangerDownloadRow').classList.add('hidden');
+    document.getElementById('bgChangerResetRow').classList.add('hidden');
+    document.getElementById('bgChangerFromRemoverRow').classList.add('hidden');
+    document.getElementById('bgChangerPreview').innerHTML = '';
+    toast('Ready for a new image.');
   };
 }
 
@@ -26008,6 +26323,7 @@ if (document.getElementById('ifcDrop')){
     document.getElementById('ifcConvertBtn').disabled = false;
     document.getElementById('ifcDownloadBtn').classList.add('hidden');
     document.getElementById('ifcCompareBox').classList.add('hidden');
+    document.getElementById('ifcResetRow').classList.remove('hidden');
     ifcHideProgress();
 
     // A source-format button converting to itself is a pointless no-op --
@@ -26089,5 +26405,24 @@ if (document.getElementById('ifcDrop')){
     const base = (ifcFile.name || 'image').replace(/\.[a-z0-9]+$/i, '');
     downloadBlob(ifcResultBlob, `${base}.${IFC_EXT[ifcTargetType]}`);
     toast('Downloaded.');
+  };
+
+  // "Convert another image" -- same gap and same fix as Compress Image's
+  // compressResetBtn: nothing previously told anyone the drop zone (label
+  // #ifcDrop -- see setupDropZone, this one already opens the file picker
+  // natively via its native for="ifcInput" relationship, left exactly as
+  // is) could just take a new file directly.
+  document.getElementById('ifcResetBtn').onclick = () => {
+    ifcFile = null; ifcSourceType = null; ifcResultBlob = null;
+    if (ifcOrigUrl){ URL.revokeObjectURL(ifcOrigUrl); ifcOrigUrl = null; }
+    if (ifcConvUrl){ URL.revokeObjectURL(ifcConvUrl); ifcConvUrl = null; }
+    document.getElementById('ifcInput').value = '';
+    document.getElementById('ifcConvertBtn').disabled = true;
+    document.getElementById('ifcDownloadBtn').classList.add('hidden');
+    document.getElementById('ifcCompareBox').classList.add('hidden');
+    document.getElementById('ifcFormatRow').classList.add('hidden');
+    document.getElementById('ifcResetRow').classList.add('hidden');
+    ifcHideProgress();
+    toast('Ready for a new image.');
   };
 }
