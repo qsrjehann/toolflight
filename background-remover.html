@@ -137,7 +137,9 @@
 
       <div id="aiRemoveStage" class="hidden">
         <div id="aiTopAppBar">
-          <div id="aiTopDownloadWrap" style="position:relative;flex:none;">
+          <a href="index.html" id="aiHomeBtnMobile" title="ToolFlight Home" aria-label="Go to ToolFlight home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 11l8-7 8 7 M6 10v10h12V10"/></svg></a>
+          <a href="image-tools.html" id="aiBackBtnMobile" title="Back to Image Tools" aria-label="Back to Image Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M15 18l-6-6 6-6"/></svg></a>
+          <div id="aiTopDownloadWrap" style="position:relative;flex:none;margin-left:auto;">
             <div class="row" style="margin:0;gap:0;">
               <button id="aiTopDownloadBtn" type="button" class="btn btn-success" style="padding:6px 10px 6px 14px;font-size:13px;flex:none;border-radius:8px 0 0 8px;">Download</button>
               <button id="aiTopDownloadCaretBtn" type="button" class="btn btn-success" title="Choose format" aria-label="Choose download format" aria-haspopup="true" aria-expanded="false" style="padding:6px 8px;flex:none;border-radius:0 8px 8px 0;border-left:1px solid rgba(255,255,255,0.3);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path d="M6 9l6 6 6-6"/></svg></button>
@@ -164,6 +166,9 @@
             <p class="editor-hint" id="aiRemoveModeHint">Best for photos of people, animals, vehicles, and everyday objects.</p>
             <div class="row" style="margin-top:8px;">
               <button class="btn btn-primary" id="aiRemoveBtn" type="button" disabled style="flex:1;">Remove background (AI)</button>
+            </div>
+            <div class="row hidden" id="aiChangeBgRow" style="margin-top:8px;">
+              <button class="btn btn-primary" id="aiChangeBgBtn" type="button" style="flex:1;">Change Background →</button>
             </div>
             <div id="aiWorkspaceViewport">
               <div id="aiWorkspace">
