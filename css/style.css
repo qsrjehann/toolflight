@@ -1252,6 +1252,11 @@ html.dark .category-hub-card .cat-arrow{
 #epeTopAppBarTitle{ font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #epeTopAppBar .row{ flex:0; gap:6px; }
 #epeTopAppBar button{ min-width:40px; min-height:40px; padding:0 10px; }
+/* Home + Back: same rationale as #ppHomeBtnMobile/#ppBackBtnMobile -- the
+   fullscreen mobile editor stage replaces the page's normal nav/breadcrumb
+   row, so these real <a href> links restore a way out of the editor. */
+#epeHomeBtnMobile, #epeBackBtnMobile{ min-width:36px; min-height:36px; flex:none; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); text-decoration:none; }
+#epeHomeBtnMobile:hover, #epeBackBtnMobile:hover{ background:rgba(109,94,245,0.1); }
 
 /* ---- Overall shell body: switches between row (desktop) and column (mobile) ---- */
 #epeShellBody{ display:flex; flex-direction:row; align-items:stretch; gap:0; position:relative; }
@@ -1689,6 +1694,14 @@ html.dark .category-hub-card .cat-arrow{
   #ppTopAppBarTitle{ flex:1; }
   #ppNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
   #ppNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+  /* Home + Back: pp-editing-mode hides the page's normal breadcrumb/Back-to-
+     Image-Tools row (see enterPpEditingMode in app.js) to give the canvas
+     full width on mobile, which left no way to leave the editor except
+     re-uploading a new photo. These are real <a href> links (not JS-wired
+     buttons) so they work with zero dependency on app.js and support
+     right-click/long-press "open in new tab" like any other link. */
+  #ppHomeBtnMobile, #ppBackBtnMobile{ min-width:36px; min-height:36px; flex:none; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); text-decoration:none; }
+  #ppHomeBtnMobile:hover, #ppBackBtnMobile:hover{ background:rgba(109,94,245,0.1); }
   #aiNewImageBtnMobile{ min-width:36px; min-height:36px; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); }
   #aiNewImageBtnMobile:hover{ background:rgba(109,94,245,0.1); }
   #ppCanvasTopControls{ display:none; }
@@ -1830,6 +1843,13 @@ html.dark .category-hub-card .cat-arrow{
   #aiLeftRail{ display:none; }
   #aiCanvasAreaShell{ padding:10px; }
 
+  /* Home + Back: mirrors #ppHomeBtnMobile/#ppBackBtnMobile (Passport Photo
+     Maker). ai-fullscreen editing mode gives the canvas the full screen on
+     mobile with no page-level Back-to-Image-Tools link visible, so these
+     live inside #aiTopAppBar itself as real <a href> links. */
+  #aiHomeBtnMobile, #aiBackBtnMobile{ min-width:36px; min-height:36px; flex:none; border:none; background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--ink); text-decoration:none; }
+  #aiHomeBtnMobile:hover, #aiBackBtnMobile:hover{ background:rgba(109,94,245,0.1); }
+
   #aiToolPanel{
     position:fixed !important; left:0 !important; right:0 !important; bottom:var(--ai-bottombar-h) !important; top:auto !important;
     width:auto !important; flex:none !important; max-height:85vh; max-height:85dvh; height:45vh; height:45dvh;
@@ -1937,6 +1957,10 @@ html.dark .category-hub-card .cat-arrow{
 #rtStage .rt-tb-icon-btn svg{ width:18px; height:18px; }
 #rtStage .rt-tb-icon-btn:disabled{ opacity:.35; cursor:not-allowed; }
 #rtStage .rt-tb-icon-btn:not(:disabled):hover{ background:color-mix(in srgb, var(--accent1) 10%, transparent); }
+/* Home/Back are real <a href> links (not JS-wired buttons), reusing the
+   existing .rt-tb-icon-btn look -- add back only what the button reset
+   already provided for free. */
+#rtStage a.rt-tb-icon-btn{ text-decoration:none; }
 #rtStage .rt-tb-sep{ width:1px; height:22px; background:var(--card-border); flex:0 0 auto; margin:0 2px; }
 #rtStage .rt-tb-drag-handle{
   flex:0 0 auto; width:32px; height:38px; display:flex; align-items:center; justify-content:center;
