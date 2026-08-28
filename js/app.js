@@ -2456,14 +2456,62 @@ if (document.getElementById('aiRemoveDrop')){
       const keptFrac = sampledFraction(alpha, w*h, 32);
       const areaOk = keptFrac >= 0.03 && keptFrac <= 0.97;
       let avgPersonConfidence = null;
+      // Bounding box of confidently-kept raw-confidence pixels (>0.5),
+      // normalized to 0-1 fractions of the confidence map's own
+      // dimensions -- computed alongside the average in the same pass,
+      // resolution-independent so it can be compared directly against the
+      // composition thresholds below regardless of cw/ch.
+      let bbMinXFrac = null, bbMaxXFrac = null, bbMinYFrac = null, bbMaxYFrac = null;
       if (rawConf){
         const n = rawConf.length;
         const stride = Math.max(1, Math.floor(n / 3000));
         let sampled = 0, sum = 0;
-        for (let i = 0; i < n; i += stride){ sampled++; sum += (personCategoryValue === 1 ? rawConf[i] : (1-rawConf[i])); }
+        let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
+        for (let i = 0; i < n; i += stride){
+          sampled++;
+          const personConf = personCategoryValue === 1 ? rawConf[i] : (1 - rawConf[i]);
+          sum += personConf;
+          if (personConf > 0.5){
+            const px = i % cw, py = Math.floor(i / cw);
+            const xf = px / cw, yf = py / ch;
+            if (xf < bbMinX) bbMinX = xf; if (xf > bbMaxX) bbMaxX = xf;
+            if (yf < bbMinY) bbMinY = yf; if (yf > bbMaxY) bbMaxY = yf;
+          }
+        }
         avgPersonConfidence = sampled ? sum/sampled : null;
+        if (bbMaxX >= bbMinX){ bbMinXFrac = bbMinX; bbMaxXFrac = bbMaxX; bbMinYFrac = bbMinY; bbMaxYFrac = bbMaxY; }
       }
-      const confident = areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
+
+      // Composition gate (added after a real bug report: a full-length
+      // standing photo against a dim, low-contrast background came back
+      // with a large chunk of the background kept as if it were part of
+      // the subject, attached near the hair where the model had the least
+      // color contrast to work with -- and the run was still reported
+      // "confident" by the checks above, because the true body pixels
+      // were confidently correct and diluted the average). MediaPipe's
+      // own documentation positions selfie_segmenter for close-up
+      // self-portrait framing (head/shoulders, sometimes upper body) --
+      // NOT full-length standing photos. A kept bounding box that spans
+      // nearly the whole frame height while occupying under half the
+      // frame width is the signature of exactly that mismatched
+      // composition, so this model's result is not trusted there at all,
+      // regardless of its own reported confidence -- the DeepLab v3
+      // fallback below (a general full-scene model actually trained on
+      // full-body photos, not just close-ups) gets the attempt instead.
+      // This is a composition heuristic, not a proof of failure -- a
+      // legitimate full-body photo with a clean, high-contrast background
+      // would also get routed to DeepLab by this, which is an acceptable
+      // trade since DeepLab already handles plain/simple backgrounds
+      // reasonably well; it's specifically the hard, low-contrast cases
+      // this is meant to catch.
+      let looksFullBody = false;
+      if (bbMinXFrac !== null){
+        const bbHeightFrac = bbMaxYFrac - bbMinYFrac;
+        const bbWidthFrac = bbMaxXFrac - bbMinXFrac;
+        looksFullBody = bbHeightFrac >= 0.85 && bbWidthFrac <= 0.45;
+      }
+
+      const confident = !looksFullBody && areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
       return { confident, alpha };
     }catch(err){
       return null; // any failure here just falls through to DeepLab v3 below
