@@ -195,7 +195,11 @@ function loadImageFromFile(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => resolve(img);
+    // Revoke on both outcomes — once onload fires the decoded bitmap lives on
+    // the Image object itself, so the object URL is no longer needed. It was
+    // previously only revoked on error, leaking one blob URL per successful
+    // image load across every tool that shares this helper.
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
     img.src = url;
   });
@@ -4979,6 +4983,11 @@ if (document.getElementById('meDrop')){
   let meBrushSize = 40, meBrushSoftness = 60;
   let meIsDrawing = false;
   let meSession = null;
+  // Bumped by initMagicEraser() (new upload or "reset image"). The AI run can
+  // take a long time on first use (up to a ~200MB model download), so a stale
+  // result must not silently overwrite whatever the user is looking at by
+  // the time it resolves.
+  let meGeneration = 0;
 
   async function ensureModel(onProgress){
     if (meSession) return meSession;
@@ -5002,6 +5011,7 @@ if (document.getElementById('meDrop')){
   });
 
   function initMagicEraser(){
+    meGeneration++;
     const w = meOriginalImg.naturalWidth, h = meOriginalImg.naturalHeight;
     meOriginalCanvas = document.createElement('canvas');
     meOriginalCanvas.width = w; meOriginalCanvas.height = h;
@@ -5166,6 +5176,7 @@ if (document.getElementById('meDrop')){
   document.getElementById('meRemoveBtn').onclick = async () => {
     if (!meOriginalCanvas){ toast('Upload an image first.', 'err'); return; }
     if (!hasAnyMaskPainted()){ toast('Brush over the object you want removed first.', 'err'); return; }
+    const myGeneration = meGeneration;
     const btn = document.getElementById('meRemoveBtn');
     setLoading(btn, true);
     const progressWrap = document.getElementById('meProgressWrap');
@@ -5264,6 +5275,12 @@ if (document.getElementById('meDrop')){
       }
       fctx.putImageData(finalImgData, 0, 0);
 
+      if (myGeneration !== meGeneration){
+        // A newer image was loaded (or the tool was reset) while this run
+        // was in flight — silently drop the stale result instead of
+        // overwriting what the user is now looking at.
+        return;
+      }
       meResultCanvas = finalCanvas;
       progressFill.style.width = '100%';
       renderMeComposite();
@@ -7013,6 +7030,11 @@ if (document.getElementById('upsDrop')){
   let upsOriginalImg = null, upsOriginalCanvas = null;
   let upsResultCanvas = null;
   let upsCancelled = false;
+  // Bumped on every new image load / reset. A run in flight (model download +
+  // inference can take a while) captures the value at start; if it no longer
+  // matches when the run finishes, a newer image has since been loaded and the
+  // stale result is discarded instead of silently overwriting what's on screen.
+  let upsGeneration = 0;
   let tfjsLoadPromise = null;
   const upsModelPromises = {}; // cached per (tier, scale) combo so re-runs don't re-download
 
@@ -7076,6 +7098,7 @@ if (document.getElementById('upsDrop')){
       return;
     }
 
+    upsGeneration++;
     upsOriginalCanvas = document.createElement('canvas');
     upsOriginalCanvas.width = ow; upsOriginalCanvas.height = oh;
     upsOriginalCanvas.getContext('2d').drawImage(upsOriginalImg, 0, 0); // re-drawn via canvas, stripping EXIF same as every other ToolFlight image tool
@@ -7118,6 +7141,7 @@ if (document.getElementById('upsDrop')){
   }, { passive: false });
 
   document.getElementById('upsResetBtn').onclick = () => {
+    upsGeneration++;
     upsOriginalImg = null; upsOriginalCanvas = null; upsResultCanvas = null;
     document.getElementById('upsStage').classList.add('hidden');
     document.getElementById('upsInput').value = '';
@@ -7129,6 +7153,7 @@ if (document.getElementById('upsDrop')){
   document.getElementById('upsUpscaleBtn').onclick = async () => {
     if (!upsOriginalCanvas) return;
     upsCancelled = false;
+    const myGeneration = upsGeneration;
     const btn = document.getElementById('upsUpscaleBtn');
     setLoading(btn, true);
     document.getElementById('upsCancelBtn').classList.remove('hidden');
@@ -7165,6 +7190,7 @@ if (document.getElementById('upsDrop')){
         },
       });
       if (upsCancelled) throw { cancelled: true };
+      if (myGeneration !== upsGeneration) throw { stale: true };
 
       progressLabel.textContent = 'Finalizing\u2026';
       const resultImg = await new Promise((resolve, reject) => {
@@ -7173,6 +7199,7 @@ if (document.getElementById('upsDrop')){
         img.onerror = () => reject(new Error('Could not read the upscaled result.'));
         img.src = resultSrc;
       });
+      if (myGeneration !== upsGeneration) throw { stale: true };
       upsResultCanvas = document.createElement('canvas');
       upsResultCanvas.width = resultImg.naturalWidth;
       upsResultCanvas.height = resultImg.naturalHeight;
@@ -7191,6 +7218,7 @@ if (document.getElementById('upsDrop')){
       toast(`Upscaled in ${elapsed}s.`);
     }catch(err){
       if (err && err.cancelled){ toast('Cancelled.'); }
+      else if (err && err.stale){ /* a newer image was loaded mid-run — silently drop this result */ }
       else{
         // A script/model-load failure surfaces the raw CDN URL in
         // err.message (e.g. "Failed to load https://cdn.jsdelivr.net/...")
