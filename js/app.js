@@ -2987,10 +2987,36 @@ if (document.getElementById('aiRemoveDrop')){
         const normalizedMask = new Uint8ClampedArray(maskW*maskH);
         for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
+        // BUG FIX (root cause of the implausibility toast firing on
+        // essentially every DeepLab v3 result, regardless of actual mask
+        // quality): this previously read result.confidenceMasks[1] and
+        // used it directly as "how confident is the model this pixel is
+        // the subject." That's only true for a 2-category model (index 0
+        // = background, index 1 = the one foreground class). DeepLab v3
+        // is a 21-category Pascal VOC model -- index 1 here is the
+        // "aeroplane" class channel, not "person"/"subject" (Pascal VOC's
+        // own ordering puts person at index 15, and this tool treats ANY
+        // non-background category as foreground, not just person). On a
+        // real photo of a person/product/animal, the aeroplane-class
+        // confidence is near zero almost everywhere, which silently
+        // dragged the average "confidence" computed below to a near-
+        // permanent low reading -- triggering the "AI couldn't
+        // confidently find a clear subject" toast on results that were
+        // often visually fine, and feeding the same wrong signal into
+        // refineSegmentationMask's edge-blending further up the call
+        // stack. What IS valid for a model with any number of categories:
+        // confidenceMasks[0] (the background channel) is a true per-pixel
+        // softmax probability, so 1 - confidenceMasks[0] is the model's
+        // combined confidence that a pixel belongs to ANY foreground
+        // category -- exactly the "is this pixel part of the subject"
+        // signal both this function's plausibility check and
+        // refineSegmentationMask expect.
         let confidenceData = null, confW = maskW, confH = maskH;
-        if (result.confidenceMasks && result.confidenceMasks[1]){
-          confidenceData = result.confidenceMasks[1].getAsFloat32Array();
-          confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+        if (result.confidenceMasks && result.confidenceMasks[0]){
+          const bgConf = result.confidenceMasks[0].getAsFloat32Array();
+          confidenceData = new Float32Array(bgConf.length);
+          for (let i=0; i<bgConf.length; i++) confidenceData[i] = 1 - bgConf[i];
+          confW = result.confidenceMasks[0].width; confH = result.confidenceMasks[0].height;
         }
 
         // Grayscale luminance guide at mask resolution, for edge-aware
