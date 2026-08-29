@@ -2306,7 +2306,7 @@ if (document.getElementById('aiRemoveDrop')){
      closed. BG_BUILD_ID is deliberately printed first so a test can
      prove WHICH build of this file the browser is really running -- the
      single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MODNET-AUTOMODEL-FIX-6c3e91b2a7d4';
+  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MODNET-FIX-9d21f4c8b613';
   const BG_DEBUG = (() => {
     try { return new URLSearchParams(location.search).has('bgdebug'); }
     catch(e){ return false; }
@@ -2570,7 +2570,7 @@ if (document.getElementById('aiRemoveDrop')){
     return comps;
   }
 
-  async function runModnetExperiment(srcCanvas, w, h, myGeneration){
+  async function runModnetExperiment(srcCanvas, w, h, myGeneration, productionAlphaForPreview, productionModelLabel){
     try{
       console.log('%c[BG][experimental] MODNet evaluation starting (AutoModel/AutoProcessor)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;',
         { model: MODNET_MODEL_ID, libVersion: MODNET_LIB_VERSION, note: 'Fully separate from the production result above -- this cannot change what you already see.' });
@@ -2675,7 +2675,35 @@ if (document.getElementById('aiRemoveDrop')){
         console.warn('[BG][experimental] MODNET OUTPUT SHAPE could not be confirmed from tensor dims (element count ' + floatData.length + ') -- skipping resize/diagnostics rather than guessing a width/height.');
         return null;
       }
-      console.log('[BG][experimental]   model output resolution           : ' + modelW + 'x' + modelH + ' (single-channel, confirmed: width*height === element count)');
+      console.log('[BG][experimental]   model output resolution           : ' + modelW + 'x' + modelH + ' (dims[-2]=H=' + modelH + ', dims[-1]=W=' + modelW + '; single-channel, confirmed: width*height === element count)');
+
+      // ---- Orientation self-check (per explicit instruction: do not
+      // GUESS which axis is width vs height -- VERIFY). The tensor's own
+      // dims order (last two entries = [H, W], standard row-major image
+      // tensor convention) already gave modelH/modelW above; this checks
+      // that assignment against an independent signal -- the working
+      // canvas's own aspect ratio, which is the original photo's aspect
+      // ratio -- rather than trusting the axis-order convention alone.
+      // If the AS-DECLARED orientation is a poor aspect match but the
+      // SWAPPED one is close, that's reported as a hard stop, not
+      // silently auto-corrected -- swapping the width/height LABELS
+      // without transposing the underlying row-major DATA would produce
+      // a corrupted (not merely mislabeled) image, so a genuine mismatch
+      // here is treated as "cannot safely proceed," never guessed past.
+      const aspectOriginal = w / h;
+      const aspectAsDeclared = modelW / modelH;
+      const aspectIfSwapped = modelH / modelW;
+      const diffAsDeclared = Math.abs(aspectAsDeclared - aspectOriginal);
+      const diffIfSwapped = Math.abs(aspectIfSwapped - aspectOriginal);
+      console.log('[BG][experimental]   orientation self-check: original aspect (w/h)=' + aspectOriginal.toFixed(4) +
+        '   as-declared aspect (modelW/modelH)=' + aspectAsDeclared.toFixed(4) + ' [diff ' + diffAsDeclared.toFixed(4) + ']' +
+        '   swapped aspect (modelH/modelW)=' + aspectIfSwapped.toFixed(4) + ' [diff ' + diffIfSwapped.toFixed(4) + ']');
+      if (diffIfSwapped < diffAsDeclared - 0.02){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- the SWAPPED width/height matches the original image aspect ratio meaningfully better than the tensor-declared order. This does not match what dims reported, and swapping labels alone (without transposing the underlying data) would corrupt the image rather than fix it -- stopping here rather than guessing.');
+        return null;
+      }
+      console.log('[BG][experimental]   orientation self-check PASSED -- as-declared (W=' + modelW + ', H=' + modelH + ') is consistent with the original image\'s aspect ratio (the ~' +
+        (100*diffAsDeclared/aspectOriginal).toFixed(1) + '% difference matches the preprocessor\'s documented "resize shortest edge to 512, round to nearest multiple of 32" behavior, not an axis error).');
 
       // Value-range check: confirms this looks like a matte (~0..1)
       // rather than raw unnormalized logits. Reported either way.
@@ -2693,10 +2721,24 @@ if (document.getElementById('aiRemoveDrop')){
       for (let i=0;i<floatData.length;i++) modnetAlphaModelRes[i] = looksLikeUnitRange ? floatData[i]*255 : floatData[i];
 
       // Resize model resolution -> the application's working canvas
-      // (w x h). This is the one resize in this pipeline, done
-      // explicitly via drawImage (bilinear) and logged, not assumed to
-      // already match.
-      console.log('[BG][experimental] resizing model output ' + modelW + 'x' + modelH + ' -> working canvas ' + w + 'x' + h);
+      // (w x h). This is the one resize in this pipeline. Per explicit
+      // instruction, this is NOT a silent stretch: the aspect-ratio
+      // delta this introduces is computed and logged first. Xenova/modnet's
+      // own preprocessor_config.json declares "do_pad": false (verified
+      // earlier in this investigation), meaning the model's own
+      // preprocessing does NOT letterbox/pad -- it resizes directly to
+      // its target grid, so a direct (non-letterboxed) stretch back is
+      // the documented correct inverse, not a shortcut taken here for
+      // convenience. If a future model revision used padding instead,
+      // this log line is what would surface that as a real distortion
+      // rather than hiding it.
+      const aspectModel = modelW / modelH, aspectCanvas = w / h;
+      const distortionPct = 100 * Math.abs(aspectCanvas - aspectModel) / aspectModel;
+      console.log('[BG][experimental] resize geometry: model output ' + modelW + 'x' + modelH + ' (aspect ' + aspectModel.toFixed(4) + ') -> working canvas ' + w + 'x' + h + ' (aspect ' + aspectCanvas.toFixed(4) + ')  =>  ' +
+        distortionPct.toFixed(2) + '% aspect-ratio distortion from a direct stretch (expected: a small amount from the model\'s "round to nearest 32px" step, not a letterboxing/cropping bug, per preprocessor_config.json\'s do_pad:false).');
+      if (distortionPct > 5){
+        console.warn('[BG][experimental] Aspect-ratio distortion (' + distortionPct.toFixed(2) + '%) is larger than the small amount expected from 32px rounding -- flagging for visual inspection rather than assuming it\'s fine.');
+      }
       const tmp = document.createElement('canvas');
       tmp.width = modelW; tmp.height = modelH;
       const tctx = tmp.getContext('2d');
@@ -2731,6 +2773,42 @@ if (document.getElementById('aiRemoveDrop')){
         console.log('[BG][experimental]   min / p05 / p25 / median / p75 / p95 / max : ' +
           sortedForStats[0] + ' / ' + pctAt(0.05) + ' / ' + pctAt(0.25) + ' / ' + pctAt(0.50) + ' / ' + pctAt(0.75) + ' / ' + pctAt(0.95) + ' / ' + sortedForStats[sortedForStats.length-1]);
 
+        // Foreground percentage at several fractional thresholds (0..1
+        // scale, i.e. "> 25% opacity" etc.) -- requested explicitly so a
+        // run's automatic console output is self-sufficient without a
+        // separate manual snippet.
+        const fracThresholds = [0.25, 0.5, 0.75, 0.9];
+        const fracRows = fracThresholds.map(function(t){
+          const cut = t*255; let c = 0;
+          for (let i=0;i<modnetAlphaRaw.length;i++) if (modnetAlphaRaw[i] > cut) c++;
+          return { threshold: '>' + Math.round(t*100) + '%', cutoffValue: +cut.toFixed(1), pixels: c, pctOfFrame: +(100*c/modnetAlphaRaw.length).toFixed(2) };
+        });
+        console.log('[BG][experimental] FOREGROUND PERCENTAGE AT THRESHOLDS');
+        if (console.table) console.table(fracRows);
+
+        // Edge/background bands (left/right/top/bottom 10% of the working
+        // canvas) -- reports what fraction of each edge strip the model
+        // calls foreground, without attaching any semantic label (chair/
+        // person/etc) to a region based on coordinates alone.
+        function bandStats(idxs){
+          let s = 0, above128 = 0;
+          for (let k=0;k<idxs.length;k++){ const v = modnetAlphaRaw[idxs[k]]; s += v; if (v > 128) above128++; }
+          return { meanAlpha: +(s/idxs.length).toFixed(2), pctAbove128: +(100*above128/idxs.length).toFixed(2), n: idxs.length };
+        }
+        const leftW = Math.round(w*0.10), rightX0 = w - Math.round(w*0.10), topH = Math.round(h*0.10), botY0 = h - Math.round(h*0.10);
+        const leftIdx=[], rightIdx=[], topIdx=[], botIdx=[];
+        for (let y=0;y<h;y++) for (let x=0;x<leftW;x++) leftIdx.push(y*w+x);
+        for (let y=0;y<h;y++) for (let x=rightX0;x<w;x++) rightIdx.push(y*w+x);
+        for (let y=0;y<topH;y++) for (let x=0;x<w;x++) topIdx.push(y*w+x);
+        for (let y=botY0;y<h;y++) for (let x=0;x<w;x++) botIdx.push(y*w+x);
+        console.log('[BG][experimental] EDGE/BACKGROUND ALPHA STATISTICS (10% bands, no semantic label attached)');
+        if (console.table) console.table([
+          Object.assign({ edge: 'left 10% (x 0-' + (leftW-1) + ')' }, bandStats(leftIdx)),
+          Object.assign({ edge: 'right 10% (x ' + rightX0 + '-' + (w-1) + ')' }, bandStats(rightIdx)),
+          Object.assign({ edge: 'top 10% (y 0-' + (topH-1) + ')' }, bandStats(topIdx)),
+          Object.assign({ edge: 'bottom 10% (y ' + botY0 + '-' + (h-1) + ')' }, bandStats(botIdx)),
+        ]);
+
         // Diagnostic binary view (>128), ONLY for comparability with the
         // existing selfie/DeepLab component tables above -- a reporting
         // choice, not the model's real output, labeled as such everywhere.
@@ -2755,32 +2833,45 @@ if (document.getElementById('aiRemoveDrop')){
 
         try{ window.__BG_MODNET_ALPHA__ = { alpha: modnetAlphaRaw, w: w, h: h, modelW: modelW, modelH: modelH }; }catch(e){}
 
+        // ---- Redesigned experimental preview row: exactly the 3 panels
+        // requested, clearly captioned, laid out together for direct
+        // comparison, all spatially at the same w x h working resolution
+        // as the original photo (no cropping/re-centering of any panel).
+        // Panel 1 is a READ-ONLY grayscale rendering of the production
+        // alpha already computed above (productionAlphaForPreview) --
+        // this only *reads* that array to draw a picture of it; it is
+        // never written to, and nothing here can change what already
+        // shipped as aiResultCanvas. Only this experimental row's own
+        // markup is touched -- the existing A/B/C preview block earlier
+        // in the file (selfie/DeepLab/overlay) is untouched. ----
         try{
           const host = document.getElementById('bgDebugPreviews');
           if (host){
-            const addGray = function(label, arr, aw, ah){
+            const addPanel = function(title, subtitle, arr, aw, ah, borderColor){
               const wrap = document.createElement('div');
-              wrap.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
+              wrap.style.cssText = 'display:inline-block;margin:0 10px 12px 0;vertical-align:top;text-align:center;';
               const cap = document.createElement('div');
-              cap.textContent = label;
-              cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#d9b3ff;';
+              cap.innerHTML = '<div style="font-weight:bold;">' + title + '</div><div style="opacity:0.8;">' + subtitle + '</div>';
+              cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#d9b3ff;line-height:1.3;max-width:240px;';
               const dbg = document.createElement('canvas');
               dbg.width = aw; dbg.height = ah;
-              dbg.style.cssText = 'max-width:240px;height:auto;border:1px solid #a05eff;background:#000;';
+              dbg.style.cssText = 'max-width:240px;height:auto;border:2px solid ' + borderColor + ';background:#000;';
               const dctx = dbg.getContext('2d');
               const dimg = dctx.createImageData(aw, ah);
               for (let i = 0; i < aw*ah; i++){
-                const a = arr[i];
+                const a = arr ? arr[i] : 0;
                 dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
               }
               dctx.putImageData(dimg, 0, 0);
               wrap.appendChild(cap); wrap.appendChild(dbg);
               host.appendChild(wrap);
             };
-            addGray('D. MODNET EXPERIMENTAL — native continuous alpha (NOT thresholded)', modnetAlphaRaw, w, h);
+            const productionLabel = productionModelLabel || '(model unknown)';
+            addPanel('1. CURRENT PRODUCTION RESULT', '(read-only copy of the ' + productionLabel + ' alpha that shipped as panel B above -- unchanged by this experiment)', productionAlphaForPreview || null, w, h, '#5142D6');
+            addPanel('2. MODNET — raw continuous alpha', '(native matte, NOT thresholded -- gray = partial/uncertain, this IS the model\'s real output)', modnetAlphaRaw, w, h, '#a05eff');
             const thresholded = new Uint8ClampedArray(w*h);
             for (let i=0;i<w*h;i++) thresholded[i] = modnetAlphaRaw[i] > 128 ? 255 : 0;
-            addGray('E. MODNET diagnostic threshold >128 (comparison only — not the real output)', thresholded, w, h);
+            addPanel('3. MODNET — diagnostic threshold >128', '(comparison view ONLY, not the real output -- for judging connectivity against panel 1)', thresholded, w, h, '#a05eff');
           }
         }catch(e){ console.warn('[BG][experimental] preview render failed (non-fatal)', e && e.message); }
       }catch(diagErr){
@@ -4162,7 +4253,8 @@ if (document.getElementById('aiRemoveDrop')){
         // wrongly treat an experimental-path failure as a production AI
         // failure and overwrite aiResultCanvas with the blank fallback).
         try{
-          runModnetExperiment(srcCanvas, w, h, myGeneration).catch(function(e){
+          const productionLabelForModnetPreview = (selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3';
+          runModnetExperiment(srcCanvas, w, h, myGeneration, refinedAlpha, productionLabelForModnetPreview).catch(function(e){
             console.warn('[BG][experimental] MODNet path rejected -- production result unaffected:', e && e.message);
           });
         }catch(e){}
