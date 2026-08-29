@@ -2306,7 +2306,7 @@ if (document.getElementById('aiRemoveDrop')){
      closed. BG_BUILD_ID is deliberately printed first so a test can
      prove WHICH build of this file the browser is really running -- the
      single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-29-selfie-confidence-FIX-0c7fe64a1417';
+  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MASK-DIAGNOSTIC-b83d1c2f9a44';
   const BG_DEBUG = (() => {
     try { return new URLSearchParams(location.search).has('bgdebug'); }
     catch(e){ return false; }
@@ -2459,19 +2459,23 @@ if (document.getElementById('aiRemoveDrop')){
       for (let s=0; s<n; s++){
         if (set[s] !== 1 || lab[s] !== -1) continue;
         let sp = 0; stack[sp++] = s; lab[s] = L;
-        let area = 0, sumX = 0, centerHits = 0;
+        let area = 0, sumX = 0, sumY = 0, centerHits = 0;
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         while (sp > 0){
           const idx = stack[--sp];
           area++;
           const x = idx % w, y = (idx / w) | 0;
-          sumX += x;
+          sumX += x; sumY += y;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
           if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
           if (x > 0){ const m = idx-1; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
           if (x < w-1){ const m = idx+1; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
           if (y > 0){ const m = idx-w; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
           if (y < h-1){ const m = idx+w; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
         }
-        comps.push({ label: L, area, cxMean: sumX/area, centerHits });
+        comps.push({ label: L, area, cxMean: sumX/area, cyMean: sumY/area, centerHits,
+                     minX: minX, maxX: maxX, minY: minY, maxY: maxY });
         L++;
       }
       return { lab, comps };
@@ -2519,6 +2523,7 @@ if (document.getElementById('aiRemoveDrop')){
       // here only because the horizontal-offset guard below rejects the
       // within-one-subject splits that deeper erosion starts producing.
       const maxSteps = Math.max(3, Math.round(Math.min(w,h) * 0.15));
+      let lastBigCount = -1;
       for (let step=1; step<=maxSteps; step++){
         const next = new Uint8Array(n);
         for (let y=0; y<h; y++){
@@ -2539,9 +2544,12 @@ if (document.getElementById('aiRemoveDrop')){
         const res = labelComponents(cur);
         const big = res.comps.filter(c => c.area >= minCore);
         if (big.length === 0) break; // eroded away entirely -- no usable split
-        if (BG_DEBUG && big.length >= 1){
-          bgLog('erosion step ' + step + ': substantial components = ' + big.length +
+        // Report only when the picture CHANGES (or on the first/last step).
+        // Logging every step buried the blocks that matter under ~135 lines.
+        if (BG_DEBUG && (step === 1 || big.length !== lastBigCount || step === maxSteps)){
+          bgLog('erosion step ' + step + '/' + maxSteps + ': substantial components = ' + big.length +
                 ' -> ' + big.map(function(c){ return 'area=' + c.area + ' cx=' + (c.cxMean/w).toFixed(3); }).join(' , '));
+          lastBigCount = big.length;
         }
         if (big.length >= 2){
           // GUARD against dismembering a single person. Erode a lone
@@ -2567,14 +2575,25 @@ if (document.getElementById('aiRemoveDrop')){
 
     if (!chosen){
       if (BG_DEBUG){
-        console.log('%c[BG] COMPONENT ANALYSIS', 'color:#fff;background:#a50;padding:2px 6px;font-weight:bold;');
-        console.log('[BG]   foreground px       : ' + fgCount + '  (minCore=' + minCore + ')');
-        console.log('[BG]   total components    : ' + plain.comps.length + '  (substantial: ' + plainBig.length + ')');
-        plain.comps.slice().sort(function(a,b){ return b.area-a.area; }).slice(0,6).forEach(function(c,i){
-          console.log('[BG]     comp#' + i + ' area=' + c.area + ' (' + (100*c.area/fgCount).toFixed(1) +
-                      '% of fg) centroidX=' + (c.cxMean/w).toFixed(3) + ' centralPx=' + c.centerHits);
-        });
-        console.log('[BG]   RESULT              : NO SPLIT - everything kept as one region');
+        console.log('%c[BG] COMPONENT ANALYSIS (no split applied)', 'color:#fff;background:#a50;padding:2px 6px;font-weight:bold;');
+        console.log('[BG]   mask dims           : ' + w + 'x' + h);
+        console.log('[BG]   foreground px       : ' + fgCount + ' (' + (100*fgCount/(w*h)).toFixed(2) + '% of frame)  minCore=' + minCore);
+        console.log('[BG]   total components    : ' + plain.comps.length + '   substantial: ' + plainBig.length);
+        console.table(plain.comps.slice().sort(function(a,b){ return b.area-a.area; }).slice(0,10).map(function(c,i){
+          return {
+            'component #': i,
+            'pixels': c.area,
+            '% of foreground': +(100*c.area/fgCount).toFixed(2),
+            '% of frame': +(100*c.area/(w*h)).toFixed(2),
+            'bbox x': c.minX + '-' + c.maxX,
+            'bbox y': c.minY + '-' + c.maxY,
+            'width': c.maxX - c.minX + 1,
+            'height': c.maxY - c.minY + 1,
+            'centerX (frac)': +(c.cxMean/w).toFixed(3),
+            'centerY (frac)': +(c.cyMean/h).toFixed(3)
+          };
+        }));
+        console.log('[BG]   RESULT              : NO SPLIT - all components above kept as one region');
       }
       return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
     }
@@ -2758,6 +2777,18 @@ if (document.getElementById('aiRemoveDrop')){
         }
         return out;
       })();
+      if (BG_DEBUG){
+        let before = 0, after = 0;
+        for (let i=0; i<maskData.length; i++){
+          if (maskData[i] === personCategoryValue) before++;
+          if (filteredMaskData[i] === personCategoryValue) after++;
+        }
+        const tot = maskData.length;
+        console.log('%c[BG] STAGE: RAW SELFIE MASK -> COMPONENT FILTER', 'color:#fff;background:#06c;padding:2px 6px;font-weight:bold;');
+        console.log('[BG]   RAW selfie mask foreground        : ' + before + ' (' + (100*before/tot).toFixed(2) + '% of frame)');
+        console.log('[BG]   AFTER component filter            : ' + after + ' (' + (100*after/tot).toFixed(2) + '% of frame)');
+        console.log('[BG]   removed by component filter       : ' + (before-after) + ' px (' + (100*(before-after)/tot).toFixed(2) + '% of frame)');
+      }
 
       const guideCanvas = document.createElement('canvas');
       guideCanvas.width = maskW; guideCanvas.height = maskH;
@@ -3686,6 +3717,33 @@ if (document.getElementById('aiRemoveDrop')){
             addMask('A. selfie_segmenter (' + (selfieDump.accepted ? 'ACCEPTED' : 'REJECTED/discarded') + ')', selfieDump.alpha, selfieDump.w, selfieDump.h);
           }
           addMask('B. FINAL SHIPPED — ' + ((selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3'), refinedAlpha, w, h);
+          // C. Overlay: original photo with REJECTED pixels tinted red and
+          // dimmed, kept pixels left untouched. Makes it obvious at a glance
+          // exactly which real-world objects the mask is keeping -- e.g.
+          // whether the chair is inside or outside the kept region.
+          try{
+            const ov = document.createElement('canvas');
+            ov.width = w; ov.height = h;
+            const octx2 = ov.getContext('2d');
+            octx2.drawImage(srcCanvas, 0, 0);
+            const od = octx2.getImageData(0, 0, w, h);
+            for (let i = 0; i < w*h; i++){
+              if (refinedAlpha[i] <= 128){
+                od.data[i*4]   = Math.min(255, od.data[i*4]*0.35 + 160);
+                od.data[i*4+1] = od.data[i*4+1]*0.25;
+                od.data[i*4+2] = od.data[i*4+2]*0.25;
+              }
+            }
+            octx2.putImageData(od, 0, 0);
+            const wrap2 = document.createElement('div');
+            wrap2.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
+            const cap2 = document.createElement('div');
+            cap2.textContent = 'C. OVERLAY — red/dim = REMOVED, normal = KEPT';
+            cap2.style.cssText = 'margin-bottom:4px;font-size:11px;color:#8f8;';
+            ov.style.cssText = 'max-width:240px;height:auto;border:1px solid #555;';
+            wrap2.appendChild(cap2); wrap2.appendChild(ov);
+            host.appendChild(wrap2);
+          }catch(e){ bgLog('overlay render failed', e && e.message); }
         }catch(e){ bgLog('preview render failed', e && e.message); }
       }
       aiResultCanvas = outCanvas;
