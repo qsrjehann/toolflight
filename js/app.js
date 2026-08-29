@@ -391,10 +391,33 @@ function fillHoles(binaryMask, w, h){
   return out;
 }
 
-function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue, guideGray }){
+function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue, guideGray, onStage }){
   const n = maskW*maskH;
   let binary = new Uint8ClampedArray(n);
   for (let i=0; i<n; i++) binary[i] = (maskData[i] === personCategoryValue) ? 255 : 0;
+  // Optional per-stage reporting. Callers that pass nothing (Passport Photo
+  // Maker, Photo Retouch, Ecommerce Editor) are completely unaffected --
+  // this is inert without an onStage callback.
+  const stage = typeof onStage === 'function'
+    ? function(label, arr){
+        let fgPx = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (let i=0; i<n; i++){
+          if (arr[i] > 127){
+            fgPx++;
+            const x = i % maskW, y = (i / maskW) | 0;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+        onStage({
+          stage: label,
+          foregroundPx: fgPx,
+          foregroundPct: +(100*fgPx/n).toFixed(2),
+          bbox: fgPx ? { x: minX + '-' + maxX, y: minY + '-' + maxY } : null
+        });
+      }
+    : function(){};
+  stage('0. raw binary (after class/category selection)', binary);
 
   // Clean up segmentation noise: remove tiny isolated speckles, fill
   // small enclosed gaps (e.g. between hair strands), then smooth jagged
@@ -407,9 +430,12 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
   // fully erased once morphOpen ran) -- morphClose alone still removes
   // real noise/gaps without that risk.
   binary = removeSmallIslands(binary, maskW, maskH, 0.04);
+  stage('1. after removeSmallIslands (drops blobs <4% of largest -- CAN DELETE SUBJECT PARTS)', binary);
   binary = fillHoles(binary, maskW, maskH);
+  stage('2. after fillHoles (fills enclosed gaps -- CAN RE-ADD BACKGROUND trapped between two kept regions)', binary);
   const morphRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.006));
   binary = morphClose(binary, maskW, maskH, morphRadius);
+  stage('3. after morphClose', binary);
 
   // Adaptive feathering: a fixed feather radius over-softens clean,
   // simple boundaries (e.g. a shirt hem) while under-softening genuinely
@@ -2280,7 +2306,7 @@ if (document.getElementById('aiRemoveDrop')){
      closed. BG_BUILD_ID is deliberately printed first so a test can
      prove WHICH build of this file the browser is really running -- the
      single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-28-D (adaptive-split + kept-pixel confidence)';
+  const BG_BUILD_ID = 'bgremover-build-2026-08-28-E-DIAG (class-selection + full-res export + stage diagnostics)';
   const BG_DEBUG = (() => {
     try { return new URLSearchParams(location.search).has('bgdebug'); }
     catch(e){ return false; }
@@ -2290,6 +2316,7 @@ if (document.getElementById('aiRemoveDrop')){
     const args = Array.prototype.slice.call(arguments);
     console.log.apply(console, ['%c[BG]', 'color:#5142D6;font-weight:bold;'].concat(args));
   }
+  try { window.__BG_REMOVER_DEBUG__ = { build: BG_BUILD_ID, debugEnabled: BG_DEBUG }; } catch(e){}
   if (BG_DEBUG){
     console.log('%c[BG] BUILD: ' + BG_BUILD_ID, 'color:#fff;background:#5142D6;padding:2px 6px;font-weight:bold;');
     bgLog('script URL(s) on this page:',
@@ -2313,9 +2340,11 @@ if (document.getElementById('aiRemoveDrop')){
           runningMode: 'IMAGE'
         });
         segmenter = seg;
+        bgLog('MODEL LOADED: DeepLab v3', { url: MODEL_URL, outputCategoryMask: true, outputConfidenceMasks: true });
         setAiStatus('ready', 'AI model ready.');
         return seg;
       })().catch((err) => {
+        bgLog('MODEL FAILED TO LOAD: DeepLab v3', { url: MODEL_URL, error: err && (err.message || String(err)) });
         setAiStatus('error', 'Could not load the AI model — check your connection and try again.');
         segmenterLoadPromise = null;
         throw err;
@@ -2687,6 +2716,7 @@ if (document.getElementById('aiRemoveDrop')){
         outW: w, outH: h,
         personCategoryValue,
         guideGray,
+        onStage: BG_DEBUG ? function(info){ bgLog('[selfie_segmenter post-processing]', info); } : null,
       });
 
       if (result.categoryMask.close) result.categoryMask.close();
@@ -3393,6 +3423,7 @@ if (document.getElementById('aiRemoveDrop')){
           outW: w, outH: h,
           personCategoryValue: 1,
           guideGray,
+          onStage: BG_DEBUG ? function(info){ bgLog('[DeepLab v3 post-processing]', info); } : null,
         });
         if (result.categoryMask.close) result.categoryMask.close();
         if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
@@ -3488,6 +3519,55 @@ if (document.getElementById('aiRemoveDrop')){
       }
       octx.putImageData(imageData, 0, 0);
 
+      if (BG_DEBUG){
+        // Final alpha report + a visual dump of what actually shipped, so
+        // the mask can be inspected directly instead of inferred from the
+        // composited result.
+        let opaque = 0, semi = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (let i = 0; i < w*h; i++){
+          const a = refinedAlpha[i];
+          if (a > 127){
+            opaque++;
+            const x = i % w, y = (i / w) | 0;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          } else if (a > 8) semi++;
+        }
+        bgLog('FINAL ALPHA =>', {
+          canvas: w + 'x' + h,
+          originalImage: aiSourceImg.naturalWidth + 'x' + aiSourceImg.naturalHeight,
+          opaquePx: opaque,
+          opaquePct: +(100*opaque/(w*h)).toFixed(2),
+          transparentPct: +(100*(1 - opaque/(w*h))).toFixed(2),
+          softEdgePx: semi,
+          alphaBBox: opaque ? { x: minX + '-' + maxX, y: minY + '-' + maxY } : null,
+          pathUsed: (selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3'
+        });
+        try{
+          let host = document.getElementById('bgDebugPreviews');
+          if (!host){
+            host = document.createElement('div');
+            host.id = 'bgDebugPreviews';
+            host.style.cssText = 'padding:12px;background:#111;color:#fff;font:12px/1.4 monospace;overflow-x:auto;white-space:nowrap;';
+            const stage = document.getElementById('aiRemoveStage');
+            if (stage && stage.parentNode) stage.parentNode.insertBefore(host, stage.nextSibling);
+            else document.body.appendChild(host);
+          }
+          host.innerHTML = '<div style="margin-bottom:6px;">BG DEBUG — final alpha (white = kept). Path: ' +
+            ((selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3') + '</div>';
+          const dbg = document.createElement('canvas');
+          dbg.width = w; dbg.height = h;
+          dbg.style.cssText = 'max-width:280px;height:auto;border:1px solid #555;background:#000;';
+          const dctx = dbg.getContext('2d');
+          const dimg = dctx.createImageData(w, h);
+          for (let i = 0; i < w*h; i++){
+            const a = refinedAlpha[i];
+            dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
+          }
+          dctx.putImageData(dimg, 0, 0);
+          host.appendChild(dbg);
+        }catch(e){ bgLog('preview render failed', e && e.message); }
+      }
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
