@@ -2306,7 +2306,7 @@ if (document.getElementById('aiRemoveDrop')){
      closed. BG_BUILD_ID is deliberately printed first so a test can
      prove WHICH build of this file the browser is really running -- the
      single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-28-E-DIAG (class-selection + full-res export + stage diagnostics)';
+  const BG_BUILD_ID = 'bgremover-build-2026-08-29-selfie-confidence-FIX-0c7fe64a1417';
   const BG_DEBUG = (() => {
     try { return new URLSearchParams(location.search).has('bgdebug'); }
     catch(e){ return false; }
@@ -2539,6 +2539,10 @@ if (document.getElementById('aiRemoveDrop')){
         const res = labelComponents(cur);
         const big = res.comps.filter(c => c.area >= minCore);
         if (big.length === 0) break; // eroded away entirely -- no usable split
+        if (BG_DEBUG && big.length >= 1){
+          bgLog('erosion step ' + step + ': substantial components = ' + big.length +
+                ' -> ' + big.map(function(c){ return 'area=' + c.area + ' cx=' + (c.cxMean/w).toFixed(3); }).join(' , '));
+        }
         if (big.length >= 2){
           // GUARD against dismembering a single person. Erode a lone
           // subject far enough and they also break apart -- head from
@@ -2553,6 +2557,8 @@ if (document.getElementById('aiRemoveDrop')){
           // to delete part of the subject.
           const sorted = big.slice().sort((a,b) => b.area - a.area);
           const horizGap = Math.abs(sorted[0].cxMean - sorted[1].cxMean) / w;
+          bgLog('SPLIT CANDIDATE at erosion step ' + step + ': horizGap=' + horizGap.toFixed(3) +
+                ' (needs >=0.15) -> ' + (horizGap >= 0.15 ? 'ACCEPTED' : 'REJECTED by horizontal-offset guard'));
           if (horizGap >= 0.15) chosen = { lab: res.lab, comps: big };
           break;
         }
@@ -2560,12 +2566,16 @@ if (document.getElementById('aiRemoveDrop')){
     }
 
     if (!chosen){
-      bgLog('component split => NO SPLIT (kept as one region)', {
-        fgCount, minCore,
-        disconnectedBigComponents: plainBig.length,
-        totalComponents: plain.comps.length,
-        why: plainBig.length >= 2 ? 'unexpected' : 'blob never separated into 2 substantial pieces within the erosion budget, or the split was rejected by the horizontal-offset guard'
-      });
+      if (BG_DEBUG){
+        console.log('%c[BG] COMPONENT ANALYSIS', 'color:#fff;background:#a50;padding:2px 6px;font-weight:bold;');
+        console.log('[BG]   foreground px       : ' + fgCount + '  (minCore=' + minCore + ')');
+        console.log('[BG]   total components    : ' + plain.comps.length + '  (substantial: ' + plainBig.length + ')');
+        plain.comps.slice().sort(function(a,b){ return b.area-a.area; }).slice(0,6).forEach(function(c,i){
+          console.log('[BG]     comp#' + i + ' area=' + c.area + ' (' + (100*c.area/fgCount).toFixed(1) +
+                      '% of fg) centroidX=' + (c.cxMean/w).toFixed(3) + ' centralPx=' + c.centerHits);
+        });
+        console.log('[BG]   RESULT              : NO SPLIT - everything kept as one region');
+      }
       return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
     }
 
@@ -2654,6 +2664,55 @@ if (document.getElementById('aiRemoveDrop')){
       const cw = confMasks && confMasks[1] ? confMasks[1].width : maskW;
       const ch = confMasks && confMasks[1] ? confMasks[1].height : maskH;
 
+      // ============== APPROVED FIX ==============
+      // The acceptance gate below used to derive the person CONFIDENCE from
+      // the category-mask POLARITY:
+      //     personConf = personCategoryValue === 1 ? rawConf[i] : (1 - rawConf[i])
+      // Those are two independent facts. rawConf is confidenceMasks[1] -- a
+      // fixed output channel of the model -- while personCategoryValue is
+      // the result of this file's own polarity calibration on a DIFFERENT
+      // output (the category mask). Real runtime evidence from the deployed
+      // build showed the calibration returning 0 on a portrait, which
+      // silently turned the gate's "person confidence" into
+      // 1 - personConfidence, i.e. BACKGROUND confidence, measured over the
+      // subject pixels. That averages near zero, lands far under the 0.65
+      // bar, and rejects selfie_segmenter automatically -- no matter how
+      // good its mask is -- which is why every such photo fell through to
+      // DeepLab v3's much coarser 76%-of-frame mask.
+      //
+      // The correspondence between the two outputs is DETERMINED here from
+      // the data instead of assumed: compare the mean of confidenceMasks[1]
+      // over pixels the category mask calls person against its mean over
+      // pixels it calls background. Whichever way round that comes out
+      // tells us which orientation of the channel actually means "subject"
+      // for THIS run, on THIS device, without trusting either MediaPipe's
+      // documented convention or the polarity calibration.
+      let confChannelIsPerson = true;
+      let confPersonMean = null, confBgMean = null;
+      if (rawConf){
+        let sPerson = 0, nPerson = 0, sBg = 0, nBg = 0;
+        const stepY = Math.max(1, Math.floor(ch/120)), stepX = Math.max(1, Math.floor(cw/120));
+        for (let cy = 0; cy < ch; cy += stepY){
+          const my = Math.min(maskH-1, Math.round(cy*maskH/ch));
+          for (let cx = 0; cx < cw; cx += stepX){
+            const mx = Math.min(maskW-1, Math.round(cx*maskW/cw));
+            const v = rawConf[cy*cw+cx];
+            if (maskData[my*maskW+mx] === personCategoryValue){ sPerson += v; nPerson++; }
+            else { sBg += v; nBg++; }
+          }
+        }
+        confPersonMean = nPerson ? sPerson/nPerson : null;
+        confBgMean = nBg ? sBg/nBg : null;
+        if (confPersonMean !== null && confBgMean !== null) confChannelIsPerson = confPersonMean >= confBgMean;
+      }
+      // Correctly oriented per-pixel subject confidence: high = subject.
+      const personConfData = rawConf ? (function(){
+        if (confChannelIsPerson) return rawConf;
+        const inv = new Float32Array(rawConf.length);
+        for (let i=0; i<rawConf.length; i++) inv[i] = 1 - rawConf[i];
+        return inv;
+      })() : null;
+
       function sampleRegionVote(cxr, cyr){
         const radius = Math.round(Math.min(w,h) * 0.08);
         const votes = {};
@@ -2710,11 +2769,21 @@ if (document.getElementById('aiRemoveDrop')){
         guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
       }
 
+      // Normalize to 1 = subject so the shared refine helper can be handed
+      // personCategoryValue:1 alongside the already-correctly-oriented
+      // confidence above. That keeps refineSegmentationMask itself (shared
+      // with Passport Photo Maker, Photo Retouch and the Ecommerce Editor)
+      // completely untouched, while ensuring its edge-blending step is fed
+      // real subject confidence rather than the inverted signal.
+      const normalizedSelfieMask = new Uint8ClampedArray(filteredMaskData.length);
+      for (let i=0; i<normalizedSelfieMask.length; i++){
+        normalizedSelfieMask[i] = (filteredMaskData[i] === personCategoryValue) ? 1 : 0;
+      }
       const alpha = refineSegmentationMask({
-        maskData: filteredMaskData, maskW, maskH,
-        confidenceData: rawConf, confW: cw, confH: ch,
+        maskData: normalizedSelfieMask, maskW, maskH,
+        confidenceData: personConfData, confW: cw, confH: ch,
         outW: w, outH: h,
-        personCategoryValue,
+        personCategoryValue: 1,
         guideGray,
         onStage: BG_DEBUG ? function(info){ bgLog('[selfie_segmenter post-processing]', info); } : null,
       });
@@ -2763,8 +2832,7 @@ if (document.getElementById('aiRemoveDrop')){
           if (alpha[i] <= 128) continue; // only score pixels the mask actually kept
           const x = i % w, y = Math.floor(i / w);
           const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
-          const rawC = rawConf[cy*cw+cx];
-          const personConf = personCategoryValue === 1 ? rawC : (1 - rawC);
+          const personConf = personConfData[cy*cw+cx];
           sampled++; sum += personConf;
           const xf = x/w, yf = y/h;
           if (xf < bbMinX) bbMinX = xf; if (xf > bbMaxX) bbMaxX = xf;
@@ -2804,20 +2872,56 @@ if (document.getElementById('aiRemoveDrop')){
       }
 
       const confident = !looksFullBody && areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
-      bgLog('selfie_segmenter =>', {
-        maskW, maskH, confW: cw, confH: ch,
-        personCategoryValue,
-        keptFrac: +keptFrac.toFixed(4),
-        areaOk,
-        avgPersonConfidence: avgPersonConfidence === null ? null : +avgPersonConfidence.toFixed(4),
-        bbox: bbMinXFrac === null ? null : {
-          x: +bbMinXFrac.toFixed(3) + '-' + +bbMaxXFrac.toFixed(3),
-          y: +bbMinYFrac.toFixed(3) + '-' + +bbMaxYFrac.toFixed(3)
-        },
-        looksFullBody,
-        CONFIDENT: confident,
-        verdict: confident ? 'USING selfie_segmenter result' : 'REJECTED -> falling back to DeepLab v3'
-      });
+      if (BG_DEBUG){
+        // Flat string output on purpose: the previous object form was
+        // collapsed by the console ("{...}, ...") and hid the exact values
+        // that decide acceptance -- which is the single most important
+        // fact in this whole investigation.
+        const reasons = [];
+        if (looksFullBody) reasons.push('looksFullBody=true (bbox spans >=85% height AND <=45% width)');
+        if (!areaOk) reasons.push('areaOk=false (keptFrac ' + keptFrac.toFixed(4) + ' outside 0.03-0.97)');
+        if (avgPersonConfidence === null) reasons.push('avgPersonConfidence=null (no confidence mask available)');
+        else if (avgPersonConfidence < 0.65) reasons.push('avgPersonConfidence ' + avgPersonConfidence.toFixed(4) + ' < 0.65 threshold');
+        // Confidence distribution over the RAW confidence mask, so we can
+        // see whether a good signal is being thrown away.
+        let cStats = 'n/a';
+        if (rawConf && rawConf.length){
+          const step = Math.max(1, Math.floor(rawConf.length/20000));
+          const samples = [];
+          let mn = Infinity, mx = -Infinity, sum = 0;
+          for (let i=0; i<rawConf.length; i+=step){
+            const v = personConfData[i];
+            samples.push(v); sum += v;
+            if (v < mn) mn = v; if (v > mx) mx = v;
+          }
+          samples.sort(function(a,b){ return a-b; });
+          const pct = function(q){ return samples[Math.min(samples.length-1, Math.floor(q*samples.length))].toFixed(4); };
+          cStats = 'min=' + mn.toFixed(4) + ' p05=' + pct(0.05) + ' p25=' + pct(0.25) +
+                   ' median=' + pct(0.50) + ' p75=' + pct(0.75) + ' p95=' + pct(0.95) +
+                   ' max=' + mx.toFixed(4) + ' mean=' + (sum/samples.length).toFixed(4);
+        }
+        console.log('%c[BG] SELFIE_SEGMENTER RESULT', 'color:#fff;background:#0a7;padding:2px 6px;font-weight:bold;');
+        console.log('[BG]   accepted            : ' + confident);
+        console.log('[BG]   rejected            : ' + (!confident));
+        console.log('[BG]   rejection reason(s) : ' + (confident ? '(none - accepted)' : reasons.join(' | ')));
+        console.log('[BG]   personCategoryValue : ' + personCategoryValue + '   <-- category-mask polarity calibration');
+        console.log('[BG]   confidence channel  : confidenceMasks[1] ' + (confChannelIsPerson ? 'IS' : 'is NOT') +
+                    ' the person channel  (determined from data, NOT from personCategoryValue)');
+        console.log('[BG]     mean conf[1] @ category=person px  : ' + (confPersonMean === null ? 'n/a' : confPersonMean.toFixed(4)));
+        console.log('[BG]     mean conf[1] @ category=background : ' + (confBgMean === null ? 'n/a' : confBgMean.toFixed(4)));
+        console.log('[BG]   personConfidenceMeanOnKeptPixels     : ' + (avgPersonConfidence === null ? 'null' : avgPersonConfidence.toFixed(4)));
+        console.log('[BG]   backgroundConfidenceMeanOnKeptPixels : ' + (avgPersonConfidence === null ? 'null' : (1-avgPersonConfidence).toFixed(4)));
+        console.log('[BG]   foregroundPct       : ' + (100*keptFrac).toFixed(2) + '%');
+        console.log('[BG]   mask size           : ' + maskW + 'x' + maskH + '   confidence map: ' + cw + 'x' + ch);
+        console.log('[BG]   keptFrac            : ' + keptFrac.toFixed(4) + '   (areaOk=' + areaOk + ')');
+        console.log('[BG]   avgPersonConfidence : ' + (avgPersonConfidence === null ? 'null' : avgPersonConfidence.toFixed(4)) + '   (threshold 0.65)');
+        console.log('[BG]   looksFullBody       : ' + looksFullBody);
+        console.log('[BG]   kept bbox (frac)    : ' + (bbMinXFrac === null ? 'null' :
+          'x ' + bbMinXFrac.toFixed(3) + '-' + bbMaxXFrac.toFixed(3) + ' , y ' + bbMinYFrac.toFixed(3) + '-' + bbMaxYFrac.toFixed(3)));
+        console.log('[BG]   confidence distrib. : ' + cStats);
+        console.log('[BG]   VERDICT             : ' + (confident ? 'USING selfie_segmenter' : 'REJECTED -> falling back to DeepLab v3'));
+        try { window.__BG_SELFIE_ALPHA__ = { alpha: alpha, w: w, h: h, accepted: confident }; } catch(e){}
+      }
       return { confident, alpha };
     }catch(err){
       return null; // any failure here just falls through to DeepLab v3 below
@@ -3553,19 +3657,35 @@ if (document.getElementById('aiRemoveDrop')){
             if (stage && stage.parentNode) stage.parentNode.insertBefore(host, stage.nextSibling);
             else document.body.appendChild(host);
           }
-          host.innerHTML = '<div style="margin-bottom:6px;">BG DEBUG — final alpha (white = kept). Path: ' +
-            ((selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3') + '</div>';
-          const dbg = document.createElement('canvas');
-          dbg.width = w; dbg.height = h;
-          dbg.style.cssText = 'max-width:280px;height:auto;border:1px solid #555;background:#000;';
-          const dctx = dbg.getContext('2d');
-          const dimg = dctx.createImageData(w, h);
-          for (let i = 0; i < w*h; i++){
-            const a = refinedAlpha[i];
-            dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
+          host.innerHTML = '<div style="margin-bottom:8px;font-weight:bold;">BG DEBUG — mask comparison (white = KEPT, black = removed)</div>';
+          const addMask = function(label, arr, aw, ah){
+            if (!arr) return;
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
+            const cap = document.createElement('div');
+            cap.textContent = label;
+            cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#8f8;';
+            const dbg = document.createElement('canvas');
+            dbg.width = aw; dbg.height = ah;
+            dbg.style.cssText = 'max-width:240px;height:auto;border:1px solid #555;background:#000;';
+            const dctx = dbg.getContext('2d');
+            const dimg = dctx.createImageData(aw, ah);
+            for (let i = 0; i < aw*ah; i++){
+              const a = arr[i];
+              dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
+            }
+            dctx.putImageData(dimg, 0, 0);
+            wrap.appendChild(cap); wrap.appendChild(dbg);
+            host.appendChild(wrap);
+          };
+          // Side-by-side: the selfie mask that was computed (even when it was
+          // rejected and discarded) next to the DeepLab mask that actually
+          // shipped -- so the two can be compared directly by eye.
+          const selfieDump = (typeof window !== 'undefined' && window.__BG_SELFIE_ALPHA__) ? window.__BG_SELFIE_ALPHA__ : null;
+          if (selfieDump && selfieDump.alpha){
+            addMask('A. selfie_segmenter (' + (selfieDump.accepted ? 'ACCEPTED' : 'REJECTED/discarded') + ')', selfieDump.alpha, selfieDump.w, selfieDump.h);
           }
-          dctx.putImageData(dimg, 0, 0);
-          host.appendChild(dbg);
+          addMask('B. FINAL SHIPPED — ' + ((selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3'), refinedAlpha, w, h);
         }catch(e){ bgLog('preview render failed', e && e.message); }
       }
       aiResultCanvas = outCanvas;
