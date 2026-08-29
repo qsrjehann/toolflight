@@ -2306,7 +2306,7 @@ if (document.getElementById('aiRemoveDrop')){
      closed. BG_BUILD_ID is deliberately printed first so a test can
      prove WHICH build of this file the browser is really running -- the
      single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MODNET-EXPERIMENTAL-f2a9c716e0db';
+  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MODNET-AUTOMODEL-FIX-6c3e91b2a7d4';
   const BG_DEBUG = (() => {
     try { return new URLSearchParams(location.search).has('bgdebug'); }
     catch(e){ return false; }
@@ -2412,53 +2412,72 @@ if (document.getElementById('aiRemoveDrop')){
        - never writes to refinedAlpha, aiResultCanvas, or any variable
          the production Selfie/DeepLab pipeline reads or the download/
          export/manual-refinement code depends on;
-       - has its own model loader (modnetSegmenter /
-         modnetSegmenterLoadPromise) -- entirely separate from
-         selfieSegmenter, segmenter (DeepLab, defined above),
-         rtSegmenter/rtHairSegmenter (Photo Retouch) and epeSegmenter
-         (Ecommerce Editor). No shared state with any of those, and none
-         of those are read or modified anywhere in this block;
+       - has its own model loader (modnetModel / modnetProcessor /
+         modnetLoadPromise) -- entirely separate from selfieSegmenter,
+         segmenter (DeepLab, defined above), rtSegmenter/rtHairSegmenter
+         (Photo Retouch) and epeSegmenter (Ecommerce Editor). No shared
+         state with any of those, and none of those are read or
+         modified anywhere in this block;
        - fails silently (console.warn only) on any error, leaving
          whatever the production pipeline already computed exactly as
          it was.
 
-     SOURCE OF TRUTH FOR THIS INTEGRATION (verified against the model's
-     own Hugging Face card and Hugging Face's own transformers.js v3
-     announcement before writing this code, not assumed or guessed):
+     CORRECTION (this revision): the first version of this block called
+     pipeline('background-removal', 'Xenova/modnet', ...). A real
+     browser test came back with "Unsupported pipeline: background-
+     removal" -- a follow-up read-only investigation (checked directly
+     against the @huggingface/transformers "3.0.0" tag's own source,
+     not assumed) confirmed why: that named pipeline was added to the
+     library by a PR merged well after 3.0.0 shipped, so it simply
+     doesn't exist at the version this file pins. That same
+     investigation also confirmed 'image-segmentation' is NOT a valid
+     substitute for this specific model -- Xenova/modnet's own
+     config.json carries no id2label/class list, which is what that
+     pipeline's post-processing needs.
+
+     SOURCE OF TRUTH FOR THE CORRECTED INTEGRATION (verified before
+     writing this revision, not assumed or guessed):
        - Model: "Xenova/modnet" on Hugging Face -- an ONNX export of
          MODNet (ZHKKKe/MODNet, AAAI 2022 -- "A Trimap-Free Portrait
          Matting Solution in Real Time"). License: Apache-2.0 (checked
-         directly on the model repo).
+         directly on the model repo, re-confirmed this revision).
        - config.json (verified): {"model_type":"modnet","transformers.js_config":{"dtype":"fp32"}}
+         -- no id2label/architectures field, confirming (2) above.
        - preprocessor_config.json (verified): resize shortest edge to
          512, size divisible by 32, rescale by 1/255, normalize with
-         mean/std 0.5/0.5 (i.e. into roughly [-1,1]). All of this is
-         handled INSIDE the pipeline() call below -- this file does not
-         re-implement any of that preprocessing.
-       - Model card's own documented usage (quoted verbatim from the
-         card, not paraphrased):
-           import { pipeline } from '@huggingface/transformers';
-           const segmenter = await pipeline('background-removal', 'Xenova/modnet', { dtype: 'fp32' });
-           const output = await segmenter(url);
-         transformers.js's own test suite for this exact pipeline
-         asserts output[0] is a RawImage whose width/height match the
-         INPUT image and whose channels === 4 (RGBA) -- i.e. the alpha
-         channel of that RGBA image IS the continuous matte. This file
-         reads that channel directly further down; the "resize back
-         to w/h" branch below is defensive in case a future library
-         version changes that, not something expected to fire today.
-       - Library: "@huggingface/transformers" -- confirmed as the
-         current/maintained package name from the model card itself
-         (NOT "@xenova/transformers", an older name for the same
-         project). Version pinned to 3.0.0, the exact version shown in
-         Hugging Face's own transformers.js v3 blog post, loaded the
-         same unbundled-CDN way this file already loads
-         @mediapipe/tasks-vision elsewhere.
-       - This sandbox has no network egress to jsdelivr/huggingface, so
-         none of the above could be executed here -- everything past
-         this comment is implemented from, and should be checked
-         against, the verified sources above the first time it actually
-         runs in a real browser.
+         mean/std 0.5/0.5. Handled INSIDE processor(img) below -- this
+         file does not re-implement that preprocessing.
+       - Checked directly against the "3.0.0" tag of
+         huggingface/transformers.js: src/models.js has no dedicated
+         "modnet" architecture entry, but PreTrainedModel.from_pretrained()
+         has an explicit, non-throwing fallback for any unrecognized
+         model_type -- it logs a warning ("Model type for '...' not
+         found, assuming encoder-only architecture") and loads it as a
+         plain single-session encoder-only model, i.e. a raw ONNX
+         forward pass. This fallback is what the lower-level API below
+         relies on; it does not require "modnet" to be specially known.
+       - A published, working example (a LogRocket tutorial building a
+         background remover with this exact model) uses precisely this
+         lower-level API rather than any named pipeline, and was used as
+         the source for the exact call shape below (quoted, not
+         paraphrased):
+           const model = await AutoModel.from_pretrained('Xenova/modnet', { dtype: 'fp32' });
+           const processor = await AutoProcessor.from_pretrained('Xenova/modnet');
+           const img = await RawImage.fromURL(url);
+           const { pixel_values } = await processor(img);
+           const { output } = await model({ input: pixel_values });
+           // output[0] is a single-channel tensor -- the continuous matte.
+       - Library: "@huggingface/transformers" (unchanged from before --
+         confirmed current/maintained name, not "@xenova/transformers").
+         Version still pinned to 3.0.0 -- this correction only changes
+         WHICH API of that same already-approved library is used, not
+         the library or version itself.
+       - This sandbox still has no network egress to jsdelivr/huggingface
+         (re-confirmed this revision), so none of this could be executed
+         here. Per the explicit instructions for this revision, the code
+         below does NOT assume the tensor shape it will get back --
+         every stage logs what it actually received and stops rather
+         than guessing if it differs from what's documented above.
      ============================================================ */
   const BG_EXPERIMENTAL_MODNET = (() => {
     try { return new URLSearchParams(location.search).get('experimental') === 'modnet'; }
@@ -2466,23 +2485,44 @@ if (document.getElementById('aiRemoveDrop')){
   })();
   const MODNET_LIB_VERSION = '3.0.0';
   const MODNET_MODEL_ID = 'Xenova/modnet';
-  let modnetSegmenter = null;
-  let modnetSegmenterLoadPromise = null;
+  let modnetModel = null;
+  let modnetProcessor = null;
+  let modnetLoadPromise = null;
   async function ensureModnetSegmenter(){
-    if (modnetSegmenter) return modnetSegmenter;
-    if (!modnetSegmenterLoadPromise){
-      modnetSegmenterLoadPromise = (async () => {
+    if (modnetModel && modnetProcessor) return { model: modnetModel, processor: modnetProcessor };
+    if (!modnetLoadPromise){
+      modnetLoadPromise = (async () => {
+        console.log('[BG][experimental] MODNET MODEL LOAD START');
         const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${MODNET_LIB_VERSION}`);
-        const { pipeline } = mod;
-        const seg = await pipeline('background-removal', MODNET_MODEL_ID, { dtype: 'fp32' });
-        modnetSegmenter = seg;
-        return seg;
+        const { AutoModel, AutoProcessor } = mod;
+        if (typeof AutoModel !== 'function' || typeof AutoProcessor !== 'function'){
+          console.warn('[BG][experimental] MODNET PROCESSOR LOAD FAIL / MODNET MODEL LOAD FAIL -- this library build does not export AutoModel/AutoProcessor as expected. Actual exports:', mod ? Object.keys(mod) : mod);
+          throw new Error('AutoModel/AutoProcessor not found on @huggingface/transformers@' + MODNET_LIB_VERSION);
+        }
+        let processor;
+        try{
+          processor = await AutoProcessor.from_pretrained(MODNET_MODEL_ID);
+          console.log('[BG][experimental] MODNET PROCESSOR LOAD SUCCESS');
+        }catch(procErr){
+          console.warn('[BG][experimental] MODNET PROCESSOR LOAD FAIL', procErr && (procErr.message || procErr));
+          throw procErr;
+        }
+        let model;
+        try{
+          model = await AutoModel.from_pretrained(MODNET_MODEL_ID, { dtype: 'fp32' });
+          console.log('[BG][experimental] MODNET MODEL LOAD SUCCESS');
+        }catch(modelErr){
+          console.warn('[BG][experimental] MODNET MODEL LOAD FAIL', modelErr && (modelErr.message || modelErr));
+          throw modelErr;
+        }
+        modnetModel = model; modnetProcessor = processor;
+        return { model, processor };
       })().catch((err) => {
-        modnetSegmenterLoadPromise = null;
+        modnetLoadPromise = null;
         throw err;
       });
     }
-    return modnetSegmenterLoadPromise;
+    return modnetLoadPromise;
   }
 
   // Diagnostic-only connected-component reporter for the experimental
@@ -2532,125 +2572,227 @@ if (document.getElementById('aiRemoveDrop')){
 
   async function runModnetExperiment(srcCanvas, w, h, myGeneration){
     try{
-      console.log('%c[BG][experimental] MODNet evaluation starting', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;',
+      console.log('%c[BG][experimental] MODNet evaluation starting (AutoModel/AutoProcessor)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;',
         { model: MODNET_MODEL_ID, libVersion: MODNET_LIB_VERSION, note: 'Fully separate from the production result above -- this cannot change what you already see.' });
+
       const t0 = performance.now();
-      const seg = await ensureModnetSegmenter();
+      let handle;
+      try{
+        handle = await ensureModnetSegmenter();
+      }catch(loadErr){
+        console.warn('%c[BG][experimental] MODNET EXPERIMENT COMPLETE (load failed) -- production result above is unaffected.', 'color:#fff;background:#c0392b;padding:2px 6px;', loadErr && (loadErr.message || loadErr));
+        return null;
+      }
+      const { model, processor } = handle;
       if (myGeneration !== aiGeneration){ console.log('[BG][experimental] stale run (image changed) -- discarding, production result untouched'); return null; }
       const t1 = performance.now();
 
-      const dataUrl = srcCanvas.toDataURL('image/png');
-      const output = await seg(dataUrl);
+      // Build the input image via the library's own loader (same pixels
+      // the production pipeline used, from srcCanvas), so preprocessing
+      // matches what the model card documents rather than a hand-rolled
+      // decode.
+      let img;
+      try{
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${MODNET_LIB_VERSION}`);
+        const { RawImage } = mod;
+        img = await RawImage.fromURL(srcCanvas.toDataURL('image/png'));
+      }catch(imgErr){
+        console.warn('[BG][experimental] MODNET INFERENCE FAIL -- could not build a RawImage from the source canvas', imgErr && (imgErr.message || imgErr));
+        return null;
+      }
+      console.log('[BG][experimental] input dimensions : ' + img.width + 'x' + img.height + '  (working canvas: ' + w + 'x' + h + ')');
+
+      console.log('[BG][experimental] MODNET INFERENCE START');
+      let pixel_values, modelOutput;
+      try{
+        const procResult = await processor(img);
+        pixel_values = procResult && procResult.pixel_values;
+        if (!pixel_values){
+          console.warn('[BG][experimental] MODNET INFERENCE FAIL -- processor(img) did not return a "pixel_values" tensor. Actual keys returned:', procResult ? Object.keys(procResult) : procResult);
+          return null;
+        }
+        modelOutput = await model({ input: pixel_values });
+      }catch(inferErr){
+        console.warn('[BG][experimental] MODNET INFERENCE FAIL', inferErr && (inferErr.message || inferErr));
+        return null;
+      }
       if (myGeneration !== aiGeneration){ console.log('[BG][experimental] stale run (image changed) -- discarding, production result untouched'); return null; }
       const t2 = performance.now();
 
-      const raw = output && output[0];
-      if (!raw || !raw.data || !raw.width || !raw.height){
-        console.warn('[BG][experimental] MODNet returned no usable output -- experimental path stops here; production result above is unaffected.');
+      if (!modelOutput || typeof modelOutput !== 'object'){
+        console.warn('[BG][experimental] MODNET INFERENCE FAIL -- model({input}) returned no usable object. Actual value:', modelOutput);
         return null;
       }
-      if (raw.channels !== 4){
-        console.warn('[BG][experimental] Unexpected channel count from MODNet (' + raw.channels + ', expected 4 per the model card’s own documented output shape) -- stopping rather than guessing which channel is the matte.');
+      const outputKeys = Object.keys(modelOutput);
+      console.log('[BG][experimental] MODNET INFERENCE SUCCESS -- returned keys: ' + outputKeys.join(', '));
+
+      // Do NOT guess the tensor -- use the documented "output" key if
+      // present, otherwise report exactly what came back and stop.
+      const outTensor = modelOutput.output;
+      if (!outTensor){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- no "output" key in the model result (expected per the LogRocket-tutorial-verified call shape). Actual keys:', outputKeys, 'full object:', modelOutput);
         return null;
       }
 
-      // The model card's documented output already comes back at the
-      // INPUT image's width/height (see the source-of-truth comment
-      // above this function), so no upsampling should be needed -- but
-      // this is defensive rather than assumed, in case that changes.
-      let alphaSrc = raw.data, srcW = raw.width, srcH = raw.height;
-      if (srcW !== w || srcH !== h){
-        console.log('[BG][experimental] MODNet output size (' + srcW + 'x' + srcH + ') differs from the working canvas (' + w + 'x' + h + ') -- rescaling with drawImage before reading the alpha channel.');
-        const tmp = document.createElement('canvas');
-        tmp.width = srcW; tmp.height = srcH;
-        const timg = tmp.getContext('2d').createImageData(srcW, srcH);
-        timg.data.set(alphaSrc);
-        tmp.getContext('2d').putImageData(timg, 0, 0);
-        const rs = document.createElement('canvas');
-        rs.width = w; rs.height = h;
-        const rctx = rs.getContext('2d');
-        rctx.drawImage(tmp, 0, 0, w, h);
-        alphaSrc = rctx.getImageData(0, 0, w, h).data;
-        srcW = w; srcH = h;
-      }
-
-      // ---- Phase 7: preserve the NATIVE CONTINUOUS alpha matte. This is
-      // read straight from the RGBA output's alpha channel -- nothing is
-      // thresholded yet. ----
-      const modnetAlphaRaw = new Uint8ClampedArray(w*h);
-      for (let i=0; i<w*h; i++) modnetAlphaRaw[i] = alphaSrc[i*4+3];
-
-      const sortedForStats = Array.prototype.slice.call(modnetAlphaRaw).sort(function(a,b){ return a-b; });
-      const pctAt = function(q){ return sortedForStats[Math.min(sortedForStats.length-1, Math.floor(q*sortedForStats.length))]; };
-      let sum = 0; for (let i=0;i<modnetAlphaRaw.length;i++) sum += modnetAlphaRaw[i];
-      console.log('%c[BG][experimental] MODNET RAW ALPHA (continuous matte, pre-threshold)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-      console.log('[BG][experimental]   size                        : ' + w + 'x' + h);
-      console.log('[BG][experimental]   mean alpha                  : ' + (sum/modnetAlphaRaw.length).toFixed(2) + ' / 255');
-      console.log('[BG][experimental]   min / p05 / p25 / median / p75 / p95 / max : ' +
-        sortedForStats[0] + ' / ' + pctAt(0.05) + ' / ' + pctAt(0.25) + ' / ' + pctAt(0.50) + ' / ' + pctAt(0.75) + ' / ' + pctAt(0.95) + ' / ' + sortedForStats[sortedForStats.length-1]);
-
-      // ---- Diagnostic binary view (>128), ONLY to make this comparable,
-      // side by side, with the existing selfie/DeepLab component tables
-      // above -- a reporting choice, not the model's real output, and
-      // labeled as such everywhere it appears. ----
-      let keptHard = 0;
-      for (let i=0;i<modnetAlphaRaw.length;i++) if (modnetAlphaRaw[i] > 128) keptHard++;
-      const comps = analyzeForegroundComponentsForDiagnostics(function(i){ return modnetAlphaRaw[i] > 128; }, w, h);
-      const minCore = Math.max(16, Math.round(keptHard*0.02));
-      const bigComps = comps.filter(function(c){ return c.area >= minCore; });
-      console.log('%c[BG][experimental] MODNET COMPONENT ANALYSIS (diagnostic threshold >128)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-      console.log('[BG][experimental]   foreground kept (hard threshold) : ' + keptHard + ' px (' + (100*keptHard/(w*h)).toFixed(2) + '% of frame)');
-      console.log('[BG][experimental]   substantial components          : ' + bigComps.length + ' of ' + comps.length + ' total (>= ' + minCore + ' px each)');
-      if (console.table) console.table(bigComps.length ? bigComps : comps);
-      const fused = bigComps.length <= 1;
-      console.log('[BG][experimental]   VERDICT (diagnostic only, NOT a final judgement)  : ' +
-        (fused ? 'subject+background still ONE connected component at this threshold -- same finding as the production masks'
-               : 'MORE THAN ONE substantial component -- worth visual inspection of whether one of them is the chair/bystander'));
-
-      console.log('%c[BG][experimental] PERFORMANCE', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-      console.log('[BG][experimental]   model load time   : ' + (t1-t0).toFixed(0) + ' ms (expect ~0ms on repeat runs once cached by the browser)');
-      console.log('[BG][experimental]   inference time    : ' + (t2-t1).toFixed(0) + ' ms');
-      console.log('[BG][experimental]   total             : ' + (t2-t0).toFixed(0) + ' ms');
-
-      try{ window.__BG_MODNET_ALPHA__ = { alpha: modnetAlphaRaw, w: w, h: h }; }catch(e){}
-
-      // ---- Visual previews. Appended to the SAME debug host the A/B/C
-      // masks use above -- only when that host already exists, i.e. only
-      // when ?bgdebug=1 is ALSO present. With experimental=modnet alone
-      // (no bgdebug), this function still logs everything above to the
-      // console but adds nothing to the page. ----
+      // Index the batch dimension the same way the verified example does
+      // (output[0]) -- if that indexing doesn't behave as expected, this
+      // is reported rather than silently falling back to something else.
+      let single;
       try{
-        const host = document.getElementById('bgDebugPreviews');
-        if (host){
-          const addGray = function(label, arr, aw, ah){
-            const wrap = document.createElement('div');
-            wrap.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
-            const cap = document.createElement('div');
-            cap.textContent = label;
-            cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#d9b3ff;';
-            const dbg = document.createElement('canvas');
-            dbg.width = aw; dbg.height = ah;
-            dbg.style.cssText = 'max-width:240px;height:auto;border:1px solid #a05eff;background:#000;';
-            const dctx = dbg.getContext('2d');
-            const dimg = dctx.createImageData(aw, ah);
-            for (let i = 0; i < aw*ah; i++){
-              const a = arr[i];
-              dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
-            }
-            dctx.putImageData(dimg, 0, 0);
-            wrap.appendChild(cap); wrap.appendChild(dbg);
-            host.appendChild(wrap);
-          };
-          addGray('D. MODNET EXPERIMENTAL — native continuous alpha (NOT thresholded)', modnetAlphaRaw, w, h);
-          const thresholded = new Uint8ClampedArray(w*h);
-          for (let i=0;i<w*h;i++) thresholded[i] = modnetAlphaRaw[i] > 128 ? 255 : 0;
-          addGray('E. MODNET diagnostic threshold >128 (comparison only — not the real output)', thresholded, w, h);
-        }
-      }catch(e){ console.warn('[BG][experimental] preview render failed (non-fatal)', e && e.message); }
+        single = outTensor[0];
+      }catch(idxErr){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0] threw while indexing the batch dimension', idxErr && idxErr.message);
+        return null;
+      }
+      if (!single){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0] is empty/undefined.');
+        return null;
+      }
 
-      return { alpha: modnetAlphaRaw, w: w, h: h, loadMs: t1-t0, inferMs: t2-t1 };
+      const dims = single.dims || outTensor.dims || null;
+      console.log('%c[BG][experimental] MODNET OUTPUT SHAPE', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
+      console.log('[BG][experimental]   dims (as reported by the tensor) : ' + (dims ? JSON.stringify(dims) : 'NOT REPORTED -- see raw object logged below'));
+      if (!dims) console.log('[BG][experimental]   raw output[0] object:', single);
+
+      const floatData = single.data || null;
+      if (!floatData){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0].data is not a typed array. Actual object:', single);
+        return null;
+      }
+      console.log('[BG][experimental]   datatype                          : ' + (floatData.constructor ? floatData.constructor.name : typeof floatData));
+      console.log('[BG][experimental]   element count                     : ' + floatData.length);
+
+      // Single-channel check: element count must equal the model's own
+      // H*W (one value per pixel), not a multiple of it -- verified
+      // against dims, not assumed.
+      let modelH = null, modelW = null;
+      if (dims && dims.length >= 2){ modelH = dims[dims.length-2]; modelW = dims[dims.length-1]; }
+      if (modelW && modelH && modelW*modelH !== floatData.length){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- element count (' + floatData.length + ') does not match dims-derived ' + modelW + 'x' + modelH + ' (' + (modelW*modelH) + '). Not guessing which axis is which -- stopping.');
+        return null;
+      }
+      if (!modelW || !modelH){
+        console.warn('[BG][experimental] MODNET OUTPUT SHAPE could not be confirmed from tensor dims (element count ' + floatData.length + ') -- skipping resize/diagnostics rather than guessing a width/height.');
+        return null;
+      }
+      console.log('[BG][experimental]   model output resolution           : ' + modelW + 'x' + modelH + ' (single-channel, confirmed: width*height === element count)');
+
+      // Value-range check: confirms this looks like a matte (~0..1)
+      // rather than raw unnormalized logits. Reported either way.
+      let rawMin = Infinity, rawMax = -Infinity, rawSum = 0;
+      for (let i=0;i<floatData.length;i++){ const v=floatData[i]; if (v<rawMin) rawMin=v; if (v>rawMax) rawMax=v; rawSum+=v; }
+      const looksLikeUnitRange = rawMax <= 1.05 && rawMin >= -0.05;
+      console.log('[BG][experimental]   raw value range (model resolution): min=' + rawMin.toFixed(4) + ' max=' + rawMax.toFixed(4) + ' mean=' + (rawSum/floatData.length).toFixed(4) +
+        '  (' + (looksLikeUnitRange ? 'looks like a 0..1 matte, as expected' : 'DOES NOT look like a 0..1 matte -- flagged, not silently trusted') + ')');
+
+      // ---- Phase 7: preserve the NATIVE CONTINUOUS alpha, at the
+      // model's own resolution, before any resize. 0-255 here is a
+      // storage/display scaling only -- the underlying values are still
+      // the model's continuous float output, not thresholded. ----
+      const modnetAlphaModelRes = new Uint8ClampedArray(modelW*modelH);
+      for (let i=0;i<floatData.length;i++) modnetAlphaModelRes[i] = looksLikeUnitRange ? floatData[i]*255 : floatData[i];
+
+      // Resize model resolution -> the application's working canvas
+      // (w x h). This is the one resize in this pipeline, done
+      // explicitly via drawImage (bilinear) and logged, not assumed to
+      // already match.
+      console.log('[BG][experimental] resizing model output ' + modelW + 'x' + modelH + ' -> working canvas ' + w + 'x' + h);
+      const tmp = document.createElement('canvas');
+      tmp.width = modelW; tmp.height = modelH;
+      const tctx = tmp.getContext('2d');
+      const timg = tctx.createImageData(modelW, modelH);
+      for (let i=0;i<modnetAlphaModelRes.length;i++){
+        const a = modnetAlphaModelRes[i];
+        timg.data[i*4] = a; timg.data[i*4+1] = a; timg.data[i*4+2] = a; timg.data[i*4+3] = 255;
+      }
+      tctx.putImageData(timg, 0, 0);
+      const rs = document.createElement('canvas');
+      rs.width = w; rs.height = h;
+      const rctx = rs.getContext('2d');
+      rctx.drawImage(tmp, 0, 0, w, h);
+      const resized = rctx.getImageData(0, 0, w, h).data;
+      const modnetAlphaRaw = new Uint8ClampedArray(w*h);
+      for (let i=0;i<w*h;i++) modnetAlphaRaw[i] = resized[i*4];
+
+      if (modnetAlphaRaw.length !== w*h){
+        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- resized alpha length (' + modnetAlphaRaw.length + ') does not match working canvas pixel count (' + (w*h) + ').');
+        return null;
+      }
+      console.log('[BG][experimental] MODNET ALPHA EXTRACTION SUCCESS -- ' + modnetAlphaRaw.length + ' px at working resolution ' + w + 'x' + h + ' (expected ' + (w*h) + ')');
+
+      let diagOk = true;
+      try{
+        const sortedForStats = Array.prototype.slice.call(modnetAlphaRaw).sort(function(a,b){ return a-b; });
+        const pctAt = function(q){ return sortedForStats[Math.min(sortedForStats.length-1, Math.floor(q*sortedForStats.length))]; };
+        let sum = 0; for (let i=0;i<modnetAlphaRaw.length;i++) sum += modnetAlphaRaw[i];
+        console.log('%c[BG][experimental] MODNET RAW ALPHA (continuous matte, pre-threshold, at working resolution)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
+        console.log('[BG][experimental]   size                        : ' + w + 'x' + h);
+        console.log('[BG][experimental]   mean alpha                  : ' + (sum/modnetAlphaRaw.length).toFixed(2) + ' / 255');
+        console.log('[BG][experimental]   min / p05 / p25 / median / p75 / p95 / max : ' +
+          sortedForStats[0] + ' / ' + pctAt(0.05) + ' / ' + pctAt(0.25) + ' / ' + pctAt(0.50) + ' / ' + pctAt(0.75) + ' / ' + pctAt(0.95) + ' / ' + sortedForStats[sortedForStats.length-1]);
+
+        // Diagnostic binary view (>128), ONLY for comparability with the
+        // existing selfie/DeepLab component tables above -- a reporting
+        // choice, not the model's real output, labeled as such everywhere.
+        let keptHard = 0;
+        for (let i=0;i<modnetAlphaRaw.length;i++) if (modnetAlphaRaw[i] > 128) keptHard++;
+        const comps = analyzeForegroundComponentsForDiagnostics(function(i){ return modnetAlphaRaw[i] > 128; }, w, h);
+        const minCore = Math.max(16, Math.round(keptHard*0.02));
+        const bigComps = comps.filter(function(c){ return c.area >= minCore; });
+        console.log('%c[BG][experimental] MODNET COMPONENT ANALYSIS (diagnostic threshold >128)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
+        console.log('[BG][experimental]   foreground kept (hard threshold) : ' + keptHard + ' px (' + (100*keptHard/(w*h)).toFixed(2) + '% of frame)');
+        console.log('[BG][experimental]   substantial components          : ' + bigComps.length + ' of ' + comps.length + ' total (>= ' + minCore + ' px each)');
+        if (console.table) console.table(bigComps.length ? bigComps : comps);
+        const fused = bigComps.length <= 1;
+        console.log('[BG][experimental]   VERDICT (diagnostic only, NOT a final judgement)  : ' +
+          (fused ? 'subject+background still ONE connected component at this threshold -- same finding as the production masks'
+                 : 'MORE THAN ONE substantial component -- worth visual inspection of whether one of them is the chair/bystander'));
+
+        console.log('%c[BG][experimental] PERFORMANCE', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
+        console.log('[BG][experimental]   model+processor load time : ' + (t1-t0).toFixed(0) + ' ms (expect ~0ms on repeat runs once cached by the browser)');
+        console.log('[BG][experimental]   inference time            : ' + (t2-t1).toFixed(0) + ' ms');
+        console.log('[BG][experimental]   total                     : ' + (t2-t0).toFixed(0) + ' ms');
+
+        try{ window.__BG_MODNET_ALPHA__ = { alpha: modnetAlphaRaw, w: w, h: h, modelW: modelW, modelH: modelH }; }catch(e){}
+
+        try{
+          const host = document.getElementById('bgDebugPreviews');
+          if (host){
+            const addGray = function(label, arr, aw, ah){
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
+              const cap = document.createElement('div');
+              cap.textContent = label;
+              cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#d9b3ff;';
+              const dbg = document.createElement('canvas');
+              dbg.width = aw; dbg.height = ah;
+              dbg.style.cssText = 'max-width:240px;height:auto;border:1px solid #a05eff;background:#000;';
+              const dctx = dbg.getContext('2d');
+              const dimg = dctx.createImageData(aw, ah);
+              for (let i = 0; i < aw*ah; i++){
+                const a = arr[i];
+                dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
+              }
+              dctx.putImageData(dimg, 0, 0);
+              wrap.appendChild(cap); wrap.appendChild(dbg);
+              host.appendChild(wrap);
+            };
+            addGray('D. MODNET EXPERIMENTAL — native continuous alpha (NOT thresholded)', modnetAlphaRaw, w, h);
+            const thresholded = new Uint8ClampedArray(w*h);
+            for (let i=0;i<w*h;i++) thresholded[i] = modnetAlphaRaw[i] > 128 ? 255 : 0;
+            addGray('E. MODNET diagnostic threshold >128 (comparison only — not the real output)', thresholded, w, h);
+          }
+        }catch(e){ console.warn('[BG][experimental] preview render failed (non-fatal)', e && e.message); }
+      }catch(diagErr){
+        diagOk = false;
+        console.warn('[BG][experimental] MODNET DIAGNOSTICS FAIL', diagErr && (diagErr.message || diagErr));
+      }
+      console.log(diagOk ? '[BG][experimental] MODNET DIAGNOSTICS COMPLETE' : '[BG][experimental] MODNET DIAGNOSTICS FAIL (see warning above)');
+      console.log('%c[BG][experimental] MODNET EXPERIMENT COMPLETE', 'color:#fff;background:#2a9d3d;padding:2px 6px;font-weight:bold;');
+
+      return { alpha: modnetAlphaRaw, w: w, h: h, modelW: modelW, modelH: modelH, loadMs: t1-t0, inferMs: t2-t1 };
     }catch(err){
-      console.warn('%c[BG][experimental] MODNet path failed -- production result above is unaffected.', 'color:#fff;background:#c0392b;padding:2px 6px;', err && (err.message || err));
+      console.warn('%c[BG][experimental] MODNET EXPERIMENT COMPLETE (failed) -- production result above is unaffected.', 'color:#fff;background:#c0392b;padding:2px 6px;', err && (err.message || err));
       return null;
     }
   }
