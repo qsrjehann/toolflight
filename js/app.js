@@ -2270,6 +2270,32 @@ if (document.getElementById('aiRemoveDrop')){
     if (label) label.textContent = message;
   }
 
+  /* ---------- TEMPORARY RUNTIME DIAGNOSTICS (Background Remover) ----------
+     Added to settle, with real runtime evidence rather than inference,
+     which model and which code path actually execute for a given photo,
+     and why a result looks the way it does. Completely inert unless the
+     URL carries ?bgdebug=1 -- no console output, no behavior change, and
+     no measurable cost on a normal visit (the flag is read once). Remove
+     this block and its bgLog() call sites once the accuracy question is
+     closed. BG_BUILD_ID is deliberately printed first so a test can
+     prove WHICH build of this file the browser is really running -- the
+     single most important fact when a deploy appears to have no effect. */
+  const BG_BUILD_ID = 'bgremover-build-2026-08-28-D (adaptive-split + kept-pixel confidence)';
+  const BG_DEBUG = (() => {
+    try { return new URLSearchParams(location.search).has('bgdebug'); }
+    catch(e){ return false; }
+  })();
+  function bgLog(){
+    if (!BG_DEBUG) return;
+    const args = Array.prototype.slice.call(arguments);
+    console.log.apply(console, ['%c[BG]', 'color:#5142D6;font-weight:bold;'].concat(args));
+  }
+  if (BG_DEBUG){
+    console.log('%c[BG] BUILD: ' + BG_BUILD_ID, 'color:#fff;background:#5142D6;padding:2px 6px;font-weight:bold;');
+    bgLog('script URL(s) on this page:',
+      Array.prototype.slice.call(document.querySelectorAll('script[src]')).map(s => s.getAttribute('src')).join(' , '));
+  }
+
   async function ensureSegmenter(){
     if (segmenter) return segmenter;
     if (!segmenterLoadPromise){
@@ -2504,7 +2530,15 @@ if (document.getElementById('aiRemoveDrop')){
       }
     }
 
-    if (!chosen) return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
+    if (!chosen){
+      bgLog('component split => NO SPLIT (kept as one region)', {
+        fgCount, minCore,
+        disconnectedBigComponents: plainBig.length,
+        totalComponents: plain.comps.length,
+        why: plainBig.length >= 2 ? 'unexpected' : 'blob never separated into 2 substantial pieces within the erosion budget, or the split was rejected by the horizontal-offset guard'
+      });
+      return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
+    }
 
     // Grow the surviving cores back out to their true extent: multi-source
     // flood fill over the ORIGINAL foreground, seeded from every core at
@@ -2549,8 +2583,21 @@ if (document.getElementById('aiRemoveDrop')){
     // of what the model found, the "split" was almost certainly wrong --
     // keep everything instead of shipping a badly truncated subject.
     if (bestLabel === -1 || areas[bestLabel] < fgCount * 0.35){
+      bgLog('component split => REVERTED by 35% safety net (winner too small, split assumed wrong)', {
+        fgCount,
+        pieces: k,
+        winnerArea: bestLabel === -1 ? 0 : areas[bestLabel],
+        winnerShareOfForeground: bestLabel === -1 ? 0 : +(areas[bestLabel]/fgCount).toFixed(3),
+        result: 'EVERYTHING KEPT (this is why a stray region can survive)'
+      });
       return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
     }
+    bgLog('component split => SPLIT APPLIED', {
+      fgCount,
+      pieces: k,
+      winnerShareOfForeground: +(areas[bestLabel]/fgCount).toFixed(3),
+      droppedShareOfForeground: +(1 - areas[bestLabel]/fgCount).toFixed(3)
+    });
     return { labels: seedLab, bestLabel };
   }
 
@@ -2727,6 +2774,20 @@ if (document.getElementById('aiRemoveDrop')){
       }
 
       const confident = !looksFullBody && areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
+      bgLog('selfie_segmenter =>', {
+        maskW, maskH, confW: cw, confH: ch,
+        personCategoryValue,
+        keptFrac: +keptFrac.toFixed(4),
+        areaOk,
+        avgPersonConfidence: avgPersonConfidence === null ? null : +avgPersonConfidence.toFixed(4),
+        bbox: bbMinXFrac === null ? null : {
+          x: +bbMinXFrac.toFixed(3) + '-' + +bbMaxXFrac.toFixed(3),
+          y: +bbMinYFrac.toFixed(3) + '-' + +bbMaxYFrac.toFixed(3)
+        },
+        looksFullBody,
+        CONFIDENT: confident,
+        verdict: confident ? 'USING selfie_segmenter result' : 'REJECTED -> falling back to DeepLab v3'
+      });
       return { confident, alpha };
     }catch(err){
       return null; // any failure here just falls through to DeepLab v3 below
@@ -3201,6 +3262,23 @@ if (document.getElementById('aiRemoveDrop')){
         // mask's edge/detail QUALITY is being improved below.
         const normalizedMask = new Uint8ClampedArray(maskW*maskH);
         for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+        if (BG_DEBUG){
+          // Category histogram: DeepLab v3 is a 21-class Pascal VOC model
+          // and this tool treats EVERY non-zero class as foreground. On a
+          // cluttered indoor scene that can mean chairs, sofas, monitors
+          // and bystanders are all "subject" -- this shows exactly which
+          // classes the model actually found, which no amount of mask
+          // post-processing can undo.
+          const VOC = ['background','aeroplane','bicycle','bird','boat','bottle','bus','car','cat','chair','cow','diningtable','dog','horse','motorbike','person','pottedplant','sheep','sofa','train','tvmonitor'];
+          const hist = {};
+          for (let i=0; i<rawMaskData.length; i++){ const c = rawMaskData[i]; hist[c] = (hist[c]||0)+1; }
+          const total = rawMaskData.length;
+          const rows = Object.keys(hist).map(function(c){
+            return { category: +c, name: VOC[+c] || ('class'+c), pctOfFrame: +(100*hist[c]/total).toFixed(2) };
+          }).sort(function(a,b){ return b.pctOfFrame - a.pctOfFrame; });
+          bgLog('DeepLab v3 category histogram (every non-background class is kept as SUBJECT):');
+          console.table(rows);
+        }
 
         // AUDIT FIX: same stray-blob suppression as the selfie_segmenter
         // path above (see keepPrimaryForegroundComponent) -- DeepLab v3
@@ -3338,6 +3416,15 @@ if (document.getElementById('aiRemoveDrop')){
         }
         const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
         implausible = areaImplausible || lowConfidence;
+        bgLog('DeepLab v3 =>', {
+          maskW, maskH, confW, confH,
+          keptFrac: +keptFrac.toFixed(4),
+          areaImplausible,
+          avgConfidence: avgConfidence === null ? null : +avgConfidence.toFixed(4),
+          lowConfidence,
+          implausible,
+          verdict: 'USING DeepLab v3 result'
+        });
       }
 
       if (myGeneration !== aiGeneration){
