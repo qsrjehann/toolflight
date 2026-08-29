@@ -3260,8 +3260,51 @@ if (document.getElementById('aiRemoveDrop')){
         // Normalize to the EXACT existing polarity: category 0 = background,
         // anything else = foreground -- unchanged from before, only the
         // mask's edge/detail QUALITY is being improved below.
+        // ================= ROOT-CAUSE FIX =================
+        // This line used to read: normalizedMask[i] = rawMaskData[i] !== 0
+        // i.e. EVERY non-background Pascal VOC class was kept as "subject".
+        // DeepLab v3 is a 21-class scene segmenter, so in a real indoor
+        // photo it labels the chair (class 9), the sofa (18), the monitor
+        // (20), the table (11) and any bystander (15) -- and all of them
+        // were being kept. That is precisely what the browser screenshots
+        // show: an office chair surviving behind the subject's head, and a
+        // second, partially-visible person surviving at the left edge.
+        // No amount of mask post-processing could ever have removed them,
+        // because as far as this line was concerned they WERE the subject.
+        //
+        // The fix is to decide WHICH class is the intended subject instead
+        // of accepting all of them: keep only the single largest
+        // non-background class. That is deliberately index-agnostic -- it
+        // never assumes "person is 15" (this codebase has real device
+        // evidence of category conventions not matching the docs) -- and it
+        // generalises correctly beyond people: on a product shot the
+        // product's class dominates, on an animal photo the animal's does.
+        // A person seated on a chair yields far more person pixels than
+        // visible chair pixels, so the chair drops out while the person is
+        // untouched. If the winning class is implausibly tiny (<2% of the
+        // frame) this falls back to the old any-class behaviour rather than
+        // risk returning an almost-empty mask.
+        const classArea = new Map();
+        for (let i=0; i<rawMaskData.length; i++){
+          const c = rawMaskData[i];
+          if (c === 0) continue;
+          classArea.set(c, (classArea.get(c) || 0) + 1);
+        }
+        let subjectClass = -1, subjectClassPx = 0;
+        classArea.forEach(function(px, c){ if (px > subjectClassPx){ subjectClassPx = px; subjectClass = c; } });
+        const totalMaskPx = rawMaskData.length;
+        const useSingleClass = subjectClass !== -1 && subjectClassPx >= totalMaskPx * 0.02;
         const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-        for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+        for (let i=0; i<normalizedMask.length; i++){
+          const c = rawMaskData[i];
+          normalizedMask[i] = useSingleClass ? (c === subjectClass ? 1 : 0) : (c !== 0 ? 1 : 0);
+        }
+        bgLog('subject-class selection =>', {
+          subjectClass,
+          subjectClassShareOfFrame: +(subjectClassPx/totalMaskPx).toFixed(4),
+          otherClassesDropped: Array.from(classArea.keys()).filter(function(c){ return c !== subjectClass; }),
+          mode: useSingleClass ? 'KEEPING ONLY the dominant class' : 'FALLBACK: keeping all non-background classes'
+        });
         if (BG_DEBUG){
           // Category histogram: DeepLab v3 is a 21-class Pascal VOC model
           // and this tool treats EVERY non-zero class as foreground. On a
@@ -3500,7 +3543,56 @@ if (document.getElementById('aiRemoveDrop')){
 
   document.getElementById('aiRemoveDownloadBtn').onclick = () => {
     if (!aiResultCanvas){ toast('Remove a background first.', 'err'); return; }
-    aiResultCanvas.toBlob((blob) => {
+    // RESOLUTION FIX: the editor deliberately works on a downscaled copy
+    // (long edge capped at 1200) because the manual-refine undo stack keeps
+    // MAX_HISTORY=25 full-frame ImageData snapshots -- at full camera
+    // resolution that alone would be hundreds of MB and reliably crash a
+    // phone, which is why that cap exists and why it must stay. But there
+    // is no reason the DOWNLOAD has to inherit it: exporting the working
+    // canvas was silently handing back a 1200px image for a 4000px photo.
+    // So the export is rebuilt here at the ORIGINAL image resolution --
+    // the full-size source is drawn at its natural dimensions and the
+    // finished alpha is sampled up onto it with bilinear smoothing, which
+    // keeps the cutout edge clean rather than blocky. Editing memory is
+    // untouched; only the exported PNG changes. If anything about the
+    // full-size path fails (a very large image failing to allocate on a
+    // low-memory device), this falls back to exporting exactly what it
+    // exported before, so a download always succeeds.
+    const exportCanvas = (() => {
+      try{
+        if (!aiSourceImg) return aiResultCanvas;
+        const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
+        if (!fullW || !fullH) return aiResultCanvas;
+        if (fullW === aiResultCanvas.width && fullH === aiResultCanvas.height) return aiResultCanvas;
+        // Upscale the working result (which carries the alpha) to full size
+        // with the browser's own smoothing, then reuse ONLY its alpha
+        // channel over a crisp, full-resolution draw of the original image
+        // -- so subject pixels stay at native sharpness and only the matte
+        // is interpolated.
+        const alphaUp = document.createElement('canvas');
+        alphaUp.width = fullW; alphaUp.height = fullH;
+        const auctx = alphaUp.getContext('2d');
+        auctx.imageSmoothingEnabled = true;
+        auctx.imageSmoothingQuality = 'high';
+        auctx.drawImage(aiResultCanvas, 0, 0, fullW, fullH);
+        const alphaData = auctx.getImageData(0, 0, fullW, fullH);
+
+        const full = document.createElement('canvas');
+        full.width = fullW; full.height = fullH;
+        const fctx = full.getContext('2d');
+        fctx.drawImage(aiSourceImg, 0, 0, fullW, fullH);
+        const fullData = fctx.getImageData(0, 0, fullW, fullH);
+        const fp = fullData.data, ap = alphaData.data;
+        for (let i = 3; i < fp.length; i += 4) fp[i] = ap[i];
+        fctx.putImageData(fullData, 0, 0);
+        bgLog('export =>', { editorSize: aiResultCanvas.width + 'x' + aiResultCanvas.height, exportedSize: fullW + 'x' + fullH });
+        return full;
+      }catch(err){
+        bgLog('export => full-resolution rebuild failed, exporting working canvas', err && err.message);
+        return aiResultCanvas;
+      }
+    })();
+    exportCanvas.toBlob((blob) => {
       if (!blob){ toast('Could not export this image.', 'err'); return; }
       downloadBlob(blob, 'background-removed.png');
     }, 'image/png');
