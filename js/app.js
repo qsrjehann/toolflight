@@ -2682,17 +2682,39 @@ if (document.getElementById('aiRemoveDrop')){
       const rawMaskData = result.categoryMask.getAsUint8Array();
       const maskW = result.categoryMask.width || w;
       const maskH = result.categoryMask.height || h;
-      // Normalize to the EXACT existing polarity: category 0 = background,
-      // anything else = foreground -- unchanged from before, only the
-      // mask's edge/detail QUALITY is being improved below.
+      // Normalize: category 0 = background (excluded). All other PASCAL VOC
+      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
+      // are treated as potential foreground subject. DeepLab v3 correctly
+      // identifies semantic categories; however, whether a chair, sofa, or
+      // table belongs to the user's intended foreground is a compositional
+      // decision that cannot be correctly made by a static class blacklist --
+      // a person sitting in a designer chair may want both preserved, while
+      // another photo may have an unwanted chair in the background. The
+      // downstream removeSmallIslands() step handles isolated speckling, and
+      // the manual Eraser / Lasso / Polygon tools handle any residual
+      // unwanted regions. Background (class 0) is the only class that is
+      // definitively not the user's intended subject.
       const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-      for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+      for (let i=0; i<normalizedMask.length; i++)
+        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
+
+
+      // DeepLab v3 returns one confidence mask per PASCAL VOC class (21 total,
+      // indices 0-20). Index 15 = person class confidence -- the only meaningful
+      // signal for a person-extraction use case. The previous code used index [1]
+      // (aeroplane confidence, measured at max=0.000044 on real images -- effectively
+      // zero everywhere), which caused the confidence-blending step inside
+      // refineSegmentationMask to drag every edge pixel toward transparent regardless
+      // of actual person confidence, degrading edge quality rather than improving it.
       let confidenceData = null, confW = maskW, confH = maskH;
-      if (result.confidenceMasks && result.confidenceMasks[1]){
-        confidenceData = result.confidenceMasks[1].getAsFloat32Array();
-        confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+      const PERSON_CONF_IDX = 15; // PASCAL VOC class 15 = person
+      if (result.confidenceMasks && result.confidenceMasks[PERSON_CONF_IDX]){
+        confidenceData = result.confidenceMasks[PERSON_CONF_IDX].getAsFloat32Array();
+        confW = result.confidenceMasks[PERSON_CONF_IDX].width;
+        confH = result.confidenceMasks[PERSON_CONF_IDX].height;
       }
+
 
       // Grayscale luminance guide at mask resolution, for edge-aware
       // matte refinement -- lets the alpha edge snap to real color
@@ -6130,39 +6152,91 @@ if (document.getElementById('pwDrop')){
   async function convertPdfToWord(file, onProgress, isCancelled) {
     pwLastDiagnostics = [];
 
-    onProgress(10, 'Uploading PDF\u2026');
+    onProgress(10, 'Uploading PDF…');
 
     const formData = new FormData();
     formData.append('file', file, file.name);
+
+    // The backend is a Render free-tier instance (server/render.yaml), which
+    // can take 30-60s to cold-start after being idle, on top of actual
+    // conversion time -- gunicorn itself is started with --timeout 120, so
+    // the client-side budget has to be at least that long or a perfectly
+    // healthy slow request gets aborted for no reason. 130s gives a small
+    // margin over the server's own timeout.
+    const PW_REQUEST_TIMEOUT_MS = 130000;
+    const pwTimeoutController = new AbortController();
+    const pwTimeoutId = setTimeout(() => pwTimeoutController.abort(), PW_REQUEST_TIMEOUT_MS);
 
     let response;
     try {
       response = await fetch(PDF2WORD_API, {
         method: 'POST',
         body: formData,
+        signal: pwTimeoutController.signal,
         // No Content-Type header — browser sets it with correct boundary
       });
     } catch (networkErr) {
+      // fetch() only throws before any HTTP response exists: DNS/TCP
+      // failure, the timeout above firing, or the browser refusing to even
+      // attempt the request (blocked by Content-Security-Policy's
+      // connect-src, or a rejected CORS preflight). These all surface as
+      // the same generic TypeError, so JS can't tell them apart from each
+      // other here -- but they ARE distinguishable from an HTTP-level error
+      // (handled separately below, once a response does come back), so this
+      // message no longer claims it's specifically the user's internet.
+      if (networkErr && networkErr.name === 'AbortError') {
+        throw new Error(
+          'The conversion server took too long to respond (over 2 minutes) and the request was cancelled. It may be waking up from being idle — please try again in a moment.'
+        );
+      }
       throw new Error(
-        'Could not reach the conversion server. Please check your internet connection and try again.'
+        'Could not reach the conversion server. This can happen if the service is temporarily down, misconfigured (CORS/CSP), or a network in between is blocking the request — it is not necessarily a problem with your internet connection. Please try again in a moment.'
       );
+    } finally {
+      clearTimeout(pwTimeoutId);
     }
 
     if (isCancelled && isCancelled()) return null;
-    onProgress(80, 'Converting\u2026');
+    onProgress(80, 'Converting…');
 
     if (!response.ok) {
       // Try to extract a human-readable message from the JSON error body
-      let errMsg = `Server error (${response.status}).`;
+      // the backend sends for expected failures (bad PDF, too large, rate
+      // limited, conversion exception, etc.) -- fall back to a message
+      // specific to the HTTP status when there is no such body, so a
+      // missing/misrouted endpoint (404) reads differently from the backend
+      // crashing (500) instead of both collapsing into "Server error".
+      let errMsg;
       try {
         const errJson = await response.json();
         if (errJson && errJson.error) errMsg = errJson.error;
-      } catch (_) { /* non-JSON body — keep the generic message */ }
+      } catch (_) { /* non-JSON body — fall through to status-based message */ }
+
+      if (!errMsg) {
+        if (response.status === 404) {
+          errMsg = 'The conversion service endpoint is unavailable (404 — not found). The service may not be deployed at the expected address.';
+        } else if (response.status === 429) {
+          errMsg = 'Too many conversion requests right now. Please wait a minute and try again.';
+        } else if (response.status >= 500) {
+          errMsg = `The conversion server hit an internal error (${response.status}) while processing this PDF. Please try again in a moment, or try a different file.`;
+        } else {
+          errMsg = `The conversion server rejected this request (${response.status}).`;
+        }
+      }
       throw new Error(errMsg);
     }
 
-    onProgress(95, 'Downloading result\u2026');
+    onProgress(95, 'Downloading result…');
     const blob = await response.blob();
+
+    // A healthy response is the DOCX itself. If something upstream (a proxy,
+    // a misconfigured redirect) returned an HTML error page with a 200
+    // status, catch that here rather than handing the caller a "successful"
+    // blob that Word can't open.
+    const pwContentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (pwContentType.includes('text/html')) {
+      throw new Error('The conversion server returned an unexpected response instead of a Word document. Please try again.');
+    }
 
     if (isCancelled && isCancelled()) return null;
     onProgress(100, 'Done.');
