@@ -44,6 +44,11 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1",
     "http://localhost:5500",   # VS Code Live Server
     "http://127.0.0.1:5500",
+    # GitHub Pages test/staging deployment (e.g. https://qsrjehann.github.io/...)
+    # -- CORS matches on origin only (scheme+host), not path, so this single
+    # entry covers every repo/page served from that account's Pages site.
+    # Safe to remove once the site is only ever served from toolflight.com.
+    "https://qsrjehann.github.io",
 ]
 CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
 
