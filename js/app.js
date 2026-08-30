@@ -195,11 +195,7 @@ function loadImageFromFile(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    // Revoke on both outcomes — once onload fires the decoded bitmap lives on
-    // the Image object itself, so the object URL is no longer needed. It was
-    // previously only revoked on error, leaking one blob URL per successful
-    // image load across every tool that shares this helper.
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onload = () => resolve(img);
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file could not be read as an image.')); };
     img.src = url;
   });
@@ -391,33 +387,10 @@ function fillHoles(binaryMask, w, h){
   return out;
 }
 
-function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue, guideGray, onStage }){
+function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW, confH, outW, outH, personCategoryValue, guideGray }){
   const n = maskW*maskH;
   let binary = new Uint8ClampedArray(n);
   for (let i=0; i<n; i++) binary[i] = (maskData[i] === personCategoryValue) ? 255 : 0;
-  // Optional per-stage reporting. Callers that pass nothing (Passport Photo
-  // Maker, Photo Retouch, Ecommerce Editor) are completely unaffected --
-  // this is inert without an onStage callback.
-  const stage = typeof onStage === 'function'
-    ? function(label, arr){
-        let fgPx = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (let i=0; i<n; i++){
-          if (arr[i] > 127){
-            fgPx++;
-            const x = i % maskW, y = (i / maskW) | 0;
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-          }
-        }
-        onStage({
-          stage: label,
-          foregroundPx: fgPx,
-          foregroundPct: +(100*fgPx/n).toFixed(2),
-          bbox: fgPx ? { x: minX + '-' + maxX, y: minY + '-' + maxY } : null
-        });
-      }
-    : function(){};
-  stage('0. raw binary (after class/category selection)', binary);
 
   // Clean up segmentation noise: remove tiny isolated speckles, fill
   // small enclosed gaps (e.g. between hair strands), then smooth jagged
@@ -430,12 +403,9 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
   // fully erased once morphOpen ran) -- morphClose alone still removes
   // real noise/gaps without that risk.
   binary = removeSmallIslands(binary, maskW, maskH, 0.04);
-  stage('1. after removeSmallIslands (drops blobs <4% of largest -- CAN DELETE SUBJECT PARTS)', binary);
   binary = fillHoles(binary, maskW, maskH);
-  stage('2. after fillHoles (fills enclosed gaps -- CAN RE-ADD BACKGROUND trapped between two kept regions)', binary);
   const morphRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.006));
   binary = morphClose(binary, maskW, maskH, morphRadius);
-  stage('3. after morphClose', binary);
 
   // Adaptive feathering: a fixed feather radius over-softens clean,
   // simple boundaries (e.g. a shirt hem) while under-softening genuinely
@@ -794,7 +764,6 @@ if (document.getElementById('compressDrop')){
     document.getElementById('compressBtn').disabled = false;
     document.getElementById('compressDownloadBtn').classList.add('hidden');
     document.getElementById('savedRow').classList.add('hidden');
-    document.getElementById('compressResetRow').classList.remove('hidden');
     hideCompressProgress();
     if (originalPreviewUrl) URL.revokeObjectURL(originalPreviewUrl);
     originalPreviewUrl = URL.createObjectURL(f);
@@ -909,26 +878,6 @@ if (document.getElementById('compressDrop')){
     const a = document.createElement('a');
     a.href = compressedBlobUrl; a.download = 'compressed.' + compressedFileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  };
-
-  // "Compress another image" -- this tool had no way at all to get back to
-  // a clean upload state; the drop zone stays live the whole time (dropping
-  // a new file directly on it already worked), but nothing told anyone
-  // that, and the old preview/result stayed on screen looking finished.
-  // Clears everything back to the exact pre-upload state, same pattern as
-  // AI OCR's "Extract from another file" (ocrConvertAnotherBtn).
-  document.getElementById('compressResetBtn').onclick = () => {
-    compressFile = null;
-    if (compressedBlobUrl){ URL.revokeObjectURL(compressedBlobUrl); compressedBlobUrl = null; }
-    if (originalPreviewUrl){ URL.revokeObjectURL(originalPreviewUrl); originalPreviewUrl = null; }
-    document.getElementById('compressInput').value = '';
-    document.getElementById('compressBtn').disabled = true;
-    document.getElementById('compressDownloadBtn').classList.add('hidden');
-    document.getElementById('savedRow').classList.add('hidden');
-    document.getElementById('compareBox').classList.add('hidden');
-    document.getElementById('compressResetRow').classList.add('hidden');
-    hideCompressProgress();
-    toast('Ready for a new image.');
   };
 }
 
@@ -1966,7 +1915,6 @@ if (document.getElementById('wmCanvas')){
     try{
       wmBaseImg = await loadImg2(f);
       document.getElementById('wmStageWrap').classList.remove('hidden');
-      document.getElementById('wmResetRow').classList.remove('hidden');
       drawWatermark();
       toast('Image loaded.');
     }catch(err){ toast(err.message, 'err'); }
@@ -2105,23 +2053,6 @@ if (document.getElementById('wmCanvas')){
       toast('Watermarking failed: ' + err.message, 'err');
     }
   };
-
-  // "Watermark another image" -- clears the loaded photo and logo and
-  // returns to the upload screen, same as OCR's "Extract from another
-  // file". Deliberately leaves the watermark TEXT/FONT/COLOR/OPACITY/
-  // POSITION/type settings untouched -- same precedent as OCR's reset not
-  // clearing the selected languages -- so applying the same watermark
-  // style to a second photo doesn't require re-entering everything.
-  document.getElementById('wmResetBtn').onclick = () => {
-    wmBaseImg = null;
-    wmLogoImg = null;
-    document.getElementById('wmInput').value = '';
-    document.getElementById('wmLogoInput').value = '';
-    document.getElementById('wmStageWrap').classList.add('hidden');
-    document.getElementById('wmDownloadBtn').classList.add('hidden');
-    document.getElementById('wmResetRow').classList.add('hidden');
-    toast('Ready for a new image.');
-  };
 }
 
 /* ============ IMAGE ROTATE & FLIP TOOL (image-tools.html) ============ */
@@ -2216,12 +2147,6 @@ if (document.getElementById('aiRemoveDrop')){
   let aiSourceFile = null;  // raw File, kept so a full-resolution bitmap can be
                             // decoded lazily at export time instead of eagerly
                             // on every upload -- see loadImageExifSafe below.
-  // Bumped on every new upload / "New Image" reset. AI segmentation (model
-  // download + inference) can take a while; if the user uploads a different
-  // image or resets before it resolves, a stale result must not overwrite
-  // the editor the user is now looking at. Same pattern as AI Image
-  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
-  let aiGeneration = 0;
   let aiResultCanvas = null;
   // EXIF-orientation-safe image load, used only for this tool's uploads.
   // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
@@ -2296,33 +2221,6 @@ if (document.getElementById('aiRemoveDrop')){
     if (label) label.textContent = message;
   }
 
-  /* ---------- TEMPORARY RUNTIME DIAGNOSTICS (Background Remover) ----------
-     Added to settle, with real runtime evidence rather than inference,
-     which model and which code path actually execute for a given photo,
-     and why a result looks the way it does. Completely inert unless the
-     URL carries ?bgdebug=1 -- no console output, no behavior change, and
-     no measurable cost on a normal visit (the flag is read once). Remove
-     this block and its bgLog() call sites once the accuracy question is
-     closed. BG_BUILD_ID is deliberately printed first so a test can
-     prove WHICH build of this file the browser is really running -- the
-     single most important fact when a deploy appears to have no effect. */
-  const BG_BUILD_ID = 'bgremover-build-2026-08-29-MODNET-FIX-9d21f4c8b613';
-  const BG_DEBUG = (() => {
-    try { return new URLSearchParams(location.search).has('bgdebug'); }
-    catch(e){ return false; }
-  })();
-  function bgLog(){
-    if (!BG_DEBUG) return;
-    const args = Array.prototype.slice.call(arguments);
-    console.log.apply(console, ['%c[BG]', 'color:#5142D6;font-weight:bold;'].concat(args));
-  }
-  try { window.__BG_REMOVER_DEBUG__ = { build: BG_BUILD_ID, debugEnabled: BG_DEBUG }; } catch(e){}
-  if (BG_DEBUG){
-    console.log('%c[BG] BUILD: ' + BG_BUILD_ID, 'color:#fff;background:#5142D6;padding:2px 6px;font-weight:bold;');
-    bgLog('script URL(s) on this page:',
-      Array.prototype.slice.call(document.querySelectorAll('script[src]')).map(s => s.getAttribute('src')).join(' , '));
-  }
-
   async function ensureSegmenter(){
     if (segmenter) return segmenter;
     if (!segmenterLoadPromise){
@@ -2340,1109 +2238,15 @@ if (document.getElementById('aiRemoveDrop')){
           runningMode: 'IMAGE'
         });
         segmenter = seg;
-        bgLog('MODEL LOADED: DeepLab v3', { url: MODEL_URL, outputCategoryMask: true, outputConfidenceMasks: true });
         setAiStatus('ready', 'AI model ready.');
         return seg;
       })().catch((err) => {
-        bgLog('MODEL FAILED TO LOAD: DeepLab v3', { url: MODEL_URL, error: err && (err.message || String(err)) });
         setAiStatus('error', 'Could not load the AI model — check your connection and try again.');
         segmenterLoadPromise = null;
         throw err;
       });
     }
     return segmenterLoadPromise;
-  }
-
-  /* ---------- Person-matting model (accuracy fix) ----------
-     DeepLab v3 above is a general 21-category segmenter (Pascal VOC
-     classes: person, animal, vehicle, various everyday objects). It works
-     on a broad range of subjects, but its masks are coarse relative to a
-     model actually built for portrait matting -- confirmed by direct code
-     inspection: Passport Photo Maker and Photo Retouch both already use
-     MediaPipe's selfie_segmenter specifically because it is far better at
-     hair/edge detail on people. This is the SAME model, tried FIRST for
-     every "photo" mode run below, on the theory it should win whenever
-     the subject is actually a person -- but selfie_segmenter has no
-     concept of anything else (animals, vehicles, products, objects), so
-     it is only trusted when it reports high confidence AND a plausible
-     kept-area; otherwise this falls straight through to the existing,
-     completely unmodified DeepLab v3 path. Real in-repo precedent for
-     why this can't be a blind full replacement: Ecommerce Product
-     Editor's own code comments (search "root cause of AI Background
-     Remove failing on real product photos" in this file) document that
-     switching ITS segmenter to selfie_segmenter alone broke every
-     product photo, because a shoe/bottle/bag has no person in it and the
-     model classified nearly the whole image as background. Dual-model
-     with confidence-gated fallback avoids that regression here. */
-  const SELFIE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
-  let selfieSegmenter = null;
-  let selfieSegmenterLoadPromise = null;
-  async function ensureSelfieSegmenter(){
-    if (selfieSegmenter) return selfieSegmenter;
-    if (!selfieSegmenterLoadPromise){
-      selfieSegmenterLoadPromise = (async () => {
-        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
-        const { ImageSegmenter, FilesetResolver } = mod;
-        const vision = await FilesetResolver.forVisionTasks(
-          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
-        );
-        const seg = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: SELFIE_MODEL_URL, delegate: 'CPU' },
-          outputCategoryMask: true,
-          outputConfidenceMasks: true,
-          runningMode: 'IMAGE'
-        });
-        selfieSegmenter = seg;
-        return seg;
-      })().catch((err) => {
-        selfieSegmenterLoadPromise = null;
-        throw err;
-      });
-    }
-    return selfieSegmenterLoadPromise;
-  }
-
-  /* ============================================================
-     EXPERIMENTAL ONLY -- MODNet portrait-matting evaluation.
-     Approved scope: read-only research + isolated experimental path,
-     NOT a production replacement. This entire block:
-       - never runs for a normal visitor -- gated on BG_EXPERIMENTAL_MODNET
-         below, which is only true when the URL contains
-         ?experimental=modnet (independent of ?bgdebug=1);
-       - never writes to refinedAlpha, aiResultCanvas, or any variable
-         the production Selfie/DeepLab pipeline reads or the download/
-         export/manual-refinement code depends on;
-       - has its own model loader (modnetModel / modnetProcessor /
-         modnetLoadPromise) -- entirely separate from selfieSegmenter,
-         segmenter (DeepLab, defined above), rtSegmenter/rtHairSegmenter
-         (Photo Retouch) and epeSegmenter (Ecommerce Editor). No shared
-         state with any of those, and none of those are read or
-         modified anywhere in this block;
-       - fails silently (console.warn only) on any error, leaving
-         whatever the production pipeline already computed exactly as
-         it was.
-
-     CORRECTION (this revision): the first version of this block called
-     pipeline('background-removal', 'Xenova/modnet', ...). A real
-     browser test came back with "Unsupported pipeline: background-
-     removal" -- a follow-up read-only investigation (checked directly
-     against the @huggingface/transformers "3.0.0" tag's own source,
-     not assumed) confirmed why: that named pipeline was added to the
-     library by a PR merged well after 3.0.0 shipped, so it simply
-     doesn't exist at the version this file pins. That same
-     investigation also confirmed 'image-segmentation' is NOT a valid
-     substitute for this specific model -- Xenova/modnet's own
-     config.json carries no id2label/class list, which is what that
-     pipeline's post-processing needs.
-
-     SOURCE OF TRUTH FOR THE CORRECTED INTEGRATION (verified before
-     writing this revision, not assumed or guessed):
-       - Model: "Xenova/modnet" on Hugging Face -- an ONNX export of
-         MODNet (ZHKKKe/MODNet, AAAI 2022 -- "A Trimap-Free Portrait
-         Matting Solution in Real Time"). License: Apache-2.0 (checked
-         directly on the model repo, re-confirmed this revision).
-       - config.json (verified): {"model_type":"modnet","transformers.js_config":{"dtype":"fp32"}}
-         -- no id2label/architectures field, confirming (2) above.
-       - preprocessor_config.json (verified): resize shortest edge to
-         512, size divisible by 32, rescale by 1/255, normalize with
-         mean/std 0.5/0.5. Handled INSIDE processor(img) below -- this
-         file does not re-implement that preprocessing.
-       - Checked directly against the "3.0.0" tag of
-         huggingface/transformers.js: src/models.js has no dedicated
-         "modnet" architecture entry, but PreTrainedModel.from_pretrained()
-         has an explicit, non-throwing fallback for any unrecognized
-         model_type -- it logs a warning ("Model type for '...' not
-         found, assuming encoder-only architecture") and loads it as a
-         plain single-session encoder-only model, i.e. a raw ONNX
-         forward pass. This fallback is what the lower-level API below
-         relies on; it does not require "modnet" to be specially known.
-       - A published, working example (a LogRocket tutorial building a
-         background remover with this exact model) uses precisely this
-         lower-level API rather than any named pipeline, and was used as
-         the source for the exact call shape below (quoted, not
-         paraphrased):
-           const model = await AutoModel.from_pretrained('Xenova/modnet', { dtype: 'fp32' });
-           const processor = await AutoProcessor.from_pretrained('Xenova/modnet');
-           const img = await RawImage.fromURL(url);
-           const { pixel_values } = await processor(img);
-           const { output } = await model({ input: pixel_values });
-           // output[0] is a single-channel tensor -- the continuous matte.
-       - Library: "@huggingface/transformers" (unchanged from before --
-         confirmed current/maintained name, not "@xenova/transformers").
-         Version still pinned to 3.0.0 -- this correction only changes
-         WHICH API of that same already-approved library is used, not
-         the library or version itself.
-       - This sandbox still has no network egress to jsdelivr/huggingface
-         (re-confirmed this revision), so none of this could be executed
-         here. Per the explicit instructions for this revision, the code
-         below does NOT assume the tensor shape it will get back --
-         every stage logs what it actually received and stops rather
-         than guessing if it differs from what's documented above.
-     ============================================================ */
-  const BG_EXPERIMENTAL_MODNET = (() => {
-    try { return new URLSearchParams(location.search).get('experimental') === 'modnet'; }
-    catch(e){ return false; }
-  })();
-  const MODNET_LIB_VERSION = '3.0.0';
-  const MODNET_MODEL_ID = 'Xenova/modnet';
-  let modnetModel = null;
-  let modnetProcessor = null;
-  let modnetLoadPromise = null;
-  async function ensureModnetSegmenter(){
-    if (modnetModel && modnetProcessor) return { model: modnetModel, processor: modnetProcessor };
-    if (!modnetLoadPromise){
-      modnetLoadPromise = (async () => {
-        console.log('[BG][experimental] MODNET MODEL LOAD START');
-        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${MODNET_LIB_VERSION}`);
-        const { AutoModel, AutoProcessor } = mod;
-        if (typeof AutoModel !== 'function' || typeof AutoProcessor !== 'function'){
-          console.warn('[BG][experimental] MODNET PROCESSOR LOAD FAIL / MODNET MODEL LOAD FAIL -- this library build does not export AutoModel/AutoProcessor as expected. Actual exports:', mod ? Object.keys(mod) : mod);
-          throw new Error('AutoModel/AutoProcessor not found on @huggingface/transformers@' + MODNET_LIB_VERSION);
-        }
-        let processor;
-        try{
-          processor = await AutoProcessor.from_pretrained(MODNET_MODEL_ID);
-          console.log('[BG][experimental] MODNET PROCESSOR LOAD SUCCESS');
-        }catch(procErr){
-          console.warn('[BG][experimental] MODNET PROCESSOR LOAD FAIL', procErr && (procErr.message || procErr));
-          throw procErr;
-        }
-        let model;
-        try{
-          model = await AutoModel.from_pretrained(MODNET_MODEL_ID, { dtype: 'fp32' });
-          console.log('[BG][experimental] MODNET MODEL LOAD SUCCESS');
-        }catch(modelErr){
-          console.warn('[BG][experimental] MODNET MODEL LOAD FAIL', modelErr && (modelErr.message || modelErr));
-          throw modelErr;
-        }
-        modnetModel = model; modnetProcessor = processor;
-        return { model, processor };
-      })().catch((err) => {
-        modnetLoadPromise = null;
-        throw err;
-      });
-    }
-    return modnetLoadPromise;
-  }
-
-  // Diagnostic-only connected-component reporter for the experimental
-  // path. Deliberately a SEPARATE function from the production
-  // keepPrimaryForegroundComponent (defined later in this file) -- this
-  // one only measures and reports for the console, it never picks a
-  // winner and is never called from the production pipeline, so it
-  // cannot influence any real output even by accident.
-  function analyzeForegroundComponentsForDiagnostics(isFg, w, h){
-    const n = w*h;
-    const cx0 = Math.floor(w*0.2), cx1 = Math.ceil(w*0.8);
-    const cy0 = Math.floor(h*0.08), cy1 = Math.ceil(h*0.92);
-    const lab = new Int32Array(n).fill(-1);
-    const stack = new Int32Array(n);
-    const comps = [];
-    let L = 0;
-    for (let s=0; s<n; s++){
-      if (!isFg(s) || lab[s] !== -1) continue;
-      let sp = 0; stack[sp++] = s; lab[s] = L;
-      let area = 0, sumX = 0, sumY = 0, centerHits = 0;
-      let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
-      while (sp > 0){
-        const idx = stack[--sp];
-        area++;
-        const x = idx % w, y = (idx / w) | 0;
-        sumX += x; sumY += y;
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-        if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
-        if (x > 0){ const m = idx-1; if (isFg(m) && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-        if (x < w-1){ const m = idx+1; if (isFg(m) && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-        if (y > 0){ const m = idx-w; if (isFg(m) && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-        if (y < h-1){ const m = idx+w; if (isFg(m) && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-      }
-      comps.push({
-        label: L, area,
-        pctOfFrame: +(100*area/n).toFixed(2),
-        bboxX: minX + '-' + maxX, bboxY: minY + '-' + maxY,
-        width: (maxX-minX+1), height: (maxY-minY+1),
-        centerXFrac: +((sumX/area)/w).toFixed(3), centerYFrac: +((sumY/area)/h).toFixed(3),
-        centerHits
-      });
-      L++;
-    }
-    return comps;
-  }
-
-  async function runModnetExperiment(srcCanvas, w, h, myGeneration, productionAlphaForPreview, productionModelLabel){
-    try{
-      console.log('%c[BG][experimental] MODNet evaluation starting (AutoModel/AutoProcessor)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;',
-        { model: MODNET_MODEL_ID, libVersion: MODNET_LIB_VERSION, note: 'Fully separate from the production result above -- this cannot change what you already see.' });
-
-      const t0 = performance.now();
-      let handle;
-      try{
-        handle = await ensureModnetSegmenter();
-      }catch(loadErr){
-        console.warn('%c[BG][experimental] MODNET EXPERIMENT COMPLETE (load failed) -- production result above is unaffected.', 'color:#fff;background:#c0392b;padding:2px 6px;', loadErr && (loadErr.message || loadErr));
-        return null;
-      }
-      const { model, processor } = handle;
-      if (myGeneration !== aiGeneration){ console.log('[BG][experimental] stale run (image changed) -- discarding, production result untouched'); return null; }
-      const t1 = performance.now();
-
-      // Build the input image via the library's own loader (same pixels
-      // the production pipeline used, from srcCanvas), so preprocessing
-      // matches what the model card documents rather than a hand-rolled
-      // decode.
-      let img;
-      try{
-        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${MODNET_LIB_VERSION}`);
-        const { RawImage } = mod;
-        img = await RawImage.fromURL(srcCanvas.toDataURL('image/png'));
-      }catch(imgErr){
-        console.warn('[BG][experimental] MODNET INFERENCE FAIL -- could not build a RawImage from the source canvas', imgErr && (imgErr.message || imgErr));
-        return null;
-      }
-      console.log('[BG][experimental] input dimensions : ' + img.width + 'x' + img.height + '  (working canvas: ' + w + 'x' + h + ')');
-
-      console.log('[BG][experimental] MODNET INFERENCE START');
-      let pixel_values, modelOutput;
-      try{
-        const procResult = await processor(img);
-        pixel_values = procResult && procResult.pixel_values;
-        if (!pixel_values){
-          console.warn('[BG][experimental] MODNET INFERENCE FAIL -- processor(img) did not return a "pixel_values" tensor. Actual keys returned:', procResult ? Object.keys(procResult) : procResult);
-          return null;
-        }
-        modelOutput = await model({ input: pixel_values });
-      }catch(inferErr){
-        console.warn('[BG][experimental] MODNET INFERENCE FAIL', inferErr && (inferErr.message || inferErr));
-        return null;
-      }
-      if (myGeneration !== aiGeneration){ console.log('[BG][experimental] stale run (image changed) -- discarding, production result untouched'); return null; }
-      const t2 = performance.now();
-
-      if (!modelOutput || typeof modelOutput !== 'object'){
-        console.warn('[BG][experimental] MODNET INFERENCE FAIL -- model({input}) returned no usable object. Actual value:', modelOutput);
-        return null;
-      }
-      const outputKeys = Object.keys(modelOutput);
-      console.log('[BG][experimental] MODNET INFERENCE SUCCESS -- returned keys: ' + outputKeys.join(', '));
-
-      // Do NOT guess the tensor -- use the documented "output" key if
-      // present, otherwise report exactly what came back and stop.
-      const outTensor = modelOutput.output;
-      if (!outTensor){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- no "output" key in the model result (expected per the LogRocket-tutorial-verified call shape). Actual keys:', outputKeys, 'full object:', modelOutput);
-        return null;
-      }
-
-      // Index the batch dimension the same way the verified example does
-      // (output[0]) -- if that indexing doesn't behave as expected, this
-      // is reported rather than silently falling back to something else.
-      let single;
-      try{
-        single = outTensor[0];
-      }catch(idxErr){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0] threw while indexing the batch dimension', idxErr && idxErr.message);
-        return null;
-      }
-      if (!single){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0] is empty/undefined.');
-        return null;
-      }
-
-      const dims = single.dims || outTensor.dims || null;
-      console.log('%c[BG][experimental] MODNET OUTPUT SHAPE', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-      console.log('[BG][experimental]   dims (as reported by the tensor) : ' + (dims ? JSON.stringify(dims) : 'NOT REPORTED -- see raw object logged below'));
-      if (!dims) console.log('[BG][experimental]   raw output[0] object:', single);
-
-      const floatData = single.data || null;
-      if (!floatData){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- output[0].data is not a typed array. Actual object:', single);
-        return null;
-      }
-      console.log('[BG][experimental]   datatype                          : ' + (floatData.constructor ? floatData.constructor.name : typeof floatData));
-      console.log('[BG][experimental]   element count                     : ' + floatData.length);
-
-      // Single-channel check: element count must equal the model's own
-      // H*W (one value per pixel), not a multiple of it -- verified
-      // against dims, not assumed.
-      let modelH = null, modelW = null;
-      if (dims && dims.length >= 2){ modelH = dims[dims.length-2]; modelW = dims[dims.length-1]; }
-      if (modelW && modelH && modelW*modelH !== floatData.length){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- element count (' + floatData.length + ') does not match dims-derived ' + modelW + 'x' + modelH + ' (' + (modelW*modelH) + '). Not guessing which axis is which -- stopping.');
-        return null;
-      }
-      if (!modelW || !modelH){
-        console.warn('[BG][experimental] MODNET OUTPUT SHAPE could not be confirmed from tensor dims (element count ' + floatData.length + ') -- skipping resize/diagnostics rather than guessing a width/height.');
-        return null;
-      }
-      console.log('[BG][experimental]   model output resolution           : ' + modelW + 'x' + modelH + ' (dims[-2]=H=' + modelH + ', dims[-1]=W=' + modelW + '; single-channel, confirmed: width*height === element count)');
-
-      // ---- Orientation self-check (per explicit instruction: do not
-      // GUESS which axis is width vs height -- VERIFY). The tensor's own
-      // dims order (last two entries = [H, W], standard row-major image
-      // tensor convention) already gave modelH/modelW above; this checks
-      // that assignment against an independent signal -- the working
-      // canvas's own aspect ratio, which is the original photo's aspect
-      // ratio -- rather than trusting the axis-order convention alone.
-      // If the AS-DECLARED orientation is a poor aspect match but the
-      // SWAPPED one is close, that's reported as a hard stop, not
-      // silently auto-corrected -- swapping the width/height LABELS
-      // without transposing the underlying row-major DATA would produce
-      // a corrupted (not merely mislabeled) image, so a genuine mismatch
-      // here is treated as "cannot safely proceed," never guessed past.
-      const aspectOriginal = w / h;
-      const aspectAsDeclared = modelW / modelH;
-      const aspectIfSwapped = modelH / modelW;
-      const diffAsDeclared = Math.abs(aspectAsDeclared - aspectOriginal);
-      const diffIfSwapped = Math.abs(aspectIfSwapped - aspectOriginal);
-      console.log('[BG][experimental]   orientation self-check: original aspect (w/h)=' + aspectOriginal.toFixed(4) +
-        '   as-declared aspect (modelW/modelH)=' + aspectAsDeclared.toFixed(4) + ' [diff ' + diffAsDeclared.toFixed(4) + ']' +
-        '   swapped aspect (modelH/modelW)=' + aspectIfSwapped.toFixed(4) + ' [diff ' + diffIfSwapped.toFixed(4) + ']');
-      if (diffIfSwapped < diffAsDeclared - 0.02){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- the SWAPPED width/height matches the original image aspect ratio meaningfully better than the tensor-declared order. This does not match what dims reported, and swapping labels alone (without transposing the underlying data) would corrupt the image rather than fix it -- stopping here rather than guessing.');
-        return null;
-      }
-      console.log('[BG][experimental]   orientation self-check PASSED -- as-declared (W=' + modelW + ', H=' + modelH + ') is consistent with the original image\'s aspect ratio (the ~' +
-        (100*diffAsDeclared/aspectOriginal).toFixed(1) + '% difference matches the preprocessor\'s documented "resize shortest edge to 512, round to nearest multiple of 32" behavior, not an axis error).');
-
-      // Value-range check: confirms this looks like a matte (~0..1)
-      // rather than raw unnormalized logits. Reported either way.
-      let rawMin = Infinity, rawMax = -Infinity, rawSum = 0;
-      for (let i=0;i<floatData.length;i++){ const v=floatData[i]; if (v<rawMin) rawMin=v; if (v>rawMax) rawMax=v; rawSum+=v; }
-      const looksLikeUnitRange = rawMax <= 1.05 && rawMin >= -0.05;
-      console.log('[BG][experimental]   raw value range (model resolution): min=' + rawMin.toFixed(4) + ' max=' + rawMax.toFixed(4) + ' mean=' + (rawSum/floatData.length).toFixed(4) +
-        '  (' + (looksLikeUnitRange ? 'looks like a 0..1 matte, as expected' : 'DOES NOT look like a 0..1 matte -- flagged, not silently trusted') + ')');
-
-      // ---- Phase 7: preserve the NATIVE CONTINUOUS alpha, at the
-      // model's own resolution, before any resize. 0-255 here is a
-      // storage/display scaling only -- the underlying values are still
-      // the model's continuous float output, not thresholded. ----
-      const modnetAlphaModelRes = new Uint8ClampedArray(modelW*modelH);
-      for (let i=0;i<floatData.length;i++) modnetAlphaModelRes[i] = looksLikeUnitRange ? floatData[i]*255 : floatData[i];
-
-      // Resize model resolution -> the application's working canvas
-      // (w x h). This is the one resize in this pipeline. Per explicit
-      // instruction, this is NOT a silent stretch: the aspect-ratio
-      // delta this introduces is computed and logged first. Xenova/modnet's
-      // own preprocessor_config.json declares "do_pad": false (verified
-      // earlier in this investigation), meaning the model's own
-      // preprocessing does NOT letterbox/pad -- it resizes directly to
-      // its target grid, so a direct (non-letterboxed) stretch back is
-      // the documented correct inverse, not a shortcut taken here for
-      // convenience. If a future model revision used padding instead,
-      // this log line is what would surface that as a real distortion
-      // rather than hiding it.
-      const aspectModel = modelW / modelH, aspectCanvas = w / h;
-      const distortionPct = 100 * Math.abs(aspectCanvas - aspectModel) / aspectModel;
-      console.log('[BG][experimental] resize geometry: model output ' + modelW + 'x' + modelH + ' (aspect ' + aspectModel.toFixed(4) + ') -> working canvas ' + w + 'x' + h + ' (aspect ' + aspectCanvas.toFixed(4) + ')  =>  ' +
-        distortionPct.toFixed(2) + '% aspect-ratio distortion from a direct stretch (expected: a small amount from the model\'s "round to nearest 32px" step, not a letterboxing/cropping bug, per preprocessor_config.json\'s do_pad:false).');
-      if (distortionPct > 5){
-        console.warn('[BG][experimental] Aspect-ratio distortion (' + distortionPct.toFixed(2) + '%) is larger than the small amount expected from 32px rounding -- flagging for visual inspection rather than assuming it\'s fine.');
-      }
-      const tmp = document.createElement('canvas');
-      tmp.width = modelW; tmp.height = modelH;
-      const tctx = tmp.getContext('2d');
-      const timg = tctx.createImageData(modelW, modelH);
-      for (let i=0;i<modnetAlphaModelRes.length;i++){
-        const a = modnetAlphaModelRes[i];
-        timg.data[i*4] = a; timg.data[i*4+1] = a; timg.data[i*4+2] = a; timg.data[i*4+3] = 255;
-      }
-      tctx.putImageData(timg, 0, 0);
-      const rs = document.createElement('canvas');
-      rs.width = w; rs.height = h;
-      const rctx = rs.getContext('2d');
-      rctx.drawImage(tmp, 0, 0, w, h);
-      const resized = rctx.getImageData(0, 0, w, h).data;
-      const modnetAlphaRaw = new Uint8ClampedArray(w*h);
-      for (let i=0;i<w*h;i++) modnetAlphaRaw[i] = resized[i*4];
-
-      if (modnetAlphaRaw.length !== w*h){
-        console.warn('[BG][experimental] MODNET ALPHA EXTRACTION FAIL -- resized alpha length (' + modnetAlphaRaw.length + ') does not match working canvas pixel count (' + (w*h) + ').');
-        return null;
-      }
-      console.log('[BG][experimental] MODNET ALPHA EXTRACTION SUCCESS -- ' + modnetAlphaRaw.length + ' px at working resolution ' + w + 'x' + h + ' (expected ' + (w*h) + ')');
-
-      let diagOk = true;
-      try{
-        const sortedForStats = Array.prototype.slice.call(modnetAlphaRaw).sort(function(a,b){ return a-b; });
-        const pctAt = function(q){ return sortedForStats[Math.min(sortedForStats.length-1, Math.floor(q*sortedForStats.length))]; };
-        let sum = 0; for (let i=0;i<modnetAlphaRaw.length;i++) sum += modnetAlphaRaw[i];
-        console.log('%c[BG][experimental] MODNET RAW ALPHA (continuous matte, pre-threshold, at working resolution)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-        console.log('[BG][experimental]   size                        : ' + w + 'x' + h);
-        console.log('[BG][experimental]   mean alpha                  : ' + (sum/modnetAlphaRaw.length).toFixed(2) + ' / 255');
-        console.log('[BG][experimental]   min / p05 / p25 / median / p75 / p95 / max : ' +
-          sortedForStats[0] + ' / ' + pctAt(0.05) + ' / ' + pctAt(0.25) + ' / ' + pctAt(0.50) + ' / ' + pctAt(0.75) + ' / ' + pctAt(0.95) + ' / ' + sortedForStats[sortedForStats.length-1]);
-
-        // Foreground percentage at several fractional thresholds (0..1
-        // scale, i.e. "> 25% opacity" etc.) -- requested explicitly so a
-        // run's automatic console output is self-sufficient without a
-        // separate manual snippet.
-        const fracThresholds = [0.25, 0.5, 0.75, 0.9];
-        const fracRows = fracThresholds.map(function(t){
-          const cut = t*255; let c = 0;
-          for (let i=0;i<modnetAlphaRaw.length;i++) if (modnetAlphaRaw[i] > cut) c++;
-          return { threshold: '>' + Math.round(t*100) + '%', cutoffValue: +cut.toFixed(1), pixels: c, pctOfFrame: +(100*c/modnetAlphaRaw.length).toFixed(2) };
-        });
-        console.log('[BG][experimental] FOREGROUND PERCENTAGE AT THRESHOLDS');
-        if (console.table) console.table(fracRows);
-
-        // Edge/background bands (left/right/top/bottom 10% of the working
-        // canvas) -- reports what fraction of each edge strip the model
-        // calls foreground, without attaching any semantic label (chair/
-        // person/etc) to a region based on coordinates alone.
-        function bandStats(idxs){
-          let s = 0, above128 = 0;
-          for (let k=0;k<idxs.length;k++){ const v = modnetAlphaRaw[idxs[k]]; s += v; if (v > 128) above128++; }
-          return { meanAlpha: +(s/idxs.length).toFixed(2), pctAbove128: +(100*above128/idxs.length).toFixed(2), n: idxs.length };
-        }
-        const leftW = Math.round(w*0.10), rightX0 = w - Math.round(w*0.10), topH = Math.round(h*0.10), botY0 = h - Math.round(h*0.10);
-        const leftIdx=[], rightIdx=[], topIdx=[], botIdx=[];
-        for (let y=0;y<h;y++) for (let x=0;x<leftW;x++) leftIdx.push(y*w+x);
-        for (let y=0;y<h;y++) for (let x=rightX0;x<w;x++) rightIdx.push(y*w+x);
-        for (let y=0;y<topH;y++) for (let x=0;x<w;x++) topIdx.push(y*w+x);
-        for (let y=botY0;y<h;y++) for (let x=0;x<w;x++) botIdx.push(y*w+x);
-        console.log('[BG][experimental] EDGE/BACKGROUND ALPHA STATISTICS (10% bands, no semantic label attached)');
-        if (console.table) console.table([
-          Object.assign({ edge: 'left 10% (x 0-' + (leftW-1) + ')' }, bandStats(leftIdx)),
-          Object.assign({ edge: 'right 10% (x ' + rightX0 + '-' + (w-1) + ')' }, bandStats(rightIdx)),
-          Object.assign({ edge: 'top 10% (y 0-' + (topH-1) + ')' }, bandStats(topIdx)),
-          Object.assign({ edge: 'bottom 10% (y ' + botY0 + '-' + (h-1) + ')' }, bandStats(botIdx)),
-        ]);
-
-        // Diagnostic binary view (>128), ONLY for comparability with the
-        // existing selfie/DeepLab component tables above -- a reporting
-        // choice, not the model's real output, labeled as such everywhere.
-        let keptHard = 0;
-        for (let i=0;i<modnetAlphaRaw.length;i++) if (modnetAlphaRaw[i] > 128) keptHard++;
-        const comps = analyzeForegroundComponentsForDiagnostics(function(i){ return modnetAlphaRaw[i] > 128; }, w, h);
-        const minCore = Math.max(16, Math.round(keptHard*0.02));
-        const bigComps = comps.filter(function(c){ return c.area >= minCore; });
-        console.log('%c[BG][experimental] MODNET COMPONENT ANALYSIS (diagnostic threshold >128)', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-        console.log('[BG][experimental]   foreground kept (hard threshold) : ' + keptHard + ' px (' + (100*keptHard/(w*h)).toFixed(2) + '% of frame)');
-        console.log('[BG][experimental]   substantial components          : ' + bigComps.length + ' of ' + comps.length + ' total (>= ' + minCore + ' px each)');
-        if (console.table) console.table(bigComps.length ? bigComps : comps);
-        const fused = bigComps.length <= 1;
-        console.log('[BG][experimental]   VERDICT (diagnostic only, NOT a final judgement)  : ' +
-          (fused ? 'subject+background still ONE connected component at this threshold -- same finding as the production masks'
-                 : 'MORE THAN ONE substantial component -- worth visual inspection of whether one of them is the chair/bystander'));
-
-        console.log('%c[BG][experimental] PERFORMANCE', 'color:#fff;background:#a05eff;padding:2px 6px;font-weight:bold;');
-        console.log('[BG][experimental]   model+processor load time : ' + (t1-t0).toFixed(0) + ' ms (expect ~0ms on repeat runs once cached by the browser)');
-        console.log('[BG][experimental]   inference time            : ' + (t2-t1).toFixed(0) + ' ms');
-        console.log('[BG][experimental]   total                     : ' + (t2-t0).toFixed(0) + ' ms');
-
-        try{ window.__BG_MODNET_ALPHA__ = { alpha: modnetAlphaRaw, w: w, h: h, modelW: modelW, modelH: modelH }; }catch(e){}
-
-        // ---- Redesigned experimental preview row: exactly the 3 panels
-        // requested, clearly captioned, laid out together for direct
-        // comparison, all spatially at the same w x h working resolution
-        // as the original photo (no cropping/re-centering of any panel).
-        // Panel 1 is a READ-ONLY grayscale rendering of the production
-        // alpha already computed above (productionAlphaForPreview) --
-        // this only *reads* that array to draw a picture of it; it is
-        // never written to, and nothing here can change what already
-        // shipped as aiResultCanvas. Only this experimental row's own
-        // markup is touched -- the existing A/B/C preview block earlier
-        // in the file (selfie/DeepLab/overlay) is untouched. ----
-        try{
-          const host = document.getElementById('bgDebugPreviews');
-          if (host){
-            const addPanel = function(title, subtitle, arr, aw, ah, borderColor){
-              const wrap = document.createElement('div');
-              wrap.style.cssText = 'display:inline-block;margin:0 10px 12px 0;vertical-align:top;text-align:center;';
-              const cap = document.createElement('div');
-              cap.innerHTML = '<div style="font-weight:bold;">' + title + '</div><div style="opacity:0.8;">' + subtitle + '</div>';
-              cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#d9b3ff;line-height:1.3;max-width:240px;';
-              const dbg = document.createElement('canvas');
-              dbg.width = aw; dbg.height = ah;
-              dbg.style.cssText = 'max-width:240px;height:auto;border:2px solid ' + borderColor + ';background:#000;';
-              const dctx = dbg.getContext('2d');
-              const dimg = dctx.createImageData(aw, ah);
-              for (let i = 0; i < aw*ah; i++){
-                const a = arr ? arr[i] : 0;
-                dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
-              }
-              dctx.putImageData(dimg, 0, 0);
-              wrap.appendChild(cap); wrap.appendChild(dbg);
-              host.appendChild(wrap);
-            };
-            const productionLabel = productionModelLabel || '(model unknown)';
-            addPanel('1. CURRENT PRODUCTION RESULT', '(read-only copy of the ' + productionLabel + ' alpha that shipped as panel B above -- unchanged by this experiment)', productionAlphaForPreview || null, w, h, '#5142D6');
-            addPanel('2. MODNET — raw continuous alpha', '(native matte, NOT thresholded -- gray = partial/uncertain, this IS the model\'s real output)', modnetAlphaRaw, w, h, '#a05eff');
-            const thresholded = new Uint8ClampedArray(w*h);
-            for (let i=0;i<w*h;i++) thresholded[i] = modnetAlphaRaw[i] > 128 ? 255 : 0;
-            addPanel('3. MODNET — diagnostic threshold >128', '(comparison view ONLY, not the real output -- for judging connectivity against panel 1)', thresholded, w, h, '#a05eff');
-          }
-        }catch(e){ console.warn('[BG][experimental] preview render failed (non-fatal)', e && e.message); }
-      }catch(diagErr){
-        diagOk = false;
-        console.warn('[BG][experimental] MODNET DIAGNOSTICS FAIL', diagErr && (diagErr.message || diagErr));
-      }
-      console.log(diagOk ? '[BG][experimental] MODNET DIAGNOSTICS COMPLETE' : '[BG][experimental] MODNET DIAGNOSTICS FAIL (see warning above)');
-      console.log('%c[BG][experimental] MODNET EXPERIMENT COMPLETE', 'color:#fff;background:#2a9d3d;padding:2px 6px;font-weight:bold;');
-
-      return { alpha: modnetAlphaRaw, w: w, h: h, modelW: modelW, modelH: modelH, loadMs: t1-t0, inferMs: t2-t1 };
-    }catch(err){
-      console.warn('%c[BG][experimental] MODNET EXPERIMENT COMPLETE (failed) -- production result above is unaffected.', 'color:#fff;background:#c0392b;padding:2px 6px;', err && (err.message || err));
-      return null;
-    }
-  }
-
-  // Runs selfie_segmenter and decides whether to trust it for this image.
-  // Returns null on any error or on staleness (caller falls through to
-  // DeepLab v3 in either case -- exactly as if this model simply weren't
-  // available), or { confident, alpha }.
-  //
-  // Category-index calibration: selfie_segmenter's documented convention
-  // (category 0 = background, category 1 = person) has been PROVEN WRONG
-  // on real Android hardware elsewhere in this codebase -- see Passport
-  // Photo Maker's ppReplaceBackgroundAI (search "real debug screenshots
-  // from an actual Android device" in this file), which found the
-  // polarity flipped at runtime on an actual device despite matching the
-  // documentation. That tool cross-checks against real face-landmark
-  // positions; this tool has no face-landmark step to use as ground
-  // truth (its subjects aren't always faces -- shoulders/hands/full-body
-  // shots are explicitly in scope), so this reuses PP's OWN fallback for
-  // when no landmarks are available: sample a handful of plausible
-  // subject positions (image center, upper-center, lower-center) plus a
-  // minority-area vote (the subject is virtually always the
-  // smaller-area category in a background-removal photo), and take the
-  // majority verdict across all of them.
-
-  // AUDIT FIX: suppresses disconnected foreground regions other than the
-  // one most likely to BE the subject. Added after real bug reports where
-  // a distinct, separate object was kept as if it were part of the
-  // subject -- a chunk of dim background near the hair on a full-body
-  // photo, and (worse) an unrelated second person's sleeve/arm on a
-  // portrait. Both segmenters used here only answer "is this pixel
-  // person/foreground," with no notion of "which blob is THE subject" --
-  // so any other foreground-classified region, however the model arrived
-  // at it, is kept in full right alongside the real one. This tool is
-  // for single-subject photos, where the true subject is virtually
-  // always ONE 4-connected blob roughly centered in frame; anything else
-  // disconnected from that blob is a stray misclassification, so it's
-  // dropped. Runs on the raw category/binary mask, before feathering, so
-  // refineSegmentationMask only ever sees a single clean region -- and
-  // the plausibility/confidence checks below only ever score that same
-  // region, not stray pixels that were about to be discarded anyway.
-  function keepPrimaryForegroundComponent(maskData, w, h, isFg){
-    const n = w*h;
-    const cx0 = Math.floor(w*0.2), cx1 = Math.ceil(w*0.8);
-    const cy0 = Math.floor(h*0.08), cy1 = Math.ceil(h*0.92);
-    const stack = new Int32Array(n);
-
-    const fg = new Uint8Array(n);
-    let fgCount = 0;
-    for (let i=0; i<n; i++){ if (isFg(i)){ fg[i] = 1; fgCount++; } }
-    if (!fgCount) return { labels: new Int32Array(n).fill(-1), bestLabel: -1 };
-
-    // 4-connected labeling of a binary set, carrying the per-component
-    // stats the split decision and the final pick both need.
-    function labelComponents(set){
-      const lab = new Int32Array(n).fill(-1);
-      const comps = [];
-      let L = 0;
-      for (let s=0; s<n; s++){
-        if (set[s] !== 1 || lab[s] !== -1) continue;
-        let sp = 0; stack[sp++] = s; lab[s] = L;
-        let area = 0, sumX = 0, sumY = 0, centerHits = 0;
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        while (sp > 0){
-          const idx = stack[--sp];
-          area++;
-          const x = idx % w, y = (idx / w) | 0;
-          sumX += x; sumY += y;
-          if (x < minX) minX = x; if (x > maxX) maxX = x;
-          if (y < minY) minY = y; if (y > maxY) maxY = y;
-          if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) centerHits++;
-          if (x > 0){ const m = idx-1; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-          if (x < w-1){ const m = idx+1; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-          if (y > 0){ const m = idx-w; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-          if (y < h-1){ const m = idx+w; if (set[m]===1 && lab[m]===-1){ lab[m]=L; stack[sp++]=m; } }
-        }
-        comps.push({ label: L, area, cxMean: sumX/area, cyMean: sumY/area, centerHits,
-                     minX: minX, maxX: maxX, minY: minY, maxY: maxY });
-        L++;
-      }
-      return { lab, comps };
-    }
-
-    function pickFromComps(lab, comps){
-      let bestLabel = -1, bestScore = -1;
-      for (let i=0; i<comps.length; i++){
-        const c = comps[i];
-        const score = c.centerHits*1000 + c.area;
-        if (score > bestScore){ bestScore = score; bestLabel = c.label; }
-      }
-      return { labels: lab, bestLabel };
-    }
-
-    const plain = labelComponents(fg);
-    // A component must be at least this big to count as "a real thing"
-    // rather than a speckle, both for deciding a split happened and for
-    // being eligible to win.
-    const minCore = Math.max(16, Math.round(fgCount * 0.02));
-    const plainBig = plain.comps.filter(c => c.area >= minCore);
-
-    let chosen = null;
-    if (plainBig.length >= 2){
-      // Genuinely disconnected regions -- no erosion needed.
-      chosen = { lab: plain.lab, comps: plainBig };
-    } else {
-      // ADAPTIVE SPLIT (replaces a single fixed-radius erosion, which was
-      // measurably too small to help): two people standing next to each
-      // other merge into ONE mask blob joined across a contact area that
-      // can be many pixels wide -- a fixed ~1%-of-frame erosion cannot
-      // break that, which is exactly why the previous attempt changed
-      // nothing on such a photo. So erode one pixel at a time, re-checking
-      // after each step, and stop at the FIRST step where the blob
-      // actually separates into two substantial pieces. That adapts to
-      // however wide the real contact happens to be, instead of guessing
-      // a radius up front.
-      let cur = fg;
-      // Step cap sized to how deep a real merge actually is: two adjacent
-      // people can share a contact band tens of pixels deep at the
-      // model's own mask resolution, and breaking a band that deep takes
-      // roughly half its depth in erosion steps. A 6% cap was measurably
-      // too small -- it split nothing on a realistically merged mask --
-      // so this allows up to 15% of the frame. Eroding that far is safe
-      // here only because the horizontal-offset guard below rejects the
-      // within-one-subject splits that deeper erosion starts producing.
-      const maxSteps = Math.max(3, Math.round(Math.min(w,h) * 0.15));
-      let lastBigCount = -1;
-      for (let step=1; step<=maxSteps; step++){
-        const next = new Uint8Array(n);
-        for (let y=0; y<h; y++){
-          const base = y*w;
-          for (let x=0; x<w; x++){
-            const i = base+x;
-            if (cur[i] !== 1) continue;
-            // Out-of-bounds counts as foreground, so a subject touching
-            // the frame edge is not eaten away from the border inward.
-            const l = (x === 0) ? 1 : cur[i-1];
-            const rr = (x === w-1) ? 1 : cur[i+1];
-            const u = (y === 0) ? 1 : cur[i-w];
-            const d = (y === h-1) ? 1 : cur[i+w];
-            next[i] = (l && rr && u && d) ? 1 : 0;
-          }
-        }
-        cur = next;
-        const res = labelComponents(cur);
-        const big = res.comps.filter(c => c.area >= minCore);
-        if (big.length === 0) break; // eroded away entirely -- no usable split
-        // Report only when the picture CHANGES (or on the first/last step).
-        // Logging every step buried the blocks that matter under ~135 lines.
-        if (BG_DEBUG && (step === 1 || big.length !== lastBigCount || step === maxSteps)){
-          bgLog('erosion step ' + step + '/' + maxSteps + ': substantial components = ' + big.length +
-                ' -> ' + big.map(function(c){ return 'area=' + c.area + ' cx=' + (c.cxMean/w).toFixed(3); }).join(' , '));
-          lastBigCount = big.length;
-        }
-        if (big.length >= 2){
-          // GUARD against dismembering a single person. Erode a lone
-          // subject far enough and they also break apart -- head from
-          // torso at the neck, most commonly. That kind of split is
-          // stacked VERTICALLY: the pieces sit at nearly the same
-          // horizontal position. Two different people standing beside
-          // each other are offset HORIZONTALLY. So a split is only
-          // accepted when the two biggest pieces are meaningfully apart
-          // left-to-right; otherwise the blob is left intact and nothing
-          // is dropped -- failing safe toward "keep everything," which is
-          // the current, merely-imperfect behavior rather than a new way
-          // to delete part of the subject.
-          const sorted = big.slice().sort((a,b) => b.area - a.area);
-          const horizGap = Math.abs(sorted[0].cxMean - sorted[1].cxMean) / w;
-          bgLog('SPLIT CANDIDATE at erosion step ' + step + ': horizGap=' + horizGap.toFixed(3) +
-                ' (needs >=0.15) -> ' + (horizGap >= 0.15 ? 'ACCEPTED' : 'REJECTED by horizontal-offset guard'));
-          if (horizGap >= 0.15) chosen = { lab: res.lab, comps: big };
-          break;
-        }
-      }
-    }
-
-    if (!chosen){
-      if (BG_DEBUG){
-        console.log('%c[BG] COMPONENT ANALYSIS (no split applied)', 'color:#fff;background:#a50;padding:2px 6px;font-weight:bold;');
-        console.log('[BG]   mask dims           : ' + w + 'x' + h);
-        console.log('[BG]   foreground px       : ' + fgCount + ' (' + (100*fgCount/(w*h)).toFixed(2) + '% of frame)  minCore=' + minCore);
-        console.log('[BG]   total components    : ' + plain.comps.length + '   substantial: ' + plainBig.length);
-        console.table(plain.comps.slice().sort(function(a,b){ return b.area-a.area; }).slice(0,10).map(function(c,i){
-          return {
-            'component #': i,
-            'pixels': c.area,
-            '% of foreground': +(100*c.area/fgCount).toFixed(2),
-            '% of frame': +(100*c.area/(w*h)).toFixed(2),
-            'bbox x': c.minX + '-' + c.maxX,
-            'bbox y': c.minY + '-' + c.maxY,
-            'width': c.maxX - c.minX + 1,
-            'height': c.maxY - c.minY + 1,
-            'centerX (frac)': +(c.cxMean/w).toFixed(3),
-            'centerY (frac)': +(c.cyMean/h).toFixed(3)
-          };
-        }));
-        console.log('[BG]   RESULT              : NO SPLIT - all components above kept as one region');
-      }
-      return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
-    }
-
-    // Grow the surviving cores back out to their true extent: multi-source
-    // flood fill over the ORIGINAL foreground, seeded from every core at
-    // once, so each pixel is claimed by whichever core reaches it first.
-    // The pieces come back at full size with the merge undone.
-    const remap = new Map();
-    chosen.comps.forEach((c, i) => remap.set(c.label, i));
-    const seedLab = new Int32Array(n).fill(-1);
-    for (let i=0; i<n; i++){
-      const L = chosen.lab[i];
-      if (L === -1) continue;
-      const m = remap.get(L);
-      if (m !== undefined) seedLab[i] = m;
-    }
-    const k = chosen.comps.length;
-    const areas = new Float64Array(k), hits = new Float64Array(k);
-    const queue = new Int32Array(n);
-    let qh = 0, qt = 0;
-    for (let i=0; i<n; i++){
-      const L = seedLab[i];
-      if (L === -1) continue;
-      areas[L]++;
-      const x = i % w, y = (i / w) | 0;
-      if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) hits[L]++;
-      queue[qt++] = i;
-    }
-    while (qh < qt){
-      const idx = queue[qh++];
-      const L = seedLab[idx];
-      const x = idx % w, y = (idx / w) | 0;
-      if (x > 0){ const m = idx-1; if (seedLab[m]===-1 && fg[m]===1){ seedLab[m]=L; areas[L]++; if (x-1>=cx0 && x-1<cx1 && y>=cy0 && y<cy1) hits[L]++; queue[qt++]=m; } }
-      if (x < w-1){ const m = idx+1; if (seedLab[m]===-1 && fg[m]===1){ seedLab[m]=L; areas[L]++; if (x+1>=cx0 && x+1<cx1 && y>=cy0 && y<cy1) hits[L]++; queue[qt++]=m; } }
-      if (y > 0){ const m = idx-w; if (seedLab[m]===-1 && fg[m]===1){ seedLab[m]=L; areas[L]++; if (x>=cx0 && x<cx1 && y-1>=cy0 && y-1<cy1) hits[L]++; queue[qt++]=m; } }
-      if (y < h-1){ const m = idx+w; if (seedLab[m]===-1 && fg[m]===1){ seedLab[m]=L; areas[L]++; if (x>=cx0 && x<cx1 && y+1>=cy0 && y+1<cy1) hits[L]++; queue[qt++]=m; } }
-    }
-    let bestLabel = -1, bestScore = -1;
-    for (let L=0; L<k; L++){
-      const score = hits[L]*1000 + areas[L];
-      if (score > bestScore){ bestScore = score; bestLabel = L; }
-    }
-    // Final safety net: if keeping only the winner would throw away most
-    // of what the model found, the "split" was almost certainly wrong --
-    // keep everything instead of shipping a badly truncated subject.
-    if (bestLabel === -1 || areas[bestLabel] < fgCount * 0.35){
-      bgLog('component split => REVERTED by 35% safety net (winner too small, split assumed wrong)', {
-        fgCount,
-        pieces: k,
-        winnerArea: bestLabel === -1 ? 0 : areas[bestLabel],
-        winnerShareOfForeground: bestLabel === -1 ? 0 : +(areas[bestLabel]/fgCount).toFixed(3),
-        result: 'EVERYTHING KEPT (this is why a stray region can survive)'
-      });
-      return pickFromComps(plain.lab, plainBig.length ? plainBig : plain.comps);
-    }
-    bgLog('component split => SPLIT APPLIED', {
-      fgCount,
-      pieces: k,
-      winnerShareOfForeground: +(areas[bestLabel]/fgCount).toFixed(3),
-      droppedShareOfForeground: +(1 - areas[bestLabel]/fgCount).toFixed(3)
-    });
-    return { labels: seedLab, bestLabel };
-  }
-
-  async function trySelfieSegmentation(srcCanvas, w, h, myGeneration){
-    try{
-      const seg = await ensureSelfieSegmenter();
-      if (myGeneration !== aiGeneration) return null;
-      await nextFrame();
-      const result = await new Promise((resolve, reject) => {
-        try{ seg.segment(srcCanvas, (res) => resolve(res)); }
-        catch(err){ reject(err); }
-      });
-      if (myGeneration !== aiGeneration){
-        result && result.categoryMask && result.categoryMask.close && result.categoryMask.close();
-        result && result.confidenceMasks && result.confidenceMasks.forEach(m => m.close && m.close());
-        return null;
-      }
-      if (!result || !result.categoryMask) return { confident: false, alpha: null };
-
-      const maskData = result.categoryMask.getAsUint8Array();
-      const maskW = result.categoryMask.width || w;
-      const maskH = result.categoryMask.height || h;
-      const confMasks = result.confidenceMasks;
-      const rawConf = confMasks && confMasks[1] ? confMasks[1].getAsFloat32Array() : null;
-      const cw = confMasks && confMasks[1] ? confMasks[1].width : maskW;
-      const ch = confMasks && confMasks[1] ? confMasks[1].height : maskH;
-
-      // ============== APPROVED FIX ==============
-      // The acceptance gate below used to derive the person CONFIDENCE from
-      // the category-mask POLARITY:
-      //     personConf = personCategoryValue === 1 ? rawConf[i] : (1 - rawConf[i])
-      // Those are two independent facts. rawConf is confidenceMasks[1] -- a
-      // fixed output channel of the model -- while personCategoryValue is
-      // the result of this file's own polarity calibration on a DIFFERENT
-      // output (the category mask). Real runtime evidence from the deployed
-      // build showed the calibration returning 0 on a portrait, which
-      // silently turned the gate's "person confidence" into
-      // 1 - personConfidence, i.e. BACKGROUND confidence, measured over the
-      // subject pixels. That averages near zero, lands far under the 0.65
-      // bar, and rejects selfie_segmenter automatically -- no matter how
-      // good its mask is -- which is why every such photo fell through to
-      // DeepLab v3's much coarser 76%-of-frame mask.
-      //
-      // The correspondence between the two outputs is DETERMINED here from
-      // the data instead of assumed: compare the mean of confidenceMasks[1]
-      // over pixels the category mask calls person against its mean over
-      // pixels it calls background. Whichever way round that comes out
-      // tells us which orientation of the channel actually means "subject"
-      // for THIS run, on THIS device, without trusting either MediaPipe's
-      // documented convention or the polarity calibration.
-      let confChannelIsPerson = true;
-      let confPersonMean = null, confBgMean = null;
-      if (rawConf){
-        let sPerson = 0, nPerson = 0, sBg = 0, nBg = 0;
-        const stepY = Math.max(1, Math.floor(ch/120)), stepX = Math.max(1, Math.floor(cw/120));
-        for (let cy = 0; cy < ch; cy += stepY){
-          const my = Math.min(maskH-1, Math.round(cy*maskH/ch));
-          for (let cx = 0; cx < cw; cx += stepX){
-            const mx = Math.min(maskW-1, Math.round(cx*maskW/cw));
-            const v = rawConf[cy*cw+cx];
-            if (maskData[my*maskW+mx] === personCategoryValue){ sPerson += v; nPerson++; }
-            else { sBg += v; nBg++; }
-          }
-        }
-        confPersonMean = nPerson ? sPerson/nPerson : null;
-        confBgMean = nBg ? sBg/nBg : null;
-        if (confPersonMean !== null && confBgMean !== null) confChannelIsPerson = confPersonMean >= confBgMean;
-      }
-      // Correctly oriented per-pixel subject confidence: high = subject.
-      const personConfData = rawConf ? (function(){
-        if (confChannelIsPerson) return rawConf;
-        const inv = new Float32Array(rawConf.length);
-        for (let i=0; i<rawConf.length; i++) inv[i] = 1 - rawConf[i];
-        return inv;
-      })() : null;
-
-      function sampleRegionVote(cxr, cyr){
-        const radius = Math.round(Math.min(w,h) * 0.08);
-        const votes = {};
-        for (let dy=-radius; dy<=radius; dy+=Math.max(1,Math.round(radius/4))){
-          for (let dx=-radius; dx<=radius; dx+=Math.max(1,Math.round(radius/4))){
-            const x = Math.min(w-1, Math.max(0, cxr+dx)), y = Math.min(h-1, Math.max(0, cyr+dy));
-            const mx = Math.min(maskW-1, Math.round(x*maskW/w)), my = Math.min(maskH-1, Math.round(y*maskH/h));
-            votes[maskData[my*maskW+mx]] = (votes[maskData[my*maskW+mx]]||0) + 1;
-          }
-        }
-        const sorted = Object.entries(votes).sort((a,b) => b[1]-a[1]);
-        return sorted.length ? +sorted[0][0] : null;
-      }
-      const candidates = [
-        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.5)),
-        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.3)),
-        sampleRegionVote(Math.round(w*0.5), Math.round(h*0.7)),
-      ].filter(v => v !== null);
-      let personCategoryValue = 1; // MediaPipe's documented convention -- used only if the votes below can't improve on it
-      if (candidates.length){
-        const posVotes = {};
-        candidates.forEach(v => { posVotes[v] = (posVotes[v]||0) + 1; });
-        let area0 = 0, area1 = 0;
-        for (let i=0; i<maskData.length; i++){ if (maskData[i] > 0) area1++; else area0++; }
-        const minorityCategory = area1 < area0 ? 1 : 0;
-        posVotes[minorityCategory] = (posVotes[minorityCategory]||0) + 1;
-        const sorted = Object.entries(posVotes).sort((a,b) => b[1]-a[1]);
-        personCategoryValue = +sorted[0][0];
-      }
-
-      // Drop any foreground blob other than the primary subject (see
-      // keepPrimaryForegroundComponent above) before the mask is fed into
-      // refinement, so a stray disconnected region -- a second person, an
-      // unrelated object the model also called "person" -- never reaches
-      // the output at all, and never dilutes the confidence check below.
-      const { labels: fgLabels, bestLabel: fgBestLabel } =
-        keepPrimaryForegroundComponent(maskData, maskW, maskH, (i) => maskData[i] === personCategoryValue);
-      const filteredMaskData = fgBestLabel === -1 ? maskData : (() => {
-        const out = maskData.slice();
-        const otherValue = personCategoryValue === 1 ? 0 : 1;
-        for (let i=0; i<out.length; i++){
-          if (out[i] === personCategoryValue && fgLabels[i] !== fgBestLabel) out[i] = otherValue;
-        }
-        return out;
-      })();
-      if (BG_DEBUG){
-        let before = 0, after = 0;
-        for (let i=0; i<maskData.length; i++){
-          if (maskData[i] === personCategoryValue) before++;
-          if (filteredMaskData[i] === personCategoryValue) after++;
-        }
-        const tot = maskData.length;
-        console.log('%c[BG] STAGE: RAW SELFIE MASK -> COMPONENT FILTER', 'color:#fff;background:#06c;padding:2px 6px;font-weight:bold;');
-        console.log('[BG]   RAW selfie mask foreground        : ' + before + ' (' + (100*before/tot).toFixed(2) + '% of frame)');
-        console.log('[BG]   AFTER component filter            : ' + after + ' (' + (100*after/tot).toFixed(2) + '% of frame)');
-        console.log('[BG]   removed by component filter       : ' + (before-after) + ' px (' + (100*(before-after)/tot).toFixed(2) + '% of frame)');
-      }
-
-      const guideCanvas = document.createElement('canvas');
-      guideCanvas.width = maskW; guideCanvas.height = maskH;
-      const gctx = guideCanvas.getContext('2d');
-      gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
-      const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
-      const guideGray = new Float32Array(maskW*maskH);
-      for (let i=0; i<guideGray.length; i++){
-        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
-      }
-
-      // Normalize to 1 = subject so the shared refine helper can be handed
-      // personCategoryValue:1 alongside the already-correctly-oriented
-      // confidence above. That keeps refineSegmentationMask itself (shared
-      // with Passport Photo Maker, Photo Retouch and the Ecommerce Editor)
-      // completely untouched, while ensuring its edge-blending step is fed
-      // real subject confidence rather than the inverted signal.
-      const normalizedSelfieMask = new Uint8ClampedArray(filteredMaskData.length);
-      for (let i=0; i<normalizedSelfieMask.length; i++){
-        normalizedSelfieMask[i] = (filteredMaskData[i] === personCategoryValue) ? 1 : 0;
-      }
-      const alpha = refineSegmentationMask({
-        maskData: normalizedSelfieMask, maskW, maskH,
-        confidenceData: personConfData, confW: cw, confH: ch,
-        outW: w, outH: h,
-        personCategoryValue: 1,
-        guideGray,
-        onStage: BG_DEBUG ? function(info){ bgLog('[selfie_segmenter post-processing]', info); } : null,
-      });
-
-      if (result.categoryMask.close) result.categoryMask.close();
-      if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
-
-      // Same plausibility thresholds already proven for the DeepLab path
-      // below (0.65 confidence, 3-97% kept area), so both paths agree on
-      // what "confident" means and a run can't accidentally trust one
-      // model at a lower bar than the other.
-      await nextFrame();
-      function sampledFraction(arr, n, threshold){
-        const stride = Math.max(1, Math.floor(n / 3000));
-        let sampled = 0, hits = 0;
-        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
-        return sampled ? hits/sampled : 0;
-      }
-      const keptFrac = sampledFraction(alpha, w*h, 32);
-      const areaOk = keptFrac >= 0.03 && keptFrac <= 0.97;
-      // AUDIT FIX (root cause of the "AI couldn't confidently find a clear
-      // subject" warning firing even on visually good results): this used
-      // to average personConf across EVERY sampled point in the whole
-      // frame, foreground and background alike. Background pixels the
-      // model is (correctly, confidently) near-certain are NOT the
-      // subject drag that average toward zero -- so on any photo where
-      // the subject occupies less than roughly two-thirds of the frame
-      // (basically any full-body or moderately-zoomed-out shot), the
-      // average fell under the 0.65 bar even when the model was completely
-      // confident about the subject itself. What actually answers "how
-      // confident is the model about the subject it found" is the average
-      // confidence AT the pixels the mask actually kept (alpha > 128) --
-      // computed here instead, using the FINAL alpha (after the
-      // component-filtering above), so a stray blob that got dropped
-      // can't drag this down either. The bounding box (for the
-      // full-body composition gate below) is computed from that same
-      // kept region for the same reason -- it now reflects what will
-      // actually ship, not raw pre-filter/pre-refine confidence noise.
-      let avgPersonConfidence = null;
-      let bbMinXFrac = null, bbMaxXFrac = null, bbMinYFrac = null, bbMaxYFrac = null;
-      if (rawConf){
-        const stride = Math.max(1, Math.floor((w*h) / 3000));
-        let sampled = 0, sum = 0;
-        let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
-        for (let i = 0; i < w*h; i += stride){
-          if (alpha[i] <= 128) continue; // only score pixels the mask actually kept
-          const x = i % w, y = Math.floor(i / w);
-          const cx = Math.min(cw-1, Math.round(x*cw/w)), cy = Math.min(ch-1, Math.round(y*ch/h));
-          const personConf = personConfData[cy*cw+cx];
-          sampled++; sum += personConf;
-          const xf = x/w, yf = y/h;
-          if (xf < bbMinX) bbMinX = xf; if (xf > bbMaxX) bbMaxX = xf;
-          if (yf < bbMinY) bbMinY = yf; if (yf > bbMaxY) bbMaxY = yf;
-        }
-        avgPersonConfidence = sampled ? sum/sampled : null;
-        if (bbMaxX >= bbMinX){ bbMinXFrac = bbMinX; bbMaxXFrac = bbMaxX; bbMinYFrac = bbMinY; bbMaxYFrac = bbMaxY; }
-      }
-
-      // Composition gate (added after a real bug report: a full-length
-      // standing photo against a dim, low-contrast background came back
-      // with a large chunk of the background kept as if it were part of
-      // the subject, attached near the hair where the model had the least
-      // color contrast to work with -- and the run was still reported
-      // "confident" by the checks above, because the true body pixels
-      // were confidently correct and diluted the average). MediaPipe's
-      // own documentation positions selfie_segmenter for close-up
-      // self-portrait framing (head/shoulders, sometimes upper body) --
-      // NOT full-length standing photos. A kept bounding box that spans
-      // nearly the whole frame height while occupying under half the
-      // frame width is the signature of exactly that mismatched
-      // composition, so this model's result is not trusted there at all,
-      // regardless of its own reported confidence -- the DeepLab v3
-      // fallback below (a general full-scene model actually trained on
-      // full-body photos, not just close-ups) gets the attempt instead.
-      // This is a composition heuristic, not a proof of failure -- a
-      // legitimate full-body photo with a clean, high-contrast background
-      // would also get routed to DeepLab by this, which is an acceptable
-      // trade since DeepLab already handles plain/simple backgrounds
-      // reasonably well; it's specifically the hard, low-contrast cases
-      // this is meant to catch.
-      let looksFullBody = false;
-      if (bbMinXFrac !== null){
-        const bbHeightFrac = bbMaxYFrac - bbMinYFrac;
-        const bbWidthFrac = bbMaxXFrac - bbMinXFrac;
-        looksFullBody = bbHeightFrac >= 0.85 && bbWidthFrac <= 0.45;
-      }
-
-      const confident = !looksFullBody && areaOk && avgPersonConfidence !== null && avgPersonConfidence >= 0.65;
-      if (BG_DEBUG){
-        // Flat string output on purpose: the previous object form was
-        // collapsed by the console ("{...}, ...") and hid the exact values
-        // that decide acceptance -- which is the single most important
-        // fact in this whole investigation.
-        const reasons = [];
-        if (looksFullBody) reasons.push('looksFullBody=true (bbox spans >=85% height AND <=45% width)');
-        if (!areaOk) reasons.push('areaOk=false (keptFrac ' + keptFrac.toFixed(4) + ' outside 0.03-0.97)');
-        if (avgPersonConfidence === null) reasons.push('avgPersonConfidence=null (no confidence mask available)');
-        else if (avgPersonConfidence < 0.65) reasons.push('avgPersonConfidence ' + avgPersonConfidence.toFixed(4) + ' < 0.65 threshold');
-        // Confidence distribution over the RAW confidence mask, so we can
-        // see whether a good signal is being thrown away.
-        let cStats = 'n/a';
-        if (rawConf && rawConf.length){
-          const step = Math.max(1, Math.floor(rawConf.length/20000));
-          const samples = [];
-          let mn = Infinity, mx = -Infinity, sum = 0;
-          for (let i=0; i<rawConf.length; i+=step){
-            const v = personConfData[i];
-            samples.push(v); sum += v;
-            if (v < mn) mn = v; if (v > mx) mx = v;
-          }
-          samples.sort(function(a,b){ return a-b; });
-          const pct = function(q){ return samples[Math.min(samples.length-1, Math.floor(q*samples.length))].toFixed(4); };
-          cStats = 'min=' + mn.toFixed(4) + ' p05=' + pct(0.05) + ' p25=' + pct(0.25) +
-                   ' median=' + pct(0.50) + ' p75=' + pct(0.75) + ' p95=' + pct(0.95) +
-                   ' max=' + mx.toFixed(4) + ' mean=' + (sum/samples.length).toFixed(4);
-        }
-        console.log('%c[BG] SELFIE_SEGMENTER RESULT', 'color:#fff;background:#0a7;padding:2px 6px;font-weight:bold;');
-        console.log('[BG]   accepted            : ' + confident);
-        console.log('[BG]   rejected            : ' + (!confident));
-        console.log('[BG]   rejection reason(s) : ' + (confident ? '(none - accepted)' : reasons.join(' | ')));
-        console.log('[BG]   personCategoryValue : ' + personCategoryValue + '   <-- category-mask polarity calibration');
-        console.log('[BG]   confidence channel  : confidenceMasks[1] ' + (confChannelIsPerson ? 'IS' : 'is NOT') +
-                    ' the person channel  (determined from data, NOT from personCategoryValue)');
-        console.log('[BG]     mean conf[1] @ category=person px  : ' + (confPersonMean === null ? 'n/a' : confPersonMean.toFixed(4)));
-        console.log('[BG]     mean conf[1] @ category=background : ' + (confBgMean === null ? 'n/a' : confBgMean.toFixed(4)));
-        console.log('[BG]   personConfidenceMeanOnKeptPixels     : ' + (avgPersonConfidence === null ? 'null' : avgPersonConfidence.toFixed(4)));
-        console.log('[BG]   backgroundConfidenceMeanOnKeptPixels : ' + (avgPersonConfidence === null ? 'null' : (1-avgPersonConfidence).toFixed(4)));
-        console.log('[BG]   foregroundPct       : ' + (100*keptFrac).toFixed(2) + '%');
-        console.log('[BG]   mask size           : ' + maskW + 'x' + maskH + '   confidence map: ' + cw + 'x' + ch);
-        console.log('[BG]   keptFrac            : ' + keptFrac.toFixed(4) + '   (areaOk=' + areaOk + ')');
-        console.log('[BG]   avgPersonConfidence : ' + (avgPersonConfidence === null ? 'null' : avgPersonConfidence.toFixed(4)) + '   (threshold 0.65)');
-        console.log('[BG]   looksFullBody       : ' + looksFullBody);
-        console.log('[BG]   kept bbox (frac)    : ' + (bbMinXFrac === null ? 'null' :
-          'x ' + bbMinXFrac.toFixed(3) + '-' + bbMaxXFrac.toFixed(3) + ' , y ' + bbMinYFrac.toFixed(3) + '-' + bbMaxYFrac.toFixed(3)));
-        console.log('[BG]   confidence distrib. : ' + cStats);
-        console.log('[BG]   VERDICT             : ' + (confident ? 'USING selfie_segmenter' : 'REJECTED -> falling back to DeepLab v3'));
-        try { window.__BG_SELFIE_ALPHA__ = { alpha: alpha, w: w, h: h, accepted: confident }; } catch(e){}
-      }
-      return { confident, alpha };
-    }catch(err){
-      return null; // any failure here just falls through to DeepLab v3 below
-    }
   }
 
   setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
@@ -3452,7 +2256,6 @@ if (document.getElementById('aiRemoveDrop')){
     try{
       aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
-      aiGeneration++; // invalidate any AI-remove run still in flight for the previous image
       document.getElementById('aiRemoveStage').classList.remove('hidden');
       enterAiFullscreen();
       // Show the uploaded image immediately in the SAME canvas that will
@@ -3542,7 +2345,6 @@ if (document.getElementById('aiRemoveDrop')){
     document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
   }
   function resetAiToUpload(){
-    aiGeneration++; // invalidate any AI-remove run still in flight
     document.getElementById('aiRemoveStage').classList.add('hidden');
     exitAiFullscreen();
     document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
@@ -3825,7 +2627,6 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('aiRemoveBtn').onclick = async () => {
     const btn = document.getElementById('aiRemoveBtn');
     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
-    const myGeneration = aiGeneration;
     setLoading(btn, true);
 
     if (bgRemoveMode === 'document'){
@@ -3847,18 +2648,11 @@ if (document.getElementById('aiRemoveDrop')){
         for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
         octx.putImageData(imageData, 0, 0);
 
-        if (myGeneration !== aiGeneration){
-          // A different image was loaded (or the tool was reset) while this
-          // ran -- drop the stale result instead of overwriting the editor.
-          setLoading(btn, false);
-          return;
-        }
         aiResultCanvas = outCanvas;
         initManualEditor(srcCanvas, outCanvas);
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
         document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
-        document.getElementById('aiChangeBgRow').classList.remove('hidden');
         toast('Background removed. Refine it below if needed.');
       }catch(err){
         toast(err.message || 'Could not process this image.', 'err');
@@ -3868,6 +2662,9 @@ if (document.getElementById('aiRemoveDrop')){
     }
 
     try{
+      const seg = await ensureSegmenter();
+      await nextFrame();
+
       const MAX = 1200;
       let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
       if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
@@ -3876,257 +2673,60 @@ if (document.getElementById('aiRemoveDrop')){
       srcCanvas.width = w; srcCanvas.height = h;
       srcCanvas.getContext('2d').drawImage(aiSourceImg, 0, 0, w, h);
 
-      await nextFrame();
+      const result = await new Promise((resolve, reject) => {
+        try{ seg.segment(srcCanvas, (res) => resolve(res)); }
+        catch(err){ reject(err); }
+      });
 
-      // ACCURACY FIX: try the person-matting model (selfie_segmenter --
-      // same model Passport Photo Maker/Photo Retouch already use) first.
-      // Its result is only used when trySelfieSegmentation() itself
-      // reports high confidence AND a plausible kept-area for THIS image;
-      // otherwise this falls straight through to the DeepLab v3 path
-      // below, which is completely unmodified from before this fix, so
-      // every non-person case behaves exactly as it did previously.
-      const selfieOutcome = await trySelfieSegmentation(srcCanvas, w, h, myGeneration);
-      if (myGeneration !== aiGeneration) return;
+      if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
+      const rawMaskData = result.categoryMask.getAsUint8Array();
+      const maskW = result.categoryMask.width || w;
+      const maskH = result.categoryMask.height || h;
+      // Normalize: category 0 = background (excluded). All other PASCAL VOC
+      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
+      // are treated as potential foreground subject. DeepLab v3 correctly
+      // identifies semantic categories; however, whether a chair, sofa, or
+      // table belongs to the user's intended foreground is a compositional
+      // decision that cannot be correctly made by a static class blacklist --
+      // a person sitting in a designer chair may want both preserved, while
+      // another photo may have an unwanted chair in the background. The
+      // downstream removeSmallIslands() step handles isolated speckling, and
+      // the manual Eraser / Lasso / Polygon tools handle any residual
+      // unwanted regions. Background (class 0) is the only class that is
+      // definitively not the user's intended subject.
+      const normalizedMask = new Uint8ClampedArray(maskW*maskH);
+      for (let i=0; i<normalizedMask.length; i++)
+        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
-      let refinedAlpha, implausible;
 
-      if (selfieOutcome && selfieOutcome.confident){
-        refinedAlpha = selfieOutcome.alpha;
-        implausible = false;
-      } else {
-        // ---- DeepLab v3 path: UNCHANGED from before this fix ----
-        const seg = await ensureSegmenter();
-        if (myGeneration !== aiGeneration) return;
-        await nextFrame();
 
-        const result = await new Promise((resolve, reject) => {
-          try{ seg.segment(srcCanvas, (res) => resolve(res)); }
-          catch(err){ reject(err); }
-        });
-
-        if (!result || !result.categoryMask){ throw new Error('The AI model did not return a result for this image.'); }
-        const rawMaskData = result.categoryMask.getAsUint8Array();
-        const maskW = result.categoryMask.width || w;
-        const maskH = result.categoryMask.height || h;
-        // Normalize to the EXACT existing polarity: category 0 = background,
-        // anything else = foreground -- unchanged from before, only the
-        // mask's edge/detail QUALITY is being improved below.
-        // ================= ROOT-CAUSE FIX =================
-        // This line used to read: normalizedMask[i] = rawMaskData[i] !== 0
-        // i.e. EVERY non-background Pascal VOC class was kept as "subject".
-        // DeepLab v3 is a 21-class scene segmenter, so in a real indoor
-        // photo it labels the chair (class 9), the sofa (18), the monitor
-        // (20), the table (11) and any bystander (15) -- and all of them
-        // were being kept. That is precisely what the browser screenshots
-        // show: an office chair surviving behind the subject's head, and a
-        // second, partially-visible person surviving at the left edge.
-        // No amount of mask post-processing could ever have removed them,
-        // because as far as this line was concerned they WERE the subject.
-        //
-        // The fix is to decide WHICH class is the intended subject instead
-        // of accepting all of them: keep only the single largest
-        // non-background class. That is deliberately index-agnostic -- it
-        // never assumes "person is 15" (this codebase has real device
-        // evidence of category conventions not matching the docs) -- and it
-        // generalises correctly beyond people: on a product shot the
-        // product's class dominates, on an animal photo the animal's does.
-        // A person seated on a chair yields far more person pixels than
-        // visible chair pixels, so the chair drops out while the person is
-        // untouched. If the winning class is implausibly tiny (<2% of the
-        // frame) this falls back to the old any-class behaviour rather than
-        // risk returning an almost-empty mask.
-        const classArea = new Map();
-        for (let i=0; i<rawMaskData.length; i++){
-          const c = rawMaskData[i];
-          if (c === 0) continue;
-          classArea.set(c, (classArea.get(c) || 0) + 1);
-        }
-        let subjectClass = -1, subjectClassPx = 0;
-        classArea.forEach(function(px, c){ if (px > subjectClassPx){ subjectClassPx = px; subjectClass = c; } });
-        const totalMaskPx = rawMaskData.length;
-        const useSingleClass = subjectClass !== -1 && subjectClassPx >= totalMaskPx * 0.02;
-        const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-        for (let i=0; i<normalizedMask.length; i++){
-          const c = rawMaskData[i];
-          normalizedMask[i] = useSingleClass ? (c === subjectClass ? 1 : 0) : (c !== 0 ? 1 : 0);
-        }
-        bgLog('subject-class selection =>', {
-          subjectClass,
-          subjectClassShareOfFrame: +(subjectClassPx/totalMaskPx).toFixed(4),
-          otherClassesDropped: Array.from(classArea.keys()).filter(function(c){ return c !== subjectClass; }),
-          mode: useSingleClass ? 'KEEPING ONLY the dominant class' : 'FALLBACK: keeping all non-background classes'
-        });
-        if (BG_DEBUG){
-          // Category histogram: DeepLab v3 is a 21-class Pascal VOC model
-          // and this tool treats EVERY non-zero class as foreground. On a
-          // cluttered indoor scene that can mean chairs, sofas, monitors
-          // and bystanders are all "subject" -- this shows exactly which
-          // classes the model actually found, which no amount of mask
-          // post-processing can undo.
-          const VOC = ['background','aeroplane','bicycle','bird','boat','bottle','bus','car','cat','chair','cow','diningtable','dog','horse','motorbike','person','pottedplant','sheep','sofa','train','tvmonitor'];
-          const hist = {};
-          for (let i=0; i<rawMaskData.length; i++){ const c = rawMaskData[i]; hist[c] = (hist[c]||0)+1; }
-          const total = rawMaskData.length;
-          const rows = Object.keys(hist).map(function(c){
-            return { category: +c, name: VOC[+c] || ('class'+c), pctOfFrame: +(100*hist[c]/total).toFixed(2) };
-          }).sort(function(a,b){ return b.pctOfFrame - a.pctOfFrame; });
-          bgLog('DeepLab v3 category histogram (every non-background class is kept as SUBJECT):');
-          console.table(rows);
-        }
-
-        // AUDIT FIX: same stray-blob suppression as the selfie_segmenter
-        // path above (see keepPrimaryForegroundComponent) -- DeepLab v3
-        // treats ANY non-background category as foreground, so a second
-        // person, an unrelated object, or a misclassified background
-        // region anywhere in frame is kept in full alongside the real
-        // subject unless something narrows it down to one blob. Applied
-        // in place, before refineSegmentationMask, so only a single
-        // central region ever reaches the mask -- and the confidence
-        // check below.
-        {
-          const { labels: fgLabels, bestLabel: fgBestLabel } =
-            keepPrimaryForegroundComponent(normalizedMask, maskW, maskH, (i) => normalizedMask[i] === 1);
-          if (fgBestLabel !== -1){
-            for (let i=0; i<normalizedMask.length; i++){
-              if (normalizedMask[i] === 1 && fgLabels[i] !== fgBestLabel) normalizedMask[i] = 0;
-            }
-          }
-        }
-
-        // BUG FIX (root cause of the implausibility toast firing on
-        // essentially every DeepLab v3 result, regardless of actual mask
-        // quality): this previously read result.confidenceMasks[1] and
-        // used it directly as "how confident is the model this pixel is
-        // the subject." That's only true for a 2-category model (index 0
-        // = background, index 1 = the one foreground class). DeepLab v3
-        // is a 21-category Pascal VOC model -- index 1 here is the
-        // "aeroplane" class channel, not "person"/"subject" (Pascal VOC's
-        // own ordering puts person at index 15, and this tool treats ANY
-        // non-background category as foreground, not just person). On a
-        // real photo of a person/product/animal, the aeroplane-class
-        // confidence is near zero almost everywhere, which silently
-        // dragged the average "confidence" computed below to a near-
-        // permanent low reading -- triggering the "AI couldn't
-        // confidently find a clear subject" toast on results that were
-        // often visually fine, and feeding the same wrong signal into
-        // refineSegmentationMask's edge-blending further up the call
-        // stack. What IS valid for a model with any number of categories:
-        // confidenceMasks[0] (the background channel) is a true per-pixel
-        // softmax probability, so 1 - confidenceMasks[0] is the model's
-        // combined confidence that a pixel belongs to ANY foreground
-        // category -- exactly the "is this pixel part of the subject"
-        // signal both this function's plausibility check and
-        // refineSegmentationMask expect.
-        let confidenceData = null, confW = maskW, confH = maskH;
-        if (result.confidenceMasks && result.confidenceMasks[0]){
-          const bgConf = result.confidenceMasks[0].getAsFloat32Array();
-          confidenceData = new Float32Array(bgConf.length);
-          for (let i=0; i<bgConf.length; i++) confidenceData[i] = 1 - bgConf[i];
-          confW = result.confidenceMasks[0].width; confH = result.confidenceMasks[0].height;
-        }
-
-        // Grayscale luminance guide at mask resolution, for edge-aware
-        // matte refinement -- lets the alpha edge snap to real color
-        // boundaries in the source photo rather than blurring blindly.
-        const guideCanvas = document.createElement('canvas');
-        guideCanvas.width = maskW; guideCanvas.height = maskH;
-        const gctx = guideCanvas.getContext('2d');
-        gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
-        const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
-        const guideGray = new Float32Array(maskW*maskH);
-        for (let i=0; i<guideGray.length; i++){
-          guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
-        }
-
-        refinedAlpha = refineSegmentationMask({
-          maskData: normalizedMask, maskW, maskH,
-          confidenceData, confW, confH,
-          outW: w, outH: h,
-          personCategoryValue: 1,
-          guideGray,
-          onStage: BG_DEBUG ? function(info){ bgLog('[DeepLab v3 post-processing]', info); } : null,
-        });
-        if (result.categoryMask.close) result.categoryMask.close();
-        if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
-
-        // Plausibility check (combines the two independent signals Passport
-        // Photo Maker already uses, missing here until now): DeepLab v3
-        // recognizes general object categories (people, animals, vehicles,
-        // everyday objects) -- it has no notion of "this is a graphic
-        // design / share card / screenshot, not a photo." On non-
-        // photographic images it can return a segmentation that keeps a
-        // plausible-LOOKING area fraction (e.g. a ~25% band across the
-        // middle) while the model was actually never confident about any of
-        // it -- an area check alone does not catch that shape of failure,
-        // which is exactly the "half my image disappeared" bug report this
-        // fixes; the confidence signal does. It still always hands off to
-        // Manual Mode either way (never strands the user), only the wording
-        // now honestly reflects what happened.
-        // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
-        // version of this check looped over every one of w*h alpha values
-        // AND every confidenceData value, back-to-back, fully synchronously,
-        // immediately after the already-heavy refineSegmentationMask() and
-        // putImageData() calls above -- on a large photo (the MAX=1200 cap
-        // still allows up to 1,440,000 pixels) that's three uninterrupted
-        // full-resolution passes with no yield to the browser in between,
-        // long enough on real hardware to freeze the tab regardless of how
-        // fast the device is (this blocks the single JS thread; raw CPU
-        // speed shortens but does not prevent the freeze). Sampling ~3000
-        // points is statistically just as reliable for a coarse plausibility
-        // signal and finishes essentially instantly.
-        await nextFrame();
-        function sampledFraction(arr, n, threshold){
-          const stride = Math.max(1, Math.floor(n / 3000));
-          let sampled = 0, hits = 0;
-          for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
-          return sampled ? hits/sampled : 0;
-        }
-        const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
-        const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
-        // AUDIT FIX (root cause of the implausibility toast firing on
-        // essentially every result, independent of the confidenceMasks[1]
-        // index bug fixed separately above): this used to average
-        // confidenceData across EVERY sampled pixel in the whole frame.
-        // Background pixels the model is correctly, confidently near-zero
-        // on drag that average down -- so on any photo where the subject
-        // occupies less than roughly two-thirds of the frame, the average
-        // fell under the 0.65 bar no matter how confident the model
-        // actually was about the subject itself. Restricting the average
-        // to pixels the mask actually kept (refinedAlpha > 128) measures
-        // what this check is actually meant to answer -- how confident is
-        // the model about the subject it found -- and is no longer
-        // diluted by how much of the frame is background, or dragged down
-        // by a stray blob (already removed above, before refinement).
-        let avgConfidence = null;
-        if (confidenceData){
-          const stride = Math.max(1, Math.floor((w*h) / 3000));
-          let sampled = 0, sum = 0;
-          for (let i = 0; i < w*h; i += stride){
-            if (refinedAlpha[i] <= 128) continue;
-            const x = i % w, y = Math.floor(i / w);
-            const cx = Math.min(confW-1, Math.round(x*confW/w)), cy = Math.min(confH-1, Math.round(y*confH/h));
-            sampled++; sum += confidenceData[cy*confW+cx];
-          }
-          avgConfidence = sampled ? sum/sampled : null;
-        }
-        const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
-        implausible = areaImplausible || lowConfidence;
-        bgLog('DeepLab v3 =>', {
-          maskW, maskH, confW, confH,
-          keptFrac: +keptFrac.toFixed(4),
-          areaImplausible,
-          avgConfidence: avgConfidence === null ? null : +avgConfidence.toFixed(4),
-          lowConfidence,
-          implausible,
-          verdict: 'USING DeepLab v3 result'
-        });
+      // DeepLab v3 returns one confidence mask per PASCAL VOC class (21 total,
+      // indices 0-20). Index 15 = person class confidence -- the only meaningful
+      // signal for a person-extraction use case. The previous code used index [1]
+      // (aeroplane confidence, measured at max=0.000044 on real images -- effectively
+      // zero everywhere), which caused the confidence-blending step inside
+      // refineSegmentationMask to drag every edge pixel toward transparent regardless
+      // of actual person confidence, degrading edge quality rather than improving it.
+      let confidenceData = null, confW = maskW, confH = maskH;
+      const PERSON_CONF_IDX = 15; // PASCAL VOC class 15 = person
+      if (result.confidenceMasks && result.confidenceMasks[PERSON_CONF_IDX]){
+        confidenceData = result.confidenceMasks[PERSON_CONF_IDX].getAsFloat32Array();
+        confW = result.confidenceMasks[PERSON_CONF_IDX].width;
+        confH = result.confidenceMasks[PERSON_CONF_IDX].height;
       }
 
-      if (myGeneration !== aiGeneration){
-        // A different image was loaded (or the tool was reset) while this
-        // ran -- drop the stale result instead of overwriting the editor.
-        // (categoryMask/confidenceMasks were already closed above.)
-        return;
+
+      // Grayscale luminance guide at mask resolution, for edge-aware
+      // matte refinement -- lets the alpha edge snap to real color
+      // boundaries in the source photo rather than blurring blindly.
+      const guideCanvas = document.createElement('canvas');
+      guideCanvas.width = maskW; guideCanvas.height = maskH;
+      const gctx = guideCanvas.getContext('2d');
+      gctx.drawImage(srcCanvas, 0, 0, maskW, maskH);
+      const guidePixels = gctx.getImageData(0, 0, maskW, maskH).data;
+      const guideGray = new Float32Array(maskW*maskH);
+      for (let i=0; i<guideGray.length; i++){
+        guideGray[i] = 0.299*guidePixels[i*4] + 0.587*guidePixels[i*4+1] + 0.114*guidePixels[i*4+2];
       }
 
       const outCanvas = document.createElement('canvas');
@@ -4135,137 +2735,77 @@ if (document.getElementById('aiRemoveDrop')){
       octx.drawImage(srcCanvas, 0, 0);
       const imageData = octx.getImageData(0, 0, w, h);
       const pixels = imageData.data;
+
+      const refinedAlpha = refineSegmentationMask({
+        maskData: normalizedMask, maskW, maskH,
+        confidenceData, confW, confH,
+        outW: w, outH: h,
+        personCategoryValue: 1,
+        guideGray,
+      });
       for (let i = 0; i < w*h; i++){
         pixels[i*4 + 3] = refinedAlpha[i];
       }
       octx.putImageData(imageData, 0, 0);
+      if (result.categoryMask.close) result.categoryMask.close();
+      if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
 
-      if (BG_DEBUG){
-        // Final alpha report + a visual dump of what actually shipped, so
-        // the mask can be inspected directly instead of inferred from the
-        // composited result.
-        let opaque = 0, semi = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (let i = 0; i < w*h; i++){
-          const a = refinedAlpha[i];
-          if (a > 127){
-            opaque++;
-            const x = i % w, y = (i / w) | 0;
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-          } else if (a > 8) semi++;
-        }
-        bgLog('FINAL ALPHA =>', {
-          canvas: w + 'x' + h,
-          originalImage: aiSourceImg.naturalWidth + 'x' + aiSourceImg.naturalHeight,
-          opaquePx: opaque,
-          opaquePct: +(100*opaque/(w*h)).toFixed(2),
-          transparentPct: +(100*(1 - opaque/(w*h))).toFixed(2),
-          softEdgePx: semi,
-          alphaBBox: opaque ? { x: minX + '-' + maxX, y: minY + '-' + maxY } : null,
-          pathUsed: (selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3'
-        });
-        try{
-          let host = document.getElementById('bgDebugPreviews');
-          if (!host){
-            host = document.createElement('div');
-            host.id = 'bgDebugPreviews';
-            host.style.cssText = 'padding:12px;background:#111;color:#fff;font:12px/1.4 monospace;overflow-x:auto;white-space:nowrap;';
-            const stage = document.getElementById('aiRemoveStage');
-            if (stage && stage.parentNode) stage.parentNode.insertBefore(host, stage.nextSibling);
-            else document.body.appendChild(host);
-          }
-          host.innerHTML = '<div style="margin-bottom:8px;font-weight:bold;">BG DEBUG — mask comparison (white = KEPT, black = removed)</div>';
-          const addMask = function(label, arr, aw, ah){
-            if (!arr) return;
-            const wrap = document.createElement('div');
-            wrap.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
-            const cap = document.createElement('div');
-            cap.textContent = label;
-            cap.style.cssText = 'margin-bottom:4px;font-size:11px;color:#8f8;';
-            const dbg = document.createElement('canvas');
-            dbg.width = aw; dbg.height = ah;
-            dbg.style.cssText = 'max-width:240px;height:auto;border:1px solid #555;background:#000;';
-            const dctx = dbg.getContext('2d');
-            const dimg = dctx.createImageData(aw, ah);
-            for (let i = 0; i < aw*ah; i++){
-              const a = arr[i];
-              dimg.data[i*4] = a; dimg.data[i*4+1] = a; dimg.data[i*4+2] = a; dimg.data[i*4+3] = 255;
-            }
-            dctx.putImageData(dimg, 0, 0);
-            wrap.appendChild(cap); wrap.appendChild(dbg);
-            host.appendChild(wrap);
-          };
-          // Side-by-side: the selfie mask that was computed (even when it was
-          // rejected and discarded) next to the DeepLab mask that actually
-          // shipped -- so the two can be compared directly by eye.
-          const selfieDump = (typeof window !== 'undefined' && window.__BG_SELFIE_ALPHA__) ? window.__BG_SELFIE_ALPHA__ : null;
-          if (selfieDump && selfieDump.alpha){
-            addMask('A. selfie_segmenter (' + (selfieDump.accepted ? 'ACCEPTED' : 'REJECTED/discarded') + ')', selfieDump.alpha, selfieDump.w, selfieDump.h);
-          }
-          addMask('B. FINAL SHIPPED — ' + ((selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3'), refinedAlpha, w, h);
-          // C. Overlay: original photo with REJECTED pixels tinted red and
-          // dimmed, kept pixels left untouched. Makes it obvious at a glance
-          // exactly which real-world objects the mask is keeping -- e.g.
-          // whether the chair is inside or outside the kept region.
-          try{
-            const ov = document.createElement('canvas');
-            ov.width = w; ov.height = h;
-            const octx2 = ov.getContext('2d');
-            octx2.drawImage(srcCanvas, 0, 0);
-            const od = octx2.getImageData(0, 0, w, h);
-            for (let i = 0; i < w*h; i++){
-              if (refinedAlpha[i] <= 128){
-                od.data[i*4]   = Math.min(255, od.data[i*4]*0.35 + 160);
-                od.data[i*4+1] = od.data[i*4+1]*0.25;
-                od.data[i*4+2] = od.data[i*4+2]*0.25;
-              }
-            }
-            octx2.putImageData(od, 0, 0);
-            const wrap2 = document.createElement('div');
-            wrap2.style.cssText = 'display:inline-block;margin:0 10px 10px 0;vertical-align:top;text-align:center;';
-            const cap2 = document.createElement('div');
-            cap2.textContent = 'C. OVERLAY — red/dim = REMOVED, normal = KEPT';
-            cap2.style.cssText = 'margin-bottom:4px;font-size:11px;color:#8f8;';
-            ov.style.cssText = 'max-width:240px;height:auto;border:1px solid #555;';
-            wrap2.appendChild(cap2); wrap2.appendChild(ov);
-            host.appendChild(wrap2);
-          }catch(e){ bgLog('overlay render failed', e && e.message); }
-        }catch(e){ bgLog('preview render failed', e && e.message); }
+      // Plausibility check (combines the two independent signals Passport
+      // Photo Maker already uses, missing here until now): DeepLab v3
+      // recognizes general object categories (people, animals, vehicles,
+      // everyday objects) -- it has no notion of "this is a graphic
+      // design / share card / screenshot, not a photo." On non-
+      // photographic images it can return a segmentation that keeps a
+      // plausible-LOOKING area fraction (e.g. a ~25% band across the
+      // middle) while the model was actually never confident about any of
+      // it -- an area check alone does not catch that shape of failure,
+      // which is exactly the "half my image disappeared" bug report this
+      // fixes; the confidence signal does. It still always hands off to
+      // Manual Mode either way (never strands the user), only the wording
+      // now honestly reflects what happened.
+      // IMPORTANT: sampled, not a full pixel-by-pixel scan. The first
+      // version of this check looped over every one of w*h alpha values
+      // AND every confidenceData value, back-to-back, fully synchronously,
+      // immediately after the already-heavy refineSegmentationMask() and
+      // putImageData() calls above -- on a large photo (the MAX=1200 cap
+      // still allows up to 1,440,000 pixels) that's three uninterrupted
+      // full-resolution passes with no yield to the browser in between,
+      // long enough on real hardware to freeze the tab regardless of how
+      // fast the device is (this blocks the single JS thread; raw CPU
+      // speed shortens but does not prevent the freeze). Sampling ~3000
+      // points is statistically just as reliable for a coarse plausibility
+      // signal and finishes essentially instantly.
+      await nextFrame();
+      function sampledFraction(arr, n, threshold){
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, hits = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; if (arr[i] > threshold) hits++; }
+        return sampled ? hits/sampled : 0;
       }
+      function sampledAverage(arr){
+        const n = arr.length;
+        const stride = Math.max(1, Math.floor(n / 3000));
+        let sampled = 0, sum = 0;
+        for (let i = 0; i < n; i += stride){ sampled++; sum += arr[i]; }
+        return sampled ? sum/sampled : null;
+      }
+      const keptFrac = sampledFraction(refinedAlpha, w*h, 32);
+      const areaImplausible = keptFrac < 0.03 || keptFrac > 0.97;
+      const avgConfidence = confidenceData ? sampledAverage(confidenceData) : null;
+      const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
+      const implausible = areaImplausible || lowConfidence;
+
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
       document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
-      document.getElementById('aiChangeBgRow').classList.remove('hidden');
       if (implausible){
         toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
       } else {
         toast('Background removed. Refine it below if needed.');
       }
-      if (BG_EXPERIMENTAL_MODNET){
-        // Fire-and-forget, intentionally NOT awaited: a slow or failing
-        // MODNet run must never delay or break the production result/UI
-        // already finalized above. runModnetExperiment has its own
-        // internal try/catch; this .catch() is a second layer so a
-        // rejection here can only ever produce a console warning, never
-        // reach the outer catch(err) block below (which would otherwise
-        // wrongly treat an experimental-path failure as a production AI
-        // failure and overwrite aiResultCanvas with the blank fallback).
-        try{
-          const productionLabelForModnetPreview = (selfieOutcome && selfieOutcome.confident) ? 'selfie_segmenter' : 'DeepLab v3';
-          runModnetExperiment(srcCanvas, w, h, myGeneration, refinedAlpha, productionLabelForModnetPreview).catch(function(e){
-            console.warn('[BG][experimental] MODNet path rejected -- production result unaffected:', e && e.message);
-          });
-        }catch(e){}
-      }
     }catch(err){
-      if (myGeneration !== aiGeneration){
-        // A different image was loaded (or the tool was reset) while this
-        // run was in flight -- don't resurrect the old image via the error
-        // fallback below; just let it fade away.
-        return;
-      }
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
       try{
@@ -4284,14 +2824,6 @@ if (document.getElementById('aiRemoveDrop')){
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
       document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
-        // NOTE: deliberately NOT unhiding aiChangeBgRow here -- this is the
-        // AI-failure fallback, where aiResultCanvas is still fully OPAQUE
-        // (nothing was actually removed; see the comment above "fully
-        // opaque -- nothing removed yet"). The pre-existing, buried
-        // sendToAiChangerBtn/aiExportSendToChangerRow already had this same
-        // quirk before this change and are left as-is, but the new
-        // prominent CTA should not tell someone to "Change Background" on
-        // an image that has no transparency to composite against yet.
         toast('AI processing failed, but your image is safe — use the manual tools below (start with Lasso or Polygon).', 'err');
       }catch(fallbackErr){
         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
@@ -4303,56 +2835,7 @@ if (document.getElementById('aiRemoveDrop')){
 
   document.getElementById('aiRemoveDownloadBtn').onclick = () => {
     if (!aiResultCanvas){ toast('Remove a background first.', 'err'); return; }
-    // RESOLUTION FIX: the editor deliberately works on a downscaled copy
-    // (long edge capped at 1200) because the manual-refine undo stack keeps
-    // MAX_HISTORY=25 full-frame ImageData snapshots -- at full camera
-    // resolution that alone would be hundreds of MB and reliably crash a
-    // phone, which is why that cap exists and why it must stay. But there
-    // is no reason the DOWNLOAD has to inherit it: exporting the working
-    // canvas was silently handing back a 1200px image for a 4000px photo.
-    // So the export is rebuilt here at the ORIGINAL image resolution --
-    // the full-size source is drawn at its natural dimensions and the
-    // finished alpha is sampled up onto it with bilinear smoothing, which
-    // keeps the cutout edge clean rather than blocky. Editing memory is
-    // untouched; only the exported PNG changes. If anything about the
-    // full-size path fails (a very large image failing to allocate on a
-    // low-memory device), this falls back to exporting exactly what it
-    // exported before, so a download always succeeds.
-    const exportCanvas = (() => {
-      try{
-        if (!aiSourceImg) return aiResultCanvas;
-        const fullW = aiSourceImg.naturalWidth, fullH = aiSourceImg.naturalHeight;
-        if (!fullW || !fullH) return aiResultCanvas;
-        if (fullW === aiResultCanvas.width && fullH === aiResultCanvas.height) return aiResultCanvas;
-        // Upscale the working result (which carries the alpha) to full size
-        // with the browser's own smoothing, then reuse ONLY its alpha
-        // channel over a crisp, full-resolution draw of the original image
-        // -- so subject pixels stay at native sharpness and only the matte
-        // is interpolated.
-        const alphaUp = document.createElement('canvas');
-        alphaUp.width = fullW; alphaUp.height = fullH;
-        const auctx = alphaUp.getContext('2d');
-        auctx.imageSmoothingEnabled = true;
-        auctx.imageSmoothingQuality = 'high';
-        auctx.drawImage(aiResultCanvas, 0, 0, fullW, fullH);
-        const alphaData = auctx.getImageData(0, 0, fullW, fullH);
-
-        const full = document.createElement('canvas');
-        full.width = fullW; full.height = fullH;
-        const fctx = full.getContext('2d');
-        fctx.drawImage(aiSourceImg, 0, 0, fullW, fullH);
-        const fullData = fctx.getImageData(0, 0, fullW, fullH);
-        const fp = fullData.data, ap = alphaData.data;
-        for (let i = 3; i < fp.length; i += 4) fp[i] = ap[i];
-        fctx.putImageData(fullData, 0, 0);
-        bgLog('export =>', { editorSize: aiResultCanvas.width + 'x' + aiResultCanvas.height, exportedSize: fullW + 'x' + fullH });
-        return full;
-      }catch(err){
-        bgLog('export => full-resolution rebuild failed, exporting working canvas', err && err.message);
-        return aiResultCanvas;
-      }
-    })();
-    exportCanvas.toBlob((blob) => {
+    aiResultCanvas.toBlob((blob) => {
       if (!blob){ toast('Could not export this image.', 'err'); return; }
       downloadBlob(blob, 'background-removed.png');
     }, 'image/png');
@@ -4378,13 +2861,6 @@ if (document.getElementById('aiRemoveDrop')){
   // once they're satisfied with the cutout and asking "now what."
   const aiExportSendToChangerBtn = document.getElementById('aiExportSendToChangerBtn');
   if (aiExportSendToChangerBtn) aiExportSendToChangerBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
-  // Third entry point, same handoff again: a prominent, always-visible
-  // "next step" CTA right in the main workspace (not inside any accordion)
-  // -- see aiChangeBgRow in the HTML. This is the one meant to actually be
-  // seen without hunting for it, per the seamless Remove -> Change
-  // Background workflow.
-  const aiChangeBgBtn = document.getElementById('aiChangeBgBtn');
-  if (aiChangeBgBtn) aiChangeBgBtn.onclick = () => document.getElementById('sendToAiChangerBtn').click();
 
   /* ---------- Manual Selection Editor ---------- */
   let originalCanvas = null;   // full-color source, never modified
@@ -4851,7 +3327,6 @@ if (document.getElementById('aiRemoveDrop')){
     document.getElementById('aiRemoveDownloadRow').classList.add('hidden');
     document.getElementById('sendToAiChangerBtn').classList.add('hidden');
     document.getElementById('aiExportSendToChangerRow').classList.add('hidden');
-    document.getElementById('aiChangeBgRow').classList.add('hidden'); // back to fully opaque -- nothing to change the background of yet
     document.getElementById('aiRemoveBtn').disabled = false;
     toast('Reset to the original uploaded image.');
   };
@@ -5101,13 +3576,6 @@ if (document.getElementById('aiRemoveDrop')){
         document.getElementById('aiRemoveStage').classList.remove('hidden');
         enterAiFullscreen();
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
-        // A resumed session already has a real result (that's what was
-        // saved) -- restore the same "what's next" controls a fresh
-        // successful run would show, instead of leaving them buried until
-        // the next Remove/Reset click re-triggers them.
-        document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
-        document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
-        document.getElementById('aiChangeBgRow').classList.remove('hidden');
         document.getElementById('aiRemoveBtn').disabled = false;
         hideAiIntroChrome();
         aiViewZoom = 1;
@@ -5446,16 +3914,6 @@ if (document.getElementById('bgChangerDrop')){
   let bgMode = 'color';
   let customBgImg = null;
   const loadImgBg = loadImageFromFile;
-  // Bumped on every new foreground image (handoff receipt or manual
-  // upload) and on every custom-background-image upload. Guards the two
-  // async image decodes below (loadImgBg) from a stale-write race: e.g.
-  // picking a second custom background image before the first one's
-  // decode has resolved -- without this, whichever decode finishes LAST
-  // wins, which on a slow connection can be the one the user no longer
-  // wants. Same pattern as every AI tool's *Generation counters elsewhere
-  // in this file, sized to this tool's actual async surface (plain image
-  // decodes, not a model inference).
-  let bgChangerGeneration = 0;
 
   // Receive a handoff from the AI Background Remover (now a separate page) via
   // localStorage — set on that page right before it navigates here.
@@ -5464,21 +3922,13 @@ if (document.getElementById('bgChangerDrop')){
     try{ dataUrl = localStorage.getItem('toolflight_bg_handoff'); }catch(e){ return; }
     if (!dataUrl) return;
     try{ localStorage.removeItem('toolflight_bg_handoff'); }catch(e){}
-    bgChangerGeneration++;
-    const myGeneration = bgChangerGeneration;
     const img = new Image();
     img.onload = () => {
-      if (myGeneration !== bgChangerGeneration) return; // superseded by a manual upload that arrived first
       const c = document.createElement('canvas');
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
       fgCanvas = c;
       document.getElementById('bgChangerStage').classList.remove('hidden');
-      // Came from the Remover, so there IS a Remover session to go back
-      // to (its own auto-save will offer to restore it) -- surface that
-      // path instead of leaving "Back to Image Tools" as the only way out.
-      const fromRemoverRow = document.getElementById('bgChangerFromRemoverRow');
-      if (fromRemoverRow) fromRemoverRow.classList.remove('hidden');
       renderBgComposite();
       toast('Image received from Background Remover.');
     };
@@ -5496,11 +3946,8 @@ if (document.getElementById('bgChangerDrop')){
     };
     const f = files.find(isPngOrWebp);
     if (!f){ if (files.length>0) toast('Please select a transparent PNG or WEBP (e.g. output of the Background Remover).', 'err'); return; }
-    bgChangerGeneration++;
-    const myGeneration = bgChangerGeneration;
     try{
       const img = await loadImgBg(f);
-      if (myGeneration !== bgChangerGeneration) return; // a different image was picked while this was decoding
       const c = document.createElement('canvas');
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
@@ -5526,16 +3973,9 @@ if (document.getElementById('bgChangerDrop')){
       document.getElementById('bgChangerNoAlphaWarning').classList.toggle('hidden', hasTransparency);
 
       document.getElementById('bgChangerStage').classList.remove('hidden');
-      // A fresh manual upload isn't necessarily related to any in-progress
-      // Remover session -- don't imply there's one to go back to.
-      const fromRemoverRow = document.getElementById('bgChangerFromRemoverRow');
-      if (fromRemoverRow) fromRemoverRow.classList.add('hidden');
       renderBgComposite();
       toast(hasTransparency ? 'Image loaded — choose a new background.' : 'Image loaded, but it has no transparent areas — see the note below.', hasTransparency ? undefined : 'err');
-    }catch(err){
-      if (myGeneration !== bgChangerGeneration) return;
-      toast(err.message, 'err');
-    }
+    }catch(err){ toast(err.message, 'err'); }
   });
 
   receiveForegroundForAiChanger = (canvas) => {
@@ -5574,11 +4014,7 @@ if (document.getElementById('bgChangerDrop')){
   setupDropZone('bgChangerCustomDrop','bgChangerCustomInput', async (files) => {
     const f = files.find(f => f.type.startsWith('image/'));
     if (!f) return;
-    bgChangerGeneration++;
-    const myGeneration = bgChangerGeneration;
-    const img = await loadImgBg(f);
-    if (myGeneration !== bgChangerGeneration) return; // a different custom background (or a new foreground) was picked while this was decoding
-    customBgImg = img;
+    customBgImg = await loadImgBg(f);
     renderBgComposite();
   });
 
@@ -5618,12 +4054,6 @@ if (document.getElementById('bgChangerDrop')){
     wrap.innerHTML = '';
     wrap.appendChild(out);
     document.getElementById('bgChangerDownloadRow').classList.remove('hidden');
-    // Runs on every upload AND every setting tweak, so this is the one
-    // place guaranteed to catch every path that can produce a real result
-    // (handoff receive, manual upload, custom-background change, mode
-    // switch) -- simpler and more reliable than repeating the same
-    // classList.remove('hidden') at each individual upload call site.
-    document.getElementById('bgChangerResetRow').classList.remove('hidden');
     window.__bgChangerResult = out;
   }
 
@@ -5634,25 +4064,6 @@ if (document.getElementById('bgChangerDrop')){
       if (!blob){ toast('Could not export this image.', 'err'); return; }
       downloadBlob(blob, 'background-changed.png');
     }, 'image/png');
-  };
-
-  // "Change another image" -- swaps the foreground subject back to the
-  // upload screen. Deliberately leaves bgMode/solid color/gradient/custom
-  // background image untouched, same "keep the settings, swap the photo"
-  // precedent as the Watermark and OCR reset buttons -- someone changing
-  // several product photos onto the same chosen background shouldn't have
-  // to re-pick it every time.
-  document.getElementById('bgChangerResetBtn').onclick = () => {
-    bgChangerGeneration++; // invalidate any in-flight custom-bg-image decode from before this reset
-    fgCanvas = null;
-    window.__bgChangerResult = null;
-    document.getElementById('bgChangerInput').value = '';
-    document.getElementById('bgChangerStage').classList.add('hidden');
-    document.getElementById('bgChangerDownloadRow').classList.add('hidden');
-    document.getElementById('bgChangerResetRow').classList.add('hidden');
-    document.getElementById('bgChangerFromRemoverRow').classList.add('hidden');
-    document.getElementById('bgChangerPreview').innerHTML = '';
-    toast('Ready for a new image.');
   };
 }
 
@@ -6590,11 +5001,6 @@ if (document.getElementById('meDrop')){
   let meBrushSize = 40, meBrushSoftness = 60;
   let meIsDrawing = false;
   let meSession = null;
-  // Bumped by initMagicEraser() (new upload or "reset image"). The AI run can
-  // take a long time on first use (up to a ~200MB model download), so a stale
-  // result must not silently overwrite whatever the user is looking at by
-  // the time it resolves.
-  let meGeneration = 0;
 
   async function ensureModel(onProgress){
     if (meSession) return meSession;
@@ -6618,7 +5024,6 @@ if (document.getElementById('meDrop')){
   });
 
   function initMagicEraser(){
-    meGeneration++;
     const w = meOriginalImg.naturalWidth, h = meOriginalImg.naturalHeight;
     meOriginalCanvas = document.createElement('canvas');
     meOriginalCanvas.width = w; meOriginalCanvas.height = h;
@@ -6783,7 +5188,6 @@ if (document.getElementById('meDrop')){
   document.getElementById('meRemoveBtn').onclick = async () => {
     if (!meOriginalCanvas){ toast('Upload an image first.', 'err'); return; }
     if (!hasAnyMaskPainted()){ toast('Brush over the object you want removed first.', 'err'); return; }
-    const myGeneration = meGeneration;
     const btn = document.getElementById('meRemoveBtn');
     setLoading(btn, true);
     const progressWrap = document.getElementById('meProgressWrap');
@@ -6882,12 +5286,6 @@ if (document.getElementById('meDrop')){
       }
       fctx.putImageData(finalImgData, 0, 0);
 
-      if (myGeneration !== meGeneration){
-        // A newer image was loaded (or the tool was reset) while this run
-        // was in flight — silently drop the stale result instead of
-        // overwriting what the user is now looking at.
-        return;
-      }
       meResultCanvas = finalCanvas;
       progressFill.style.width = '100%';
       renderMeComposite();
@@ -6971,13 +5369,6 @@ if (document.getElementById('apeDrop')){
   const APE_MAX_HISTORY = 20;
   let apeFaceLandmarkerPromise = null;
   let apeResultCanvasFullRes = null; // set once "Apply / Export" builds the full-resolution result
-  // Bumped on every new upload / Reset. Live preview involves an async face-
-  // detection model load + a pipeline with several await-yield points, and
-  // full-res export re-runs that pipeline again; if a newer image is loaded
-  // or Reset is clicked while one of those is still in flight, its result
-  // must not land on top of what's now on screen. Same pattern as AI Image
-  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
-  let apeGeneration = 0;
 
   const apeSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, noise:0, smoothing:0 };
   let apeStrength = 100;
@@ -7293,7 +5684,6 @@ if (document.getElementById('apeDrop')){
   });
 
   async function initApeEditor(){
-    apeGeneration++; // invalidate any live-preview/export run still in flight for the previous image
     const ow = apeOriginalImg.naturalWidth, oh = apeOriginalImg.naturalHeight;
     const scale = Math.min(1, APE_MAX_DIM / Math.max(ow, oh));
     const w = Math.round(ow*scale), h = Math.round(oh*scale);
@@ -7335,7 +5725,6 @@ if (document.getElementById('apeDrop')){
 
   async function applyLivePreview(){
     if (!apeWorkCanvas) return;
-    const myGeneration = apeGeneration;
     const controls = apeGetControls();
     const preview = document.createElement('canvas');
     preview.width = apeWorkCanvas.width; preview.height = apeWorkCanvas.height;
@@ -7346,7 +5735,6 @@ if (document.getElementById('apeDrop')){
         document.getElementById('apeModelStatus').textContent = 'Loading face detection model…';
         document.getElementById('apeModelStatus').classList.remove('hidden');
         const landmarker = await ensureFaceLandmarker();
-        if (myGeneration !== apeGeneration) return; // a newer image/reset arrived while the model loaded
         const result = landmarker.detect(preview);
         if (result.faceLandmarks && result.faceLandmarks.length){
           apeFaceLandmarks = result.faceLandmarks[0];
@@ -7361,9 +5749,7 @@ if (document.getElementById('apeDrop')){
       setTimeout(() => document.getElementById('apeModelStatus').classList.add('hidden'), 3500);
     }
 
-    if (myGeneration !== apeGeneration) return; // a newer image was loaded (or Reset was clicked) mid-run
     await runEnhancementPipeline(preview, controls, apeFaceLandmarks, apeSkinMask);
-    if (myGeneration !== apeGeneration) return; // dropped again after the pipeline itself yielded
     apeEditCanvas.getContext('2d').clearRect(0, 0, apeEditCanvas.width, apeEditCanvas.height);
     apeEditCanvas.getContext('2d').drawImage(preview, 0, 0);
   }
@@ -7417,7 +5803,6 @@ if (document.getElementById('apeDrop')){
   };
 
   document.getElementById('apeResetBtn').onclick = () => {
-    apeGeneration++; // invalidate any live-preview run still in flight
     ['apeBrightness','apeContrast','apeSaturation','apeSharpness','apeNoise','apeSmoothing'].forEach(id => {
       document.getElementById(id).value = 0;
       document.getElementById(id + 'Val').textContent = 0;
@@ -7546,7 +5931,6 @@ if (document.getElementById('apeDrop')){
 
   async function exportApe(format){
     if (!apeOriginalImg){ toast('Upload an image first.', 'err'); return; }
-    const myGeneration = apeGeneration;
     const btnId = format === 'png' ? 'apeDownloadPngBtn' : format === 'jpg' ? 'apeDownloadJpgBtn' : 'apeDownloadWebpBtn';
     const btn = document.getElementById(btnId);
     setLoading(btn, true);
@@ -7555,14 +5939,7 @@ if (document.getElementById('apeDrop')){
     progressWrap.classList.remove('hidden');
     try{
       progressLabel.textContent = 'Rebuilding at full resolution…';
-      const rebuilt = await buildFullResResult((msg) => { progressLabel.textContent = msg; });
-      if (myGeneration !== apeGeneration){
-        // A different image was loaded (or Reset was clicked) while this
-        // rebuild was in flight -- don't hand the user a download that
-        // doesn't match what's now on screen.
-        return;
-      }
-      apeResultCanvasFullRes = rebuilt;
+      apeResultCanvasFullRes = await buildFullResResult((msg) => { progressLabel.textContent = msg; });
       const quality = +document.getElementById('apeQuality').value / 100;
       const mime = format === 'png' ? 'image/png' : format === 'jpg' ? 'image/jpeg' : 'image/webp';
       const ext = format === 'jpg' ? 'jpg' : format;
@@ -7760,602 +6137,61 @@ if (document.getElementById('pwDrop')){
   };
   document.getElementById('pwConvertAnotherBtn').onclick = () => { resetPwState(); };
 
-  /* ================= PDF -> WORD ================= */
-  async function convertPdfToWord(file, onProgress, isCancelled){
-    onProgress(5, 'Reading PDF\u2026');
+  /* ================= PDF -> WORD =================
+     Server-side conversion via the ToolFlight pdf2docx API.
+     The Python server (server/app.py) runs pdf2docx + a 4-step post-processor
+     that fixes column widths, callout boxes, section breaks, and underlines.
+     All processing is in-memory on the server — the PDF is never stored.
+
+     Known limitation: Complex multi-column forms (e.g. government salary slips)
+     may reflow across more pages than the original PDF. All text and data are
+     preserved correctly.
+  */
+  const PDF2WORD_API = 'https://toolflight-pdf2word.onrender.com/api/pdf-to-word';
+
+  async function convertPdfToWord(file, onProgress, isCancelled) {
     pwLastDiagnostics = [];
-    const pdfjsLib = await ensurePdfJsPW();
-    const bytes = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-    const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, TableLayoutType } = docxLib;
-    const floatingImagesSupported = !!(HorizontalPositionRelativeFrom && VerticalPositionRelativeFrom && TextWrappingType);
-    // Defensive: if this docx.js build doesn't expose table/image classes for
-    // some reason, degrade to plain paragraphs / skip images rather than
-    // throwing and failing the whole conversion.
-    const tablesSupported = !!(Table && TableRow && TableCell && WidthType);
-    const imagesSupported = !!ImageRun;
-    const OPS = pdfjsLib.OPS;
 
-    // ---- Matrix helpers for tracking the CTM through the operator list ----
-    const MTX_IDENTITY = [1,0,0,1,0,0];
-    function mtxMultiply(a,b){
-      return [a[0]*b[0]+a[1]*b[2], a[0]*b[1]+a[1]*b[3], a[2]*b[0]+a[3]*b[2], a[2]*b[1]+a[3]*b[3], a[4]*b[0]+a[5]*b[2]+b[4], a[4]*b[1]+a[5]*b[3]+b[5]];
-    }
-    function mtxApply(m,x,y){ return [m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]]; }
+    onProgress(10, 'Uploading PDF\u2026');
 
-    // ---- Extracts stroked straight lines (table borders) from a page's
-    // operator list, in final page coordinates. Verified against a real
-    // multi-table government payslip PDF: line count and positions matched
-    // an independent Python/pdfplumber extraction exactly. ----
-    function extractLines(opList){
-      let ctm = MTX_IDENTITY; const ctmStack = []; const out = [];
-      let lastPathBBox = null, lastPathCtm = null;
-      let curX = null, curY = null, curMinX = null, curMinY = null, curMaxX = null, curMaxY = null;
-      function extendCurrent(x, y){
-        if (curMinX === null){ curMinX = curMaxX = x; curMinY = curMaxY = y; }
-        else { curMinX = Math.min(curMinX,x); curMaxX = Math.max(curMaxX,x); curMinY = Math.min(curMinY,y); curMaxY = Math.max(curMaxY,y); }
-      }
-      function pushLineFromBBox(bbox, ctmAtPaint){
-        if (!bbox) return;
-        const [minX,minY,maxX,maxY] = bbox;
-        const [x0,y0] = mtxApply(ctmAtPaint, minX, minY);
-        const [x1,y1] = mtxApply(ctmAtPaint, maxX, maxY);
-        out.push({ x0: Math.min(x0,x1), x1: Math.max(x0,x1), y0: Math.min(y0,y1), y1: Math.max(y0,y1) });
-      }
-      for (let i = 0; i < opList.fnArray.length; i++){
-        const fn = opList.fnArray[i], args = opList.argsArray[i];
-        if (fn === OPS.save) ctmStack.push(ctm);
-        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
-        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
-        else if (fn === OPS.moveTo){ curMinX=curMinY=curMaxX=curMaxY=null; if (args) extendCurrent(args[0], args[1]); }
-        else if (fn === OPS.lineTo){ if (args) extendCurrent(args[0], args[1]); }
-        else if (fn === OPS.constructPath){
-          const paintType = args && args[0];
-          if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke || paintType === OPS.fill || paintType === OPS.eoFill){
-            // pattern (a): paint type embedded in the same operation
-            pushLineFromBBox(args[2], ctm);
-          } else if (args && args[2] && args[2].length === 4 && typeof args[2][0] === 'number'){
-            // pattern (b): just remember this path's shape; a later,
-            // separate paint op (if any) will paint it
-            lastPathBBox = args[2];
-            lastPathCtm = ctm;
-          } else if (args && args[1] && args[1].length === 4 && typeof args[1][0] === 'number'){
-            lastPathBBox = args[1];
-            lastPathCtm = ctm;
-          }
-        }
-        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke || fn === OPS.fill || fn === OPS.eoFill){
-          // Confirmed via a live diagnostic on a real production PDF: its
-          // table border lines are drawn as thin *filled* rectangles
-          // (constructPath's own first argument is OPS.rectangle -- the
-          // path-construction method, not a paint type as first assumed --
-          // followed by a separate OPS.fill/OPS.eoFill). A standalone
-          // stroke-only check missed every one of these. Both filled and
-          // stroked paint operations are now treated as "paint whatever
-          // path was just built", covering both real-world encodings seen
-          // so far.
-          if (lastPathBBox){ pushLineFromBBox(lastPathBBox, lastPathCtm); lastPathBBox = null; }
-          else if (curMinX !== null){ pushLineFromBBox([curMinX,curMinY,curMaxX,curMaxY], ctm); curMinX=curMinY=curMaxX=curMaxY=null; }
-        }
-        else if (fn === OPS.eoClip || fn === OPS.clip || fn === OPS.endPath){
-          // These consume/finish the current path WITHOUT visibly painting
-          // it (clip-region setup, or an explicit "done with this path, no
-          // paint" marker) -- also confirmed present in the same live
-          // diagnostic (702 clip-only paths, used for text-rendering
-          // masks, not table borders). Clear any remembered path here so
-          // its bounds can't leak into an unrelated later paint operation.
-          lastPathBBox = null;
-          curMinX = curMinY = curMaxX = curMaxY = null;
-        }
-      }
-      return out;
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+
+    let response;
+    try {
+      response = await fetch(PDF2WORD_API, {
+        method: 'POST',
+        body: formData,
+        // No Content-Type header — browser sets it with correct boundary
+      });
+    } catch (networkErr) {
+      throw new Error(
+        'Could not reach the conversion server. Please check your internet connection and try again.'
+      );
     }
 
-    // ---- Clusters straight lines into connected table regions (a vertical
-    // and horizontal line "connect" when they touch/cross), so each real
-    // table on the page is handled as its own independent grid rather than
-    // one page-wide grid. Verified: correctly separated 3 distinct tables
-    // on a real payslip into 3 regions, matching the source document. ----
-    function clusterLineRegions(lines){
-      const vlines = lines.filter(l => (l.x1-l.x0) < 3).map((l,idx) => ({...l, idx, orient:'v'}));
-      const hlines = lines.filter(l => (l.y1-l.y0) < 3).map((l,idx) => ({...l, idx: idx+100000, orient:'h'}));
-      const all = [...vlines, ...hlines];
-      const parent = {};
-      function find(x){ if (parent[x]===undefined) parent[x]=x; if (parent[x]!==x) parent[x]=find(parent[x]); return parent[x]; }
-      function union(a,b){ const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb; }
-      const TOL = 2.0;
-      for (const v of vlines) for (const h of hlines){
-        if (h.y0 >= v.y0-TOL && h.y0 <= v.y1+TOL && v.x0 >= h.x0-TOL && v.x0 <= h.x1+TOL) union(v.idx, h.idx);
-      }
-      all.forEach(l => find(l.idx));
-      const groups = {};
-      for (const l of all){ const root = find(l.idx); (groups[root] = groups[root] || []).push(l); }
-      // require a real grid: at least 2 rows and 2 columns worth of lines
-      return Object.values(groups).filter(g => g.filter(l=>l.orient==='v').length >= 2 && g.filter(l=>l.orient==='h').length >= 2);
-    }
+    if (isCancelled && isCancelled()) return null;
+    onProgress(80, 'Converting\u2026');
 
-    function clusterCoords(vals, tol){
-      const sorted = [...vals].sort((a,b)=>a-b); const clusters = [];
-      for (const v of sorted){
-        if (clusters.length && v - clusters[clusters.length-1].sum/clusters[clusters.length-1].n < tol){ const c = clusters[clusters.length-1]; c.sum += v; c.n++; }
-        else clusters.push({ sum: v, n: 1 });
-      }
-      return clusters.map(c => c.sum/c.n);
-    }
-
-    // ---- Extracts embedded raster images (photos, logos, seals) from a
-    // page's operator list and converts each to PNG bytes via an offscreen
-    // canvas, along with its position/size on the page (for placement) and
-    // in-content ordering. Verified: correctly resolved a real embedded
-    // seal image's pixel data (63x65, RGB) via page.objs.get(). ----
-    async function extractImages(page, opList){
-      const images = [];
-      let ctm = MTX_IDENTITY; const ctmStack = [];
-      for (let i = 0; i < opList.fnArray.length; i++){
-        const fn = opList.fnArray[i], args = opList.argsArray[i];
-        if (fn === OPS.save) ctmStack.push(ctm);
-        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
-        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
-        else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject){
-          const name = args && args[0];
-          try {
-            let imgObj = null;
-            if (name && page.objs && typeof page.objs.get === 'function'){
-              imgObj = await new Promise((resolve, reject) => {
-                try {
-                  const immediate = page.objs.get(name, resolve);
-                  // pdf.js returns null (not undefined) synchronously when
-                  // the object isn't resolved yet and will invoke the
-                  // callback later -- only treat a genuine object as
-                  // "already available" here, not null/undefined.
-                  if (immediate) resolve(immediate);
-                } catch(e){ reject(e); }
-              });
-            } else if (args && args[0] && typeof args[0] === 'object'){
-              imgObj = args[0]; // inline images sometimes carry the data directly in argsArray
-            }
-            if (!imgObj){
-              console.warn('[PDF to Word] Image object', name, 'resolved to nothing.');
-              continue;
-            }
-            // Different pdf.js builds expose pixel data differently: a raw
-            // typed array (`data`), or a pre-decoded `bitmap` (ImageBitmap
-            // or similar canvas-drawable object).
-            let pngBytes = null;
-            const width = imgObj.width, height = imgObj.height;
-            if (!width || !height){
-              console.warn('[PDF to Word] Image object', name, 'has no width/height. Keys:', Object.keys(imgObj));
-              continue;
-            }
-            if (imgObj.bitmap){
-              pngBytes = await rasterToPngFromBitmap(imgObj.bitmap, width, height);
-            } else if (imgObj.data){
-              pngBytes = await rasterToPng(imgObj);
-            } else {
-              console.warn('[PDF to Word] Image object', name, 'has neither .data nor .bitmap. Keys:', Object.keys(imgObj));
-              continue;
-            }
-            if (pngBytes){
-              const [x0,y0] = mtxApply(ctm, 0, 0);
-              const [x1,y1] = mtxApply(ctm, 1, 1);
-              images.push({
-                bytes: pngBytes, srcW: width, srcH: height,
-                x: Math.min(x0,x1), y: Math.max(y0,y1),
-                dispW: Math.abs(x1-x0), dispH: Math.abs(y1-y0),
-              });
-            } else {
-              console.warn('[PDF to Word] Image object', name, 'produced no PNG bytes from either path.');
-            }
-          } catch(e){
-            console.error('[PDF to Word] Failed to extract embedded image', name, '-- skipping it. Error:', e);
-            pwLastDiagnostics.push(`image extraction: ${e && e.message ? e.message : e}`);
-          }
-        }
-      }
-      return images;
-    }
-    // Converts pdf.js's raw pixel buffer (RGB or RGBA, Uint8ClampedArray) to
-    // PNG bytes using an offscreen canvas -- a standard, well-established
-    // browser technique.
-    async function rasterToPng(imgObj){
-      const { width, height, data } = imgObj;
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.createImageData(width, height);
-      const channels = data.length / (width*height);
-      if (channels === 4){
-        imageData.data.set(data);
-      } else if (channels === 3){
-        for (let i = 0, j = 0; i < data.length; i += 3, j += 4){
-          imageData.data[j] = data[i]; imageData.data[j+1] = data[i+1]; imageData.data[j+2] = data[i+2]; imageData.data[j+3] = 255;
-        }
-      } else if (channels === 1){
-        for (let i = 0, j = 0; i < data.length; i++, j += 4){
-          imageData.data[j] = data[i]; imageData.data[j+1] = data[i]; imageData.data[j+2] = data[i]; imageData.data[j+3] = 255;
-        }
-      } else {
-        console.warn('[PDF to Word] Unrecognized pixel format: data.length=', data.length, 'for', width, 'x', height, '=> channels=', channels);
-        return null; // unrecognized pixel format -- skip rather than guess
-      }
-      ctx.putImageData(imageData, 0, 0);
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) return null;
-      return new Uint8Array(await blob.arrayBuffer());
-    }
-    // Handles the case where pdf.js hands back a pre-decoded bitmap
-    // (ImageBitmap or similar) instead of a raw pixel-data array -- some
-    // pdf.js builds/versions resolve images this way, particularly for
-    // JPEG-encoded content.
-    async function rasterToPngFromBitmap(bitmap, width, height){
+    if (!response.ok) {
+      // Try to extract a human-readable message from the JSON error body
+      let errMsg = `Server error (${response.status}).`;
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(bitmap, 0, 0, width, height);
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        if (!blob) return null;
-        return new Uint8Array(await blob.arrayBuffer());
-      } catch(e){
-        console.warn('[PDF to Word] Failed to draw bitmap image to canvas:', e);
-        return null;
-      }
+        const errJson = await response.json();
+        if (errJson && errJson.error) errMsg = errJson.error;
+      } catch (_) { /* non-JSON body — keep the generic message */ }
+      throw new Error(errMsg);
     }
 
+    onProgress(95, 'Downloading result\u2026');
+    const blob = await response.blob();
 
-    // Pass 1: collect all font sizes across the document to find the "body
-    // text" baseline size, so headings can be detected relative to it rather
-    // than against an arbitrary fixed number. Also extract table-border
-    // lines and embedded images per page here, since both come from the
-    // same operator-list pass as everything else on the page.
-    const allSizes = [];
-    const pageTextItems = [];
-    for (let p = 1; p <= pdf.numPages; p++){
-      if (isCancelled()) return null;
-      onProgress(5 + Math.round((p/pdf.numPages)*35), `Reading page ${p} of ${pdf.numPages}\u2026`);
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const annotations = await page.getAnnotations();
-      const links = annotations.filter(a => a.subtype === 'Link' && a.url).map(a => ({ rect: a.rect, url: a.url }));
-      const items = content.items.map(it => ({
-        str: it.str, x: it.transform[4], x1: it.transform[4] + (it.width || 0), y: it.transform[5],
-        fontSize: Math.hypot(it.transform[2], it.transform[3]) || 10,
-        fontName: it.fontName || '',
-      })).filter(it => it.str.trim().length > 0);
-      items.forEach(it => allSizes.push(it.fontSize));
-
-      let tableRegions = [];
-      let images = [];
-      try {
-        const opList = await page.getOperatorList();
-        if (tablesSupported){
-          const lines = extractLines(opList);
-          const regionGroups = clusterLineRegions(lines);
-          tableRegions = regionGroups.map(g => {
-            const vls = g.filter(l => l.orient === 'v'), hls = g.filter(l => l.orient === 'h');
-            const colXs = clusterCoords(vls.map(l => l.x0), 1.5);
-            let rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
-            // A table that CONTINUES from a previous PDF page commonly
-            // doesn't redraw a top border rule for its first row on the
-            // new page (the "real" top border was already drawn once,
-            // higher up, on the earlier page). rowYs is built purely from
-            // horizontal divider lines, so that first row has no upper
-            // boundary and silently drops out of the table entirely --
-            // confirmed on a real multi-page PTCL/DigiSkills offer PDF:
-            // its row 11 ("Inform and engage...") had intact left/right/
-            // internal column lines reaching up to the very top of the
-            // page, but zero horizontal lines above the row-11/row-12
-            // divider, so the row vanished from the table and its text
-            // (with the Yes/Yes columns no longer separated) fell through
-            // to ordinary paragraph flow instead. Column lines still mark
-            // where that row's content sits even without a drawn top
-            // rule, so extend rowYs up to the columns' own highest point
-            // whenever it reaches meaningfully higher than any detected
-            // horizontal boundary -- recovering the row's ceiling from
-            // the verticals themselves. A row that turns out to be blank
-            // (nothing between it and the next boundary) is dropped later
-            // by the empty-row filter, so a false extension here is
-            // self-correcting rather than adding visible clutter.
-            if (rowYs.length && vls.length){
-              const maxVTop = Math.max(...vls.map(l => l.y1));
-              if (maxVTop > Math.max(...rowYs) + 1.5) rowYs = [...rowYs, maxVTop].sort((a,b) => a-b);
-            }
-            return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
-          }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
-          // Always-on, detailed pipeline diagnostics (not just for hard
-          // zero-line cases) -- reports exactly how many lines, regions,
-          // and rows/cols were found at each stage, so any future mismatch
-          // is immediately visible instead of requiring another guess-and-
-          // redeploy round.
-          const vCount = lines.filter(l => (l.x1-l.x0) < 3).length;
-          const hCount = lines.filter(l => (l.y1-l.y0) < 3).length;
-          console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
-          if (tableRegions.length === 0){
-            // Consolidated single diagnostic: line counts by orientation,
-            // raw (pre-filter) region count from clustering, and a sample
-            // of actual coordinates -- enough to tell whether clustering
-            // found nothing at all (a touch-detection/tolerance issue) or
-            // found regions that got filtered out (a too-strict row/col
-            // minimum), without needing another guess-and-redeploy round.
-            const vSample = lines.filter(l => (l.x1-l.x0) < 3).slice(0, 6).map(l => `x=${l.x0.toFixed(1)},y${l.y0.toFixed(0)}-${l.y1.toFixed(0)}`);
-            const hSample = lines.filter(l => (l.y1-l.y0) < 3).slice(0, 6).map(l => `y=${l.y0.toFixed(1)},x${l.x0.toFixed(0)}-${l.x1.toFixed(0)}`);
-            const rawRegionSizes = regionGroups.map(g => `${g.filter(l=>l.orient==='v').length}v+${g.filter(l=>l.orient==='h').length}h`);
-            console.info('[PDF to Word] page', p, 'DEEP diag -- vSample:', vSample, 'hSample:', hSample, 'rawRegionSizes:', rawRegionSizes);
-            pwLastDiagnostics.push(`page ${p}: ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) [sizes: ${rawRegionSizes.join(',')}] -> 0 valid | vSample: ${vSample.join(' ')} | hSample: ${hSample.join(' ')}`);
-          }
-        }
-        if (imagesSupported) images = await extractImages(page, opList);
-        if (images.length === 0){
-          const imgOpCount = opList.fnArray.filter(fn => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject).length;
-          if (imgOpCount > 0){
-            console.warn('[PDF to Word] page', p, '--', imgOpCount, 'image-paint ops found but 0 images were extracted.');
-            pwLastDiagnostics.push(`page ${p}: ${imgOpCount} image op(s) found but 0 extracted`);
-          }
-        }
-      } catch(e){
-        // Fall back to text-only for this page rather than failing the whole
-        // conversion -- but surface the real error to the console instead of
-        // swallowing it silently, so a version/API mismatch can actually be
-        // diagnosed instead of just silently producing no tables/images.
-        console.error('[PDF to Word] Table/image extraction failed for page', p, '-- falling back to plain text for this page. Error:', e);
-        pwLastDiagnostics.push(`page ${p} table/image extraction: ${e && e.message ? e.message : e}`);
-      }
-
-      pageTextItems.push({ items, links, height: page.view[3], tableRegions, images });
-      page.cleanup && page.cleanup();
-    }
-    if (allSizes.length === 0){
-      throw new Error('No extractable text was found in this PDF \u2014 it may be a scanned image rather than real text, which this tool can\u2019t convert.');
-    }
-    allSizes.sort((a,b) => a-b);
-    const bodySize = allSizes[Math.floor(allSizes.length/2)]; // median font size = body text baseline
-
-    onProgress(45, 'Reconstructing document structure\u2026');
-    const docChildren = [];
-    for (let pIdx = 0; pIdx < pageTextItems.length; pIdx++){
-      if (isCancelled()) return null;
-      const { items, tableRegions, images } = pageTextItems[pIdx];
-      // Group items into lines by Y proximity, then lines into paragraphs by
-      // a larger vertical gap (a real, standard heuristic for reflowed text
-      // -- not guaranteed on unusually-formatted PDFs, disclosed in the FAQ).
-      items.sort((a,b) => b.y - a.y || a.x - b.x);
-      const lines = [];
-      let currentLine = null, lastY = null;
-      for (const it of items){
-        if (lastY === null || Math.abs(it.y - lastY) > it.fontSize * 0.4){
-          currentLine = { y: it.y, items: [it] };
-          lines.push(currentLine);
-        } else {
-          currentLine.items.push(it);
-        }
-        lastY = it.y;
-      }
-
-      // ---- Table & image placement ----
-      // Tables are detected from the PDF's own drawn border-lines (read via
-      // pdf.js's operator list in Pass 1 above) rather than guessed from
-      // text spacing -- this reads the actual grid the PDF itself drew,
-      // so it isn't thrown off by how pdf.js happens to chunk text into
-      // items (which varies per PDF and was the root cause of an earlier,
-      // incorrect text-gap-based approach). Verified against a real
-      // multi-table government payslip: all 3 tables on the page were
-      // reconstructed as an exact match to the source PDF, including a row
-      // with an irregular/incomplete set of cells that a spacing-based
-      // guess had previously gotten wrong. A text item is treated as
-      // "inside" a table if its position falls within that table's
-      // detected bounds, and is rendered via the table's own cells instead
-      // of as loose paragraph text.
-      function pointInRegion(x, y, r){ return x >= r.x0 - 2 && x <= r.x1 + 2 && y >= r.y0 - 2 && y <= r.y1 + 2; }
-      function regionForLine(line){
-        if (!tableRegions.length) return null;
-        const midX = line.items.reduce((a,i)=>a+(i.x+i.x1)/2,0) / line.items.length;
-        return tableRegions.find(r => pointInRegion(midX, line.y, r)) || null;
-      }
-      function cellTextFor(region, x0, x1, y0, y1){
-        const cellItems = items.filter(it => it.x >= x0-1.5 && it.x1 <= x1+1.5 && it.y >= y0-1.5 && it.y <= y1+1.5);
-        cellItems.sort((a,b) => b.y - a.y || a.x - b.x);
-        return cellItems.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
-      }
-      function buildTableForRegion(region){
-        const { colXs, rowYs } = region;
-        const rows = [];
-        const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: '444444' };
-        const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
-        // Column widths from the PDF's own measured column boundaries
-        // (colXs), not an even split -- a "Description" column that's
-        // genuinely wider than an "Amount" column in the source PDF now
-        // stays wider in the .docx too, matching the real table's
-        // proportions instead of forcing every column to the same size.
-        //
-        // Widths are set in DXA (twentieths of a point -- an absolute,
-        // unambiguous unit), not PERCENTAGE. The percentage encoding this
-        // library produces (e.g. w:w="45%") was tolerated by LibreOffice
-        // during testing but misread by at least one real-world DOCX
-        // viewer as a raw twips/fiftieths value, making every column
-        // catastrophically narrow and, combined with the FIXED layout
-        // below forcing that width, blowing up row heights instead as
-        // text wrapped one character at a time -- confirmed from an actual
-        // converted document. DXA sidesteps that ambiguity entirely: the
-        // default page is A4 (11906 twips wide) with 1-inch (1440 twips)
-        // margins each side, giving 9026 twips of usable content width.
-        const PAGE_CONTENT_DXA = 9026;
-        const totalTableWidth = colXs[colXs.length-1] - colXs[0];
-        const colDxa = [];
-        for (let c = 0; c < colXs.length - 1; c++){
-          const frac = (colXs[c+1] - colXs[c]) / totalTableWidth;
-          colDxa.push(Math.max(750, Math.round(frac * PAGE_CONTENT_DXA))); // floor so a short code column (e.g. "0001") doesn't wrap to 2 lines
-        }
-        const tableDxa = colDxa.reduce((a,b) => a+b, 0);
-        for (let r = rowYs.length - 2; r >= 0; r--){
-          const yTop = rowYs[r+1], yBot = rowYs[r];
-          const cells = [];
-          let rowHasText = false;
-          for (let c = 0; c < colXs.length - 1; c++){
-            const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
-            if (text) rowHasText = true;
-            cells.push(new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text })] })],
-              width: { size: colDxa[c], type: WidthType.DXA },
-              borders: cellBorders,
-            }));
-          }
-          // Skip a row that's completely empty across every column. This
-          // happens when a nearby decorative rule (e.g. the underline
-          // beneath a section heading just above the table) sits close
-          // enough to the table's own border lines to get unioned into
-          // the same region by the touch-based clustering, producing a
-          // phantom extra boundary with no real content between it and
-          // the true header row -- confirmed on a real converted
-          // document where this showed up as a blank leading row before
-          // the actual table header. Also acts as a safety net for the
-          // top-border-recovery above: if that recovery ever extends a
-          // row that turns out to have no text in it, it's silently
-          // dropped here instead of appearing as visible clutter.
-          if (!rowHasText) continue;
-          rows.push(new TableRow({ children: cells }));
-        }
-        return new Table({
-          rows, width: { size: tableDxa, type: WidthType.DXA },
-          // The <w:tblGrid> element (the table's base column structure)
-          // needs its own explicit widths too -- without this, the docx
-          // library leaves it at a meaningless placeholder value, and at
-          // least one real-world DOCX viewer trusts tblGrid over the
-          // per-cell widths, making every column collapse to near-nothing
-          // regardless of what the cells themselves declared. Confirmed
-          // directly by inspecting this library's own XML output before
-          // this fix: tblGrid was hardcoded to "100" twips per column
-          // (0.07cm) while the cells said otherwise.
-          columnWidths: colDxa,
-          // Without an explicit fixed layout, Word/LibreOffice can shrink
-          // the table to fit its (often short) cell text instead of
-          // honoring the declared width, leaving a wide gap of empty space
-          // on the right -- exactly the gap flagged on a real converted
-          // document. AUTOFIT is the (undeclared) default; FIXED makes the
-          // table actually span the page as declared, now that the widths
-          // themselves are unambiguous DXA values it can safely honor.
-          layout: TableLayoutType.FIXED,
-          borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder },
-        });
-      }
-      const renderedRegions = new Set();
-
-      let lastLineY = null, lastFontSize = bodySize;
-      let currentRuns = [];
-      function flushParagraph(){
-        if (currentRuns.length){
-          docChildren.push(new Paragraph({ children: currentRuns }));
-          currentRuns = [];
-        }
-      }
-      // Merge lines and images into one top-to-bottom content stream so
-      // images are inserted at roughly the right point in reading order
-      // rather than always at the end of the page.
-      const pageHeight = pageTextItems[pIdx].height || 792;
-      const contentEvents = [
-        ...lines.map(l => ({ type: 'line', y: l.y, line: l })),
-        ...images.map(img => ({ type: 'image', y: img.y, img })),
-      ].sort((a,b) => b.y - a.y);
-
-      for (const ev of contentEvents){
-        if (ev.type === 'image'){
-          if (!imagesSupported) continue;
-          flushParagraph();
-          try {
-            const scale = Math.min(1, 468 / ev.img.dispW); // cap width to a reasonable page-content width (points)
-            const dispW = Math.max(20, Math.round(ev.img.dispW * scale));
-            const dispH = Math.max(20, Math.round(ev.img.dispH * scale));
-            // Place the image at its actual position on the original PDF
-            // page (floating, anchored to the page itself) instead of just
-            // inline in reading order -- e.g. a letterhead seal that sits
-            // in the top-right corner of the source PDF now lands in that
-            // same corner in the .docx, rather than wherever it happened to
-            // fall in the text flow. Word/PT_EMU conversion: 1pt = 12700 EMU.
-            const EMU_PER_PT = 12700;
-            const distFromLeft = Math.max(0, ev.img.x) * EMU_PER_PT;
-            const distFromTop = Math.max(0, pageHeight - ev.img.y) * EMU_PER_PT;
-            docChildren.push(new Paragraph({ children: [
-              new ImageRun({ data: ev.img.bytes, type: 'png', transformation: { width: dispW, height: dispH },
-                ...(floatingImagesSupported ? { floating: {
-                  horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: Math.round(distFromLeft) },
-                  verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round(distFromTop) },
-                  wrap: { type: TextWrappingType.NONE },
-                  allowOverlap: true,
-                  behindDocument: false,
-                } } : {}),
-              }),
-            ] }));
-          } catch(e){ console.error('[PDF to Word] Failed to embed an extracted image into the document -- skipping it. Error:', e); pwLastDiagnostics.push(`image embed: ${e && e.message ? e.message : e}`); }
-          continue;
-        }
-
-        const line = ev.line;
-        const region = tablesSupported ? regionForLine(line) : null;
-        if (region){
-          const key = region.x0 + ',' + region.y0;
-          if (!renderedRegions.has(key)){
-            renderedRegions.add(key);
-            flushParagraph();
-            docChildren.push(buildTableForRegion(region));
-            docChildren.push(new Paragraph({ children: [] }));
-          }
-          lastLineY = line.y;
-          continue; // this line's text is already captured by the table's own cells
-        }
-
-        const lineText = line.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
-        if (!lineText) continue;
-        const avgSize = line.items.reduce((a,i) => a+i.fontSize, 0) / line.items.length;
-        const isBold = line.items.some(i => /bold/i.test(i.fontName));
-        const isItalic = line.items.some(i => /italic|oblique/i.test(i.fontName));
-        const gap = lastLineY === null ? 0 : lastLineY - line.y;
-        // A line that visually starts a new bullet/list item (•, ‣, ▪, ◦,
-        // a plain "-", or numbered markers like "1." or "1)") should
-        // always begin its own paragraph, regardless of the line-gap --
-        // list items are normally set with ordinary single-line spacing,
-        // so the gap-based heuristic alone never exceeds its threshold
-        // between consecutive items. Confirmed on a real converted
-        // document: 18 separate bulleted feature lines were being fused
-        // into one run-on paragraph because their gaps were all under
-        // the 1.6x-body-size cutoff, losing the source's list structure
-        // entirely (each "•" ended up mid-sentence instead of starting
-        // its own line). This only ever adds a paragraph break where the
-        // text itself signals a new item, so it can't cause unrelated
-        // lines to split apart.
-        const startsNewListItem = /^[•‣▪◦∙·]\s|^-\s|^\d{1,2}[.)]\s/.test(lineText);
-        const newParagraph = lastLineY === null || gap > lastFontSize * 1.6 || startsNewListItem;
-
-        let heading = null;
-        if (avgSize > bodySize * 1.6) heading = HeadingLevel.HEADING_1;
-        else if (avgSize > bodySize * 1.3) heading = HeadingLevel.HEADING_2;
-        else if (avgSize > bodySize * 1.12) heading = HeadingLevel.HEADING_3;
-
-        const run = new TextRun({ text: lineText, bold: isBold, italics: isItalic });
-        if (heading){
-          flushParagraph();
-          docChildren.push(new Paragraph({ heading, children: [run] }));
-        } else if (newParagraph){
-          flushParagraph();
-          currentRuns = [run];
-        } else {
-          currentRuns.push(new TextRun({ text: ' ' + lineText, bold: isBold, italics: isItalic }));
-        }
-        lastLineY = line.y;
-        lastFontSize = avgSize;
-      }
-      flushParagraph();
-      if (pIdx < pageTextItems.length - 1){
-        docChildren.push(new Paragraph({ children: [new PageBreak()] }));
-      }
-      onProgress(45 + Math.round(((pIdx+1)/pageTextItems.length)*40), `Building document \u2014 page ${pIdx+1} of ${pageTextItems.length}\u2026`);
-    }
-
-    onProgress(90, 'Packaging .docx\u2026');
-    const doc = new Document({ sections: [{ children: docChildren.length ? docChildren : [new Paragraph({ children:[new TextRun('')] })] }] });
-    const blob = await Packer.toBlob(doc);
+    if (isCancelled && isCancelled()) return null;
     onProgress(100, 'Done.');
     return blob;
   }
+
+
 
   /* ================= WORD -> PDF ================= */
   async function extractFloatingImagesFromDocx(arrayBuffer){
@@ -8658,11 +6494,6 @@ if (document.getElementById('upsDrop')){
   let upsOriginalImg = null, upsOriginalCanvas = null;
   let upsResultCanvas = null;
   let upsCancelled = false;
-  // Bumped on every new image load / reset. A run in flight (model download +
-  // inference can take a while) captures the value at start; if it no longer
-  // matches when the run finishes, a newer image has since been loaded and the
-  // stale result is discarded instead of silently overwriting what's on screen.
-  let upsGeneration = 0;
   let tfjsLoadPromise = null;
   const upsModelPromises = {}; // cached per (tier, scale) combo so re-runs don't re-download
 
@@ -8726,7 +6557,6 @@ if (document.getElementById('upsDrop')){
       return;
     }
 
-    upsGeneration++;
     upsOriginalCanvas = document.createElement('canvas');
     upsOriginalCanvas.width = ow; upsOriginalCanvas.height = oh;
     upsOriginalCanvas.getContext('2d').drawImage(upsOriginalImg, 0, 0); // re-drawn via canvas, stripping EXIF same as every other ToolFlight image tool
@@ -8769,7 +6599,6 @@ if (document.getElementById('upsDrop')){
   }, { passive: false });
 
   document.getElementById('upsResetBtn').onclick = () => {
-    upsGeneration++;
     upsOriginalImg = null; upsOriginalCanvas = null; upsResultCanvas = null;
     document.getElementById('upsStage').classList.add('hidden');
     document.getElementById('upsInput').value = '';
@@ -8781,7 +6610,6 @@ if (document.getElementById('upsDrop')){
   document.getElementById('upsUpscaleBtn').onclick = async () => {
     if (!upsOriginalCanvas) return;
     upsCancelled = false;
-    const myGeneration = upsGeneration;
     const btn = document.getElementById('upsUpscaleBtn');
     setLoading(btn, true);
     document.getElementById('upsCancelBtn').classList.remove('hidden');
@@ -8818,7 +6646,6 @@ if (document.getElementById('upsDrop')){
         },
       });
       if (upsCancelled) throw { cancelled: true };
-      if (myGeneration !== upsGeneration) throw { stale: true };
 
       progressLabel.textContent = 'Finalizing\u2026';
       const resultImg = await new Promise((resolve, reject) => {
@@ -8827,7 +6654,6 @@ if (document.getElementById('upsDrop')){
         img.onerror = () => reject(new Error('Could not read the upscaled result.'));
         img.src = resultSrc;
       });
-      if (myGeneration !== upsGeneration) throw { stale: true };
       upsResultCanvas = document.createElement('canvas');
       upsResultCanvas.width = resultImg.naturalWidth;
       upsResultCanvas.height = resultImg.naturalHeight;
@@ -8846,7 +6672,6 @@ if (document.getElementById('upsDrop')){
       toast(`Upscaled in ${elapsed}s.`);
     }catch(err){
       if (err && err.cancelled){ toast('Cancelled.'); }
-      else if (err && err.stale){ /* a newer image was loaded mid-run — silently drop this result */ }
       else{
         // A script/model-load failure surfaces the raw CDN URL in
         // err.message (e.g. "Failed to load https://cdn.jsdelivr.net/...")
@@ -8931,13 +6756,6 @@ if (document.getElementById('ocrDrop')){
   let ocrCancelled = false;
   let ocrWorker = null;
   let pdfjsLoadPromiseOcr = null;
-  // Bumped on every new upload / "Extract from another file" reset. Unlike
-  // Cancel, dropping a new file or resetting during an extraction doesn't
-  // stop the in-flight run (the drop zone and reset button both stay live
-  // while Extract Text is disabled) -- so a still-running extraction must
-  // not write its result over whatever the user is now looking at. Same
-  // pattern as AI Image Upscaler's upsGeneration / Magic Eraser's meGeneration.
-  let ocrGeneration = 0;
 
   async function ensurePdfJsOcr(){
     if (!pdfjsLoadPromiseOcr){
@@ -8973,7 +6791,6 @@ if (document.getElementById('ocrDrop')){
 
   async function loadOcrFile(f){
     if (f.size > 30*1024*1024){ toast(`That file is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
-    ocrGeneration++; // invalidate any extraction still in flight for the previous file
     ocrFile = f;
     ocrFullText = ''; ocrPageTexts = [];
     document.getElementById('ocrStage').classList.remove('hidden');
@@ -9031,8 +6848,6 @@ if (document.getElementById('ocrDrop')){
     if (!ocrFile) return;
     const langs = ocrSelectedLangs();
     if (!langs.length){ toast('Choose at least one language first.', 'err'); return; }
-    const myGeneration = ocrGeneration;
-    const file = ocrFile; // snapshot -- a new drop/reset mid-run must not make this run read a second file partway through
     ocrCancelled = false;
     const btn = document.getElementById('ocrExtractBtn');
     setLoading(btn, true);
@@ -9048,13 +6863,13 @@ if (document.getElementById('ocrDrop')){
       if (!window.Tesseract) throw new Error('OCR engine failed to load.');
 
       ocrPageTexts = [];
-      if (file.type === 'application/pdf'){
+      if (ocrFile.type === 'application/pdf'){
         progressLabel.textContent = 'Reading PDF\u2026';
         const pdfjsLib = await ensurePdfJsOcr();
-        const bytes = await file.arrayBuffer();
+        const bytes = await ocrFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
         for (let p = 1; p <= pdf.numPages; p++){
-          if (ocrCancelled || myGeneration !== ocrGeneration) break;
+          if (ocrCancelled) break;
           progressLabel.textContent = `Rendering page ${p} of ${pdf.numPages}\u2026`;
           const page = await pdf.getPage(p);
           const scale = Math.min(2.5, OCR_MAX_DIM / Math.max(page.view[2], page.view[3]));
@@ -9063,7 +6878,7 @@ if (document.getElementById('ocrDrop')){
           canvas.width = viewport.width; canvas.height = viewport.height;
           await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
           page.cleanup && page.cleanup();
-          if (ocrCancelled || myGeneration !== ocrGeneration) break;
+          if (ocrCancelled) break;
 
           progressLabel.textContent = `Running OCR \u2014 page ${p} of ${pdf.numPages}\u2026`;
           const pageText = await ocrImageSource(canvas, langs, (frac) => {
@@ -9076,7 +6891,7 @@ if (document.getElementById('ocrDrop')){
         }
       } else {
         progressLabel.textContent = 'Running OCR\u2026';
-        const img = await loadImageFromFile(file);
+        const img = await loadImageFromFile(ocrFile);
         const canvas = document.createElement('canvas');
         let w = img.naturalWidth, h = img.naturalHeight;
         if (Math.max(w,h) > OCR_MAX_DIM){ const sc = OCR_MAX_DIM/Math.max(w,h); w = Math.round(w*sc); h = Math.round(h*sc); }
@@ -9088,11 +6903,7 @@ if (document.getElementById('ocrDrop')){
         ocrPageTexts.push({ page: 1, text: text.trim() });
       }
 
-      if (myGeneration !== ocrGeneration){
-        // A different file was dropped, or "Extract from another file" was
-        // clicked, while this extraction was still running -- drop the
-        // stale result instead of overwriting what's now on screen.
-      } else if (ocrCancelled){
+      if (ocrCancelled){
         toast('Cancelled.');
       } else {
         ocrFullText = ocrPageTexts.length > 1
@@ -9109,7 +6920,7 @@ if (document.getElementById('ocrDrop')){
         }
       }
     }catch(err){
-      if (!ocrCancelled && myGeneration === ocrGeneration){
+      if (!ocrCancelled){
         const isLoadFailure = err && /failed to load|networkerror|load failed/i.test(err.message || '');
         toast(isLoadFailure
           ? 'Could not load the OCR engine — check your connection and try again.'
@@ -9159,7 +6970,6 @@ if (document.getElementById('ocrDrop')){
     }
   };
   document.getElementById('ocrConvertAnotherBtn').onclick = () => {
-    ocrGeneration++; // invalidate any extraction still in flight
     ocrFile = null; ocrFullText = ''; ocrPageTexts = [];
     document.getElementById('ocrStage').classList.add('hidden');
     document.getElementById('ocrInput').value = '';
@@ -9978,13 +7788,6 @@ if (document.getElementById('ppDrop')){
   const ppSliders = { brightness:0, contrast:0, saturation:0, sharpness:0, temperature:0 };
   let ppZoom = 1, ppOffsetX = 0, ppOffsetY = 0;
   let faceLandmarkerPromisePP = null, segmenterPromisePP = null;
-  // Bumped on every new upload / "Start Over". Both AI steps here (face
-  // detect + auto-position on upload, and AI background replacement) load a
-  // model asynchronously and then write into shared mask/landmark/zoom
-  // state; if a different photo is loaded (or Start Over is used) while one
-  // is still running, its result must not land on the new photo. Same
-  // pattern as AI Image Upscaler's upsGeneration / Magic Eraser's meGeneration.
-  let ppGeneration = 0;
 
   /* ---------- Non-destructive edit layer: single-channel erase mask ----------
      0 = fully original pixel, 255 = fully replaced by the background color,
@@ -10216,7 +8019,6 @@ if (document.getElementById('ppDrop')){
     document.documentElement.classList.remove('pp-editing-mode');
     document.getElementById('ppStage').classList.add('hidden');
     document.getElementById('ppInput').value = '';
-    ppGeneration++; // invalidate any AI face-detect/background-replace run still in flight
     ppSourceCanvas = null; ppOriginalImg = null; ppFaceLandmarks = null;
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -10225,7 +8027,6 @@ if (document.getElementById('ppDrop')){
     if (!['image/jpeg','image/png','image/webp'].includes(f.type)){ toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 30MB.`, 'err'); return; }
     try{ ppOriginalImg = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
-    ppGeneration++; // invalidate any AI run still in flight for the previous photo
     // EXIF orientation: re-drawing through <img> + canvas (as loadImageFromFile does)
     // already applies the browser's own EXIF-aware decode in every current
     // browser we support (Chrome, Edge, Firefox, Safari all auto-rotate on
@@ -10442,15 +8243,12 @@ if (document.getElementById('ppDrop')){
 
   /* ---------- Face detection + auto-position (real AI, reused MediaPipe infra) ---------- */
   async function runFaceDetectAndAutoPosition(){
-    const myGeneration = ppGeneration;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
     statusEl.textContent = 'Loading face detection model\u2026';
     try{
       const landmarker = await ensureFaceLandmarkerPP();
-      if (myGeneration !== ppGeneration || !ppSourceCanvas) return; // a different photo was loaded (or Start Over was used) while the model loaded
       const result = landmarker.detect(ppSourceCanvas);
-      if (myGeneration !== ppGeneration || !ppSourceCanvas) return;
       if (result.faceLandmarks && result.faceLandmarks.length){
         ppFaceLandmarks = result.faceLandmarks[0];
         autoPositionFromFace();
@@ -10459,7 +8257,6 @@ if (document.getElementById('ppDrop')){
         statusEl.textContent = 'No face detected \u2014 adjust zoom and position manually below.';
       }
     }catch(err){
-      if (myGeneration !== ppGeneration) return;
       statusEl.textContent = 'Face detection unavailable \u2014 adjust zoom and position manually below.';
     }
     setTimeout(() => statusEl.classList.add('hidden'), 4000);
@@ -11331,13 +9128,11 @@ if (document.getElementById('ppDrop')){
 
   async function ppReplaceBackgroundAI(){
     if (!ppSourceCanvas) return;
-    const myGeneration = ppGeneration;
     const statusEl = document.getElementById('ppModelStatus');
     statusEl.classList.remove('hidden');
     statusEl.textContent = 'Loading background segmentation model\u2026';
     try{
       const segmenter = await ensureSegmenterPP();
-      if (myGeneration !== ppGeneration || !ppSourceCanvas) return; // a different photo was loaded (or Start Over was used) while the model loaded
       const result = segmenter.segment(ppSourceCanvas);
       const mask = result.categoryMask;
       const maskData = mask.getAsUint8Array();
@@ -12449,13 +10244,6 @@ if (document.getElementById('rtDrop')){
   let rtSourceCanvas = null;   // immutable original, full resolution -- ACTIVE LAYER's own canvas
   let rtOriginalImageBytes = null; // raw ArrayBuffer of the original file -- plain JS heap memory, no browser resource-registry dependency (unlike a Blob URL, which can be silently invalidated by the same memory pressure that clears canvases -- this was the real root cause of the false "recovered" result)
   let rtOriginalImageType = null;  // MIME type, needed to reconstruct a valid Blob from the bytes
-  // Bumped on every new photo upload / "Change Photo" (return to upload
-  // screen). The AI Magic pipeline chains several model loads (face,
-  // background, hair segmentation) and can take a while; if a different
-  // photo is loaded while it's still running, its result must not land on
-  // the new photo. Same pattern as AI Image Upscaler's upsGeneration /
-  // Magic Eraser's meGeneration.
-  let rtGeneration = 0;
   let rtFaceLandmarks = null;  // MediaPipe face mesh, or null if no face found -- ACTIVE LAYER's own
   // Multi-Person AI Foundation Slice 1: the primary detected face
   // (rtFaceLandmarks above) remains the source of truth for every
@@ -15286,7 +13074,6 @@ if (document.getElementById('rtDrop')){
     const active = rtGetActiveLayer();
     if (active && active.locked){ toast('This layer is locked.', 'err'); return null; }
     if (!rtSourceCanvas){ toast('Upload a photo first, then tap AI Magic to get started.', 'ok'); return null; }
-    const myGeneration = rtGeneration;
     const sw = rtSourceCanvas.width, sh = rtSourceCanvas.height;
     const maxDim = 900;
     let w = sw, h = sh;
@@ -15300,12 +13087,6 @@ if (document.getElementById('rtDrop')){
     const collection = (rtCachedAiMagicCollection && rtCachedAiMagicDims && rtCachedAiMagicDims.w === w && rtCachedAiMagicDims.h === h)
       ? rtCachedAiMagicCollection
       : await rtGenerateAiMagicPlanCollection(w, h);
-    if (myGeneration !== rtGeneration){
-      // A different photo was loaded (or "Change Photo" was tapped) while
-      // this analysis was running -- drop it instead of applying a plan
-      // computed from a photo that's no longer on screen.
-      return null;
-    }
     const primary = collection[0];
     const { plan } = primary;
     if (!Object.keys(plan).length){
@@ -15326,12 +13107,6 @@ if (document.getElementById('rtDrop')){
       { face: faceGroup, hair: hairGroup, background: backgroundGroup, general: generalGroup },
       'AI Magic'
     );
-    if (myGeneration !== rtGeneration){
-      // Also guard the (much rarer) case where the photo changed during
-      // rtApplyCoordinatedEnhancement's own render -- report as not-applied
-      // rather than let the caller show a misleading success toast.
-      return { collection, primary, applied:false };
-    }
     return { collection, primary, applied };
   }
 
@@ -15969,7 +13744,6 @@ if (document.getElementById('rtDrop')){
   };
 
   function rtReturnToUploadScreen(){
-    rtGeneration++; // invalidate any AI Magic run still in flight
     document.getElementById('rtStage').classList.add('hidden');
     const uploadSectionEl = document.getElementById('rtUploadSection');
     if (uploadSectionEl) uploadSectionEl.classList.remove('hidden');
@@ -16548,7 +14322,6 @@ if (document.getElementById('rtDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image.', 'err'); return; }
-    rtGeneration++; // invalidate any AI Magic run still in flight for the previous photo
     rtOriginalImageBytes = await f.arrayBuffer();
     rtOriginalImageType = f.type;
     rtSourceCanvas = document.createElement('canvas');
@@ -19235,12 +17008,6 @@ if (document.getElementById('epeDrop')){
   let epeArtboardW = 0, epeArtboardH = 0;
   let epeLayer = { x:0, y:0, scale:1, rotation:0, flipH:false, flipV:false };
   let epeViewZoom = 1;           // display-only navigation, never affects exported pixels
-  // Bumped on every new upload / Reset. AI background removal loads a
-  // segmentation model asynchronously and then writes epeEraseMask; if a
-  // different image is loaded (or Reset is used) while it's still running,
-  // its result must not land on the new image. Same pattern as AI Image
-  // Upscaler's upsGeneration / Magic Eraser's meGeneration.
-  let epeGeneration = 0;
   /* ============================================================
      TOOLFLIGHT WORKSPACE ENGINE (shared architecture, Phase 1 of
      the multi-editor migration plan). Tool-agnostic: takes viewport/
@@ -20093,14 +17860,12 @@ if (document.getElementById('epeDrop')){
 
   async function epeRemoveBackground(){
     if (!epeSourceImg) return;
-    const myGeneration = epeGeneration;
     const statusEl = document.getElementById('epeBgStatus');
     const btn = document.getElementById('epeRemoveBgBtn');
     setLoading(btn, true);
     statusEl.textContent = 'Loading AI model\u2026';
     try{
       const seg = await ensureEpeSegmenter();
-      if (myGeneration !== epeGeneration || !epeSourceImg) return; // a different image was loaded (or Reset was used) while the model loaded
       statusEl.textContent = 'Analyzing image\u2026';
       const w = epeSourceImg.naturalWidth, h = epeSourceImg.naturalHeight;
       const result = seg.segment(epeSourceImg);
@@ -21282,8 +19047,6 @@ if (document.getElementById('epeDrop')){
     if (f.size > 30*1024*1024){ toast(`That image is ${fmtBytes(f.size)} \u2014 the limit is 30MB.`, 'err'); return; }
     let img;
     try{ img = await loadImageFromFile(f); }catch(err){ toast(err.message || 'Could not read this image \u2014 your browser may not support this format.', 'err'); return; }
-    epeGeneration++; // invalidate any AI background-removal run still in flight for the previous image
-    epeFaceLandmarksCache = null; // stale face landmarks belong to the previous image, not this one
     epeSourceImg = img;
     epeArtboardW = img.naturalWidth; epeArtboardH = img.naturalHeight;
     epeLayer = { x: epeArtboardW/2, y: epeArtboardH/2, scale:1, rotation:0, flipH:false, flipV:false };
@@ -21320,8 +19083,6 @@ if (document.getElementById('epeDrop')){
   });
   document.getElementById('epeReplaceBtn').onclick = () => document.getElementById('epeInput').click();
   document.getElementById('epeResetBtn').onclick = () => {
-    epeGeneration++; // invalidate any AI background-removal run still in flight
-    epeFaceLandmarksCache = null;
     epeSourceImg = null; epeArtboardW = 0; epeArtboardH = 0;
     document.getElementById('epeStage').classList.add('hidden');
     document.getElementById('epeInput').value = '';
@@ -27588,7 +25349,6 @@ if (document.getElementById('ifcDrop')){
     document.getElementById('ifcConvertBtn').disabled = false;
     document.getElementById('ifcDownloadBtn').classList.add('hidden');
     document.getElementById('ifcCompareBox').classList.add('hidden');
-    document.getElementById('ifcResetRow').classList.remove('hidden');
     ifcHideProgress();
 
     // A source-format button converting to itself is a pointless no-op --
@@ -27670,24 +25430,5 @@ if (document.getElementById('ifcDrop')){
     const base = (ifcFile.name || 'image').replace(/\.[a-z0-9]+$/i, '');
     downloadBlob(ifcResultBlob, `${base}.${IFC_EXT[ifcTargetType]}`);
     toast('Downloaded.');
-  };
-
-  // "Convert another image" -- same gap and same fix as Compress Image's
-  // compressResetBtn: nothing previously told anyone the drop zone (label
-  // #ifcDrop -- see setupDropZone, this one already opens the file picker
-  // natively via its native for="ifcInput" relationship, left exactly as
-  // is) could just take a new file directly.
-  document.getElementById('ifcResetBtn').onclick = () => {
-    ifcFile = null; ifcSourceType = null; ifcResultBlob = null;
-    if (ifcOrigUrl){ URL.revokeObjectURL(ifcOrigUrl); ifcOrigUrl = null; }
-    if (ifcConvUrl){ URL.revokeObjectURL(ifcConvUrl); ifcConvUrl = null; }
-    document.getElementById('ifcInput').value = '';
-    document.getElementById('ifcConvertBtn').disabled = true;
-    document.getElementById('ifcDownloadBtn').classList.add('hidden');
-    document.getElementById('ifcCompareBox').classList.add('hidden');
-    document.getElementById('ifcFormatRow').classList.add('hidden');
-    document.getElementById('ifcResetRow').classList.add('hidden');
-    ifcHideProgress();
-    toast('Ready for a new image.');
   };
 }
