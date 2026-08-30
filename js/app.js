@@ -2682,39 +2682,17 @@ if (document.getElementById('aiRemoveDrop')){
       const rawMaskData = result.categoryMask.getAsUint8Array();
       const maskW = result.categoryMask.width || w;
       const maskH = result.categoryMask.height || h;
-      // Normalize: category 0 = background (excluded). All other PASCAL VOC
-      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
-      // are treated as potential foreground subject. DeepLab v3 correctly
-      // identifies semantic categories; however, whether a chair, sofa, or
-      // table belongs to the user's intended foreground is a compositional
-      // decision that cannot be correctly made by a static class blacklist --
-      // a person sitting in a designer chair may want both preserved, while
-      // another photo may have an unwanted chair in the background. The
-      // downstream removeSmallIslands() step handles isolated speckling, and
-      // the manual Eraser / Lasso / Polygon tools handle any residual
-      // unwanted regions. Background (class 0) is the only class that is
-      // definitively not the user's intended subject.
+      // Normalize to the EXACT existing polarity: category 0 = background,
+      // anything else = foreground -- unchanged from before, only the
+      // mask's edge/detail QUALITY is being improved below.
       const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-      for (let i=0; i<normalizedMask.length; i++)
-        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+      for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
-
-
-      // DeepLab v3 returns one confidence mask per PASCAL VOC class (21 total,
-      // indices 0-20). Index 15 = person class confidence -- the only meaningful
-      // signal for a person-extraction use case. The previous code used index [1]
-      // (aeroplane confidence, measured at max=0.000044 on real images -- effectively
-      // zero everywhere), which caused the confidence-blending step inside
-      // refineSegmentationMask to drag every edge pixel toward transparent regardless
-      // of actual person confidence, degrading edge quality rather than improving it.
       let confidenceData = null, confW = maskW, confH = maskH;
-      const PERSON_CONF_IDX = 15; // PASCAL VOC class 15 = person
-      if (result.confidenceMasks && result.confidenceMasks[PERSON_CONF_IDX]){
-        confidenceData = result.confidenceMasks[PERSON_CONF_IDX].getAsFloat32Array();
-        confW = result.confidenceMasks[PERSON_CONF_IDX].width;
-        confH = result.confidenceMasks[PERSON_CONF_IDX].height;
+      if (result.confidenceMasks && result.confidenceMasks[1]){
+        confidenceData = result.confidenceMasks[1].getAsFloat32Array();
+        confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
       }
-
 
       // Grayscale luminance guide at mask resolution, for edge-aware
       // matte refinement -- lets the alpha edge snap to real color
