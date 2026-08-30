@@ -79,7 +79,14 @@
 # Firebase, Google Fonts, ONNX Runtime WASM, and Netlify Forms; tightened
 # just enough to block inline script injection from XSS without breaking any
 # existing tool)
+#
+# connect-src must list every origin the frontend fetch()es from, or the
+# browser silently blocks the request (no network attempt is even made) and
+# the page only sees a generic failed-fetch. https://toolflight-pdf2word.onrender.com
+# is the PDF -> Word conversion backend (js/app.js, PDF2WORD_API / pdf-to-word.html)
+# -- it was missing here, which is why that one tool's fetch() was blocked by
+# CSP while every other tool kept working.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com; worker-src 'self' blob:; frame-ancestors 'none';"
