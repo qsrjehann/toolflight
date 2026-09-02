@@ -350,6 +350,50 @@ Re-rendered both real slips: July's heading is now 2 lines, May's is 3 --
 both natural word-wraps at the cell's real width, matching the source
 PDF's look far more closely than the six-line break did.
 
+## Follow-up (2026-09-03): almost the entire document underlined by mistake
+
+Direct user report, with the original source PDF attached for comparison:
+the converted document had underlines on text that isn't underlined in the
+original AT ALL. Checked the source PDF directly (rendered it) -- it has
+**zero** underlined text anywhere, on either real salary slip (May and
+July). Yet the `underline` step's own log had reported "104 unique
+underlined text(s)" / "134 run(s) underlined" (July) and similar for May
+-- effectively the whole document.
+
+Root cause, confirmed empirically rather than assumed: `detect_underlined_text()`
+had two detection methods -- a "primary" one treating PyMuPDF span
+`flags & 4` as a reliable underline indicator, and a "secondary" spatial
+one (looks for a drawn line under the text). Printed the raw `flags` value
+for each distinct font actually used on the real file: `Times New Roman`
+(plain body text) -> 4, `Times New Roman,Bold` -> 20, `Times New
+Roman,Italic` -> 6. Cross-checked against PyMuPDF's documented span-flags
+bitfield (bit 1 = italic = 2, bit 4 = bold = 16 -- both consistent with
+these exact numbers), which makes bit 2 (value 4, present in literally
+every sample) mean **"serifed"** -- i.e. "this font has serifs, like Times
+New Roman" -- not underline. There is no per-span "is this underlined"
+flag in PyMuPDF/PDF at all; a real underline is always a separately drawn
+line (which is exactly what the spatial method already looked for). So
+the "primary, reliable" method was checking "is this a serif font" the
+entire time, and since this whole document -- like most real business
+documents -- uses a serif font, essentially every span in it was wrongly
+flagged as underlined. A sans-serif test file (the PESCO bill, Arial-style
+font) never has bit 2 set, which is exactly why this bug never showed up
+against that file and went unnoticed until a real serif-font PDF was
+checked against its own unmarked-up source.
+
+**Fix:** removed the `flags & 4` branch entirely from `detect_underlined_text()`
+-- it was never measuring underline, so there was nothing to special-case
+or threshold, only to delete. Detection now relies solely on the existing
+spatial method (a drawn line directly beneath the text, excluding table
+regions, disabled on pages with >=50 drawings to avoid confusing table
+borders with underlines -- unchanged from before). Verified: all 7 test
+files (5 synthetic + May/July real slips) now report "No underlined text
+detected" -- correct, since none of them have real underlines. Re-ran the
+full text-identity check across all 7 files against the pre-fix baseline
+-- 100% identical text content; only the (now absent, correctly) underline
+formatting differs. Re-rendered the July slip: no visible underlines
+anywhere, matching the source PDF exactly.
+
 ## Known separate issue (not touched here)
 
 Urdu/RTL text (e.g. the PESCO bill's Urdu columns) still renders

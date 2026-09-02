@@ -70,7 +70,7 @@ PDF_MAGIC = b"%PDF"
 # which code is actually running on Render, instead of only trusting a
 # green "deploy succeeded" tick in the dashboard. Check it any time after a
 # deploy: GET https://<service>.onrender.com/api/health
-BUILD_TAG = "2026-09-03c-title_indent"
+BUILD_TAG = "2026-09-03d-underline_bug"
 
 # ---------------------------------------------------------------------------
 # Lazy-import the heavy conversion libraries at first request

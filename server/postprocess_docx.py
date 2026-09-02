@@ -892,20 +892,42 @@ def detect_underlined_text(pdf_doc, max_gap_pt=3.0):
     """
     Detect underlined text in the PDF.
 
-    Primary method: PDF span flags (bit 2 = underline). Reliable for all fonts
-    that set underline in the font descriptor.
-
-    Secondary method (spatial): Finds horizontal drawing lines immediately below
-    text spans. This catches underlines drawn as separate rect/line objects
-    (e.g. PTCL offer letter headings). However, this method is NOISY for
+    ONLY method: spatial detection -- finds horizontal drawing lines
+    immediately below text spans. This catches underlines drawn as separate
+    rect/line objects (e.g. PTCL offer letter headings). It is NOISY for
     documents with heavy border drawing (e.g. salary slips with many table
-    borders). It is automatically disabled per-page when the drawing count
-    exceeds a threshold (≥50 drawings), since table borders cannot be reliably
-    distinguished from underlines in that case.
+    borders), so it is automatically disabled per-page when the drawing
+    count exceeds a threshold (>=50 drawings), since table borders cannot be
+    reliably distinguished from underlines in that case.
 
-    Known limitation: spatial detection may miss drawn underlines on pages with
-    many border drawings. This is acceptable per the validation requirement:
-    "If not inexpensive and reliable, document as a known limitation."
+    A second method used to run first and was treated as the reliable one:
+    checking PyMuPDF span `flags & 4`. That was a real bug, found from a
+    direct user report with the original PDF attached: a real government
+    salary slip that has ZERO underlined text anywhere had ~110 of ~110
+    text spans -- effectively the entire document -- come out underlined.
+    Root cause, confirmed empirically (not guessed) by printing raw flags
+    per distinct font on that exact file: `Times New Roman` (plain) -> 4,
+    `Times New Roman,Bold` -> 20 (4+16), `Times New Roman,Italic` -> 6
+    (4+2). Per PyMuPDF's span-flags bitfield, bit 1 (2) is italic and bit 4
+    (16) is bold -- consistent with those samples -- and bit 2 (4) is
+    "serifed" (the font has serifs, e.g. Times New Roman), NOT underline.
+    There is no such thing as a per-span "this text is underlined" flag in
+    PyMuPDF/PDF at all -- a real underline is always a separately drawn
+    line, which is exactly what the spatial method looks for. Every
+    serif-font document (i.e. most real business documents, including both
+    real salary slips tested) was therefore being almost entirely
+    underlined by mistake; a sans-serif test file like the PESCO bill
+    never has bit 2 set and was never affected, which is why this went
+    unnoticed until a document using Times New Roman was checked against
+    its actual, unmarked-up source. The flags-based branch has been
+    removed entirely rather than special-cased, since it was never
+    measuring underline in the first place.
+
+    Known limitation: spatial detection may miss drawn underlines on pages
+    with many border drawings. This is acceptable per the validation
+    requirement: "If not inexpensive and reliable, document as a known
+    limitation" -- and is strictly better than the false-positive-by-default
+    behaviour it replaces.
 
     Returns list of {page_no, text, y_bottom, x0, x1, source} for underlined spans.
     """
@@ -959,20 +981,7 @@ def detect_underlined_text(pdf_doc, max_gap_pt=3.0):
 
                     font_size = span.get("size", 0)
 
-                    # Primary: PDF underline flag (reliable)
-                    flags = span.get("flags", 0)
-                    if flags & 4:
-                        underlined.append({
-                            "page_no": pno,
-                            "text": txt,
-                            "y_baseline": span["bbox"][3],
-                            "x0": span["bbox"][0],
-                            "x1": span["bbox"][2],
-                            "source": "pdf_flag",
-                        })
-                        continue
-
-                    # Secondary: spatial detection (only when feasible)
+                    # Spatial detection (only when feasible)
                     if not h_lines:
                         continue
                     if font_size < 9:
