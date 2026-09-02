@@ -1,0 +1,31 @@
+# ToolFlight PDF -> Word backend -- Render Blueprint.
+#
+# This file MUST live at the repository root: Render's Blueprint scanner
+# looks for render.yaml at the repo root by default and will not discover it
+# automatically if it's nested in a subdirectory (confirmed against Render's
+# own docs: https://render.com/docs/blueprint-spec, https://render.com/docs/monorepo-support).
+# It was previously committed at server/render.yaml, which a default
+# Blueprint setup never finds -- and if the service was instead created by
+# hand in the Render dashboard (not via Blueprint) without setting
+# "Root Directory" to `server`, the build command (`pip install -r
+# requirements.txt`) and start command (`gunicorn app:app`) both run from the
+# repo root, where neither requirements.txt nor app.py exist -- so the build
+# or startup fails every time, independent of what's inside server/. That
+# mismatch, not the app code, is why the service still 404s no matter how
+# many times a fix inside server/ is redeployed.
+#
+# `rootDir: server` below scopes the build command, start command, and file
+# resolution to the server/ directory, so requirements.txt and app:app
+# resolve correctly relative to the repo root Render actually clones.
+services:
+  - type: web
+    name: toolflight-pdf2word
+    env: python
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --log-level info
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0

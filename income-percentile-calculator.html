@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Income Percentile Calculator — How Rich Am I? | ToolFlight</title>
+<meta name="description" content="Free income percentile calculator. See where your income ranks worldwide and in your country using purchasing-power-adjusted World Bank data. No signup, runs in your browser.">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#6D5EF5">
+<meta name="author" content="ToolFlight">
+<link rel="icon" href="assets/favicon.ico?v=20260801-2348" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg?v=20260801-2348">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=20260801-2348">
+<link rel="canonical" href="https://toolflight.com/income-percentile-calculator.html">
+
+<meta property="og:title" content="Income Percentile Calculator — How Rich Am I? | ToolFlight">
+<meta property="og:description" content="See where your income ranks worldwide and in your country using purchasing-power-adjusted World Bank data. Free, private, instant.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ToolFlight">
+<meta property="og:url" content="https://toolflight.com/income-percentile-calculator.html">
+<meta property="og:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Income Percentile Calculator — How Rich Am I? | ToolFlight">
+<meta name="twitter:description" content="See where your income ranks worldwide and in your country using purchasing-power-adjusted World Bank data.">
+<meta name="twitter:image" content="https://toolflight.com/assets/apple-touch-icon.png">
+
+<script>
+/* Runs synchronously, before CSS or body paint -- the only way to avoid a
+   flash of the wrong theme, since an external script (even with defer)
+   always executes after the DOM is parsed. Prefers a saved user choice over
+   the OS-level prefers-color-scheme, so a manual theme selection survives
+   navigating between ToolFlight's pages instead of resetting on every load. */
+(function(){
+  try{
+    var saved = localStorage.getItem('toolflight_theme');
+    var isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) document.documentElement.classList.add('dark');
+  }catch(e){}
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="css/style.css?v=20260813-1600">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ToolFlight",
+  "applicationCategory": "Utility",
+  "operatingSystem": "Any",
+  "description": "Free income percentile calculator. See where your income ranks worldwide and in your country using purchasing-power-adjusted World Bank data.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }
+</script>
+
+<style>
+
+#ipcApp{
+  --ipc-navy:#0B1B33; --ipc-navy-2:#132A4E;
+  --ipc-blue:#2563EB; --ipc-blue-soft:#EFF4FF; --ipc-blue-deep:#1D4ED8;
+  --ipc-green:#16A34A; --ipc-green-soft:#EFFAF3; --ipc-green-deep:#15803D;
+  --ipc-amber-bg:#FFF8E6; --ipc-amber-line:#F3D9A4; --ipc-amber-ink:#8A5A00;
+  --ipc-ink:#0F172A; --ipc-ink-2:#334155; --ipc-muted:#64748B; --ipc-line:#E2E8F0;
+  --ipc-bg:#F6F8FB; --ipc-card:#FFFFFF;
+  --ipc-radius:16px; --ipc-radius-sm:10px;
+  --ipc-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.06);
+}
+#ipcApp *{margin:0;padding:0;box-sizing:border-box}
+#ipcApp{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){
+  #ipcApp{scroll-behavior:auto}
+  #ipcApp *, #ipcApp *::before, #ipcApp *::after{animation-duration:.001s !important;transition-duration:.001s !important}
+}
+#ipcApp{background:transparent;color:var(--ipc-ink);line-height:1.55;-webkit-font-smoothing:antialiased;transition:color .3s ease}
+/* Dark-mode sync: the site toggles a single html.dark class (see the inline
+   head script + js/app.js applyTheme()); this widget was previously styled
+   with static light-only tokens that never responded to that class, which is
+   why toggling appeared to "do nothing" here even though the button itself
+   worked site-wide. Overriding the same --ipc-* custom properties under
+   html.dark keeps every component (cards, inputs, combobox, gauges, FAQ)
+   in sync with the rest of ToolFlight automatically. */
+html.dark #ipcApp{
+  --ipc-blue-soft:rgba(37,99,235,.16); --ipc-green-soft:rgba(22,163,74,.16);
+  --ipc-amber-bg:rgba(180,131,0,.16); --ipc-amber-line:rgba(211,166,63,.4); --ipc-amber-ink:#F2C568;
+  --ipc-ink:#F1F1F8; --ipc-ink-2:#C9D0E6; --ipc-muted:#9CA3C4; --ipc-line:rgba(255,255,255,.14);
+  --ipc-card:rgba(255,255,255,.06);
+  --ipc-shadow:0 20px 45px -20px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+html.dark #ipcApp .combo-panel{background:#181B2C;}
+html.dark #ipcApp .input,html.dark #ipcApp .select,html.dark #ipcApp .combo-toggle{background:rgba(255,255,255,.04);color:var(--ipc-ink);}
+html.dark #ipcApp .seg{background:rgba(255,255,255,.06);}
+html.dark #ipcApp .btn-ghost{background:rgba(255,255,255,.04);}
+html.dark #ipcApp .unavailable{background:rgba(255,255,255,.03);}
+html.dark #ipcApp .demo-banner .box{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35);color:#FCA5A5;}
+html.dark #ipcApp .share-icons button{background:rgba(255,255,255,.04);}
+#ipcApp a{color:var(--ipc-blue);text-decoration:none}
+#ipcApp a:hover{text-decoration:underline}
+#ipcApp button{font-family:inherit;cursor:pointer}
+#ipcApp :focus-visible{outline:3px solid var(--ipc-blue);outline-offset:2px;border-radius:6px}
+
+/* ---------- Site header ---------- */
+#ipcApp .site-header{background:var(--ipc-navy);color:#fff}
+#ipcApp .site-header .inner{max-width:1080px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px}
+#ipcApp .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:19px;color:#fff}
+#ipcApp .brand:hover{text-decoration:none}
+#ipcApp .brand svg{flex:none}
+#ipcApp .site-nav{display:none;gap:20px;font-size:14px;color:#C7D2E5}
+#ipcApp .site-nav a{color:#C7D2E5}
+#ipcApp .site-nav a.active{color:#fff;font-weight:600}
+#ipcApp .nav-badge{background:var(--ipc-blue);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px;margin-left:5px;vertical-align:middle}
+@media(min-width:820px){#ipcApp .site-nav{display:flex}}
+
+/* ---------- Breadcrumb ---------- */
+#ipcApp .crumbs{max-width:1080px;margin:0 auto;padding:14px 20px 0;font-size:13px;color:var(--ipc-muted)}
+#ipcApp .crumbs a{color:var(--ipc-muted)}
+#ipcApp .crumbs span[aria-current]{color:var(--ipc-ink-2);font-weight:600}
+
+/* ---------- Hero ---------- */
+#ipcApp .hero{max-width:1080px;margin:0 auto;padding:26px 20px 8px;text-align:center}
+#ipcApp .hero h1{font-size:clamp(34px,6vw,52px);font-weight:800;letter-spacing:-.02em}
+#ipcApp .hero .sub{color:var(--ipc-blue);font-size:clamp(15px,2.4vw,18px);margin-top:6px;font-weight:500}
+#ipcApp .hero .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ipc-muted);margin-bottom:6px}
+#ipcApp .trust{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 28px;margin:20px auto 0;max-width:760px}
+#ipcApp .trust .t{display:flex;align-items:center;gap:9px;text-align:left}
+#ipcApp .trust .t .ic{width:36px;height:36px;border-radius:99px;display:grid;place-items:center;flex:none}
+#ipcApp .trust .t b{display:block;font-size:13.5px}
+#ipcApp .trust .t small{color:var(--ipc-muted);font-size:12px}
+#ipcApp .ic-green{background:var(--ipc-green-soft);color:var(--ipc-green)}
+#ipcApp .ic-amber{background:#FFF4D6;color:#D97706}
+#ipcApp .ic-blue{background:var(--ipc-blue-soft);color:var(--ipc-blue)}
+
+/* ---------- Demo data banner ---------- */
+#ipcApp .demo-banner{max-width:1080px;margin:18px auto 0;padding:0 20px}
+#ipcApp .demo-banner .box{background:#FDF2F2;border:1px solid #F5C2C2;color:#8C1D1D;border-radius:var(--ipc-radius-sm);padding:10px 14px;font-size:13px}
+#ipcApp .demo-banner b{font-weight:700}
+
+/* ---------- Calculator card ---------- */
+#ipcApp .wrap{max-width:1080px;margin:0 auto;padding:20px}
+#ipcApp .calc-card{background:var(--ipc-card);border:1px solid var(--ipc-line);border-radius:var(--ipc-radius);box-shadow:var(--ipc-shadow);padding:24px}
+#ipcApp .calc-grid{display:grid;gap:24px}
+@media(min-width:860px){#ipcApp .calc-grid{grid-template-columns:1.1fr 1.1fr .9fr}}
+#ipcApp .step-label{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;margin-bottom:10px}
+#ipcApp .step-num{width:24px;height:24px;border-radius:99px;background:var(--ipc-blue);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;flex:none}
+#ipcApp .hint-icon{color:var(--ipc-muted);cursor:help;font-size:13px;border:1.5px solid var(--ipc-line);border-radius:99px;width:18px;height:18px;display:inline-grid;place-items:center;line-height:1}
+#ipcApp .field-row{display:flex;gap:10px}
+#ipcApp .input, #ipcApp .select{width:100%;border:1.5px solid var(--ipc-line);border-radius:var(--ipc-radius-sm);padding:12px 14px;font-size:17px;font-family:inherit;background:#fff;color:var(--ipc-ink)}
+#ipcApp .input:focus, #ipcApp .select:focus{border-color:var(--ipc-blue);outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+#ipcApp .input.err{border-color:#DC2626;box-shadow:0 0 0 3px rgba(220,38,38,.12)}
+#ipcApp .err-msg{color:#B91C1C;font-size:12.5px;margin-top:6px;display:none}
+#ipcApp .err-msg.show{display:block}
+#ipcApp #incomeInput{font-weight:600;font-variant-numeric:tabular-nums}
+#ipcApp .seg{display:flex;background:#EEF2F7;border-radius:99px;padding:4px;margin-top:12px;max-width:260px}
+#ipcApp .seg button{flex:1;border:0;background:transparent;border-radius:99px;padding:8px 0;font-size:14px;font-weight:600;color:var(--ipc-ink-2)}
+#ipcApp .seg button[aria-pressed="true"]{background:var(--ipc-blue);color:#fff}
+#ipcApp .currency-note{font-size:12.5px;color:var(--ipc-muted);margin-top:10px}
+
+/* combobox */
+#ipcApp .combo{position:relative}
+#ipcApp .combo-toggle{width:100%;display:flex;align-items:center;gap:10px;border:1.5px solid var(--ipc-line);border-radius:var(--ipc-radius-sm);background:#fff;padding:12px 14px;font-size:16px;text-align:left}
+#ipcApp .combo-toggle .flag{font-size:20px;line-height:1}
+#ipcApp .combo-toggle .chev{margin-left:auto;color:var(--ipc-muted)}
+#ipcApp .combo-panel{position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1.5px solid var(--ipc-line);border-radius:var(--ipc-radius-sm);box-shadow:var(--ipc-shadow);display:none;max-height:330px;overflow:hidden;flex-direction:column}
+#ipcApp .combo.open .combo-panel{display:flex}
+#ipcApp .combo-search{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ipc-line)}
+#ipcApp .combo-search input{border:0;outline:none;width:100%;font-size:15px;font-family:inherit}
+#ipcApp .combo-search svg{color:var(--ipc-muted);flex:none}
+#ipcApp .combo-list{overflow:auto;padding:6px;list-style:none}
+#ipcApp .combo-list li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:15px;cursor:pointer}
+#ipcApp .combo-list li .flag{font-size:19px}
+#ipcApp .combo-list li small{margin-left:auto;color:var(--ipc-muted);font-size:11px}
+#ipcApp .combo-list li[aria-selected="true"], #ipcApp .combo-list li.hl{background:var(--ipc-blue-soft)}
+#ipcApp .combo-list li.nodata small{color:#B45309}
+#ipcApp .combo-empty{padding:14px;color:var(--ipc-muted);font-size:14px;text-align:center}
+
+#ipcApp .cta-row{margin-top:22px;text-align:center}
+#ipcApp .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:0;border-radius:12px;font-size:16px;font-weight:700;padding:14px 28px;transition:transform .06s,box-shadow .15s}
+#ipcApp .btn:active{transform:translateY(1px)}
+#ipcApp .btn-primary{background:var(--ipc-blue);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.35)}
+#ipcApp .btn-primary:hover{background:var(--ipc-blue-deep)}
+#ipcApp .btn-ghost{background:#fff;border:1.5px solid var(--ipc-line);color:var(--ipc-ink-2);font-weight:600;font-size:14px;padding:10px 18px}
+#ipcApp .btn-ghost:hover{border-color:#CBD5E1}
+#ipcApp .btn-share{background:var(--ipc-green);color:#fff;width:100%;box-shadow:0 6px 16px rgba(22,163,74,.3)}
+#ipcApp .btn-share:hover{background:var(--ipc-green-deep)}
+
+/* ---------- Results ---------- */
+#ipcApp #results{display:none;scroll-margin-top:16px}
+#ipcApp #results.show{display:block}
+#ipcApp .res-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:34px 0 4px;flex-wrap:wrap}
+#ipcApp .res-head h2{font-size:26px;font-weight:800}
+#ipcApp .res-sub{color:var(--ipc-muted);font-size:13.5px;margin-bottom:16px}
+#ipcApp .res-grid{display:grid;gap:18px}
+@media(min-width:900px){#ipcApp .res-grid{grid-template-columns:1fr 1fr .95fr}}
+#ipcApp .res-card{background:var(--ipc-card);border:1px solid var(--ipc-line);border-radius:var(--ipc-radius);box-shadow:var(--ipc-shadow);padding:26px 24px;text-align:center;display:flex;flex-direction:column}
+#ipcApp .res-icon{width:64px;height:64px;border-radius:99px;display:grid;place-items:center;margin:0 auto 12px;font-size:30px}
+#ipcApp .res-icon.world{background:var(--ipc-blue-soft)}
+#ipcApp .res-icon.country{background:var(--ipc-green-soft)}
+#ipcApp .res-card h3{font-size:21px;font-weight:800}
+#ipcApp .res-card .lead-in{color:var(--ipc-muted);font-size:14px;margin-top:8px}
+#ipcApp .top-pct{font-weight:800;letter-spacing:-.03em;line-height:1;margin:8px 0 4px;font-variant-numeric:tabular-nums}
+#ipcApp .top-pct .word{font-size:clamp(34px,5vw,46px)}
+#ipcApp .top-pct .num{font-size:clamp(44px,7vw,64px)}
+#ipcApp .top-pct .pctsign{font-size:clamp(22px,3.4vw,30px);vertical-align:super}
+#ipcApp .c-blue{color:var(--ipc-blue)} #ipcApp .c-green{color:var(--ipc-green)}
+#ipcApp .gauge{position:relative;height:6px;background:#E5EAF2;border-radius:99px;margin:18px 4px 6px}
+#ipcApp .gauge .fill{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+#ipcApp .gauge .dot{position:absolute;top:50%;width:18px;height:18px;border-radius:99px;border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 1px 4px rgba(15,23,42,.3)}
+#ipcApp .gauge-ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ipc-muted);padding:0 4px;margin-bottom:14px}
+#ipcApp .earn-line{font-size:14.5px;color:var(--ipc-ink-2)}
+#ipcApp .earn-line b{font-size:22px;display:block;margin:2px 0}
+#ipcApp .pop-chip{margin-top:auto;padding:12px 14px;border-radius:var(--ipc-radius-sm);font-size:13px;display:flex;gap:10px;align-items:center;text-align:left;margin-top:16px}
+#ipcApp .pop-chip.blue{background:var(--ipc-blue-soft);color:#1E3A8A}
+#ipcApp .pop-chip.green{background:var(--ipc-green-soft);color:#14532D}
+#ipcApp .pop-chip svg{flex:none}
+#ipcApp .unavailable{background:#F8FAFC;border:1.5px dashed var(--ipc-line);color:var(--ipc-muted);border-radius:var(--ipc-radius-sm);padding:18px;font-size:14px;margin-top:14px;text-align:left}
+#ipcApp .unavailable b{color:var(--ipc-ink-2)}
+
+/* share column */
+#ipcApp .share-card-col h3{font-size:19px;font-weight:800;text-align:center}
+#ipcApp .share-card-col .sub{text-align:center;color:var(--ipc-muted);font-size:13.5px;margin:4px 0 14px}
+#ipcApp .card-preview-wrap{border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(11,27,51,.35)}
+#ipcApp #cardCanvas{display:block;width:100%;height:auto}
+#ipcApp .share-actions{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+#ipcApp .share-icons{display:flex;gap:10px;justify-content:center}
+#ipcApp .share-icons button{width:46px;height:46px;border-radius:12px;border:1.5px solid var(--ipc-line);background:#fff;display:grid;place-items:center}
+#ipcApp .share-icons button:hover{border-color:#CBD5E1}
+#ipcApp .privacy-toggle{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--ipc-muted);justify-content:center;margin-top:4px}
+#ipcApp .privacy-toggle input{accent-color:var(--ipc-blue);width:15px;height:15px}
+
+/* notice */
+#ipcApp .notice{margin-top:22px;background:var(--ipc-amber-bg);border:1px solid var(--ipc-amber-line);border-radius:var(--ipc-radius-sm);padding:14px 16px;font-size:14px;color:var(--ipc-amber-ink);display:flex;gap:11px}
+#ipcApp .notice svg{flex:none;margin-top:1px}
+#ipcApp .notice b{color:#713F00}
+
+/* ---------- Info sections ---------- */
+#ipcApp .info-grid{display:grid;gap:18px;margin-top:34px}
+@media(min-width:900px){#ipcApp .info-grid{grid-template-columns:1fr 1fr 1fr}}
+#ipcApp .info-card{background:var(--ipc-card);border:1px solid var(--ipc-line);border-radius:var(--ipc-radius);box-shadow:var(--ipc-shadow);padding:22px}
+#ipcApp .info-card h3{font-size:17px;font-weight:800;margin-bottom:10px}
+#ipcApp .info-card p{font-size:14px;color:var(--ipc-ink-2);margin-bottom:10px}
+#ipcApp .info-card ul{list-style:none;font-size:14px;color:var(--ipc-ink-2)}
+#ipcApp .info-card ul li{display:flex;gap:9px;margin-bottom:8px;align-items:flex-start}
+#ipcApp .info-card ul li svg{color:var(--ipc-green);flex:none;margin-top:3px}
+#ipcApp .kv{font-size:14px;color:var(--ipc-ink-2)}
+#ipcApp .kv b{color:var(--ipc-ink)}
+
+#ipcApp .prose{max-width:820px;margin:44px auto 0}
+#ipcApp .prose h2{font-size:24px;font-weight:800;margin:34px 0 12px}
+#ipcApp .prose h3{font-size:17px;font-weight:700;margin:22px 0 8px}
+#ipcApp .prose p{color:var(--ipc-ink-2);font-size:15px;margin-bottom:12px}
+#ipcApp details.faq{background:var(--ipc-card);border:1px solid var(--ipc-line);border-radius:var(--ipc-radius-sm);margin-bottom:10px}
+#ipcApp details.faq summary{padding:14px 16px;font-weight:600;font-size:15px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:12px}
+#ipcApp details.faq summary::-webkit-details-marker{display:none}
+#ipcApp details.faq summary::after{content:"+";color:var(--ipc-muted);font-weight:400}
+#ipcApp details.faq[open] summary::after{content:"–"}
+#ipcApp details.faq .a{padding:0 16px 14px;font-size:14px;color:var(--ipc-ink-2)}
+
+/* internal links */
+#ipcApp .more-tools{margin:48px 0 8px}
+#ipcApp .more-tools h2{text-align:center;font-size:19px;font-weight:800;margin-bottom:18px}
+#ipcApp .tools-row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+#ipcApp .tool-card{background:var(--ipc-card);border:1px solid var(--ipc-line);border-radius:var(--ipc-radius-sm);padding:16px;display:flex;gap:12px;align-items:center;transition:border-color .15s,transform .1s}
+#ipcApp .tool-card:hover{border-color:var(--ipc-blue);text-decoration:none;transform:translateY(-1px)}
+#ipcApp .tool-card .tic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;font-size:17px}
+#ipcApp .tool-card b{display:block;font-size:14px;color:var(--ipc-ink)}
+#ipcApp .tool-card small{color:var(--ipc-muted);font-size:12px}
+
+#ipcApp .foot{max-width:1080px;margin:30px auto;padding:0 20px 40px;text-align:center;color:var(--ipc-muted);font-size:12.5px}
+#ipcApp .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+</style>
+
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;">
+      ToolFlight
+    </a>
+    <div class="nav-links mobile-hide">
+      <a href="index.html" data-page="index.html">Home</a>
+      <a href="pdf-tools.html" data-page="pdf-tools.html">PDF Tools</a>
+      <a href="image-tools.html" data-page="image-tools.html">Image Tools</a>
+      <a href="calculators.html" data-page="calculators.html">Calculators</a>
+      <a href="finance-tools.html" data-page="finance-tools.html">Finance Tools</a>
+      <a href="seo-tools.html" data-page="seo-tools.html">SEO Tools</a>
+      <a href="ai-tools.html" data-page="ai-tools.html">AI Tools</a>
+      <a href="blog.html" data-page="blog.html">Blog</a>
+      
+    </div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" type="button">
+      <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="hero-sub">
+  <nav aria-label="Breadcrumb" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+  <a href="index.html" style="color:var(--ink-soft);text-decoration:none;">Home</a>
+  <span style="margin:0 6px;">/</span>
+  <a href="finance-tools.html" style="color:var(--ink-soft);text-decoration:none;">Finance Tools</a>
+  <span style="margin:0 6px;">/</span>
+  <span style="color:var(--ink);font-weight:600;">Income Percentile Calculator</span>
+</nav>
+  <h1>Income Percentile Calculator</h1>
+  <p class="subtitle">"How Rich Am I?" — see where your income ranks in your country and around the world.</p>
+</div>
+
+<div class="container">
+  <div class="row" style="margin:0 0 18px;">
+    <a href="finance-tools.html" class="btn btn-back" style="flex:0;min-width:auto;">Back to Finance Tools</a>
+  </div>
+
+  <div id="ipcApp">
+<div class="demo-banner" id="demoBanner" hidden>
+  <div class="box" role="status"><b>Demo dataset active.</b> The numbers below are synthetic placeholders for UI preview only — they are <b>not real statistics</b>. Build the production dataset with <code>scripts/build_dataset.py</code> (World Bank PIP, CC0) to get real percentiles.</div>
+</div>
+
+
+
+  <!-- ============ CALCULATOR ============ -->
+  <section class="calc-card" aria-labelledby="calcTitle">
+    <h2 id="calcTitle" class="sr-only">Calculate your income percentile</h2>
+    <form id="calcForm" novalidate>
+      <div class="calc-grid">
+        <div>
+          <div class="step-label"><span class="step-num">1</span><label for="incomeInput" id="incomeLabel">Your Annual Income</label>
+            <span class="hint-icon" tabindex="0" role="note" aria-label="Enter your personal income before tax, in the currency you choose in step 3.">?</span>
+          </div>
+          <div class="field-row">
+            <input class="input" id="incomeInput" inputmode="decimal" autocomplete="off" placeholder="24,000" aria-describedby="incomeErr" style="flex:1.6">
+            <select class="select" id="quickCurrency" aria-label="Currency code" style="flex:1"></select>
+          </div>
+          <p class="err-msg" id="incomeErr" role="alert"></p>
+          <div class="seg" role="group" aria-label="Income period">
+            <button type="button" id="periodAnnual" aria-pressed="true">Annual</button>
+            <button type="button" id="periodMonthly" aria-pressed="false">Monthly</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="step-label"><span class="step-num">2</span><span id="countryLabel">Where do you live?</span></div>
+          <div class="combo" id="countryCombo">
+            <button type="button" class="combo-toggle" id="comboToggle" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="countryLabel comboToggle">
+              <span class="flag" id="comboFlag" aria-hidden="true">🌍</span>
+              <span id="comboText">Select country</span>
+              <span class="chev" aria-hidden="true">▾</span>
+            </button>
+            <div class="combo-panel">
+              <div class="combo-search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="text" id="comboSearch" placeholder="Search country" aria-label="Search country" autocomplete="off">
+              </div>
+              <ul class="combo-list" id="comboList" role="listbox" aria-labelledby="countryLabel" tabindex="-1"></ul>
+            </div>
+          </div>
+          <p class="currency-note" id="coverageNote"></p>
+        </div>
+
+        <div>
+          <div class="step-label"><span class="step-num">3</span><label for="currencySelect">Currency</label></div>
+          <select class="select" id="currencySelect"></select>
+          <p class="currency-note">We'll convert using <b>PPP</b> (purchasing power parity). Entering your country's own currency gives the most accurate result; other currencies use that currency's home-economy PPP factor.</p>
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button type="submit" class="btn btn-primary" id="calcBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 20h18M6 16v-5m6 5V8m6 8v-9"/></svg>
+          Calculate My Percentile
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" aria-labelledby="resultsTitle">
+    <div class="res-head">
+      <h2 id="resultsTitle">Your Income Rank 🎉</h2>
+      <button type="button" class="btn btn-ghost" id="tryAgainBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        Try Again
+      </button>
+    </div>
+    <p class="res-sub" id="resSub">Your results are estimated using purchasing-power-adjusted income data.</p>
+
+    <div class="res-grid">
+      <!-- World -->
+      <article class="res-card" id="worldCard" aria-label="Worldwide result">
+        <div class="res-icon world" aria-hidden="true">🌐</div>
+        <h3>Worldwide</h3>
+        <p class="lead-in">You are in the</p>
+        <div class="top-pct c-blue"><span class="word">TOP</span> <span class="num" id="worldTopNum">–</span><span class="pctsign">%</span></div>
+        <div class="gauge" aria-hidden="true"><div class="fill" id="worldFill" style="background:var(--ipc-blue)"></div><div class="dot" id="worldDot" style="background:var(--ipc-blue)"></div></div>
+        <div class="gauge-ends"><span>Richer</span><span>Poorer</span></div>
+        <p class="earn-line">You earn more than approximately <b class="c-blue" id="worldPct">–%</b> of people worldwide.</p>
+        <div class="pop-chip blue" id="worldPop">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.6c2.4.2 4.3 1.6 4.9 4.4"/></svg>
+          <span id="worldPopText"></span>
+        </div>
+      </article>
+
+      <!-- Country -->
+      <article class="res-card" id="countryCard" aria-label="Country result">
+        <div class="res-icon country" aria-hidden="true" id="countryIcon">🏳️</div>
+        <h3 id="countryName">Your Country</h3>
+        <div id="countryHasData">
+          <p class="lead-in">You are in the</p>
+          <div class="top-pct c-green"><span class="word">TOP</span> <span class="num" id="countryTopNum">–</span><span class="pctsign">%</span></div>
+          <div class="gauge" aria-hidden="true"><div class="fill" id="countryFill" style="background:var(--ipc-green)"></div><div class="dot" id="countryDot" style="background:var(--ipc-green)"></div></div>
+          <div class="gauge-ends"><span>Richer</span><span>Poorer</span></div>
+          <p class="earn-line">You earn more than approximately <b class="c-green" id="countryPct">–%</b> of people in <span id="countryNameInline">your country</span>.</p>
+          <div class="pop-chip green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.6c2.4.2 4.3 1.6 4.9 4.4"/></svg>
+            <span id="countryPopText"></span>
+          </div>
+        </div>
+        <div id="countryNoData" hidden>
+          <div class="unavailable">
+            <b>Worldwide result available ✓</b><br><br>
+            A country-specific percentile isn't currently available for this location because comparable income-distribution data is unavailable in the underlying dataset. We never estimate a percentile without real data.
+          </div>
+        </div>
+      </article>
+
+      <!-- Share -->
+      <aside class="res-card share-card-col" aria-label="Share your result">
+        <h3>Share Your Result</h3>
+        <p class="sub">Let others see where you rank!</p>
+        <div class="card-preview-wrap"><canvas id="cardCanvas" width="1080" height="1080" role="img" aria-label="Shareable result card preview"></canvas></div>
+        <div class="share-actions">
+          <button type="button" class="btn btn-share" id="shareBtn">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="6" cy="12" r="2.6"/><circle cx="17" cy="6" r="2.6"/><circle cx="17" cy="18" r="2.6"/><path d="m8.4 10.8 6.2-3.6m-6.2 6 6.2 3.6"/></svg>
+            Share My Result
+          </button>
+          <div class="share-icons">
+            <button type="button" id="waBtn" aria-label="Share on WhatsApp" title="WhatsApp"><svg width="21" height="21" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.7 14.9L2 22l5.3-1.3A10 10 0 1 0 12 2zm5.2 13.9c-.2.6-1.2 1.2-1.7 1.2-.4.1-1 .1-1.6-.1-2.7-.9-4.6-3.1-5.7-5.1-.4-.7-.7-1.6-.2-2.3.2-.4.6-.6 1-.6h.5c.2 0 .4 0 .5.4l.7 1.7c.1.2 0 .4-.1.5l-.4.5c-.1.2-.2.3-.1.5.5 1 1.6 2 2.8 2.5.2.1.4.1.5-.1l.6-.7c.1-.2.3-.2.5-.1l1.7.8c.2.1.4.2.4.4 0 .1 0 .3-.1.5z"/></svg></button>
+            <button type="button" id="fbBtn" aria-label="Share on Facebook" title="Facebook"><svg width="21" height="21" viewBox="0 0 24 24" fill="#1877F2"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.4h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.5 2.9h-2.3v7A10 10 0 0 0 22 12z"/></svg></button>
+            <button type="button" id="twBtn" aria-label="Share on X" title="X / Twitter"><svg width="19" height="19" viewBox="0 0 24 24" fill="#0F172A"><path d="M17.5 3h3.1l-6.8 7.8L22 21h-6.3l-4.9-6.4L5.2 21H2.1l7.3-8.4L2 3h6.4l4.5 5.9L17.5 3zm-1.1 16.1h1.7L7.6 4.8H5.8l10.6 14.3z"/></svg></button>
+            <button type="button" id="copyBtn" aria-label="Copy result link" title="Copy link"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" aria-hidden="true"><path d="M10 13.5a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.6 1.6"/><path d="M14 10.5a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.6-1.6"/></svg></button>
+          </div>
+          <button type="button" class="btn btn-ghost" id="downloadBtn" style="width:100%">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+            Download Card
+          </button>
+          <label class="privacy-toggle"><input type="checkbox" id="showIncomeToggle"> Show my exact income on the card <span title="Off by default for your privacy">🔒</span></label>
+        </div>
+      </aside>
+    </div>
+
+    <div class="notice">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true"><path d="M12 3a6 6 0 0 0-3.5 10.9c.8.6 1 1.4 1 2.1h5c0-.7.2-1.5 1-2.1A6 6 0 0 0 12 3z"/><path d="M9.5 19h5M10.5 22h3"/></svg>
+      <div><b>Important: Income ≠ Wealth.</b> This calculator shows your <b>income percentile</b>, not your total wealth. Results are estimates based on the latest available survey data — see the methodology below.</div>
+    </div>
+  </section>
+
+  <!-- ============ INFO CARDS ============ -->
+  <div class="info-grid">
+    <div class="info-card">
+      <h3>What is Income Percentile?</h3>
+      <p>Income percentile shows the percentage of people you earn more than.</p>
+      <p>For example, if you're in the 80th percentile, you earn more than 80% of people.</p>
+      <a class="btn btn-ghost" href="#what-is-income-percentile" style="margin-top:4px">Learn more</a>
+    </div>
+    <div class="info-card">
+      <h3>How We Calculate</h3>
+      <ul>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m4 12.5 5 5L20 6.5"/></svg>Uses PPP (Purchasing Power Parity)</li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m4 12.5 5 5L20 6.5"/></svg>Compares income across countries</li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m4 12.5 5 5L20 6.5"/></svg>Based on World Bank &amp; official data</li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m4 12.5 5 5L20 6.5"/></svg>Fully private &amp; runs in your browser</li>
+      </ul>
+      <a class="btn btn-ghost" href="#methodology" style="margin-top:8px">Methodology</a>
+    </div>
+    <div class="info-card">
+      <h3>Data Source</h3>
+      <p class="kv">World Bank <b>Poverty &amp; Inequality Platform (PIP)</b> percentile distributions.</p>
+      <p class="kv"><b>Dataset:</b> <span id="metaDataset">–</span><br>
+      <b>PPP basis:</b> <span id="metaPPP">–</span><br>
+      <b>Generated:</b> <span id="metaUpdated">–</span></p>
+      <a class="btn btn-ghost" href="#methodology" style="margin-top:4px">View sources</a>
+    </div>
+  </div>
+
+  <!-- ============ SEO CONTENT ============ -->
+  <div class="prose">
+    <h2 id="what-is-income-percentile">What is an income percentile?</h2>
+    <p>An income percentile tells you what share of a population earns less than you. If your income is at the 82nd percentile worldwide, roughly 82% of people in the world live on less income than you do, and about 18% live on more — putting you in the "top 18%". It is a way of turning a raw salary number into a rank that is easy to understand and compare.</p>
+
+    <h2>How is the income percentile calculated?</h2>
+    <p>Your income is first converted into international dollars using purchasing-power-parity (PPP) conversion factors, so that a salary in rupees, euros, or dollars is compared on the basis of what it can actually buy. That PPP-adjusted amount is then located within a distribution of incomes — a table of 100 income thresholds, one per percentile, derived from household survey data. When your income falls between two thresholds, we interpolate between them to estimate your exact percentile. The same lookup is done twice: once against your country's distribution and once against the global distribution.</p>
+
+    <h2>How does the worldwide comparison work?</h2>
+    <p>The global distribution is not an average of country percentiles. It comes from the World Bank's binned global distribution, which pools the survey-based income distributions of all covered economies, orders the entire world population from poorest to richest, and reads off the income level at each percentile. Your PPP-adjusted income is placed directly into that pooled distribution.</p>
+
+    <h2>How does the country comparison work?</h2>
+    <p>Each covered economy has its own 100-point percentile table from the World Bank's Poverty and Inequality Platform, based on that country's most recent household survey. Your PPP-adjusted income is compared against your country's own table. This is why the two numbers can differ so much: an income that is ordinary in one country can be near the top of the distribution globally, or the other way around.</p>
+
+    <h2>What is PPP?</h2>
+    <p>Purchasing power parity (PPP) adjusts for the fact that a dollar buys different amounts in different countries. Converting incomes with market exchange rates would make people in countries with low price levels look poorer than they really are. PPP conversion expresses every income in "international dollars" with the same purchasing power, which is the standard approach used by the World Bank for global poverty and inequality statistics — and the approach this calculator uses.</p>
+
+    <h2>Income vs wealth</h2>
+    <p>Income is what you earn in a period — salary, business income, benefits. Wealth is what you own minus what you owe — savings, property, investments, debt. This tool measures <strong>income percentile only</strong>. A high income percentile does not necessarily mean high wealth, and "How Rich Am I?" is a curiosity hook, not a financial assessment. Nothing on this page is financial advice.</p>
+
+    <h2>Why is the result an estimate?</h2>
+    <p>Survey data measures household income or consumption per person, collected in different years across countries and extrapolated forward; your input is your personal income today. Definitions (gross vs disposable, income vs consumption), survey timing, and PPP revisions all introduce differences. Different calculators use different datasets and definitions, which is why results can vary between tools. Treat the output as a well-founded estimate, not an exact measurement.</p>
+
+    <h2 id="methodology">Data source and methodology</h2>
+    <p><strong>Primary source:</strong> World Bank Poverty and Inequality Platform (PIP) Percentiles database — 100 income/consumption thresholds per country-year, in 2021 PPP international dollars (license: CC0). <strong>Global distribution:</strong> World Bank binned global distribution, pooled across all covered economies. <strong>Currency conversion:</strong> World Bank PPP conversion factors (LCU per international $, private consumption). <strong>Population:</strong> UN/World Bank population estimates, used only for the "you earn more than ~X people" figures.</p>
+    <p><strong>Income definition:</strong> the underlying surveys measure household disposable income or consumption per capita; entering your personal gross income will typically place you somewhat <em>higher</em> than a strict like-for-like comparison would. <strong>Interpolation:</strong> log-linear between adjacent percentile thresholds; results are capped at "Top 1%" (and "Top 0.1%" where the data supports it) rather than fabricating precision in the extreme tail. Where a country has no comparable distribution data, we show the worldwide result only and say so — we never invent a country percentile. Full methodology, dataset version and per-country coverage are documented in the dataset metadata shipped with this page.</p>
+
+    <h2>FAQ</h2>
+    <details class="faq"><summary>Is my income stored or sent anywhere?</summary><div class="a">No. The calculation runs entirely in your browser against a bundled dataset. Your income amount is never sent to a server, never stored, and never included in analytics events or share links.</div></details>
+    <details class="faq"><summary>Should I enter gross or net income?</summary><div class="a">Enter your gross (pre-tax) annual income for consistency. The underlying survey data is mostly disposable income or consumption, so gross input tends to slightly overstate your rank — the result page notes this.</div></details>
+    <details class="faq"><summary>Why is my country not supported?</summary><div class="a">Some economies have no recent comparable household survey in the World Bank dataset. You can still select them and get your worldwide percentile; we simply won't show a country percentile we can't back with real data.</div></details>
+    <details class="faq"><summary>Does the share card reveal my salary?</summary><div class="a">No. By default the card shows only your percentiles ("Top 18% worldwide"), never the income you entered. You can optionally choose to display it.</div></details>
+    <details class="faq"><summary>Why do other calculators give different numbers?</summary><div class="a">Different tools use different datasets (PIP vs WID vs national statistics), different income definitions (gross vs disposable, individual vs household), different PPP base years, and different survey years. All can be internally consistent yet disagree.</div></details>
+  </div>
+
+  
+
+
+    <!-- ============ RELATED FINANCE TOOLS ============ -->
+    <h2 style="font-size:18px;font-weight:800;margin:28px 0 8px;">Related Finance Tools</h2>
+    <div class="related-grid">
+      <a href="currency-converter.html" class="blog-card" data-tf-internal><span class="blog-tag">Calculator</span><h3>Currency Converter</h3><p>Live exchange rates for 25+ currencies, updated daily.</p></a>
+      <a href="emi-calculator.html" class="blog-card" data-tf-internal><span class="blog-tag">Calculator</span><h3>EMI / Loan Calculator</h3><p>Monthly payment, total interest, and total payment for any loan.</p></a>
+      <a href="gst-calculator.html" class="blog-card" data-tf-internal><span class="blog-tag">Calculator</span><h3>GST / VAT Calculator</h3><p>Add or remove tax from any amount instantly.</p></a>
+    </div>
+  </div>
+</div>
+
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://toolflight.com/"}, {"@type": "ListItem", "position": 2, "name": "Finance Tools", "item": "https://toolflight.com/finance-tools.html"}, {"@type": "ListItem", "position": 3, "name": "Income Percentile Calculator", "item": "https://toolflight.com/income-percentile-calculator.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Income Percentile Calculator", "description": "Free income percentile calculator. See where your income ranks worldwide and in your country using purchasing-power-adjusted World Bank data.", "url": "https://toolflight.com/income-percentile-calculator.html"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Income Percentile Calculator", "applicationCategory": "FinanceApplication", "operatingSystem": "Any", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+{"@type": "Question", "name": "Is my income stored or sent anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No. The calculation runs entirely in your browser against a bundled dataset. Your income amount is never sent to a server, never stored, and never included in analytics events or share links."}},
+{"@type": "Question", "name": "Should I enter gross or net income?", "acceptedAnswer": {"@type": "Answer", "text": "Enter your gross (pre-tax) annual income for consistency. The underlying survey data is mostly disposable income or consumption, so gross input tends to slightly overstate your rank."}},
+{"@type": "Question", "name": "Why is my country not supported?", "acceptedAnswer": {"@type": "Answer", "text": "Some economies have no recent comparable household survey in the World Bank dataset. You can still select them and get your worldwide percentile; we simply won't show a country percentile we can't back with real data."}},
+{"@type": "Question", "name": "Does the share card reveal my salary?", "acceptedAnswer": {"@type": "Answer", "text": "No. By default the card shows only your percentiles (\"Top 18% worldwide\"), never the income you entered. You can optionally choose to display it."}},
+{"@type": "Question", "name": "Why do other calculators give different numbers?", "acceptedAnswer": {"@type": "Answer", "text": "Different tools use different datasets (PIP vs WID vs national statistics), different income definitions (gross vs disposable, individual vs household), different PPP base years, and different survey years. All can be internally consistent yet disagree."}}
+]}</script>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="logo" style="margin-bottom:10px;"><img src="assets/logo.svg?v=20260801-2348" alt="ToolFlight logo" width="30" height="30" style="border-radius:9px;"> ToolFlight</div>
+        <p style="font-size:13px;color:var(--ink-soft);max-width:260px;line-height:1.6;">Free PDF, image, calculator, finance, and SEO tools that respect your privacy — most run locally in your browser.</p>
+      </div>
+      <div>
+        <h4>Tools</h4>
+        <a href="pdf-tools.html">PDF Tools</a>
+        <a href="image-tools.html">Image Tools</a>
+        <a href="calculators.html">Calculators</a>
+        <a href="finance-tools.html">Finance Tools</a>
+        <a href="seo-tools.html">SEO Tools</a>
+        <a href="ai-tools.html">AI Tools</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="index.html#about-section">About</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="contact.html">Contact</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+        <a href="#" onclick="openLegal('terms');return false;">Terms of Service</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© <span id="year"></span> ToolFlight. All core tools are processed locally in your browser.</div>
+  </div>
+</footer>
+
+<div class="legal-modal" id="legalModal">
+  <div class="legal-box">
+    <button class="legal-close" onclick="closeLegal()" type="button">✕</button>
+    <div id="legalContent"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+<script>
+
+"use strict";
+/* =====================================================================
+   ToolFlight · Income Percentile Calculator
+   Client-side only. No income value ever leaves the browser.
+   Production data: data/income-data-vYYYY.json built by scripts/build_dataset.py
+   (World Bank PIP Percentiles, CC0, 2021 PPP). If that file is absent, a
+   clearly-flagged SYNTHETIC demo dataset is used and a banner is shown.
+   ===================================================================== */
+
+/* ---------- 1. Analytics stub (privacy-guarded) ---------- */
+const FORBIDDEN_PROPS = ["income","amount","salary","value","raw","annual","monthly"];
+function tfTrack(event, props={}){
+  const clean = {};
+  for(const k of Object.keys(props)){
+    if(FORBIDDEN_PROPS.some(f => k.toLowerCase().includes(f))) continue; // never send income
+    clean[k] = props[k];
+  }
+  try{ (window.dataLayer = window.dataLayer || []).push({event, ...clean}); }catch(e){}
+  if(location.hostname === "localhost" || location.protocol === "file:") console.debug("[analytics]", event, clean);
+}
+
+/* ---------- 2. Country / currency reference (ISO 3166-1 alpha-2 + ISO 4217) ----------
+   Static reference facts (names, codes, currencies) — not statistical data.       */
+const COUNTRIES = [
+["AF","Afghanistan","AFN"],
+["AL","Albania","ALL"],
+["DZ","Algeria","DZD"],
+["AD","Andorra","EUR"],
+["AO","Angola","AOA"],
+["AG","Antigua and Barbuda","XCD"],
+["AR","Argentina","ARS"],
+["AM","Armenia","AMD"],
+["AU","Australia","AUD"],
+["AT","Austria","EUR"],
+["AZ","Azerbaijan","AZN"],
+["BS","Bahamas","BSD"],
+["BH","Bahrain","BHD"],
+["BD","Bangladesh","BDT"],
+["BB","Barbados","BBD"],
+["BY","Belarus","BYN"],
+["BE","Belgium","EUR"],
+["BZ","Belize","BZD"],
+["BJ","Benin","XOF"],
+["BT","Bhutan","BTN"],
+["BO","Bolivia","BOB"],
+["BA","Bosnia and Herzegovina","BAM"],
+["BW","Botswana","BWP"],
+["BR","Brazil","BRL"],
+["BN","Brunei","BND"],
+["BG","Bulgaria","BGN"],
+["BF","Burkina Faso","XOF"],
+["BI","Burundi","BIF"],
+["CV","Cabo Verde","CVE"],
+["KH","Cambodia","KHR"],
+["CM","Cameroon","XAF"],
+["CA","Canada","CAD"],
+["CF","Central African Republic","XAF"],
+["TD","Chad","XAF"],
+["CL","Chile","CLP"],
+["CN","China","CNY"],
+["CO","Colombia","COP"],
+["KM","Comoros","KMF"],
+["CD","Congo, Dem. Rep.","CDF"],
+["CG","Congo, Rep.","XAF"],
+["CR","Costa Rica","CRC"],
+["HR","Croatia","EUR"],
+["CU","Cuba","CUP"],
+["CY","Cyprus","EUR"],
+["CZ","Czechia","CZK"],
+["CI","Côte d'Ivoire","XOF"],
+["DK","Denmark","DKK"],
+["DJ","Djibouti","DJF"],
+["DM","Dominica","XCD"],
+["DO","Dominican Republic","DOP"],
+["EC","Ecuador","USD"],
+["EG","Egypt","EGP"],
+["SV","El Salvador","USD"],
+["GQ","Equatorial Guinea","XAF"],
+["ER","Eritrea","ERN"],
+["EE","Estonia","EUR"],
+["SZ","Eswatini","SZL"],
+["ET","Ethiopia","ETB"],
+["FJ","Fiji","FJD"],
+["FI","Finland","EUR"],
+["FR","France","EUR"],
+["GA","Gabon","XAF"],
+["GM","Gambia","GMD"],
+["GE","Georgia","GEL"],
+["DE","Germany","EUR"],
+["GH","Ghana","GHS"],
+["GR","Greece","EUR"],
+["GD","Grenada","XCD"],
+["GT","Guatemala","GTQ"],
+["GN","Guinea","GNF"],
+["GW","Guinea-Bissau","XOF"],
+["GY","Guyana","GYD"],
+["HT","Haiti","HTG"],
+["HN","Honduras","HNL"],
+["HK","Hong Kong SAR","HKD"],
+["HU","Hungary","HUF"],
+["IS","Iceland","ISK"],
+["IN","India","INR"],
+["ID","Indonesia","IDR"],
+["IR","Iran","IRR"],
+["IQ","Iraq","IQD"],
+["IE","Ireland","EUR"],
+["IL","Israel","ILS"],
+["IT","Italy","EUR"],
+["JM","Jamaica","JMD"],
+["JP","Japan","JPY"],
+["JO","Jordan","JOD"],
+["KZ","Kazakhstan","KZT"],
+["KE","Kenya","KES"],
+["KI","Kiribati","AUD"],
+["KR","Korea, Rep.","KRW"],
+["XK","Kosovo","EUR"],
+["KW","Kuwait","KWD"],
+["KG","Kyrgyzstan","KGS"],
+["LA","Laos","LAK"],
+["LV","Latvia","EUR"],
+["LB","Lebanon","LBP"],
+["LS","Lesotho","LSL"],
+["LR","Liberia","LRD"],
+["LY","Libya","LYD"],
+["LI","Liechtenstein","CHF"],
+["LT","Lithuania","EUR"],
+["LU","Luxembourg","EUR"],
+["MG","Madagascar","MGA"],
+["MW","Malawi","MWK"],
+["MY","Malaysia","MYR"],
+["MV","Maldives","MVR"],
+["ML","Mali","XOF"],
+["MT","Malta","EUR"],
+["MH","Marshall Islands","USD"],
+["MR","Mauritania","MRU"],
+["MU","Mauritius","MUR"],
+["MX","Mexico","MXN"],
+["FM","Micronesia","USD"],
+["MD","Moldova","MDL"],
+["MC","Monaco","EUR"],
+["MN","Mongolia","MNT"],
+["ME","Montenegro","EUR"],
+["MA","Morocco","MAD"],
+["MZ","Mozambique","MZN"],
+["MM","Myanmar","MMK"],
+["NA","Namibia","NAD"],
+["NR","Nauru","AUD"],
+["NP","Nepal","NPR"],
+["NL","Netherlands","EUR"],
+["NZ","New Zealand","NZD"],
+["NI","Nicaragua","NIO"],
+["NE","Niger","XOF"],
+["NG","Nigeria","NGN"],
+["KP","North Korea","KPW"],
+["MK","North Macedonia","MKD"],
+["NO","Norway","NOK"],
+["OM","Oman","OMR"],
+["PK","Pakistan","PKR"],
+["PW","Palau","USD"],
+["PS","Palestine","ILS"],
+["PA","Panama","PAB"],
+["PG","Papua New Guinea","PGK"],
+["PY","Paraguay","PYG"],
+["PE","Peru","PEN"],
+["PH","Philippines","PHP"],
+["PL","Poland","PLN"],
+["PT","Portugal","EUR"],
+["QA","Qatar","QAR"],
+["RO","Romania","RON"],
+["RU","Russia","RUB"],
+["RW","Rwanda","RWF"],
+["WS","Samoa","WST"],
+["SM","San Marino","EUR"],
+["SA","Saudi Arabia","SAR"],
+["SN","Senegal","XOF"],
+["RS","Serbia","RSD"],
+["SC","Seychelles","SCR"],
+["SL","Sierra Leone","SLE"],
+["SG","Singapore","SGD"],
+["SK","Slovakia","EUR"],
+["SI","Slovenia","EUR"],
+["SB","Solomon Islands","SBD"],
+["SO","Somalia","SOS"],
+["ZA","South Africa","ZAR"],
+["SS","South Sudan","SSP"],
+["ES","Spain","EUR"],
+["LK","Sri Lanka","LKR"],
+["KN","St. Kitts and Nevis","XCD"],
+["LC","St. Lucia","XCD"],
+["VC","St. Vincent and Grenadines","XCD"],
+["SD","Sudan","SDG"],
+["SR","Suriname","SRD"],
+["SE","Sweden","SEK"],
+["CH","Switzerland","CHF"],
+["SY","Syria","SYP"],
+["ST","São Tomé and Príncipe","STN"],
+["TW","Taiwan","TWD"],
+["TJ","Tajikistan","TJS"],
+["TZ","Tanzania","TZS"],
+["TH","Thailand","THB"],
+["TL","Timor-Leste","USD"],
+["TG","Togo","XOF"],
+["TO","Tonga","TOP"],
+["TT","Trinidad and Tobago","TTD"],
+["TN","Tunisia","TND"],
+["TM","Turkmenistan","TMT"],
+["TV","Tuvalu","AUD"],
+["TR","Türkiye","TRY"],
+["UG","Uganda","UGX"],
+["UA","Ukraine","UAH"],
+["AE","United Arab Emirates","AED"],
+["GB","United Kingdom","GBP"],
+["US","United States","USD"],
+["UY","Uruguay","UYU"],
+["UZ","Uzbekistan","UZS"],
+["VU","Vanuatu","VUV"],
+["VE","Venezuela","VES"],
+["VN","Vietnam","VND"],
+["YE","Yemen","YER"],
+["ZM","Zambia","ZMW"],
+["ZW","Zimbabwe","ZWG"]
+];
+const flagEmoji = iso2 => iso2.replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)));
+
+/* ---------- 3. Dataset loading ----------
+   Production: fetch('/data/income-data-v2026.json') — versioned, built from
+   World Bank PIP (see scripts/build_dataset.py). Falls back to the SYNTHETIC
+   demo below so the UI can be previewed without network access.            */
+let DATA = null;
+
+function synthDemoDataset(){
+  /* SYNTHETIC UI-PREVIEW FIXTURE — NOT REAL STATISTICS.
+     Log-normal placeholder curves so the interface can be demonstrated.
+     The red banner is shown whenever this fixture is active, and the schema
+     mirrors income-data-vYYYY.schema.json exactly.                        */
+  const probit = p => { // Acklam's inverse normal CDF approximation
+    const a=[-39.6968302866538,220.946098424521,-275.928510446969,138.357751867269,-30.6647980661472,2.50662827745924],
+          b=[-54.4760987982241,161.585836858041,-155.698979859887,66.8013118877197,-13.2806815528857],
+          c=[-0.00778489400243029,-0.322396458041136,-2.40075827716184,-2.54973253934373,4.37466414146497,2.93816398269878],
+          d=[0.00778469570904146,0.32246712907004,2.445134137143,3.75440866190742],
+          pl=0.02425;
+    let q,r;
+    if(p<pl){q=Math.sqrt(-2*Math.log(p));return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);}
+    if(p<=1-pl){q=p-0.5;r=q*q;return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);}
+    q=Math.sqrt(-2*Math.log(1-p));return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  };
+  const curve = (median, sigma) => { // 99 thresholds, int-$/day, p1..p99
+    const t=[]; for(let p=1;p<=99;p++) t.push(+(median*Math.exp(sigma*probit(p/100))).toFixed(3));
+    return t;
+  };
+  // [medianIntlDollarsPerDay, sigma, approxPopulationMillions] — placeholders
+  const demo = {
+    PK:[4.2,0.62,232], US:[68,0.85,335], IN:[5.6,0.68,1430], GB:[52,0.72,68],
+    DE:[58,0.66,84],  BR:[14,0.95,216], NG:[3.4,0.78,224],  CN:[16,0.80,1410],
+    FR:[54,0.62,68],  JP:[46,0.60,124], ID:[7.8,0.70,278],  EG:[6.5,0.64,113]
+  };
+  const distributions = {};
+  for(const [iso,[m,s,pop]] of Object.entries(demo)){
+    distributions[iso] = { thresholds: curve(m,s), year: null, welfare_type: "synthetic", population: pop*1e6 };
+  }
+  // Synthetic placeholder conversion factors — demo only, never shown as real
+  const ppp = {PK:76,US:1,IN:24,GB:0.72,DE:0.78,BR:2.6,NG:310,CN:4.2,JP:102,ID:5300,EG:9.5,FR:0.76};
+  const currency_ppp = {PKR:76,USD:1,INR:24,GBP:0.72,EUR:0.77,BRL:2.6,NGN:310,CNY:4.2,JPY:102,IDR:5300,EGP:9.5};
+  return {
+    metadata:{
+      dataset:"SYNTHETIC DEMO FIXTURE", version:"demo-0", demo:true,
+      year:null, source:"None — placeholder curves for UI preview only",
+      pppBasis:"n/a (demo)", generatedAt:"n/a",
+      world_population: 8.1e9,
+      methodology_url:"#methodology"
+    },
+    world:{ thresholds: curve(7.5,1.05), welfare_type:"synthetic" },
+    ppp, currency_ppp, distributions
+  };
+}
+
+async function loadDataset(){
+  /* Production behavior:
+     - try the site-absolute path first, then the relative path (works when
+       the prototype is served standalone from the project root);
+     - a schema-valid, non-demo dataset is REQUIRED;
+     - the synthetic fixture loads ONLY with an explicit ?demo=1 flag
+       (UI preview / tests) and always shows the banner + card watermark;
+     - on any failure the app enters the "data unavailable" state and
+       NEVER silently falls back to synthetic numbers.                   */
+  const isDevHost = location.protocol === "file:" ||
+        ["localhost","127.0.0.1"].includes(location.hostname);
+  if(isDevHost && new URLSearchParams(location.search).get("demo") === "1"){
+    return synthDemoDataset(); // dev/test preview only — banner + watermark
+  }
+  const candidates = ["/data/income-data-v2026.json",
+                      "data/income-data-v2026.json"];
+  for(const url of candidates){
+    try{
+      const r = await fetch(url, {cache:"no-cache"});
+      if(!r.ok) continue;
+      const j = await r.json();
+      if(validDataset(j)) return j;
+      console.error("Dataset at", url, "failed schema check");
+    }catch(e){ /* try next candidate */ }
+  }
+  return null; // -> data-unavailable state
+}
+function validDataset(j){
+  try{
+    if(!j || !j.metadata || j.metadata.demo === true) return false;
+    if(!Array.isArray(j.world.thresholds) || j.world.thresholds.length !== 99) return false;
+    for(let i=1;i<99;i++) if(j.world.thresholds[i] < j.world.thresholds[i-1]) return false;
+    if(!j.distributions || typeof j.distributions !== "object") return false;
+    for(const d of Object.values(j.distributions)){
+      if(!Array.isArray(d.thresholds) || d.thresholds.length !== 99) return false;
+      if(d.thresholds[0] <= 0) return false;
+    }
+    if(!j.ppp || !j.currency_ppp) return false;
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- 4. Percentile engine ---------- */
+function percentileFor(incomeIntlPerDay, thresholds){
+  // thresholds[i] = upper income bound of percentile i+1 (p1..p99), ascending
+  if(!(incomeIntlPerDay > 0)) return null;
+  const n = thresholds.length;
+  if(incomeIntlPerDay <= thresholds[0]) return 1;
+  if(incomeIntlPerDay >= thresholds[n-1]) return 99; // capped: report as Top 1%
+  // binary search for the bracketing pair
+  let lo=0, hi=n-1;
+  while(hi-lo>1){ const mid=(lo+hi)>>1; (thresholds[mid] < incomeIntlPerDay) ? lo=mid : hi=mid; }
+  // log-linear interpolation between percentile lo+1 and hi+1
+  const a=Math.log(thresholds[lo]), b=Math.log(thresholds[hi]), x=Math.log(incomeIntlPerDay);
+  const frac=(x-a)/(b-a);
+  return Math.min(99, Math.max(1, (lo+1) + frac*((hi+1)-(lo+1))));
+}
+const topPercent = pct => Math.max(1, Math.round(100 - pct));   // "Top N%", floor at Top 1%
+const belowPercent = pct => 100 - topPercent(pct);               // consistent: top + below = 100
+
+function humanCount(n){
+  if(n>=1e9) return (n/1e9).toFixed(1).replace(/\.0$/,"")+" billion";
+  if(n>=1e6) return Math.round(n/1e6)+" million";
+  return Math.round(n).toLocaleString();
+}
+
+/* ---------- 5. UI state ---------- */
+const $ = id => document.getElementById(id);
+let state = { period:"annual", country:null, currency:null, lastResult:null, showIncomeOnCard:false };
+
+/* ----- income input formatting & validation ----- */
+const incomeInput = $("incomeInput");
+incomeInput.addEventListener("input", ()=>{
+  const raw = incomeInput.value.replace(/[^\d.]/g,"");
+  const parts = raw.split(".");
+  let intPart = parts[0].replace(/^0+(?=\d)/,"");
+  const num = intPart ? parseInt(intPart,10) : NaN;
+  incomeInput.value = isNaN(num) ? "" : num.toLocaleString("en-US") + (parts.length>1 ? "."+parts[1].slice(0,2) : "");
+  clearErr();
+});
+function readIncome(){
+  const v = parseFloat(incomeInput.value.replace(/,/g,""));
+  return isNaN(v) ? null : v;
+}
+function showErr(msg){ incomeInput.classList.add("err"); const e=$("incomeErr"); e.textContent=msg; e.classList.add("show"); incomeInput.focus(); }
+function clearErr(){ incomeInput.classList.remove("err"); $("incomeErr").classList.remove("show"); }
+
+/* ----- period toggle ----- */
+function setPeriod(p){
+  state.period = p;
+  $("periodAnnual").setAttribute("aria-pressed", p==="annual");
+  $("periodMonthly").setAttribute("aria-pressed", p==="monthly");
+  $("incomeLabel").textContent = p==="annual" ? "Your Annual Income" : "Your Monthly Income";
+}
+$("periodAnnual").addEventListener("click", ()=>setPeriod("annual"));
+$("periodMonthly").addEventListener("click", ()=>setPeriod("monthly"));
+
+/* ----- currency selects ----- */
+function populateCurrencies(){
+  const codes = [...new Set(COUNTRIES.map(c=>c[2]))].sort();
+  const NAMES = {USD:"US Dollar",EUR:"Euro",GBP:"British Pound",PKR:"Pakistani Rupee",INR:"Indian Rupee",JPY:"Japanese Yen",CNY:"Chinese Yuan",BRL:"Brazilian Real",NGN:"Nigerian Naira",CAD:"Canadian Dollar",AUD:"Australian Dollar",CHF:"Swiss Franc",IDR:"Indonesian Rupiah",EGP:"Egyptian Pound"};
+  for(const sel of [$("quickCurrency"), $("currencySelect")]){
+    sel.innerHTML = "";
+    for(const code of codes){
+      const o=document.createElement("option");
+      o.value=code;
+      o.textContent = sel.id==="currencySelect" ? `${code} – ${NAMES[code]||code}` : code;
+      sel.appendChild(o);
+    }
+  }
+}
+function setCurrency(code){
+  state.currency = code;
+  $("quickCurrency").value = code;
+  $("currencySelect").value = code;
+}
+$("quickCurrency").addEventListener("change", e=>setCurrency(e.target.value));
+$("currencySelect").addEventListener("change", e=>{ setCurrency(e.target.value); tfTrack("currency_changed",{currency:e.target.value}); });
+
+/* ----- country combobox ----- */
+const combo=$("countryCombo"), comboToggle=$("comboToggle"), comboList=$("comboList"), comboSearch=$("comboSearch");
+let hlIndex=-1, filtered=[];
+
+function coverageOf(iso){ return DATA && DATA.distributions && DATA.distributions[iso]; }
+
+function renderComboList(q=""){
+  const query=q.trim().toLowerCase();
+  filtered = COUNTRIES.filter(([iso,name])=> !query || name.toLowerCase().includes(query) || iso.toLowerCase()===query);
+  comboList.innerHTML="";
+  if(!filtered.length){ comboList.innerHTML='<li class="combo-empty" aria-disabled="true">No country found</li>'; return; }
+  filtered.forEach(([iso,name],i)=>{
+    const li=document.createElement("li");
+    li.setAttribute("role","option");
+    li.setAttribute("id","opt-"+iso);
+    li.setAttribute("aria-selected", state.country===iso ? "true":"false");
+    const has = coverageOf(iso);
+    if(!has) li.classList.add("nodata");
+    li.innerHTML = `<span class="flag" aria-hidden="true">${flagEmoji(iso)}</span>${name}<small>${has?iso:"world only"}</small>`;
+    li.addEventListener("click", ()=>selectCountry(iso));
+    li.addEventListener("mousemove", ()=>setHl(i));
+    comboList.appendChild(li);
+  });
+  setHl(0);
+}
+function setHl(i){
+  hlIndex=i;
+  [...comboList.children].forEach((li,j)=>li.classList.toggle("hl", j===i));
+  const el=comboList.children[i]; if(el && el.scrollIntoView) el.scrollIntoView({block:"nearest"});
+  comboList.setAttribute("aria-activedescendant", el ? el.id : "");
+}
+function openCombo(){ combo.classList.add("open"); comboToggle.setAttribute("aria-expanded","true"); renderComboList(comboSearch.value); comboSearch.focus(); }
+function closeCombo(){ combo.classList.remove("open"); comboToggle.setAttribute("aria-expanded","false"); }
+comboToggle.addEventListener("click", ()=> combo.classList.contains("open") ? closeCombo() : openCombo());
+document.addEventListener("click", e=>{ if(!combo.contains(e.target)) closeCombo(); });
+comboSearch.addEventListener("input", e=>renderComboList(e.target.value));
+comboSearch.addEventListener("keydown", e=>{
+  if(e.key==="ArrowDown"){e.preventDefault(); setHl(Math.min(hlIndex+1, filtered.length-1));}
+  else if(e.key==="ArrowUp"){e.preventDefault(); setHl(Math.max(hlIndex-1,0));}
+  else if(e.key==="Enter"){e.preventDefault(); if(filtered[hlIndex]) selectCountry(filtered[hlIndex][0]);}
+  else if(e.key==="Escape"){closeCombo(); comboToggle.focus();}
+});
+function selectCountry(iso){
+  state.country=iso;
+  const c=COUNTRIES.find(x=>x[0]===iso);
+  $("comboFlag").textContent=flagEmoji(iso);
+  $("comboText").textContent=c[1];
+  setCurrency(c[2]);
+  const note=$("coverageNote");
+  note.innerHTML = coverageOf(iso)
+    ? `✓ Country + worldwide percentiles available for <b>${c[1]}</b>.`
+    : `<b>Worldwide result available.</b> A country-specific percentile isn't currently available for ${c[1]} — comparable distribution data is unavailable.`;
+  closeCombo(); comboToggle.focus();
+  tfTrack("country_selected",{country:iso, has_country_data:!!coverageOf(iso)});
+}
+
+/* ---------- 6. Calculate & render ---------- */
+$("calcForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  clearErr();
+  const raw = readIncome();
+  if(raw===null){ showErr("Please enter your income."); return; }
+  if(raw < 0){ showErr("Income can't be negative."); return; }
+  if(raw === 0){ showErr("Enter an income greater than zero to see a rank."); return; }
+  if(raw > 1e12){ showErr("That number is too large — please check it."); return; }
+  if(!state.country){ openCombo(); return; }
+  // PPP is a property of the ECONOMY. If the user enters their country's own
+  // currency we use that country's factor (methodology-exact). A different
+  // currency uses the issuing economy's factor — disclosed as approximate.
+  const homeCurrency = COUNTRIES.find(c=>c[0]===state.country)[2];
+  let pppFactor, pppApprox = false;
+  if(state.currency === homeCurrency && DATA.ppp[state.country]){
+    pppFactor = DATA.ppp[state.country];
+  } else {
+    pppFactor = DATA.currency_ppp[state.currency];
+    pppApprox = true;
+  }
+  if(!pppFactor){ showErr(`No PPP conversion factor is available for ${state.currency} in the current dataset — try your country's own currency or USD.`); return; }
+
+  const annual = state.period==="monthly" ? raw*12 : raw;
+  const intlPerDay = annual / pppFactor / 365;
+
+  const worldPctile = percentileFor(intlPerDay, DATA.world.thresholds);
+  const dist = coverageOf(state.country);
+  const countryPctile = dist ? percentileFor(intlPerDay, dist.thresholds) : null;
+
+  state.lastResult = {
+    world: worldPctile, country: countryPctile,
+    iso: state.country,
+    countryName: COUNTRIES.find(c=>c[0]===state.country)[1],
+    incomeDisplay: `${incomeInput.value} ${state.currency}${state.period==="monthly"?" / month":" / year"}`,
+    population: dist ? dist.population : null,
+    pppApprox
+  };
+  tfTrack("result_generated",{country:state.country, has_country_data:!!dist, world_top: topPercent(worldPctile)});
+  renderResults();
+});
+
+function renderResults(){
+  const r = state.lastResult;
+  const res=$("results"); res.classList.add("show");
+
+  const wTop = topPercent(r.world), wBelow = belowPercent(r.world);
+  $("worldTopNum").textContent = wTop;
+  $("worldPct").textContent = wBelow + "%";
+  positionGauge("worldFill","worldDot", wTop);
+  const worldPop = DATA.metadata.world_population || 8.1e9;
+  $("resSub").textContent = r.pppApprox
+    ? "Estimated with purchasing-power-adjusted data. You entered a non-local currency, so its issuing economy's PPP factor was used (approximate)."
+    : "Your results are estimated using purchasing-power-adjusted income data.";
+  $("worldPopText").innerHTML = `That's about <b>${humanCount(worldPop*wBelow/100)} people</b> out of ${humanCount(worldPop)} worldwide.`;
+
+  $("countryName").textContent = r.countryName;
+  $("countryNameInline").textContent = r.countryName;
+  $("countryIcon").textContent = flagEmoji(r.iso);
+  const has = r.country !== null;
+  $("countryHasData").hidden = !has;
+  $("countryNoData").hidden = has;
+  if(has){
+    const cTop = topPercent(r.country), cBelow = belowPercent(r.country);
+    $("countryTopNum").textContent = cTop;
+    $("countryPct").textContent = cBelow + "%";
+    positionGauge("countryFill","countryDot", cTop);
+    $("countryPopText").innerHTML = r.population
+      ? `That's about <b>${humanCount(r.population*cBelow/100)} people</b> out of ${humanCount(r.population)} in ${r.countryName}.`
+      : `You earn more than roughly ${cBelow}% of people in ${r.countryName}.`;
+  }
+
+  drawShareCard();
+  updateShareUrl();
+  res.scrollIntoView({behavior:"smooth", block:"start"});
+  tfTrack("result_viewed");
+}
+function positionGauge(fillId, dotId, topPct){
+  // left = richer; dot at topPct% from the left edge
+  const x = Math.min(97, Math.max(3, topPct));
+  $(fillId).style.width = x+"%";
+  $(dotId).style.left = x+"%";
+}
+$("tryAgainBtn").addEventListener("click", ()=>{
+  $("results").classList.remove("show");
+  incomeInput.value=""; incomeInput.focus();
+  tfTrack("retry_clicked");
+});
+
+/* ---------- 7. Share card (Canvas) ---------- */
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+// Shrinks font size until `text` fits within maxWidth (never truncates —
+// the whole point of this pass is that share-card text is always fully
+// readable, including long country names like "Bosnia and Herzegovina").
+function fitFontSize(ctx,text,maxWidth,weight,startPx,minPx){
+  let size=startPx;
+  ctx.font=`${weight} ${size}px ${FONT}`;
+  while(ctx.measureText(text).width>maxWidth && size>minPx){
+    size-=2; ctx.font=`${weight} ${size}px ${FONT}`;
+  }
+  return size;
+}
+
+// Soft "frosted glass" panel: tinted gradient fill, hairline border, and a
+// diagonal highlight clipped to the rounded shape — a look canvas can render
+// crisply at any output size, unlike photoreal glass/gem textures.
+function glassPanel(ctx,x,y,w,h,r,top,bottom,border,highlight){
+  const g=ctx.createLinearGradient(x,y,x,y+h);
+  g.addColorStop(0,top); g.addColorStop(1,bottom);
+  roundRect(ctx,x,y,w,h,r); ctx.fillStyle=g; ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle=border; ctx.stroke();
+  ctx.save();
+  roundRect(ctx,x,y,w,h,r); ctx.clip();
+  const hi=ctx.createRadialGradient(x+w*0.28,y+h*0.12,4,x+w*0.28,y+h*0.12,w*0.75);
+  hi.addColorStop(0,highlight); hi.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=hi; ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+
+function drawShareCard(){
+  const r=state.lastResult; if(!r) return;
+  const cv=$("cardCanvas"), ctx=cv.getContext("2d");
+  const W=1080, H=1080;
+  ctx.clearRect(0,0,W,H); ctx.textBaseline="alphabetic";
+
+  // background
+  const bg=ctx.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0,"#0B1B33"); bg.addColorStop(1,"#132A4E");
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // scattered sparkle dots (deterministic — same seed every render, so the
+  // card looks identical if generated twice for the same result)
+  let seed=42; const rnd=()=>{seed=(seed*9301+49297)%233280; return seed/233280;};
+  for(let i=0;i<46;i++){
+    const x=rnd()*W, y=rnd()*H, rad=rnd()*1.8+0.4;
+    ctx.globalAlpha=rnd()*0.35+0.08;
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // brand — centered
+  ctx.textAlign="center";
+  ctx.fillStyle="#fff"; ctx.font="700 42px "+FONT;
+  ctx.fillText("✈ ToolFlight", W/2, 92);
+
+  // outer glass frame holding everything
+  const frameX=64, frameY=150, frameW=W-128, frameH=780;
+  glassPanel(ctx,frameX,frameY,frameW,frameH,32,
+    "rgba(255,255,255,0.10)","rgba(255,255,255,0.03)",
+    "rgba(255,255,255,0.16)","rgba(255,255,255,0.14)");
+
+  // title
+  ctx.fillStyle="#9FB3D9"; ctx.font="600 32px "+FONT; ctx.letterSpacing="5px";
+  ctx.fillText("MY INCOME RANK", W/2, frameY+70);
+  ctx.letterSpacing="0px";
+
+  const wTop=topPercent(r.world);
+  const has=r.country!==null, cTop=has?topPercent(r.country):null;
+  const padOuter=28, gap=has?20:0;
+  const innerX=frameX+padOuter, innerW=frameW-padOuter*2;
+  const panelY=frameY+110, panelH=frameH-260;
+  const panelW=has?(innerW-gap)/2:innerW;
+  const maxTextW=panelW-56; // safe inner padding so text never touches the panel edge
+
+  function drawStat(px,label,topPct,tint){
+    glassPanel(ctx,px,panelY,panelW,panelH,24,
+      tint.top,tint.bottom,tint.border,tint.highlight);
+
+    // Big, low-opacity flag/globe watermark filling most of the panel —
+    // this is the emotional/shareable touch: a large national flag behind
+    // your own stats reads as pride at a glance, which is what actually
+    // drives people to post it. Clipped to the panel so it never bleeds
+    // past the rounded corners or collides with the "download PNG" edge.
+    ctx.save();
+    roundRect(ctx,px,panelY,panelW,panelH,24); ctx.clip();
+    ctx.globalAlpha=tint.watermarkOpacity;
+    ctx.font=Math.round(panelW*0.62)+"px "+FONT;
+    ctx.textAlign="center";
+    ctx.fillText(tint.icon, px+panelW/2, panelY+panelH*0.64);
+    ctx.globalAlpha=1;
+    ctx.restore();
+
+    const cx=px+panelW/2;
+    // measure first (without drawing) so the whole icon+label+number block
+    // can be vertically centered in the panel instead of pinned to the top
+    const labelSize=fitFontSize(ctx,label,maxTextW,"700",28,16);
+    const pctText="TOP "+topPct+"%";
+    const pctSize=fitFontSize(ctx,pctText,maxTextW,"800",120,52);
+    const iconH=68, gap1=20, gap2=26;
+    const blockH=iconH+gap1+labelSize+gap2+pctSize;
+    let y=panelY+(panelH-blockH)/2+iconH*0.8;
+
+    // small crisp flag/globe up top — bigger than before so it reads
+    // clearly even as a thumbnail on WhatsApp/Instagram
+    ctx.shadowColor="rgba(0,0,0,0.35)"; ctx.shadowBlur=10; ctx.shadowOffsetY=2;
+    ctx.font=iconH+"px "+FONT;
+    ctx.fillText(tint.icon, cx, y);
+    ctx.shadowColor="transparent"; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+
+    y+=gap1+labelSize*0.8;
+    ctx.fillStyle=tint.text; ctx.font=`700 ${labelSize}px ${FONT}`;
+    ctx.fillText(label, cx, y);
+    y+=gap2+pctSize*0.85;
+    ctx.fillStyle=tint.accent; ctx.font=`800 ${pctSize}px ${FONT}`;
+    ctx.fillText(pctText, cx, y);
+  }
+
+  const blueTint={top:"rgba(37,99,235,0.22)",bottom:"rgba(37,99,235,0.06)",
+    border:"rgba(120,160,255,0.35)",highlight:"rgba(147,197,253,0.28)",
+    text:"#BFD3FF",accent:"#7EA6F5",icon:"🌍",watermarkOpacity:0.14};
+  const greenTint={top:"rgba(22,163,74,0.22)",bottom:"rgba(22,163,74,0.06)",
+    border:"rgba(120,220,160,0.35)",highlight:"rgba(134,239,172,0.26)",
+    text:"#BFF0D4",accent:"#5FD897",icon:flagEmoji(r.iso),watermarkOpacity:0.20};
+
+  drawStat(innerX,"WORLDWIDE",wTop,blueTint);
+  if(has){
+    drawStat(innerX+panelW+gap, r.countryName.toUpperCase(), cTop, greenTint);
+  }
+
+  // optional income (opt-in only — privacy default is HIDDEN) + demo watermark,
+  // stacked below the panels, inside the frame, auto-fit so long amounts
+  // never spill past the frame edges either
+  let ny=panelY+panelH+56;
+  if(state.showIncomeOnCard){
+    const incSize=fitFontSize(ctx,r.incomeDisplay,frameW-100,"500",30,16);
+    ctx.fillStyle="rgba(255,255,255,0.6)"; ctx.font=`500 ${incSize}px ${FONT}`;
+    ctx.fillText(r.incomeDisplay, W/2, ny);
+    ny+=40;
+  }
+  if(DATA.metadata.demo){
+    ctx.fillStyle="rgba(255,140,140,0.9)"; ctx.font="700 26px "+FONT;
+    ctx.fillText("DEMO DATA — NOT REAL STATISTICS", W/2, ny);
+  }
+
+  // footer
+  ctx.fillStyle="#C9D6EC"; ctx.font="600 40px "+FONT;
+  ctx.fillText("Where do you rank?", W/2, H-110);
+  ctx.fillStyle="#5B8DEF"; ctx.font="700 36px "+FONT;
+  ctx.fillText("toolflight.com", W/2, H-58);
+
+  tfTrack("share_card_generated");
+}
+const FONT="'Inter',-apple-system,'Segoe UI',Roboto,sans-serif";
+$("showIncomeToggle").addEventListener("change", e=>{ state.showIncomeOnCard=e.target.checked; drawShareCard(); });
+
+/* ---------- 8. Sharing ---------- */
+function shareUrl(){
+  const r=state.lastResult; if(!r) return location.href.split("?")[0];
+  // Only non-sensitive result info in the URL — NEVER the income amount.
+  const p=new URLSearchParams({w:topPercent(r.world), c:r.iso});
+  if(r.country!==null) p.set("cp", topPercent(r.country));
+  return location.origin + location.pathname + "?" + p.toString();
+}
+function updateShareUrl(){ try{ history.replaceState(null,"",shareUrl()); }catch(e){} }
+function shareText(){
+  const r=state.lastResult;
+  let t=`I'm in the TOP ${topPercent(r.world)}% of income earners worldwide`;
+  if(r.country!==null) t+=` — and TOP ${topPercent(r.country)}% in ${r.countryName}`;
+  return t+`! Where do you rank? 👉 ${shareUrl()}`;
+}
+async function canvasBlob(){ return new Promise(res=>$("cardCanvas").toBlob(res,"image/png")); }
+
+$("shareBtn").addEventListener("click", async ()=>{
+  tfTrack("share_clicked",{method:"native"});
+  const blob = await canvasBlob();
+  const file = blob && new File([blob],"my-income-rank.png",{type:"image/png"});
+  try{
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"My Income Rank", text:shareText()});
+      return;
+    }
+    if(navigator.share){ await navigator.share({title:"My Income Rank", text:shareText(), url:shareUrl()}); return; }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+  copyLink(); // desktop fallback
+});
+$("waBtn").addEventListener("click", ()=>{ tfTrack("share_clicked",{method:"whatsapp"}); window.open("https://wa.me/?text="+encodeURIComponent(shareText()),"_blank","noopener"); });
+$("fbBtn").addEventListener("click", ()=>{ tfTrack("share_clicked",{method:"facebook"}); window.open("https://www.facebook.com/sharer/sharer.php?u="+encodeURIComponent(shareUrl()),"_blank","noopener"); });
+$("twBtn").addEventListener("click", ()=>{ tfTrack("share_clicked",{method:"x"}); window.open("https://twitter.com/intent/tweet?text="+encodeURIComponent(shareText()),"_blank","noopener"); });
+function copyLink(){
+  navigator.clipboard.writeText(shareUrl()).then(()=>{
+    const b=$("copyBtn"); b.style.borderColor="var(--ipc-green)";
+    setTimeout(()=>b.style.borderColor="",1200);
+  }).catch(()=>{});
+  tfTrack("copy_link_clicked");
+}
+$("copyBtn").addEventListener("click", copyLink);
+$("downloadBtn").addEventListener("click", async ()=>{
+  tfTrack("share_clicked",{method:"download"});
+  const blob=await canvasBlob(); if(!blob) return;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="my-income-rank.png";
+  a.click(); URL.revokeObjectURL(a.href);
+});
+
+/* ---------- 9. Internal link tracking ---------- */
+document.querySelectorAll("[data-tf-internal]").forEach(a=>
+  a.addEventListener("click", ()=>tfTrack("internal_tool_clicked",{href:a.getAttribute("href")})));
+
+/* ---------- 10. Boot ---------- */
+(async function init(){
+  DATA = await loadDataset();
+
+  if(!DATA){
+    // REAL DATA MISSING -> honest unavailable state. No synthetic fallback.
+    const bn=$("demoBanner"); bn.hidden=false;
+    bn.querySelector(".box").innerHTML =
+      "<b>Data currently unavailable.</b> The income-distribution dataset could not be loaded, so percentiles can't be calculated right now. Please try again later.";
+    $("calcBtn").disabled = true; $("calcBtn").style.opacity=.5;
+    populateCurrencies(); renderComboList();
+    tfTrack("dataset_unavailable");
+    return;
+  }
+
+  if(DATA.metadata.demo) $("demoBanner").hidden = false;
+  const m = DATA.metadata;
+  $("metaDataset").textContent = (m.dataset||"") + " " + (m.version||"");
+  $("metaPPP").textContent = m.pppBasis || m.ppp_base || "–";
+  $("metaUpdated").textContent = m.generatedAt || m.last_updated || "–";
+
+  populateCurrencies();
+  renderComboList();
+  incomeInput.focus();
+  tfTrack("income_percentile_started", {demo: !!m.demo});
+
+  // shared-result deep link: reframe + prefill country (never contains income)
+  const q=new URLSearchParams(location.search);
+  if(q.get("w")){
+    const iso=(q.get("c")||"").toUpperCase();
+    if(COUNTRIES.some(c=>c[0]===iso)) selectCountry(iso);
+    document.querySelector(".hero .sub").textContent =
+      "Someone shared their rank — what's YOUR income percentile?";
+  } else if(m.demo){
+    // demo preview keeps the mockup's example inputs
+    selectCountry("PK"); setCurrency("USD"); closeCombo();
+    incomeInput.value = "24,000";
+  }
+})();
+
+</script>
+<script defer src="js/app.js?v=20260813-1600"></script>
+</body>
+</html>

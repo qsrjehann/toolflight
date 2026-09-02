@@ -41,6 +41,42 @@
     if (isDark) document.documentElement.classList.add('dark');
   }catch(e){}
 })();
+/* Same reasoning, for the homepage hero's animated tool-wall: nested 3D
+   transforms (perspective + preserve-3d + translateZ) animating on ~70
+   elements at once, combined with color-mix()-based backgrounds, is
+   exactly the kind of workload that flashes, blanks out content, or drops
+   frames on older/non-standard rendering engines and on devices under
+   memory/data pressure.
+
+   UA-string sniffing for this was tried and did not reliably work: UC
+   Browser and other alternative browsers are well documented to disguise
+   their user agent as standard Chrome specifically so websites don't
+   treat them differently, which would make substring-matching for
+   "UCBrowser" silently never fire on exactly the browsers it needs to
+   catch.
+
+   This uses real feature detection instead: CSS.supports() asks the
+   actual rendering engine's own parser whether it understands each
+   feature the 3D wall depends on. This cannot be spoofed the way a UA
+   string can, and it fails safe -- any engine this script doesn't
+   recognize, is too old to have CSS.supports() at all, or simply
+   answers "no" to any of these checks gets the simple, guaranteed-
+   compatible 2D version by default. The 3D treatment is only added on
+   top for engines that positively prove they support every piece of it.
+   Applied before paint, same as the theme class above, so there's no
+   flash between a 3D-then-flattened state. */
+(function(){
+  try{
+    var el = document.documentElement;
+    var supports3D = !!(window.CSS && CSS.supports &&
+      CSS.supports('transform-style', 'preserve-3d') &&
+      CSS.supports('perspective', '1200px') &&
+      CSS.supports('background', 'color-mix(in srgb, red 50%, blue)'));
+    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var lowPerf = !!(conn && (conn.saveData || /2g/.test(conn.effectiveType || '')));
+    if (supports3D && !lowPerf) el.classList.add('hero-3d');
+  }catch(e){}
+})();
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -69,6 +105,15 @@
 
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="pdfIconShadow" x="-30%" y="-20%" width="160%" height="150%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-color="#000" flood-opacity="0.32"/></filter>
+    <linearGradient id="pdfPaperGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#EEF0F5"/>
+    </linearGradient>
+  </defs>
+</svg>
 <nav class="navbar">
   <div class="nav-inner">
     <a href="index.html" class="logo" style="text-decoration:none;">
@@ -149,7 +194,13 @@
 <div class="container" id="tools">
   <div class="category-hub-grid">
     <a href="pdf-tools.html" class="category-hub-card cat-pdf">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="13" rx="2"/><path d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+        <g filter="url(#pdfIconShadow)">
+          <path d="M10 3 H32 L42 13 V49 A2 2 0 0 1 40 51 H10 A2 2 0 0 1 8 49 V5 A2 2 0 0 1 10 3 Z" fill="#DC2626"/>
+          <path d="M32 3 L42 13 H34 A2 2 0 0 1 32 11 Z" fill="#F17B7B"/>
+        </g>
+        <text x="25" y="38" text-anchor="middle" font-family="Inter" font-weight="800" font-size="13" fill="#fff">PDF</text>
+      </svg></div>
       <div class="cat-content">
         <h3>PDF Tools</h3>
         <p>Merge, split, compress, convert PDF/Word, and build a resume.</p>
@@ -158,7 +209,12 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="image-tools.html" class="category-hub-card cat-image">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h4v6M20 10h-4V4M14 4l6 6M4 20l6-6"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <defs><pattern id="checkerHome" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#EDEDF2"/><rect width="4" height="4" fill="#D8D8E2"/><rect x="4" y="4" width="4" height="4" fill="#D8D8E2"/></pattern></defs>
+    <g filter="url(#pdfIconShadow)"><rect x="4" y="8" width="46" height="36" rx="4" fill="url(#checkerHome)"/></g>
+    <path d="M4 38l11-13 8 7 10-14 17 20v6H4z" fill="#1A73E8"/>
+    <circle cx="15" cy="18" r="3.4" fill="#F5B400"/>
+  </svg></div>
       <div class="cat-content">
         <h3>Image Tools</h3>
         <p>A full product design studio, plus passport photos, AI OCR, upscaler, photo enhancer, and more.</p>
@@ -167,7 +223,16 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="calculators.html" class="category-hub-card cat-calc">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)"><rect x="12" y="4" width="30" height="46" rx="4" fill="#2B2E3D"/></g>
+    <rect x="16" y="9" width="22" height="10" rx="1.5" fill="#9FE8C4"/>
+    <text x="35" y="17" text-anchor="end" font-family="Inter" font-weight="700" font-size="7" fill="#0A3622">88</text>
+    <g fill="#fff">
+      <rect x="16" y="23" width="5.5" height="5.5" rx="1"/><rect x="24.2" y="23" width="5.5" height="5.5" rx="1"/><rect x="32.5" y="23" width="5.5" height="5.5" rx="1" fill="#F5A623"/>
+      <rect x="16" y="31" width="5.5" height="5.5" rx="1"/><rect x="24.2" y="31" width="5.5" height="5.5" rx="1"/><rect x="32.5" y="31" width="5.5" height="5.5" rx="1" fill="#F5A623"/>
+      <rect x="16" y="39" width="5.5" height="5.5" rx="1"/><rect x="24.2" y="39" width="5.5" height="5.5" rx="1"/><rect x="32.5" y="39" width="5.5" height="5.5" rx="1" fill="#F5A623"/>
+    </g>
+  </svg></div>
       <div class="cat-content">
         <h3>Calculators</h3>
         <p>Age, BMI, EMI, GST, scientific, unit, and currency calculators.</p>
@@ -176,7 +241,12 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="finance-tools.html" class="category-hub-card cat-finance">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 8h7a3 3 0 0 1 0 6H8m0 0l3 3m-3-3l3-3M17 16H9"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)"><rect x="6" y="10" width="42" height="30" rx="3" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/></g>
+    <polyline points="10,35 16,26 21,30 27,19 32,25 38,17" fill="none" stroke="#3B82F6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="38" cy="17" r="2.6" fill="#3B82F6"/>
+    <text x="14" y="16" font-family="Inter" font-weight="800" font-size="9" fill="#3B82F6">$</text>
+  </svg></div>
       <div class="cat-content">
         <h3>Finance Tools</h3>
         <p>Currency conversion and loan calculations, in progress.</p>
@@ -185,7 +255,11 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="seo-tools.html" class="category-hub-card cat-seo">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <circle cx="24" cy="24" r="14" fill="none" stroke="#8B5CF6" stroke-width="4.5" filter="url(#pdfIconShadow)"/>
+    <path d="M34 34L46 46" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round"/>
+    <path d="M17 26l4-5 3 3 5-6" fill="none" stroke="#0F9D58" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg></div>
       <div class="cat-content">
         <h3>SEO Tools</h3>
         <p>AI keyword generator, QR codes, robots.txt, and meta tags for site owners.</p>
@@ -194,7 +268,11 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="ai-tools.html" class="category-hub-card cat-ai">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/><path d="M15.5 3.5l.7 1.5 1.5.7-1.5.7-.7 1.5-.7-1.5L13.5 5.7l1.5-.7z"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)"><rect x="6" y="6" width="42" height="42" rx="12" fill="#EC4899"/></g>
+    <path d="M27 12l3.2 8.8L39 24l-8.8 3.2L27 36l-3.2-8.8L15 24l8.8-3.2z" fill="#fff"/>
+    <path d="M40 12l1.4 3.6L45 17l-3.6 1.4L40 22l-1.4-3.6L35 17l3.6-1.4z" fill="#fff" opacity=".8"/>
+  </svg></div>
       <div class="cat-content">
         <h3>AI Tools</h3>
         <p>AI-assisted writing tools, starting with the AI Email Writer.</p>
@@ -203,7 +281,13 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="blog.html" class="category-hub-card cat-blog">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)"><rect x="6" y="6" width="42" height="42" rx="4" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/></g>
+    <rect x="12" y="12" width="14" height="12" rx="1.5" fill="#20C997" opacity=".85"/>
+    <g stroke="#5C6079" stroke-width="1.8" stroke-linecap="round">
+      <path d="M30 14h12M30 19h12M12 30h30M12 36h30M12 42h20"/>
+    </g>
+  </svg></div>
       <div class="cat-content">
         <h3>Blog</h3>
         <p>Guides and tips on PDFs, images, and getting more from ToolFlight.</p>
@@ -212,7 +296,15 @@
       <span class="cat-arrow" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
     <a href="invoice-maker.html" class="category-hub-card cat-invoice">
-      <div class="cat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></div>
+      <div class="cat-icon"><svg viewBox="0 0 54 54">
+    <g filter="url(#pdfIconShadow)">
+      <path d="M10 3 H30 L38 11 V47 A2 2 0 0 1 36 49 H10 A2 2 0 0 1 8 47 V5 A2 2 0 0 1 10 3 Z" fill="url(#pdfPaperGrad)" stroke="#C7CCDC" stroke-width="1"/>
+      <path d="M30 3 L38 11 H32 A2 2 0 0 1 30 9 Z" fill="#CFF3F7"/>
+    </g>
+    <g stroke="#5C6079" stroke-width="1.8" stroke-linecap="round"><path d="M14 20h16M14 25h16M14 30h10"/></g>
+    <circle cx="34" cy="38" r="9" fill="#06B6D4" filter="url(#pdfIconShadow)"/>
+    <text x="34" y="42" text-anchor="middle" font-family="Inter" font-weight="800" font-size="11" fill="#fff">$</text>
+  </svg></div>
       <div class="cat-content">
         <h3>Invoice Maker</h3>
         <p>Create a professional invoice for free — no signup needed to get started.</p>
@@ -299,6 +391,7 @@ const toolsConfig = [
   { name: 'Background Remover', desc: 'Remove backgrounds', category: 'image', icon: '◌', url: 'background-remover.html' },
   { name: 'PDF Merger', desc: 'Combine PDFs', category: 'pdf', icon: '+', url: 'pdf-merge.html' },
   { name: 'Image Compressor', desc: 'Reduce file size', category: 'image', icon: '⇩', url: 'image-compress.html' },
+  { name: 'Format Converter', desc: 'PNG, JPG, WebP', category: 'image', icon: '⇄', url: 'image-format-converter.html' },
   { name: 'Currency Converter', desc: 'Live exchange rates', category: 'finance', icon: '$', url: 'currency-converter.html' },
   { name: 'Meta Tag Generator', desc: 'SEO metadata', category: 'seo', icon: '<>', url: 'meta-tag-generator.html' },
   { name: 'BMI Calculator', desc: 'Quick health result', category: 'calc', icon: '⌗', url: 'bmi-calculator.html' },
@@ -395,18 +488,32 @@ function renderToolWall() {
   // Card widths are now dynamic (based on tool name length), so track widths
   // differ per row; without this, rows with shorter names would visibly move
   // faster than rows with longer names at the same animation duration.
-  const PIXELS_PER_SECOND = 38;
-  document.querySelectorAll('.wall-row .track').forEach(trackEl => {
-    const trackWidth = trackEl.scrollWidth;
-    if (!trackWidth) return;
-    const distance = trackWidth * 0.52; // matches the -52% keyframe distance
-    const duration = distance / PIXELS_PER_SECOND;
-    trackEl.style.animationDuration = `${duration.toFixed(2)}s`;
+  // Deferred one frame so this measurement work never blocks the hero's
+  // first paint -- CSS's own default durations (see the comment above
+  // .track-ltr/.track-rtl) render immediately either way, this just
+  // corrects them a moment later rather than delaying that first paint.
+  requestAnimationFrame(() => {
+    const PIXELS_PER_SECOND = 38;
+    document.querySelectorAll('.wall-row .track').forEach(trackEl => {
+      const trackWidth = trackEl.scrollWidth;
+      if (!trackWidth) return;
+      const distance = trackWidth * 0.52; // matches the -52% keyframe distance
+      const duration = distance / PIXELS_PER_SECOND;
+      trackEl.style.animationDuration = `${duration.toFixed(2)}s`;
+    });
   });
 }
 
 // 3D perspective based on mouse movement
 function setup3DPerspective() {
+  // Matches the CSS: the 3D wall (and this loop that drives its tilt) only
+  // exists when html.hero-3d is present, which JS only adds after
+  // CSS.supports() positively confirms the engine understands every
+  // feature involved (see the <head> script). Any engine that doesn't get
+  // that class already renders transform:none via CSS regardless -- so
+  // running this loop for it would just burn a requestAnimationFrame
+  // every frame, forever, writing a transform nothing ever displays.
+  if (!document.documentElement.classList.contains('hero-3d')) return;
   const scene = document.getElementById('wallScene');
   const wall = document.getElementById('toolWall');
   if (!scene || !wall) return;
