@@ -621,6 +621,97 @@ def get_docx_tables(docx_path):
     return tables_info
 
 
+def fix_header_title_indent(docx_path, out_path):
+    """
+    Root cause (found from a direct report, with screenshots, that the
+    heading "doesn't look like the original at all"): the header table's
+    title-text cell (sharing a row with the district logo image) renders as
+    six short, oddly-broken lines --
+
+        Dist. Govt. KP-
+        Provincial District
+        Accounts Office
+        Peshawar Dist.
+        Monthly Salary
+        Statement (July-2026)
+
+    -- even though the cell itself is a reasonable width (5526 twips,
+    ~276pt) and the source PDF wraps the same text into just three clean
+    lines at roughly the same width. Measured directly: pdf2docx wrote the
+    title as a SINGLE <w:p> with a <w:ind w:left="1288" w:right="1440"
+    w:firstLine="378"/> -- 2728 twips of left+right indent, reproducing
+    the text's original horizontal offset from the page's left edge in the
+    source PDF (where it made sense: the surrounding content was a normal
+    single-column page). Once pdf2docx also puts this same text inside a
+    TABLE CELL -- whose horizontal position is *already* fully determined
+    by the table's own <w:tblInd> and the cell's column boundary -- that
+    paragraph indent is purely redundant, and it eats 2728 of the cell's
+    5526 twips before a single character is drawn, leaving only ~140pt to
+    wrap into instead of the cell's real ~276pt. That's what produced the
+    ugly six-line break; it has nothing to do with the cell's own width,
+    which was already reasonable.
+
+    Confirmed by testing: zeroing this one paragraph's ind (left/right/
+    firstLine) on the real file, with no other change, turned the six-line
+    wrap into two clean lines ("Dist. Govt. KP-Provincial District
+    Accounts Office" / "Peshawar Dist. Monthly Salary Statement
+    (July-2026)") -- close to the source PDF's own three-line break, and a
+    real, natural word-wrap at the cell's actual width rather than an
+    artificially strangled one.
+
+    Scope, kept deliberately narrow: only paragraphs in a NON-image cell
+    that shares its table with an image cell (i.e. exactly the
+    header/logo table pattern this was diagnosed on). Every other cell in
+    every other table already renders correctly and is left untouched --
+    this is not a general "remove all paragraph indents" fix, because for
+    an ordinary text cell the indent can be small and legitimate (already
+    accounted for as real width-consumption by `narrow_cols` and
+    `merged_row_wraps`). Only the specific pattern that caused the
+    reported symptom -- a large, page-position-derived indent stranded
+    inside a table cell that already provides its own positioning -- is
+    touched.
+    """
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    def q(tag):
+        return f'{{{W}}}{tag}'
+
+    body = doc.element.body
+    fixed_paras = 0
+
+    for tbl in body.findall(q('tbl')):
+        has_image_cell = tbl.find(f'.//{{{W}}}drawing') is not None
+        if not has_image_cell:
+            continue
+
+        for tr in tbl.findall(q('tr')):
+            for tc in tr.findall(q('tc')):
+                if tc.find(f'.//{{{W}}}drawing') is not None:
+                    continue  # this is the image cell itself -- leave it
+                for p in tc.findall(q('p')):
+                    pPr = p.find(q('pPr'))
+                    if pPr is None:
+                        continue
+                    ind = pPr.find(q('ind'))
+                    if ind is None:
+                        continue
+                    left = float(ind.get(q('left'), '0') or 0)
+                    right = float(ind.get(q('right'), '0') or 0)
+                    if left <= 0 and right <= 0:
+                        continue
+                    ind.set(q('left'), '0')
+                    ind.set(q('right'), '0')
+                    if ind.get(q('firstLine')) is not None:
+                        ind.set(q('firstLine'), '0')
+                    fixed_paras += 1
+
+    doc.save(out_path)
+    print(f"  [title_indent] {fixed_paras} paragraph(s) in image-table text cells "
+          f"had a redundant page-position indent cleared, restoring their full cell width for wrapping.")
+    return fixed_paras
+
+
 def patch_column_widths(docx_path, pdf_doc, out_path):
     """
     Rewrite DOCX table column widths using PDF-geometry-derived proportions.
@@ -662,10 +753,29 @@ def patch_column_widths(docx_path, pdf_doc, out_path):
             continue
         current_cols = grid.findall(f'{{{W}}}gridCol')
         n_cols = len(current_cols)
-        
+
         if n_cols == 0:
             continue
-        
+
+        # Skip any table that contains an image (w:drawing) anywhere inside
+        # it. This function's whole method -- deriving column widths from
+        # PDF *text*-span x-positions -- doesn't apply to a cell holding a
+        # picture instead of clustered text, and the "nearest column-count"
+        # fallback match (a couple of lines below) can match a table that
+        # has nothing to do with the region it's being resized against --
+        # confirmed on a real file: a 2-column header row (title text next
+        # to a logo image) had no ncols=2 PDF region to match, fell back to
+        # the nearest available one (an unrelated ncols=4 wage-data region),
+        # and the resulting nonsense width squeezed the logo's cell enough
+        # that the (inline, right-aligned) logo rendered overflowing past
+        # the page's right edge -- confirmed by rendering and measuring the
+        # image's bounding box against the page size. Leaving an
+        # image-bearing table's widths exactly as pdf2docx's own base
+        # conversion set them avoids that whole failure mode.
+        if tbl.find(f'.//{{{W}}}drawing') is not None:
+            print(f"  [cols] Table {ti}: contains an image — skipping (width patch doesn't apply to pictures)")
+            continue
+
         # Current total width from tblPr
         tbl_pr = tbl.find(f'{{{W}}}tblPr')
         tbl_w_twips = None
@@ -1050,17 +1160,39 @@ def fix_non_integer_measurements(docx_path, out_path):
     This is a narrow, whitelisted pass: only `w:sz` (any element) and `w:w`
     (any element) attributes, plus `w:val` specifically on `w:trHeight`, are
     touched, and only when their value isn't already a clean integer.
-    Nothing else in the document -- text, colors, other enumerated
-    attributes -- is read or modified.
+
+    SECOND, SEPARATE FIX BUNDLED HERE (found while re-testing the border
+    theory above against the real deployed server -- the float-sz fix alone
+    did NOT make the table visible in WPS, which disproves that theory as
+    the (sole) explanation and pointed at something else): every single
+    `w:color` attribute pdf2docx writes -- all 273 of them in one real test
+    file, covering every colored border AND every colored text run -- is
+    written in CSS/HTML style, e.g. `w:color="#000000"`. OOXML's ST_HexColor
+    type (ECMA-376/ISO-29500) is strictly 6 hex digits or the literal
+    "auto" -- NO leading "#". `w:color="#000000"` is out-of-schema the same
+    way the float `w:sz` values were. This is systemic (100% of colors in
+    the file, not just table borders) and present from pdf2docx's very
+    first base conversion, before any post-processing -- i.e. it's been in
+    every version of this converter's output from the start, including the
+    ones where the table-missing complaint was first raised. Word and
+    LibreOffice tolerate the "#" (confirmed: LibreOffice renders these
+    borders fine); a stricter reader is free to reject it. This is a
+    stronger, more systemic candidate than the float-sz issue for why a
+    table with genuinely correct border XML renders with no visible border
+    in one specific app but not another -- and, being a plain string fix
+    (strip a leading "#" from a 6-hex-digit value), it carries the same
+    "can only help, never hurts" safety property.
     """
     doc = Document(docx_path)
     W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     SZ = f'{{{W}}}sz'
     WIDTH = f'{{{W}}}w'
     VAL = f'{{{W}}}val'
+    COLOR = f'{{{W}}}color'
     TRHEIGHT = f'{{{W}}}trHeight'
 
     fixed = 0
+    colors_fixed = 0
 
     def _round_attr(el, attr_qname):
         nonlocal fixed
@@ -1076,15 +1208,166 @@ def fix_non_integer_measurements(docx_path, out_path):
             el.set(attr_qname, rounded)
             fixed += 1
 
+    def _fix_color(el):
+        nonlocal colors_fixed
+        raw = el.get(COLOR)
+        if raw is None or not raw.startswith('#'):
+            return
+        stripped = raw[1:]
+        if len(stripped) == 6 and all(c in '0123456789abcdefABCDEF' for c in stripped):
+            el.set(COLOR, stripped)
+            colors_fixed += 1
+
     for el in doc.element.body.iter():
         _round_attr(el, SZ)
         _round_attr(el, WIDTH)
         if el.tag == TRHEIGHT:
             _round_attr(el, VAL)
+        _fix_color(el)
 
     doc.save(out_path)
-    print(f"  [fix_measurements] {fixed} non-integer OOXML measurement attribute(s) rounded.")
-    return fixed
+    print(f"  [fix_measurements] {fixed} non-integer measurement attribute(s) rounded, "
+          f"{colors_fixed} '#'-prefixed color value(s) fixed to valid OOXML hex.")
+    return fixed + colors_fixed
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX 7 — Shrink a table that pdf2docx sized past the page's printable width
+#          (found via a logo rendering off the edge of the page)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fix_table_page_overflow(docx_path, out_path):
+    """
+    Root cause (found from a real report: "the logo is coming right at the
+    page's edge, not like in the original PDF"): the header row's table
+    (page title text in one cell, the district logo image in the other) has
+    a left indent (`<w:tblInd w:w="1262"/>`, from pdf2docx's own base
+    conversion -- positions the table starting at the title text's exact
+    PDF x-offset) *and* a `<w:tblGrid>` sized to the page's full usable
+    width (10754 twips) -- pdf2docx computes the two independently and
+    never checks whether indent + width still fits on the page. Measured
+    directly on the actual rendered PDF: left margin (558 twips) + this
+    indent (1262) + the table's own width (10754) = 12574 twips = 628.7pt,
+    against a 594.96pt-wide page -- the table's right edge lands 33.7pt
+    past the page edge, dragging the (inline, right-aligned) logo in its
+    right-hand cell along with it. Confirmed by rendering and measuring the
+    logo's bounding box: it really does extend past the page boundary.
+
+    This isn't limited to the one table with the logo -- any table that
+    picked up both an indent and a full-page-width grid from pdf2docx would
+    overflow the same way, image or not. So this is a general, final
+    safety pass: for every top-level table, using the actual page size,
+    margins, and this table's own indent (all read directly from the file,
+    nothing assumed), compute how much width is actually available. If the
+    table's <w:tblGrid> total is wider than that, scale every column width
+    down by the same ratio so the table's right edge lands exactly at the
+    page margin -- proportions between columns are preserved, only the
+    table's overall size shrinks to fit. A table that already fits is left
+    completely untouched.
+
+    IMPORTANT: per-cell widths are scaled from each cell's OWN current
+    <w:tcW> (old_w * ratio), never recomputed from <w:tblGrid> position +
+    gridSpan. Found by testing: this step runs last and touches nearly
+    every table, because pdf2docx gives almost every table a small nonzero
+    <w:tblInd> (even 2-8 twips is enough to count as "overflow" by a
+    couple twips). The first version reconstructed each cell's width as
+    sum(scaled_gridCol[col_idx : col_idx+span]) -- correct for tables where
+    every row shares one column layout, but for a table whose rows use
+    DIFFERENT gridSpan patterns (e.g. a merged Gross Pay/Deductions/Net Pay
+    summary row), <w:tblGrid> is not a real per-row model (see
+    fix_merged_row_narrow_wraps's docstring) -- reconstructing from it threw
+    away the row-local width adjustments that step had just made and
+    silently reverted "-7,155.00" back to its wrapping width, even though
+    fix_merged_row_narrow_wraps ran earlier in the same pipeline and its own
+    log line reported the row as fixed. Scaling each cell's already-current
+    width directly avoids ever needing to know how a row's cells line up
+    with any other row's, so it can't re-collapse a row-local fix, and for
+    ordinary tables (where tcW already equals gridCol at every position) it
+    produces the exact same numbers as before.
+    """
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    def q(tag):
+        return f'{{{W}}}{tag}'
+
+    def _num(el, attr, default=0.0):
+        if el is None:
+            return default
+        raw = el.get(attr)
+        if raw is None:
+            return default
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    body = doc.element.body
+    sectPr = body.find(q('sectPr'))
+    if sectPr is None:
+        doc.save(out_path)
+        print("  [page_overflow] No sectPr found — nothing to check.")
+        return 0
+
+    pgSz = sectPr.find(q('pgSz'))
+    pgMar = sectPr.find(q('pgMar'))
+    page_w = _num(pgSz, q('w'), 11906)
+    left_margin = _num(pgMar, q('left'), 1440)
+    right_margin = _num(pgMar, q('right'), 1440)
+    usable_w = page_w - left_margin - right_margin
+
+    fixed_tables = 0
+    for tbl in body.findall(q('tbl')):
+        grid = tbl.find(q('tblGrid'))
+        if grid is None:
+            continue
+        gridCols = grid.findall(q('gridCol'))
+        if not gridCols:
+            continue
+        col_widths = [_num(gc, q('w')) for gc in gridCols]
+        total = sum(col_widths)
+        if total <= 0:
+            continue
+
+        tblPr = tbl.find(q('tblPr'))
+        tblInd = tblPr.find(q('tblInd')) if tblPr is not None else None
+        indent = _num(tblInd, q('w'), 0.0)
+
+        available = usable_w - indent
+        if available <= 0 or total <= available:
+            continue  # fits (or indent alone already exceeds the page -- not this fix's job)
+
+        ratio = available / total
+        new_widths = [max(1, int(round(w * ratio))) for w in col_widths]
+        # Rounding can leave the sum a few twips off target -- absorb that in the last column.
+        diff = int(round(available)) - sum(new_widths)
+        new_widths[-1] = max(1, new_widths[-1] + diff)
+
+        for gc, w in zip(gridCols, new_widths):
+            gc.set(q('w'), str(w))
+
+        for tr in tbl.findall(q('tr')):
+            for tc in tr.findall(q('tc')):
+                tcPr = tc.find(q('tcPr'))
+                if tcPr is None:
+                    continue
+                tcW = tcPr.find(q('tcW'))
+                if tcW is None:
+                    continue
+                old_cell_w = _num(tcW, q('w'), 0.0)
+                if old_cell_w <= 0:
+                    continue
+                new_cell_w = max(1, int(round(old_cell_w * ratio)))
+                tcW.set(q('w'), str(new_cell_w))
+                tcW.set(q('type'), 'dxa')
+
+        fixed_tables += 1
+        print(f"  [page_overflow] Table shrunk {int(total)}→{sum(new_widths)} twips "
+              f"(indent={int(indent)}, usable page width={int(usable_w)}) to fit the page.")
+
+    doc.save(out_path)
+    print(f"  [page_overflow] {fixed_tables} table(s) resized to fit within the page margins.")
+    return fixed_tables
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1340,6 +1623,297 @@ def fix_narrow_column_wraps(docx_path, out_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FIX 6b — Same mid-word-wrap problem, but for gridSpan-merged summary rows
+#          that fix_narrow_column_wraps deliberately skips
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fix_merged_row_narrow_wraps(docx_path, out_path):
+    """
+    `fix_narrow_column_wraps` (the `narrow_cols` step) refuses to touch any
+    table where rows disagree about gridSpan, because that table's shared
+    <w:tblGrid> is not a reliable "same column across every row" model --
+    reconciling against it corrupted real widths in testing (see that
+    function's docstring). That safety gate is correct, but it leaves a
+    real, user-reported symptom unfixed: on the real July-2026 salary slip,
+    the "Gross Pay / Deductions / Net Pay" summary table (row 0: Payable /
+    Recovered / Exempted / Recoverable; row 1: Gross Pay / Deductions /
+    Net Pay) has a DIFFERENT gridSpan pattern in each row, so the whole
+    table was left untouched -- and "-7,155.00" and "105,752.00" kept
+    wrapping mid-number ("-" / "7,155.00" and "105,752." / "00"), exactly
+    as reported.
+
+    FIRST ATTEMPT (kept here as a record because it failed instructively):
+    edit only each cell's own <w:tcW>, borrowing slack row-locally so each
+    row's own total stays constant, and leave <w:tblGrid> alone. That
+    changed the file (verified: the saved XML had new tcW values) but
+    produced ZERO visible difference on re-render -- confirmed by manually
+    forcing +400 twips onto the exact deficient cells and re-rendering: the
+    wrap was pixel-for-pixel identical. Root cause: this table's <w:tblPr>
+    has <w:tblLayout w:type="fixed"/> with <w:tblW w:type="auto" w:w="0"/>.
+    For a table shaped like this -- a "fixed" layout where different rows
+    slice the same <w:tblGrid> into different gridSpan patterns -- both
+    Word and LibreOffice render each cell's width as the SUM OF THE GRID
+    COLUMNS ITS SPAN COVERS, not its own <w:tcW>. <w:tcW> is written by
+    pdf2docx for every cell regardless, but it is decorative here: the
+    actual column boundaries, in every row, come from <w:tblGrid> alone.
+    So the real fix has to change <w:tblGrid>, not individual <w:tcW>.
+
+    Real fix: for every row, walk its cells in order and derive which
+    contiguous <w:tblGrid> columns each one occupies (col 0 for the first
+    cell, spanning `gridSpan` columns; the next cell picks up where that
+    one left off; etc.). This only works if every row's spans add up to
+    exactly n_cols -- if any row doesn't, this table's structure isn't the
+    simple "each row fully re-partitions the same n_cols" shape this fix
+    assumes, and it's left untouched (same caution as the other step).
+    For every cell in every row, measure its real needed text width (same
+    reportlab AFM-metrics technique as `fix_narrow_column_wraps`, with the
+    <w:b> "on unless w:val=0" bug fixed here -- the earlier code treated a
+    present-but-disabled <w:b w:val="0"/> as bold, overestimating need).
+    Spread that need evenly across the grid columns the cell covers, then
+    take, for every grid column, the MAXIMUM of what any row's cell needs
+    from it -- so satisfying row 1's "-7,155.00" can never shrink a column
+    below what row 0 needs from that same column. If the resulting minimum
+    total still leaves room under the table's current overall width, the
+    leftover is handed back out proportionally to the columns' original
+    widths, so the table's total width -- and hence the page layout --
+    never changes, only how it's divided. Every cell's own <w:tcW> is then
+    rewritten to match its row's new grid-derived width too, so the file's
+    tcW and tblGrid stay mutually consistent (even though rendering was
+    shown to only actually depend on tblGrid for these tables).
+
+    Verified on the real file: row 1 needs (after fixing the bold bug)
+    Gross Pay=1476, 112,907.00=970, Deductions=1614, -7,155.00=1081,
+    Net Pay=1499, 105,752.00=1166, (empty)=0 twips against columns
+    currently 1956/1956/1956/978/1956/978/973; row 0 needs Payable=878,
+    23,037.74=870, Recovered till JUL-2026:=2214, 1,920.00=966,
+    Exempted: 0.17-=1504, Recoverable=1192, 21,117.91=870 against
+    978/1956/1956/1956/978/1956/973. Column-by-column max of both rows'
+    per-grid-column share comfortably fits inside the table's actual total
+    (10753 twips) with slack to spare, so this is feasible without
+    shrinking the table.
+    """
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    def q(tag):
+        return f'{{{W}}}{tag}'
+
+    SAFETY_TWIPS = 20
+
+    def map_font(name, bold, italic):
+        n = (name or '').lower()
+        if 'times' in n or 'serif' in n:
+            base = 'Times'
+        elif 'courier' in n or 'mono' in n:
+            base = 'Courier'
+        else:
+            base = 'Helvetica'
+        if base == 'Times':
+            if bold and italic:
+                return 'Times-BoldItalic'
+            if bold:
+                return 'Times-Bold'
+            if italic:
+                return 'Times-Italic'
+            return 'Times-Roman'
+        suffix = ''
+        if bold and italic:
+            suffix = '-BoldOblique'
+        elif bold:
+            suffix = '-Bold'
+        elif italic:
+            suffix = '-Oblique'
+        return base + suffix if suffix else base
+
+    def is_on(el):
+        """OOXML boolean toggle: element present AND val is not '0'/'false' means on."""
+        if el is None:
+            return False
+        val = el.get(q('val'))
+        return val not in ('0', 'false')
+
+    def cell_needed_twips(tc):
+        widest = 0
+        for p in tc.findall(q('p')):
+            pPr = p.find(q('pPr'))
+            ind_left = ind_right = 0
+            if pPr is not None:
+                ind = pPr.find(q('ind'))
+                if ind is not None:
+                    for attr, var in ((q('left'), 'left'), (q('right'), 'right')):
+                        raw = ind.get(attr)
+                        if raw is not None:
+                            try:
+                                val = int(round(float(raw)))
+                            except ValueError:
+                                val = 0
+                            if var == 'left':
+                                ind_left = val
+                            else:
+                                ind_right = val
+            line_pt = 0.0
+            has_text = False
+            for r in p.findall(q('r')):
+                text = ''.join(t.text or '' for t in r.findall(q('t')))
+                if not text:
+                    continue
+                has_text = True
+                rPr = r.find(q('rPr'))
+                font_name, bold, italic, size_pt = None, False, False, 10.0
+                if rPr is not None:
+                    rFonts = rPr.find(q('rFonts'))
+                    if rFonts is not None:
+                        font_name = rFonts.get(q('ascii'))
+                    bold = is_on(rPr.find(q('b')))
+                    italic = is_on(rPr.find(q('i')))
+                    sz = rPr.find(q('sz'))
+                    if sz is not None:
+                        try:
+                            size_pt = float(sz.get(q('val'), '20')) / 2.0
+                        except ValueError:
+                            pass
+                font = map_font(font_name, bold, italic)
+                try:
+                    line_pt += stringWidth(text, font, size_pt)
+                except Exception:
+                    line_pt += len(text) * size_pt * 0.55
+            if has_text:
+                widest = max(widest, int(round(line_pt * 20)) + ind_left + ind_right)
+        return widest + SAFETY_TWIPS if widest else 0
+
+    def get_span(tc):
+        tcPr = tc.find(q('tcPr'))
+        if tcPr is None:
+            return 1
+        span_el = tcPr.find(q('gridSpan'))
+        if span_el is None:
+            return 1
+        try:
+            return max(1, int(span_el.get(q('val'), '1')))
+        except ValueError:
+            return 1
+
+    body = doc.element.body
+    fixed_tables = 0
+
+    for tbl in body.findall(q('tbl')):
+        grid = tbl.find(q('tblGrid'))
+        if grid is None:
+            continue
+        gridCols = grid.findall(q('gridCol'))
+        n_cols = len(gridCols)
+        if n_cols == 0:
+            continue
+
+        rows = tbl.findall(q('tr'))
+
+        # Only the complement of fix_narrow_column_wraps's safety gate:
+        # a table must have SOME row-to-row gridSpan disagreement, or this
+        # step has nothing to do here (the other step already handled it,
+        # or there's nothing to fix either way).
+        has_any_span = False
+        for tr in rows:
+            tcs = tr.findall(q('tc'))
+            if len(tcs) != n_cols:
+                has_any_span = True
+                break
+            for tc in tcs:
+                if get_span(tc) != 1:
+                    has_any_span = True
+                    break
+            if has_any_span:
+                break
+        if not has_any_span:
+            continue
+
+        # Derive each row's grid-column ranges. Only proceed if EVERY row's
+        # cells, walked in order via their own gridSpan, land on exactly
+        # n_cols total -- i.e. each row is a full, clean re-partition of
+        # the same n_cols grid. If any row doesn't fit that shape, this
+        # table isn't the pattern this fix targets; leave it untouched.
+        row_ranges = []  # per row: list of (start, end, tc, needed)
+        shape_ok = True
+        for tr in rows:
+            col = 0
+            ranges = []
+            for tc in tr.findall(q('tc')):
+                span = get_span(tc)
+                if col + span > n_cols:
+                    shape_ok = False
+                    break
+                needed = cell_needed_twips(tc)
+                ranges.append((col, col + span, tc, needed))
+                col += span
+            if not shape_ok or col != n_cols:
+                shape_ok = False
+                break
+            row_ranges.append(ranges)
+        if not shape_ok:
+            continue
+
+        # Per grid column, the max share any row's cell needs from it.
+        col_min = [0.0] * n_cols
+        for ranges in row_ranges:
+            for start, end, _tc, needed in ranges:
+                span = end - start
+                if span <= 0 or not needed:
+                    continue
+                share = needed / span
+                for i in range(start, end):
+                    if share > col_min[i]:
+                        col_min[i] = share
+
+        orig_widths = [float(gc.get(q('w'), '0') or 0) for gc in gridCols]
+        current_total = sum(orig_widths)
+        total_min = sum(col_min)
+
+        if current_total <= 0:
+            continue
+
+        if total_min > current_total:
+            # Not enough room to satisfy every measured need without
+            # growing the table -- best effort: scale every column's
+            # minimum down proportionally rather than leave some cells
+            # under-served in an unpredictable way, and skip claiming a
+            # fix since wrapping may still occur.
+            scale = current_total / total_min
+            new_widths = [c * scale for c in col_min]
+        else:
+            slack = current_total - total_min
+            orig_total = sum(orig_widths) or 1.0
+            new_widths = [col_min[i] + slack * (orig_widths[i] / orig_total) for i in range(n_cols)]
+
+        new_widths_i = [max(1, int(round(w))) for w in new_widths]
+        diff = int(round(current_total)) - sum(new_widths_i)
+        new_widths_i[-1] = max(1, new_widths_i[-1] + diff)
+
+        if new_widths_i == [int(round(w)) for w in orig_widths]:
+            continue  # already satisfies every constraint as-is
+
+        for gc, w in zip(gridCols, new_widths_i):
+            gc.set(q('w'), str(w))
+
+        for ranges in row_ranges:
+            for start, end, tc, _needed in ranges:
+                tcPr = tc.find(q('tcPr'))
+                if tcPr is None:
+                    continue
+                tcW = tcPr.find(q('tcW'))
+                if tcW is None:
+                    continue
+                tcW.set(q('w'), str(sum(new_widths_i[start:end])))
+
+        fixed_tables += 1
+
+    doc.save(out_path)
+    print(f"  [merged_row_wraps] {fixed_tables} table(s) had their grid columns "
+          f"re-divided (per-row gridSpan-aware) to stop mid-word wraps in merged/summary rows.")
+    return fixed_tables
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Main pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1415,7 +1989,7 @@ def fix_section_breaks(docx_path, out_path):
     return fixed
 
 
-def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements")):
+def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "title_indent", "underline", "row_height", "narrow_cols", "merged_row_wraps", "fix_measurements", "page_overflow")):
 
     """
     Apply all enabled post-processing fixes to a pdf2docx-generated DOCX.
@@ -1437,7 +2011,7 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
     tmp_dir = tempfile.mkdtemp()
     step_in  = docx_in_path
     
-    step_order = ["section_breaks", "callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements"]
+    step_order = ["section_breaks", "callout", "cols", "title_indent", "underline", "row_height", "narrow_cols", "merged_row_wraps", "fix_measurements", "page_overflow"]
     applied_fixes = [f for f in step_order if f in fixes]
     
     for i, fix in enumerate(applied_fixes):
@@ -1459,14 +2033,20 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
             n = inject_callout_boxes(step_in, pdf_doc, step_out)
         elif fix == "cols":
             n = patch_column_widths(step_in, pdf_doc, step_out)
+        elif fix == "title_indent":
+            n = fix_header_title_indent(step_in, step_out)
         elif fix == "underline":
             n = patch_underlines(step_in, pdf_doc, step_out)
         elif fix == "row_height":
             n = fix_table_row_overflow(step_in, step_out)
         elif fix == "narrow_cols":
             n = fix_narrow_column_wraps(step_in, step_out)
+        elif fix == "merged_row_wraps":
+            n = fix_merged_row_narrow_wraps(step_in, step_out)
         elif fix == "fix_measurements":
             n = fix_non_integer_measurements(step_in, step_out)
+        elif fix == "page_overflow":
+            n = fix_table_page_overflow(step_in, step_out)
 
         step_in = step_out
     
@@ -1489,6 +2069,6 @@ if __name__ == "__main__":
     pdf_path  = sys.argv[1]
     docx_in   = sys.argv[2]
     docx_out  = sys.argv[3]
-    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements")
+    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "title_indent", "underline", "row_height", "narrow_cols", "merged_row_wraps", "fix_measurements", "page_overflow")
     
     postprocess(pdf_path, docx_in, docx_out, fixes=fixes)

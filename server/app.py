@@ -70,7 +70,7 @@ PDF_MAGIC = b"%PDF"
 # which code is actually running on Render, instead of only trusting a
 # green "deploy succeeded" tick in the dashboard. Check it any time after a
 # deploy: GET https://<service>.onrender.com/api/health
-BUILD_TAG = "2026-09-02b-fix_measurements+narrow_cols"
+BUILD_TAG = "2026-09-03c-title_indent"
 
 # ---------------------------------------------------------------------------
 # Lazy-import the heavy conversion libraries at first request
@@ -141,7 +141,7 @@ def convert_pdf_bytes_to_docx_bytes(pdf_bytes: bytes) -> bytes:
             pdf_path=tmp_pdf,
             docx_in_path=tmp_docx_base,
             docx_out_path=tmp_docx_out,
-            fixes=("section_breaks", "callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements"),
+            fixes=("section_breaks", "callout", "cols", "title_indent", "underline", "row_height", "narrow_cols", "merged_row_wraps", "fix_measurements", "page_overflow"),
         )
         log.info(f"postprocess: {time.perf_counter()-t1:.2f}s")
 

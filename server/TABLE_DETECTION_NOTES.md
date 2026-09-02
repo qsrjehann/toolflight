@@ -198,6 +198,158 @@ number cells with no data-loss overlap; the 11-column summary row is
 provably untouched (widths match the pre-fix baseline exactly); the PESCO
 bordered-table and May salary-slip renderings are unchanged.
 
+## Follow-up (2026-09-03): logo landing off the page edge
+
+New report on the same July-2026 file: the district logo now appeared right
+at the page's edge, unlike the original PDF. Root cause, found by reading
+the raw OOXML: the header row's table (title text in one cell, the logo
+image in the other) carries a left indent (`<w:tblInd>`, reproducing the
+title text's exact PDF x-offset) *and* a `<w:tblGrid>` sized to the page's
+full usable width -- pdf2docx computes the two independently and never
+checks whether indent + width still fit on the page. Measured on the
+actual file: left margin + indent (1262 twips) + grid width (10754 twips)
+overran the page by ~33.7pt, dragging the (inline) logo in its cell along
+with it -- confirmed by rendering and measuring the logo's bounding box
+with `pymupdf.get_image_info()`: its right edge sat at 603.8pt on a
+595.3pt-wide page.
+
+**Fix:** new step `page_overflow` (`fix_table_page_overflow()`), run last.
+For every top-level table, using the real page size/margins/indent (all
+read from the file), if the table's grid is wider than what's actually
+available, every column is scaled down by the same ratio so the table's
+right edge lands exactly at the margin -- proportions preserved, nothing
+assumed. Verified after the fix: the logo's bounding box is now
+480.25-540.75pt, safely inside the page.
+
+**Bug found and fixed while building this:** the first version rebuilt
+each cell's width as `sum(scaled_gridCol[position : position+gridSpan])`
+-- correct when every row shares one column layout, but for the "Gross
+Pay/Deductions/Net Pay" summary table (different gridSpan pattern in each
+row -- see the next section) that discarded whatever row-specific width
+adjustment had just been made, silently re-wrapping "-7,155.00" even
+though the fix that widened it had already run earlier in the same
+pipeline. Corrected to scale each cell's *own current* width by the ratio
+instead of reconstructing it from grid position -- for ordinary tables
+this produces the exact same numbers as before; for span-varying tables
+it stops erasing other steps' work.
+
+## Follow-up (2026-09-03): "-7,155.00" and "105,752.00" still wrapping
+
+Direct user report, repeated after the row-height and narrow_cols fixes
+were already live: the "Deductions: (Rs.):" and "Net Pay: (Rs.):" values
+were still splitting onto two lines. Root cause: those values live in the
+"Gross Pay / Deductions / Net Pay" summary table, whose row 0 (Payable /
+Recovered / Exempted / Recoverable) and row 1 (Gross Pay / Deductions /
+Net Pay) use *different* `gridSpan` patterns over the same 11-column
+`<w:tblGrid>` -- exactly the shape `fix_narrow_column_wraps`'s safety gate
+was built to skip (see the part-3 section above), so this table was never
+touched by that fix.
+
+**First attempt, and why it failed:** widen each deficient cell's own
+`<w:tcW>`, borrowing slack from another cell in the *same row* only (never
+touching `<w:tblGrid>`, so the cross-row ambiguity that forced the earlier
+safety gate couldn't apply). The saved file genuinely had the new
+`<w:tcW>` values -- confirmed by re-opening it -- but re-rendering showed
+*zero* visual change, and manually forcing +400 twips onto the exact
+deficient cells still produced an identical render. Root cause: this
+table's `<w:tblPr>` has `<w:tblLayout w:type="fixed"/>` with
+`<w:tblW w:type="auto" w:w="0"/>`. For a "fixed"-layout table whose rows
+slice `<w:tblGrid>` into different `gridSpan` patterns, both LibreOffice
+and Word render each cell's width as the sum of the grid columns its span
+covers -- `<w:tcW>` is written by pdf2docx on every cell but is decorative
+here; only `<w:tblGrid>` actually controls layout. This directly overturns
+what the part-3 note above assumed ("a table's real rendered width is
+per-cell tcW, not necessarily gridCol") -- true for tables where gridCol
+was already a meaningless uniform placeholder nobody read, false for a
+table like this one where the renderer reads it as authoritative.
+
+**Real fix:** new step `merged_row_wraps` (`fix_merged_row_narrow_wraps()`),
+run right after `narrow_cols`. For a table with row-to-row gridSpan
+differences, if every row's spans still add up to exactly the table's
+column count (a clean full re-partition each time -- otherwise the table
+is left untouched, same caution as before), the fix measures every cell's
+real needed text width (same reportlab AFM-metrics technique, with one bug
+fixed along the way: `<w:b w:val="0"/>` -- bold explicitly turned off --
+was being read as bold because the code only checked whether `<w:b>`
+existed, not its value, overestimating some cells' need), spreads that
+need evenly across the grid columns the cell covers, and sets each grid
+column to the *maximum* any row's cell needs from it. Leftover width is
+handed back proportionally to the columns' original sizes, so the table's
+overall width -- and the page layout -- never changes. Verified on the
+real file: "-7,155.00" and "105,752.00" (and, as a bonus, "Recovered till
+JUL-2026:" and "Exempted: 0.17-" in the row above, which were also
+wrapping) now render on a single line each; re-rendered and confirmed the
+May slip, PESCO bill, and all synthetic test files are visually unchanged.
+
+## Follow-up (2026-09-03): invalid `w:color` hex values
+
+While investigating why the table stayed invisible in WPS even after the
+float-`w:sz` fix (see part 2 above) went live, found that pdf2docx writes
+every `<w:color>` as `"#RRGGBB"` -- valid CSS, but invalid OOXML, which
+requires `ST_HexColor` to be exactly 6 hex digits or the literal `"auto"`,
+with no `#`. This is systemic: 100% of `w:color` occurrences in every test
+file use this invalid form (273-306 per real salary slip), and it's
+present in pdf2docx's own base conversion, before any post-processing.
+
+**Fix:** `fix_measurements` (already normalizing non-integer `w:sz`/`w:w`)
+now also strips the leading `#` from every `w:color` value. Like the
+float-sz fix, this is offered honestly as the best-evidenced next
+candidate for the WPS invisible-table symptom, not a proven one -- the
+float-sz fix alone did not make the table appear in WPS when tested live,
+so this is a stronger, more systemic companion fix, but there is still no
+WPS installation available in this environment to confirm it directly.
+
+## Follow-up (2026-09-03): `patch_column_widths` matching an image table
+
+`patch_column_widths()` (the `cols` step) matches each DOCX table to a PDF
+table region by column count, in order. On the July file this caused the
+2-column header/logo table to match an unrelated 4-column PDF region via
+the "nearest match" fallback, producing nonsense widths for a table that
+has no business being width-patched by text geometry in the first place --
+it holds a picture, not text columns. Fixed by skipping any table that
+contains a `<w:drawing>` before this logic runs.
+
+## Follow-up (2026-09-03): heading breaking into six ugly lines
+
+Direct user report, with screenshots: the heading no longer looked like
+the original PDF at all -- it rendered as six short, oddly-broken lines
+("Dist. Govt. KP-" / "Provincial District" / "Accounts Office" /
+"Peshawar Dist." / "Monthly Salary" / "Statement (July-2026)") even after
+every fix above was live. This was NOT caused by any of today's fixes --
+it was already there (visible in this session's own earlier render
+screenshots), just not flagged until now.
+
+Root cause: the title-text cell (in the same row/table as the district
+logo) is a reasonable 5526 twips (~276pt) wide, but its one paragraph
+carries `<w:ind w:left="1288" w:right="1440" w:firstLine="378"/>` --
+2728 twips of left+right indent, reproducing the text's original
+horizontal offset from the page's left edge in the source PDF. That made
+sense when this text was a normal line on a single-column page; once
+pdf2docx also put it inside a table cell -- whose position is already
+fully determined by the table's `<w:tblInd>` and column boundary -- the
+paragraph indent became pure redundant overhead, eating 2728 of the
+cell's 5526 twips before a single character is drawn and leaving only
+~140pt to wrap into, instead of the cell's real ~276pt. Confirmed by
+directly zeroing just this one paragraph's indent on the real file: the
+six-line break became two clean lines ("Dist. Govt. KP-Provincial
+District Accounts Office" / "Peshawar Dist. Monthly Salary Statement
+(July-2026)"), close to the source PDF's own three-line layout.
+
+**Fix:** new step `title_indent` (`fix_header_title_indent()`), run right
+after `cols`. Scope kept deliberately narrow: only paragraphs in a
+non-image cell that shares its table with an image cell (exactly the
+header/logo table pattern this was diagnosed on) have their `w:ind`
+left/right/firstLine zeroed. Every other cell's indent is legitimate,
+small, and already accounted for by `narrow_cols`/`merged_row_wraps` as
+real width-consumption, so nothing else is touched. Verified: exactly 1
+paragraph fixed on each real salary slip (May and July), 0 on all 5
+synthetic test files (none of them have an image-bearing table). Re-ran
+the full text-identity check across all 7 files -- 100% identical to the
+text-only baseline, confirming this only changes layout, never content.
+Re-rendered both real slips: July's heading is now 2 lines, May's is 3 --
+both natural word-wraps at the cell's real width, matching the source
+PDF's look far more closely than the six-line break did.
+
 ## Known separate issue (not touched here)
 
 Urdu/RTL text (e.g. the PESCO bill's Urdu columns) still renders
