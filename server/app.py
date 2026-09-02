@@ -64,6 +64,14 @@ limiter = Limiter(
 MAX_FILE_BYTES = 20 * 1024 * 1024
 PDF_MAGIC = b"%PDF"
 
+# Deploy verification tag — bump this string every time server/app.py or
+# server/postprocess_docx.py changes. Returned by /api/health so we can
+# confirm from OUTSIDE (a plain GET request, no PDF upload needed) exactly
+# which code is actually running on Render, instead of only trusting a
+# green "deploy succeeded" tick in the dashboard. Check it any time after a
+# deploy: GET https://<service>.onrender.com/api/health
+BUILD_TAG = "2026-09-02-row_height+extract_stream_table"
+
 # ---------------------------------------------------------------------------
 # Lazy-import the heavy conversion libraries at first request
 # (keeps cold-start time low on Render Free Tier)
@@ -153,14 +161,35 @@ def convert_pdf_bytes_to_docx_bytes(pdf_bytes: bytes) -> bytes:
 # Routes
 # ---------------------------------------------------------------------------
 
+def _lib_versions():
+    """Best-effort installed-package versions for deploy diagnostics. Never raises."""
+    import importlib.metadata as _ilm
+    versions = {}
+    for pkg in ("pdf2docx", "pymupdf", "python-docx", "flask", "flask-limiter"):
+        try:
+            versions[pkg] = _ilm.version(pkg)
+        except Exception as exc:
+            versions[pkg] = f"lookup failed: {exc}"
+    return versions
+
+
 @app.get("/")
 def health():
-    return jsonify({"status": "ok", "service": "toolflight-pdf2word"})
+    return jsonify({
+        "status": "ok",
+        "service": "toolflight-pdf2word",
+        "build": BUILD_TAG,
+        "libs": _lib_versions(),
+    })
 
 
 @app.get("/api/health")
 def api_health():
-    return jsonify({"status": "ok"})
+    return jsonify({
+        "status": "ok",
+        "build": BUILD_TAG,
+        "libs": _lib_versions(),
+    })
 
 
 @app.post("/api/pdf-to-word")
