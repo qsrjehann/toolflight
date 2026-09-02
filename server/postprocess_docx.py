@@ -959,6 +959,60 @@ def patch_underlines(docx_path, pdf_doc, out_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FIX 4 — Table row height: exact → atLeast (prevents wrapped text from
+#          overlapping the row/paragraph that follows it)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fix_table_row_overflow(docx_path, out_path):
+    """
+    pdf2docx gives every table row a fixed height (<w:trHeight w:hRule="exact">)
+    that matches the tight single-line spacing measured from the source PDF.
+    That's invisible as long as every cell's text still fits on one line in
+    Word/LibreOffice/WPS -- but it doesn't always: small differences between
+    the PDF's embedded font metrics and the font Word substitutes can make a
+    cell that was one line in the PDF wrap to two lines in the DOCX. Because
+    the row height is "exact", the row does NOT grow to fit that second
+    line -- it stays pinned at the original single-line height, so the
+    wrapped line renders UNDERNEATH whatever comes right after it (the next
+    row, or the next paragraph). The text is still there in the file; it's
+    just visually overlapped/garbled by what follows, which is exactly what
+    can make a specific value look "missing" to someone looking at the
+    rendered document (confirmed against the real salary-slip PDF: e.g. the
+    "Domicile: NW - Khyber Pakhtunkhwa" and "Length of Service: ..." cells
+    both wrap and overlap the row beneath them with the original exact
+    heights pdf2docx assigns).
+
+    Fix: switch hRule from "exact" to "atLeast" on every table row, in every
+    table (including tables nested inside table cells). "atLeast" means
+    "never shorter than this" -- for the overwhelming majority of rows,
+    where the text already fits on one line, this is a no-op: the row
+    renders at exactly the same height as before. Only a row whose content
+    actually needs two lines will grow past that minimum instead of
+    clipping/overlapping. This touches only the height-enforcement rule on
+    existing rows -- no widths, text, or table-detection logic are touched,
+    so it can't affect which rows exist or what they contain.
+    """
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    changed = 0
+    for tr in doc.element.body.iter(f'{{{W}}}tr'):
+        trPr = tr.find(qn('w:trPr'))
+        if trPr is None:
+            continue
+        trHeight = trPr.find(qn('w:trHeight'))
+        if trHeight is None:
+            continue
+        if trHeight.get(qn('w:hRule')) == 'exact':
+            trHeight.set(qn('w:hRule'), 'atLeast')
+            changed += 1
+
+    doc.save(out_path)
+    print(f"  [row_height] {changed} table row(s) switched exact→atLeast height.")
+    return changed
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Main pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1034,7 +1088,7 @@ def fix_section_breaks(docx_path, out_path):
     return fixed
 
 
-def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "underline")):
+def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "underline", "row_height")):
 
     """
     Apply all enabled post-processing fixes to a pdf2docx-generated DOCX.
@@ -1056,7 +1110,7 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
     tmp_dir = tempfile.mkdtemp()
     step_in  = docx_in_path
     
-    step_order = ["section_breaks", "callout", "cols", "underline"]
+    step_order = ["section_breaks", "callout", "cols", "underline", "row_height"]
     applied_fixes = [f for f in step_order if f in fixes]
     
     for i, fix in enumerate(applied_fixes):
@@ -1080,7 +1134,9 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
             n = patch_column_widths(step_in, pdf_doc, step_out)
         elif fix == "underline":
             n = patch_underlines(step_in, pdf_doc, step_out)
-        
+        elif fix == "row_height":
+            n = fix_table_row_overflow(step_in, step_out)
+
         step_in = step_out
     
     # If no fixes applied, just copy
@@ -1102,6 +1158,6 @@ if __name__ == "__main__":
     pdf_path  = sys.argv[1]
     docx_in   = sys.argv[2]
     docx_out  = sys.argv[3]
-    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "underline")
+    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "underline", "row_height")
     
     postprocess(pdf_path, docx_in, docx_out, fixes=fixes)

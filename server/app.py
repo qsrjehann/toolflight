@@ -133,7 +133,7 @@ def convert_pdf_bytes_to_docx_bytes(pdf_bytes: bytes) -> bytes:
             pdf_path=tmp_pdf,
             docx_in_path=tmp_docx_base,
             docx_out_path=tmp_docx_out,
-            fixes=("section_breaks", "callout", "cols", "underline"),
+            fixes=("section_breaks", "callout", "cols", "underline", "row_height"),
         )
         log.info(f"postprocess: {time.perf_counter()-t1:.2f}s")
 

@@ -50,6 +50,35 @@ the correct, officially-documented lever for this class of problem and is
 confirmed zero-regression against every test file above, but whether it
 fully fixes that exact real document is unverified pending the actual PDF.
 
+## Follow-up fix (2026-09-02): row-height overflow was hiding real data
+
+After the `extract_stream_table` change above, the user reported specific
+values as "missing" on their real salary-slip PDF (marked with red boxes:
+`Pay Scale Type: Civil` and `Domicile: NW - Khyber Pakhtunkhwa`). Direct
+inspection of the converted DOCX's XML showed the text was always present
+in the file (visible via `python-docx` cell inspection). The actual defect
+was visual, not textual: `pdf2docx` gives every table row a fixed height
+(`<w:trHeight w:hRule="exact">`) copied from the tight single-line spacing
+of the source PDF. When a cell's text that fit on one line in the PDF wraps
+to two lines in the DOCX (small font-metric differences between the PDF's
+embedded font and the font Word/LibreOffice/WPS substitutes), the `exact`
+rule keeps the row pinned at its original height instead of growing, so the
+wrapped second line renders on top of the row/paragraph that follows —
+visually overlapping and obscuring both values. This was confirmed with a
+LibreOffice-rendered screenshot of the actual uploaded PDF: both phrases
+were overlapped by adjacent text exactly where the user's red boxes were.
+
+Fix: a new post-processing step, `row_height` (in `postprocess_docx.py`,
+`fix_table_row_overflow()`), switches every table row's `hRule` from
+`exact` to `atLeast`. Rows whose text already fits on one line are
+unaffected (identical rendered height); rows that need to wrap now grow
+instead of overlapping. Verified byte-for-byte that this step changes only
+the `w:trHeight` height-rule attribute — running it against all 6 test PDFs
+(the 5 from the table above, plus the user's real salary-slip PDF) with a
+structural diff of the full DOCX body (with `trHeight` stripped out for the
+comparison) shows 100% identical text and structure before/after; only the
+height rule differs, and only on rows that were previously overflowing.
+
 ## Known separate issue (not touched here)
 
 Urdu/RTL text (e.g. the PESCO bill's Urdu columns) still renders
