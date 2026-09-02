@@ -107,9 +107,22 @@ def convert_pdf_bytes_to_docx_bytes(pdf_bytes: bytes) -> bytes:
         tmp_docx_out  = tmp_pdf.replace(".pdf", "_out.docx")
 
         # Step 1: pdf2docx baseline conversion
+        #
+        # extract_stream_table=True turns on pdf2docx's built-in detection of
+        # "stream" tables -- tabular data laid out with plain whitespace/tab
+        # alignment and no drawn border lines (e.g. payroll "Wage type |
+        # Amount" columns). It's off by default in the library. Verified
+        # against small_text.pdf (plain prose), pesco_style_bill.pdf (a real
+        # bordered table plus several "Label: value" lines), and a
+        # salary-statement-style borderless-table PDF: identical paragraph
+        # and table output with this flag on vs off on the first two, and a
+        # correctly reconstructed table on the third either way in this
+        # sandbox's test file -- see server/TABLE_DETECTION_NOTES.md for the
+        # full comparison and why the real Urdu bill's RTL text is a
+        # separate, not-yet-fixed issue.
         t0 = time.perf_counter()
         cv = _pdf2docx_Converter(tmp_pdf)
-        cv.convert(tmp_docx_base, start=0, end=None)
+        cv.convert(tmp_docx_base, start=0, end=None, extract_stream_table=True)
         cv.close()
         log.info(f"pdf2docx: {time.perf_counter()-t0:.2f}s")
 
