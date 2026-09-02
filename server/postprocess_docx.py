@@ -1013,6 +1013,333 @@ def fix_table_row_overflow(docx_path, out_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FIX 5 — Non-integer OOXML measurement attributes (borders invisible in
+#          stricter DOCX readers, e.g. mobile WPS Office)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fix_non_integer_measurements(docx_path, out_path):
+    """
+    Round every OOXML attribute that the spec defines as an integer
+    measurement, but that pdf2docx wrote as a raw Python float, to a clean
+    whole number.
+
+    Confirmed by direct inspection of pdf2docx's own base output (before any
+    of our other post-processing runs): border-size attributes come out
+    like `<w:top w:sz="5.599999999999909" w:val="single" .../>` and width
+    attributes like `<w:tcW w:w="546.00000000002"/>` -- i.e. pdf2docx
+    multiplies a PDF point-based measurement (a float) by a unit factor
+    (8 for border eighths-of-a-point, 20 for twips) and writes the raw
+    result straight into the XML, with no rounding. Per OOXML
+    (ECMA-376/ISO-29500), `w:sz` on a border is ST_EighthPointMeasure and
+    `w:w` on widths/margins is ST_TwipsMeasure -- both integer types; a
+    decimal value there is out-of-schema even though it happens to parse as
+    a number.
+
+    Word and LibreOffice tolerate this (they coerce to a number and ignore
+    the fractional part) -- confirmed by converting this exact file with
+    LibreOffice and seeing full, correctly drawn black grid lines around a
+    table whose cells carry exactly this kind of malformed `w:sz`. A
+    stricter reader is free to reject an attribute that fails schema
+    validation instead, and silently drop just that border -- which would
+    make a table that has real single-line borders in its XML render with
+    *no* visible border at all, indistinguishable from plain aligned text.
+    That matches a real-world report of a borderless-looking "missing"
+    table that a LibreOffice-based render of the same file shows fully
+    gridded (see server/TABLE_DETECTION_NOTES.md for the full writeup).
+
+    This is a narrow, whitelisted pass: only `w:sz` (any element) and `w:w`
+    (any element) attributes, plus `w:val` specifically on `w:trHeight`, are
+    touched, and only when their value isn't already a clean integer.
+    Nothing else in the document -- text, colors, other enumerated
+    attributes -- is read or modified.
+    """
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    SZ = f'{{{W}}}sz'
+    WIDTH = f'{{{W}}}w'
+    VAL = f'{{{W}}}val'
+    TRHEIGHT = f'{{{W}}}trHeight'
+
+    fixed = 0
+
+    def _round_attr(el, attr_qname):
+        nonlocal fixed
+        raw = el.get(attr_qname)
+        if raw is None:
+            return
+        try:
+            as_float = float(raw)
+        except (TypeError, ValueError):
+            return
+        rounded = str(max(0, int(round(as_float))))
+        if rounded != raw:
+            el.set(attr_qname, rounded)
+            fixed += 1
+
+    for el in doc.element.body.iter():
+        _round_attr(el, SZ)
+        _round_attr(el, WIDTH)
+        if el.tag == TRHEIGHT:
+            _round_attr(el, VAL)
+
+    doc.save(out_path)
+    print(f"  [fix_measurements] {fixed} non-integer OOXML measurement attribute(s) rounded.")
+    return fixed
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX 6 — Widen table columns whose real text width doesn't fit, so numbers
+#          don't wrap mid-value inside their own cell
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fix_narrow_column_wraps(docx_path, out_path):
+    """
+    Root cause (confirmed on the real July-2026 salary slip, "Gross Pay /
+    Deductions / Net Pay" row): pdf2docx positions each cell's text with a
+    paragraph-level <w:ind w:left="..."/> that reproduces the text's exact
+    horizontal offset inside its source PDF column. That indent eats into
+    the cell's own width, but nothing in the pipeline (neither pdf2docx nor
+    our own `cols` width patch) checks whether `cell_width - indent` still
+    leaves enough room for the text itself.
+
+    Measured directly from this file: the "-7,155.00 " cell is 1060 twips
+    wide with a 244-twip left indent, leaving 816 twips for text --
+    reportlab's real Times-Bold-10pt metrics say that exact string needs
+    816.6 twips. A 0.6-twip (less than 1/30 of a point) shortfall is enough
+    for Word/LibreOffice to wrap after the hyphen (a legal line-break
+    point), splitting "-7,155.00" into "-" / "7,155.00" on two lines. The
+    neighboring "105,752.00 " cell is the same story: 964 twips available
+    after its indent, 950 needed -- 14 twips of slack, i.e. still inside
+    normal font-substitution rounding error. Both wrapped in the actual
+    LibreOffice rendering of this file.
+
+    Fix: measure the real rendered width of every table cell's text with the
+    real font/size it's set in (reportlab's built-in AFM metrics -- not a
+    guess), add a small (1pt/20-twip) safety margin, and compare against
+    `cell_width - indent`. Where a column is short, widen it by *borrowing*
+    twips from OTHER columns in the same table that have measured spare
+    room -- the table's total width, and therefore the overall page layout,
+    never changes.
+
+    IMPORTANT SAFETY RESTRICTION, found by testing this against a real
+    11-column summary row (Gross Pay / Deductions / Net Pay, built from
+    gridSpan-merged cells whose span boundaries differ from row to row):
+    this table's own <w:tblGrid> lists 11 *equal* placeholder columns even
+    though the actual rendered width of every cell comes from that cell's
+    own <w:tcW>, which pdf2docx sets independently per cell and does not
+    keep consistent with gridSpan sums when rows don't share the same span
+    pattern. Reconciling width via the shared gridCol model there overwrote
+    real, already-reasonable per-cell widths with nonsense derived from the
+    meaningless uniform grid -- making cells *narrower*, the opposite of the
+    intent, and a real regression caught only by re-rendering and looking.
+    To make that class of bug structurally impossible rather than
+    special-casing it: this fix only ever touches a table where every row
+    has the exact same number of cells and the exact same gridSpan at every
+    position (i.e. no two rows disagree about where column boundaries fall)
+    -- there, and only there, gridCol really does mean one consistent thing
+    per column across the whole table, so borrowing/lending width between
+    columns is well-defined. Any table with row-to-row span differences is
+    left completely untouched, exactly as it was before this fix existed --
+    a known, non-data-loss cosmetic wrap left in place beats a "fix" that
+    silently shrinks a column.
+    """
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    doc = Document(docx_path)
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+    def q(tag):
+        return f'{{{W}}}{tag}'
+
+    SAFETY_TWIPS = 20  # ~1pt cushion for font-substitution rounding
+
+    def map_font(name, bold, italic):
+        n = (name or '').lower()
+        if 'times' in n or 'serif' in n:
+            base = 'Times'
+        elif 'courier' in n or 'mono' in n:
+            base = 'Courier'
+        else:
+            base = 'Helvetica'
+        if base == 'Times':
+            if bold and italic:
+                return 'Times-BoldItalic'
+            if bold:
+                return 'Times-Bold'
+            if italic:
+                return 'Times-Italic'
+            return 'Times-Roman'
+        suffix = ''
+        if bold and italic:
+            suffix = '-BoldOblique'
+        elif bold:
+            suffix = '-Bold'
+        elif italic:
+            suffix = '-Oblique'
+        return base + suffix if suffix else base
+
+    def cell_needed_twips(tc):
+        """Widest single line's (text-width + paragraph indent) in twips, or 0 if empty/unmeasurable."""
+        widest = 0
+        for p in tc.findall(q('p')):
+            pPr = p.find(q('pPr'))
+            ind_left = ind_right = 0
+            if pPr is not None:
+                ind = pPr.find(q('ind'))
+                if ind is not None:
+                    for attr, var in ((q('left'), 'left'), (q('right'), 'right')):
+                        raw = ind.get(attr)
+                        if raw is not None:
+                            try:
+                                val = int(round(float(raw)))
+                            except ValueError:
+                                val = 0
+                            if var == 'left':
+                                ind_left = val
+                            else:
+                                ind_right = val
+            line_pt = 0.0
+            has_text = False
+            for r in p.findall(q('r')):
+                text = ''.join(t.text or '' for t in r.findall(q('t')))
+                if not text:
+                    continue
+                has_text = True
+                rPr = r.find(q('rPr'))
+                font_name, bold, italic, size_pt = None, False, False, 10.0
+                if rPr is not None:
+                    rFonts = rPr.find(q('rFonts'))
+                    if rFonts is not None:
+                        font_name = rFonts.get(q('ascii'))
+                    bold = rPr.find(q('b')) is not None
+                    i_el = rPr.find(q('i'))
+                    italic = i_el is not None and i_el.get(q('val')) != '0'
+                    sz = rPr.find(q('sz'))
+                    if sz is not None:
+                        try:
+                            size_pt = float(sz.get(q('val'), '20')) / 2.0
+                        except ValueError:
+                            pass
+                font = map_font(font_name, bold, italic)
+                try:
+                    line_pt += stringWidth(text, font, size_pt)
+                except Exception:
+                    line_pt += len(text) * size_pt * 0.55
+            if has_text:
+                widest = max(widest, int(round(line_pt * 20)) + ind_left + ind_right)
+        return widest + SAFETY_TWIPS if widest else 0
+
+    body = doc.element.body
+    fixed_tables = 0
+
+    for tbl in body.findall(q('tbl')):
+        grid = tbl.find(q('tblGrid'))
+        if grid is None:
+            continue
+        gridCols = grid.findall(q('gridCol'))
+        n_cols = len(gridCols)
+        if n_cols == 0:
+            continue
+
+        rows = tbl.findall(q('tr'))
+
+        # Safety gate: only touch tables with NO gridSpan anywhere, i.e. every
+        # row has exactly n_cols cells, each occupying exactly one grid
+        # column. That's the only shape where a table's <w:tblGrid> width is
+        # guaranteed to equal every cell's own <w:tcW> at that position, so
+        # "column N" means one unambiguous, consistent thing across every
+        # row. (See the docstring: a table built from row-to-row-different
+        # gridSpan merges does NOT have that guarantee -- its tblGrid can be
+        # a meaningless uniform placeholder while real widths live on tcW --
+        # and reconciling width against gridCol there corrupted real widths
+        # in testing. Skipping those tables entirely is what makes that bug
+        # impossible here, rather than something to remember to avoid.)
+        has_any_span = False
+        for tr in rows:
+            tcs = tr.findall(q('tc'))
+            if len(tcs) != n_cols:
+                has_any_span = True
+                break
+            for tc in tcs:
+                tcPr = tc.find(q('tcPr'))
+                if tcPr is not None and tcPr.find(q('gridSpan')) is not None:
+                    has_any_span = True
+                    break
+            if has_any_span:
+                break
+        if has_any_span:
+            continue
+
+        col_widths = [int(round(float(gc.get(q('w'), '0') or 0))) for gc in gridCols]
+        col_needed = [0] * n_cols
+
+        row_cell_info = []
+        for tr in rows:
+            infos = []
+            for col_idx, tc in enumerate(tr.findall(q('tc'))):
+                needed = cell_needed_twips(tc)
+                infos.append((tc, col_idx, 1))
+                col_needed[col_idx] = max(col_needed[col_idx], needed)
+            row_cell_info.append(infos)
+
+        deficits, slack = {}, {}
+        for ci in range(n_cols):
+            need = col_needed[ci]
+            if not need:
+                continue  # empty column everywhere -- no measurement, don't touch
+            have = col_widths[ci]
+            if need > have:
+                deficits[ci] = need - have
+            elif have > need:
+                slack[ci] = have - need
+
+        if not deficits or not slack:
+            continue  # nothing to fix, or nowhere safe to borrow from
+
+        total_deficit = sum(deficits.values())
+        total_slack = sum(slack.values())
+        borrow_ratio = min(1.0, total_slack / total_deficit)
+
+        new_widths = list(col_widths)
+        granted = 0
+        for ci, deficit in deficits.items():
+            grant = int(round(deficit * borrow_ratio))
+            new_widths[ci] += grant
+            granted += grant
+        if granted <= 0:
+            continue
+
+        remaining = granted
+        for ci, spare in sorted(slack.items(), key=lambda kv: -kv[1]):
+            if remaining <= 0:
+                break
+            take = min(spare, remaining)
+            new_widths[ci] -= take
+            remaining -= take
+
+        if new_widths == col_widths:
+            continue
+
+        for gc, w in zip(gridCols, new_widths):
+            gc.set(q('w'), str(w))
+        for infos in row_cell_info:
+            for tc, col_idx, span in infos:
+                tcPr = tc.find(q('tcPr'))
+                if tcPr is None:
+                    continue
+                tcW = tcPr.find(q('tcW'))
+                if tcW is None:
+                    continue
+                cell_w = sum(new_widths[col_idx:col_idx + span]) if col_idx < n_cols else new_widths[-1]
+                tcW.set(q('w'), str(cell_w))
+        fixed_tables += 1
+
+    doc.save(out_path)
+    print(f"  [narrow_cols] {fixed_tables} table(s) had column widths widened to stop mid-word wraps.")
+    return fixed_tables
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Main pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1088,7 +1415,7 @@ def fix_section_breaks(docx_path, out_path):
     return fixed
 
 
-def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "underline", "row_height")):
+def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", "callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements")):
 
     """
     Apply all enabled post-processing fixes to a pdf2docx-generated DOCX.
@@ -1110,7 +1437,7 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
     tmp_dir = tempfile.mkdtemp()
     step_in  = docx_in_path
     
-    step_order = ["section_breaks", "callout", "cols", "underline", "row_height"]
+    step_order = ["section_breaks", "callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements"]
     applied_fixes = [f for f in step_order if f in fixes]
     
     for i, fix in enumerate(applied_fixes):
@@ -1136,6 +1463,10 @@ def postprocess(pdf_path, docx_in_path, docx_out_path, fixes=("section_breaks", 
             n = patch_underlines(step_in, pdf_doc, step_out)
         elif fix == "row_height":
             n = fix_table_row_overflow(step_in, step_out)
+        elif fix == "narrow_cols":
+            n = fix_narrow_column_wraps(step_in, step_out)
+        elif fix == "fix_measurements":
+            n = fix_non_integer_measurements(step_in, step_out)
 
         step_in = step_out
     
@@ -1158,6 +1489,6 @@ if __name__ == "__main__":
     pdf_path  = sys.argv[1]
     docx_in   = sys.argv[2]
     docx_out  = sys.argv[3]
-    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "underline", "row_height")
+    fixes = tuple(sys.argv[4:]) if len(sys.argv) > 4 else ("callout", "cols", "underline", "row_height", "narrow_cols", "fix_measurements")
     
     postprocess(pdf_path, docx_in, docx_out, fixes=fixes)
