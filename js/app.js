@@ -2682,17 +2682,39 @@ if (document.getElementById('aiRemoveDrop')){
       const rawMaskData = result.categoryMask.getAsUint8Array();
       const maskW = result.categoryMask.width || w;
       const maskH = result.categoryMask.height || h;
-      // Normalize to the EXACT existing polarity: category 0 = background,
-      // anything else = foreground -- unchanged from before, only the
-      // mask's edge/detail QUALITY is being improved below.
+      // Normalize: category 0 = background (excluded). All other PASCAL VOC
+      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
+      // are treated as potential foreground subject. DeepLab v3 correctly
+      // identifies semantic categories; however, whether a chair, sofa, or
+      // table belongs to the user's intended foreground is a compositional
+      // decision that cannot be correctly made by a static class blacklist --
+      // a person sitting in a designer chair may want both preserved, while
+      // another photo may have an unwanted chair in the background. The
+      // downstream removeSmallIslands() step handles isolated speckling, and
+      // the manual Eraser / Lasso / Polygon tools handle any residual
+      // unwanted regions. Background (class 0) is the only class that is
+      // definitively not the user's intended subject.
       const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-      for (let i=0; i<normalizedMask.length; i++) normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+      for (let i=0; i<normalizedMask.length; i++)
+        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
 
+
+
+      // DeepLab v3 returns one confidence mask per PASCAL VOC class (21 total,
+      // indices 0-20). Index 15 = person class confidence -- the only meaningful
+      // signal for a person-extraction use case. The previous code used index [1]
+      // (aeroplane confidence, measured at max=0.000044 on real images -- effectively
+      // zero everywhere), which caused the confidence-blending step inside
+      // refineSegmentationMask to drag every edge pixel toward transparent regardless
+      // of actual person confidence, degrading edge quality rather than improving it.
       let confidenceData = null, confW = maskW, confH = maskH;
-      if (result.confidenceMasks && result.confidenceMasks[1]){
-        confidenceData = result.confidenceMasks[1].getAsFloat32Array();
-        confW = result.confidenceMasks[1].width; confH = result.confidenceMasks[1].height;
+      const PERSON_CONF_IDX = 15; // PASCAL VOC class 15 = person
+      if (result.confidenceMasks && result.confidenceMasks[PERSON_CONF_IDX]){
+        confidenceData = result.confidenceMasks[PERSON_CONF_IDX].getAsFloat32Array();
+        confW = result.confidenceMasks[PERSON_CONF_IDX].width;
+        confH = result.confidenceMasks[PERSON_CONF_IDX].height;
       }
+
 
       // Grayscale luminance guide at mask resolution, for edge-aware
       // matte refinement -- lets the alpha edge snap to real color
@@ -6115,523 +6137,113 @@ if (document.getElementById('pwDrop')){
   };
   document.getElementById('pwConvertAnotherBtn').onclick = () => { resetPwState(); };
 
-  /* ================= PDF -> WORD ================= */
-  async function convertPdfToWord(file, onProgress, isCancelled){
-    onProgress(5, 'Reading PDF\u2026');
+  /* ================= PDF -> WORD =================
+     Server-side conversion via the ToolFlight pdf2docx API.
+     The Python server (server/app.py) runs pdf2docx + a 4-step post-processor
+     that fixes column widths, callout boxes, section breaks, and underlines.
+     All processing is in-memory on the server — the PDF is never stored.
+
+     Known limitation: Complex multi-column forms (e.g. government salary slips)
+     may reflow across more pages than the original PDF. All text and data are
+     preserved correctly.
+  */
+  const PDF2WORD_API = 'https://toolflight-pdf2word.onrender.com/api/pdf-to-word';
+
+  async function convertPdfToWord(file, onProgress, isCancelled) {
     pwLastDiagnostics = [];
-    const pdfjsLib = await ensurePdfJsPW();
-    const bytes = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-    const docxLib = await ensureDocxLib();
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, ExternalHyperlink, PageBreak, Table, TableRow, TableCell, WidthType, ImageRun, BorderStyle, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType, TableLayoutType } = docxLib;
-    const floatingImagesSupported = !!(HorizontalPositionRelativeFrom && VerticalPositionRelativeFrom && TextWrappingType);
-    // Defensive: if this docx.js build doesn't expose table/image classes for
-    // some reason, degrade to plain paragraphs / skip images rather than
-    // throwing and failing the whole conversion.
-    const tablesSupported = !!(Table && TableRow && TableCell && WidthType);
-    const imagesSupported = !!ImageRun;
-    const OPS = pdfjsLib.OPS;
 
-    // ---- Matrix helpers for tracking the CTM through the operator list ----
-    const MTX_IDENTITY = [1,0,0,1,0,0];
-    function mtxMultiply(a,b){
-      return [a[0]*b[0]+a[1]*b[2], a[0]*b[1]+a[1]*b[3], a[2]*b[0]+a[3]*b[2], a[2]*b[1]+a[3]*b[3], a[4]*b[0]+a[5]*b[2]+b[4], a[4]*b[1]+a[5]*b[3]+b[5]];
-    }
-    function mtxApply(m,x,y){ return [m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]]; }
+    onProgress(10, 'Uploading PDF…');
 
-    // ---- Extracts stroked straight lines (table borders) from a page's
-    // operator list, in final page coordinates. Verified against a real
-    // multi-table government payslip PDF: line count and positions matched
-    // an independent Python/pdfplumber extraction exactly. ----
-    function extractLines(opList){
-      let ctm = MTX_IDENTITY; const ctmStack = []; const out = [];
-      let lastPathBBox = null, lastPathCtm = null;
-      let curX = null, curY = null, curMinX = null, curMinY = null, curMaxX = null, curMaxY = null;
-      function extendCurrent(x, y){
-        if (curMinX === null){ curMinX = curMaxX = x; curMinY = curMaxY = y; }
-        else { curMinX = Math.min(curMinX,x); curMaxX = Math.max(curMaxX,x); curMinY = Math.min(curMinY,y); curMaxY = Math.max(curMaxY,y); }
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+
+    // The backend is a Render free-tier instance (server/render.yaml), which
+    // can take 30-60s to cold-start after being idle, on top of actual
+    // conversion time -- gunicorn itself is started with --timeout 120, so
+    // the client-side budget has to be at least that long or a perfectly
+    // healthy slow request gets aborted for no reason. 130s gives a small
+    // margin over the server's own timeout.
+    const PW_REQUEST_TIMEOUT_MS = 130000;
+    const pwTimeoutController = new AbortController();
+    const pwTimeoutId = setTimeout(() => pwTimeoutController.abort(), PW_REQUEST_TIMEOUT_MS);
+
+    let response;
+    try {
+      response = await fetch(PDF2WORD_API, {
+        method: 'POST',
+        body: formData,
+        signal: pwTimeoutController.signal,
+        // No Content-Type header — browser sets it with correct boundary
+      });
+    } catch (networkErr) {
+      // fetch() only throws before any HTTP response exists: DNS/TCP
+      // failure, the timeout above firing, or the browser refusing to even
+      // attempt the request (blocked by Content-Security-Policy's
+      // connect-src, or a rejected CORS preflight). These all surface as
+      // the same generic TypeError, so JS can't tell them apart from each
+      // other here -- but they ARE distinguishable from an HTTP-level error
+      // (handled separately below, once a response does come back), so this
+      // message no longer claims it's specifically the user's internet.
+      if (networkErr && networkErr.name === 'AbortError') {
+        throw new Error(
+          'The conversion server took too long to respond (over 2 minutes) and the request was cancelled. It may be waking up from being idle — please try again in a moment.'
+        );
       }
-      function pushLineFromBBox(bbox, ctmAtPaint){
-        if (!bbox) return;
-        const [minX,minY,maxX,maxY] = bbox;
-        const [x0,y0] = mtxApply(ctmAtPaint, minX, minY);
-        const [x1,y1] = mtxApply(ctmAtPaint, maxX, maxY);
-        out.push({ x0: Math.min(x0,x1), x1: Math.max(x0,x1), y0: Math.min(y0,y1), y1: Math.max(y0,y1) });
-      }
-      for (let i = 0; i < opList.fnArray.length; i++){
-        const fn = opList.fnArray[i], args = opList.argsArray[i];
-        if (fn === OPS.save) ctmStack.push(ctm);
-        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
-        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
-        else if (fn === OPS.moveTo){ curMinX=curMinY=curMaxX=curMaxY=null; if (args) extendCurrent(args[0], args[1]); }
-        else if (fn === OPS.lineTo){ if (args) extendCurrent(args[0], args[1]); }
-        else if (fn === OPS.constructPath){
-          const paintType = args && args[0];
-          if (paintType === OPS.stroke || paintType === OPS.closeStroke || paintType === OPS.fillStroke || paintType === OPS.fill || paintType === OPS.eoFill){
-            // pattern (a): paint type embedded in the same operation
-            pushLineFromBBox(args[2], ctm);
-          } else if (args && args[2] && args[2].length === 4 && typeof args[2][0] === 'number'){
-            // pattern (b): just remember this path's shape; a later,
-            // separate paint op (if any) will paint it
-            lastPathBBox = args[2];
-            lastPathCtm = ctm;
-          } else if (args && args[1] && args[1].length === 4 && typeof args[1][0] === 'number'){
-            lastPathBBox = args[1];
-            lastPathCtm = ctm;
-          }
-        }
-        else if (fn === OPS.stroke || fn === OPS.closeStroke || fn === OPS.fillStroke || fn === OPS.fill || fn === OPS.eoFill){
-          // Confirmed via a live diagnostic on a real production PDF: its
-          // table border lines are drawn as thin *filled* rectangles
-          // (constructPath's own first argument is OPS.rectangle -- the
-          // path-construction method, not a paint type as first assumed --
-          // followed by a separate OPS.fill/OPS.eoFill). A standalone
-          // stroke-only check missed every one of these. Both filled and
-          // stroked paint operations are now treated as "paint whatever
-          // path was just built", covering both real-world encodings seen
-          // so far.
-          if (lastPathBBox){ pushLineFromBBox(lastPathBBox, lastPathCtm); lastPathBBox = null; }
-          else if (curMinX !== null){ pushLineFromBBox([curMinX,curMinY,curMaxX,curMaxY], ctm); curMinX=curMinY=curMaxX=curMaxY=null; }
-        }
-        else if (fn === OPS.eoClip || fn === OPS.clip || fn === OPS.endPath){
-          // These consume/finish the current path WITHOUT visibly painting
-          // it (clip-region setup, or an explicit "done with this path, no
-          // paint" marker) -- also confirmed present in the same live
-          // diagnostic (702 clip-only paths, used for text-rendering
-          // masks, not table borders). Clear any remembered path here so
-          // its bounds can't leak into an unrelated later paint operation.
-          lastPathBBox = null;
-          curMinX = curMinY = curMaxX = curMaxY = null;
-        }
-      }
-      return out;
+      throw new Error(
+        'Could not reach the conversion server. This can happen if the service is temporarily down, misconfigured (CORS/CSP), or a network in between is blocking the request — it is not necessarily a problem with your internet connection. Please try again in a moment.'
+      );
+    } finally {
+      clearTimeout(pwTimeoutId);
     }
 
-    // ---- Clusters straight lines into connected table regions (a vertical
-    // and horizontal line "connect" when they touch/cross), so each real
-    // table on the page is handled as its own independent grid rather than
-    // one page-wide grid. Verified: correctly separated 3 distinct tables
-    // on a real payslip into 3 regions, matching the source document. ----
-    function clusterLineRegions(lines){
-      const vlines = lines.filter(l => (l.x1-l.x0) < 3).map((l,idx) => ({...l, idx, orient:'v'}));
-      const hlines = lines.filter(l => (l.y1-l.y0) < 3).map((l,idx) => ({...l, idx: idx+100000, orient:'h'}));
-      const all = [...vlines, ...hlines];
-      const parent = {};
-      function find(x){ if (parent[x]===undefined) parent[x]=x; if (parent[x]!==x) parent[x]=find(parent[x]); return parent[x]; }
-      function union(a,b){ const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb; }
-      const TOL = 2.0;
-      for (const v of vlines) for (const h of hlines){
-        if (h.y0 >= v.y0-TOL && h.y0 <= v.y1+TOL && v.x0 >= h.x0-TOL && v.x0 <= h.x1+TOL) union(v.idx, h.idx);
-      }
-      all.forEach(l => find(l.idx));
-      const groups = {};
-      for (const l of all){ const root = find(l.idx); (groups[root] = groups[root] || []).push(l); }
-      // require a real grid: at least 2 rows and 2 columns worth of lines
-      return Object.values(groups).filter(g => g.filter(l=>l.orient==='v').length >= 2 && g.filter(l=>l.orient==='h').length >= 2);
-    }
+    if (isCancelled && isCancelled()) return null;
+    onProgress(80, 'Converting…');
 
-    function clusterCoords(vals, tol){
-      const sorted = [...vals].sort((a,b)=>a-b); const clusters = [];
-      for (const v of sorted){
-        if (clusters.length && v - clusters[clusters.length-1].sum/clusters[clusters.length-1].n < tol){ const c = clusters[clusters.length-1]; c.sum += v; c.n++; }
-        else clusters.push({ sum: v, n: 1 });
-      }
-      return clusters.map(c => c.sum/c.n);
-    }
-
-    // ---- Extracts embedded raster images (photos, logos, seals) from a
-    // page's operator list and converts each to PNG bytes via an offscreen
-    // canvas, along with its position/size on the page (for placement) and
-    // in-content ordering. Verified: correctly resolved a real embedded
-    // seal image's pixel data (63x65, RGB) via page.objs.get(). ----
-    async function extractImages(page, opList){
-      const images = [];
-      let ctm = MTX_IDENTITY; const ctmStack = [];
-      for (let i = 0; i < opList.fnArray.length; i++){
-        const fn = opList.fnArray[i], args = opList.argsArray[i];
-        if (fn === OPS.save) ctmStack.push(ctm);
-        else if (fn === OPS.restore) ctm = ctmStack.pop() || MTX_IDENTITY;
-        else if (fn === OPS.transform) ctm = mtxMultiply(args, ctm);
-        else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject){
-          const name = args && args[0];
-          try {
-            let imgObj = null;
-            if (name && page.objs && typeof page.objs.get === 'function'){
-              imgObj = await new Promise((resolve, reject) => {
-                try {
-                  const immediate = page.objs.get(name, resolve);
-                  // pdf.js returns null (not undefined) synchronously when
-                  // the object isn't resolved yet and will invoke the
-                  // callback later -- only treat a genuine object as
-                  // "already available" here, not null/undefined.
-                  if (immediate) resolve(immediate);
-                } catch(e){ reject(e); }
-              });
-            } else if (args && args[0] && typeof args[0] === 'object'){
-              imgObj = args[0]; // inline images sometimes carry the data directly in argsArray
-            }
-            if (!imgObj){
-              console.warn('[PDF to Word] Image object', name, 'resolved to nothing.');
-              continue;
-            }
-            // Different pdf.js builds expose pixel data differently: a raw
-            // typed array (`data`), or a pre-decoded `bitmap` (ImageBitmap
-            // or similar canvas-drawable object).
-            let pngBytes = null;
-            const width = imgObj.width, height = imgObj.height;
-            if (!width || !height){
-              console.warn('[PDF to Word] Image object', name, 'has no width/height. Keys:', Object.keys(imgObj));
-              continue;
-            }
-            if (imgObj.bitmap){
-              pngBytes = await rasterToPngFromBitmap(imgObj.bitmap, width, height);
-            } else if (imgObj.data){
-              pngBytes = await rasterToPng(imgObj);
-            } else {
-              console.warn('[PDF to Word] Image object', name, 'has neither .data nor .bitmap. Keys:', Object.keys(imgObj));
-              continue;
-            }
-            if (pngBytes){
-              const [x0,y0] = mtxApply(ctm, 0, 0);
-              const [x1,y1] = mtxApply(ctm, 1, 1);
-              images.push({
-                bytes: pngBytes, srcW: width, srcH: height,
-                x: Math.min(x0,x1), y: Math.max(y0,y1),
-                dispW: Math.abs(x1-x0), dispH: Math.abs(y1-y0),
-              });
-            } else {
-              console.warn('[PDF to Word] Image object', name, 'produced no PNG bytes from either path.');
-            }
-          } catch(e){
-            console.error('[PDF to Word] Failed to extract embedded image', name, '-- skipping it. Error:', e);
-            pwLastDiagnostics.push(`image extraction: ${e && e.message ? e.message : e}`);
-          }
-        }
-      }
-      return images;
-    }
-    // Converts pdf.js's raw pixel buffer (RGB or RGBA, Uint8ClampedArray) to
-    // PNG bytes using an offscreen canvas -- a standard, well-established
-    // browser technique.
-    async function rasterToPng(imgObj){
-      const { width, height, data } = imgObj;
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.createImageData(width, height);
-      const channels = data.length / (width*height);
-      if (channels === 4){
-        imageData.data.set(data);
-      } else if (channels === 3){
-        for (let i = 0, j = 0; i < data.length; i += 3, j += 4){
-          imageData.data[j] = data[i]; imageData.data[j+1] = data[i+1]; imageData.data[j+2] = data[i+2]; imageData.data[j+3] = 255;
-        }
-      } else if (channels === 1){
-        for (let i = 0, j = 0; i < data.length; i++, j += 4){
-          imageData.data[j] = data[i]; imageData.data[j+1] = data[i]; imageData.data[j+2] = data[i]; imageData.data[j+3] = 255;
-        }
-      } else {
-        console.warn('[PDF to Word] Unrecognized pixel format: data.length=', data.length, 'for', width, 'x', height, '=> channels=', channels);
-        return null; // unrecognized pixel format -- skip rather than guess
-      }
-      ctx.putImageData(imageData, 0, 0);
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) return null;
-      return new Uint8Array(await blob.arrayBuffer());
-    }
-    // Handles the case where pdf.js hands back a pre-decoded bitmap
-    // (ImageBitmap or similar) instead of a raw pixel-data array -- some
-    // pdf.js builds/versions resolve images this way, particularly for
-    // JPEG-encoded content.
-    async function rasterToPngFromBitmap(bitmap, width, height){
+    if (!response.ok) {
+      // Try to extract a human-readable message from the JSON error body
+      // the backend sends for expected failures (bad PDF, too large, rate
+      // limited, conversion exception, etc.) -- fall back to a message
+      // specific to the HTTP status when there is no such body, so a
+      // missing/misrouted endpoint (404) reads differently from the backend
+      // crashing (500) instead of both collapsing into "Server error".
+      let errMsg;
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(bitmap, 0, 0, width, height);
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        if (!blob) return null;
-        return new Uint8Array(await blob.arrayBuffer());
-      } catch(e){
-        console.warn('[PDF to Word] Failed to draw bitmap image to canvas:', e);
-        return null;
-      }
-    }
+        const errJson = await response.json();
+        if (errJson && errJson.error) errMsg = errJson.error;
+      } catch (_) { /* non-JSON body — fall through to status-based message */ }
 
-
-    // Pass 1: collect all font sizes across the document to find the "body
-    // text" baseline size, so headings can be detected relative to it rather
-    // than against an arbitrary fixed number. Also extract table-border
-    // lines and embedded images per page here, since both come from the
-    // same operator-list pass as everything else on the page.
-    const allSizes = [];
-    const pageTextItems = [];
-    for (let p = 1; p <= pdf.numPages; p++){
-      if (isCancelled()) return null;
-      onProgress(5 + Math.round((p/pdf.numPages)*35), `Reading page ${p} of ${pdf.numPages}\u2026`);
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const annotations = await page.getAnnotations();
-      const links = annotations.filter(a => a.subtype === 'Link' && a.url).map(a => ({ rect: a.rect, url: a.url }));
-      const items = content.items.map(it => ({
-        str: it.str, x: it.transform[4], x1: it.transform[4] + (it.width || 0), y: it.transform[5],
-        fontSize: Math.hypot(it.transform[2], it.transform[3]) || 10,
-        fontName: it.fontName || '',
-      })).filter(it => it.str.trim().length > 0);
-      items.forEach(it => allSizes.push(it.fontSize));
-
-      let tableRegions = [];
-      let images = [];
-      try {
-        const opList = await page.getOperatorList();
-        if (tablesSupported){
-          const lines = extractLines(opList);
-          const regionGroups = clusterLineRegions(lines);
-          tableRegions = regionGroups.map(g => {
-            const vls = g.filter(l => l.orient === 'v'), hls = g.filter(l => l.orient === 'h');
-            const colXs = clusterCoords(vls.map(l => l.x0), 1.5);
-            const rowYs = clusterCoords(hls.map(l => l.y0), 1.5);
-            return { colXs, rowYs, x0: Math.min(...colXs), x1: Math.max(...colXs), y0: Math.min(...rowYs), y1: Math.max(...rowYs) };
-          }).filter(r => r.colXs.length >= 2 && r.rowYs.length >= 2);
-          // Always-on, detailed pipeline diagnostics (not just for hard
-          // zero-line cases) -- reports exactly how many lines, regions,
-          // and rows/cols were found at each stage, so any future mismatch
-          // is immediately visible instead of requiring another guess-and-
-          // redeploy round.
-          const vCount = lines.filter(l => (l.x1-l.x0) < 3).length;
-          const hCount = lines.filter(l => (l.y1-l.y0) < 3).length;
-          console.info('[PDF to Word] page', p, 'pipeline:', opList.fnArray.length, 'ops ->', lines.length, `lines (${vCount}v/${hCount}h) ->`, regionGroups.length, 'raw region(s) ->', tableRegions.length, 'valid table(s).', tableRegions.map(r => `${r.rowYs.length-1}x${r.colXs.length-1}`));
-          if (tableRegions.length === 0){
-            // Consolidated single diagnostic: line counts by orientation,
-            // raw (pre-filter) region count from clustering, and a sample
-            // of actual coordinates -- enough to tell whether clustering
-            // found nothing at all (a touch-detection/tolerance issue) or
-            // found regions that got filtered out (a too-strict row/col
-            // minimum), without needing another guess-and-redeploy round.
-            const vSample = lines.filter(l => (l.x1-l.x0) < 3).slice(0, 6).map(l => `x=${l.x0.toFixed(1)},y${l.y0.toFixed(0)}-${l.y1.toFixed(0)}`);
-            const hSample = lines.filter(l => (l.y1-l.y0) < 3).slice(0, 6).map(l => `y=${l.y0.toFixed(1)},x${l.x0.toFixed(0)}-${l.x1.toFixed(0)}`);
-            const rawRegionSizes = regionGroups.map(g => `${g.filter(l=>l.orient==='v').length}v+${g.filter(l=>l.orient==='h').length}h`);
-            console.info('[PDF to Word] page', p, 'DEEP diag -- vSample:', vSample, 'hSample:', hSample, 'rawRegionSizes:', rawRegionSizes);
-            pwLastDiagnostics.push(`page ${p}: ${lines.length} lines (${vCount}v/${hCount}h) -> ${regionGroups.length} raw region(s) [sizes: ${rawRegionSizes.join(',')}] -> 0 valid | vSample: ${vSample.join(' ')} | hSample: ${hSample.join(' ')}`);
-          }
-        }
-        if (imagesSupported) images = await extractImages(page, opList);
-        if (images.length === 0){
-          const imgOpCount = opList.fnArray.filter(fn => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject).length;
-          if (imgOpCount > 0){
-            console.warn('[PDF to Word] page', p, '--', imgOpCount, 'image-paint ops found but 0 images were extracted.');
-            pwLastDiagnostics.push(`page ${p}: ${imgOpCount} image op(s) found but 0 extracted`);
-          }
-        }
-      } catch(e){
-        // Fall back to text-only for this page rather than failing the whole
-        // conversion -- but surface the real error to the console instead of
-        // swallowing it silently, so a version/API mismatch can actually be
-        // diagnosed instead of just silently producing no tables/images.
-        console.error('[PDF to Word] Table/image extraction failed for page', p, '-- falling back to plain text for this page. Error:', e);
-        pwLastDiagnostics.push(`page ${p} table/image extraction: ${e && e.message ? e.message : e}`);
-      }
-
-      pageTextItems.push({ items, links, height: page.view[3], tableRegions, images });
-      page.cleanup && page.cleanup();
-    }
-    if (allSizes.length === 0){
-      throw new Error('No extractable text was found in this PDF \u2014 it may be a scanned image rather than real text, which this tool can\u2019t convert.');
-    }
-    allSizes.sort((a,b) => a-b);
-    const bodySize = allSizes[Math.floor(allSizes.length/2)]; // median font size = body text baseline
-
-    onProgress(45, 'Reconstructing document structure\u2026');
-    const docChildren = [];
-    for (let pIdx = 0; pIdx < pageTextItems.length; pIdx++){
-      if (isCancelled()) return null;
-      const { items, tableRegions, images } = pageTextItems[pIdx];
-      // Group items into lines by Y proximity, then lines into paragraphs by
-      // a larger vertical gap (a real, standard heuristic for reflowed text
-      // -- not guaranteed on unusually-formatted PDFs, disclosed in the FAQ).
-      items.sort((a,b) => b.y - a.y || a.x - b.x);
-      const lines = [];
-      let currentLine = null, lastY = null;
-      for (const it of items){
-        if (lastY === null || Math.abs(it.y - lastY) > it.fontSize * 0.4){
-          currentLine = { y: it.y, items: [it] };
-          lines.push(currentLine);
+      if (!errMsg) {
+        if (response.status === 404) {
+          errMsg = 'The conversion service endpoint is unavailable (404 — not found). The service may not be deployed at the expected address.';
+        } else if (response.status === 429) {
+          errMsg = 'Too many conversion requests right now. Please wait a minute and try again.';
+        } else if (response.status >= 500) {
+          errMsg = `The conversion server hit an internal error (${response.status}) while processing this PDF. Please try again in a moment, or try a different file.`;
         } else {
-          currentLine.items.push(it);
-        }
-        lastY = it.y;
-      }
-
-      // ---- Table & image placement ----
-      // Tables are detected from the PDF's own drawn border-lines (read via
-      // pdf.js's operator list in Pass 1 above) rather than guessed from
-      // text spacing -- this reads the actual grid the PDF itself drew,
-      // so it isn't thrown off by how pdf.js happens to chunk text into
-      // items (which varies per PDF and was the root cause of an earlier,
-      // incorrect text-gap-based approach). Verified against a real
-      // multi-table government payslip: all 3 tables on the page were
-      // reconstructed as an exact match to the source PDF, including a row
-      // with an irregular/incomplete set of cells that a spacing-based
-      // guess had previously gotten wrong. A text item is treated as
-      // "inside" a table if its position falls within that table's
-      // detected bounds, and is rendered via the table's own cells instead
-      // of as loose paragraph text.
-      function pointInRegion(x, y, r){ return x >= r.x0 - 2 && x <= r.x1 + 2 && y >= r.y0 - 2 && y <= r.y1 + 2; }
-      function regionForLine(line){
-        if (!tableRegions.length) return null;
-        const midX = line.items.reduce((a,i)=>a+(i.x+i.x1)/2,0) / line.items.length;
-        return tableRegions.find(r => pointInRegion(midX, line.y, r)) || null;
-      }
-      function cellTextFor(region, x0, x1, y0, y1){
-        const cellItems = items.filter(it => it.x >= x0-1.5 && it.x1 <= x1+1.5 && it.y >= y0-1.5 && it.y <= y1+1.5);
-        cellItems.sort((a,b) => b.y - a.y || a.x - b.x);
-        return cellItems.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
-      }
-      function buildTableForRegion(region){
-        const { colXs, rowYs } = region;
-        const rows = [];
-        const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: '444444' };
-        const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
-        // Column widths from the PDF's own measured column boundaries
-        // (colXs), not an even split -- a "Description" column that's
-        // genuinely wider than an "Amount" column in the source PDF now
-        // stays wider in the .docx too, matching the real table's
-        // proportions instead of forcing every column to the same size.
-        const totalTableWidth = colXs[colXs.length-1] - colXs[0];
-        const colPercents = [];
-        for (let c = 0; c < colXs.length - 1; c++){
-          const raw = ((colXs[c+1] - colXs[c]) / totalTableWidth) * 100;
-          colPercents.push(Math.max(4, Math.round(raw))); // floor so no column vanishes to 0%
-        }
-        for (let r = rowYs.length - 2; r >= 0; r--){
-          const yTop = rowYs[r+1], yBot = rowYs[r];
-          const cells = [];
-          for (let c = 0; c < colXs.length - 1; c++){
-            const text = cellTextFor(region, colXs[c], colXs[c+1], yBot, yTop);
-            cells.push(new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text })] })],
-              width: { size: colPercents[c], type: WidthType.PERCENTAGE },
-              borders: cellBorders,
-            }));
-          }
-          rows.push(new TableRow({ children: cells }));
-        }
-        return new Table({
-          rows, width: { size: 100, type: WidthType.PERCENTAGE },
-          // Without an explicit fixed layout, Word/LibreOffice can shrink
-          // the table to fit its (often short) cell text instead of
-          // honoring the declared 100%-of-page-width, leaving a wide gap
-          // of empty space on the right -- exactly the gap flagged on a
-          // real converted document. AUTOFIT is the (undeclared) default;
-          // FIXED makes the table actually span the page as declared.
-          layout: TableLayoutType.FIXED,
-          borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder },
-        });
-      }
-      const renderedRegions = new Set();
-
-      let lastLineY = null, lastFontSize = bodySize;
-      let currentRuns = [];
-      function flushParagraph(){
-        if (currentRuns.length){
-          docChildren.push(new Paragraph({ children: currentRuns }));
-          currentRuns = [];
+          errMsg = `The conversion server rejected this request (${response.status}).`;
         }
       }
-      // Merge lines and images into one top-to-bottom content stream so
-      // images are inserted at roughly the right point in reading order
-      // rather than always at the end of the page.
-      const pageHeight = pageTextItems[pIdx].height || 792;
-      const contentEvents = [
-        ...lines.map(l => ({ type: 'line', y: l.y, line: l })),
-        ...images.map(img => ({ type: 'image', y: img.y, img })),
-      ].sort((a,b) => b.y - a.y);
-
-      for (const ev of contentEvents){
-        if (ev.type === 'image'){
-          if (!imagesSupported) continue;
-          flushParagraph();
-          try {
-            const scale = Math.min(1, 468 / ev.img.dispW); // cap width to a reasonable page-content width (points)
-            const dispW = Math.max(20, Math.round(ev.img.dispW * scale));
-            const dispH = Math.max(20, Math.round(ev.img.dispH * scale));
-            // Place the image at its actual position on the original PDF
-            // page (floating, anchored to the page itself) instead of just
-            // inline in reading order -- e.g. a letterhead seal that sits
-            // in the top-right corner of the source PDF now lands in that
-            // same corner in the .docx, rather than wherever it happened to
-            // fall in the text flow. Word/PT_EMU conversion: 1pt = 12700 EMU.
-            const EMU_PER_PT = 12700;
-            const distFromLeft = Math.max(0, ev.img.x) * EMU_PER_PT;
-            const distFromTop = Math.max(0, pageHeight - ev.img.y) * EMU_PER_PT;
-            docChildren.push(new Paragraph({ children: [
-              new ImageRun({ data: ev.img.bytes, type: 'png', transformation: { width: dispW, height: dispH },
-                ...(floatingImagesSupported ? { floating: {
-                  horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: Math.round(distFromLeft) },
-                  verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round(distFromTop) },
-                  wrap: { type: TextWrappingType.NONE },
-                  allowOverlap: true,
-                  behindDocument: false,
-                } } : {}),
-              }),
-            ] }));
-          } catch(e){ console.error('[PDF to Word] Failed to embed an extracted image into the document -- skipping it. Error:', e); pwLastDiagnostics.push(`image embed: ${e && e.message ? e.message : e}`); }
-          continue;
-        }
-
-        const line = ev.line;
-        const region = tablesSupported ? regionForLine(line) : null;
-        if (region){
-          const key = region.x0 + ',' + region.y0;
-          if (!renderedRegions.has(key)){
-            renderedRegions.add(key);
-            flushParagraph();
-            docChildren.push(buildTableForRegion(region));
-            docChildren.push(new Paragraph({ children: [] }));
-          }
-          lastLineY = line.y;
-          continue; // this line's text is already captured by the table's own cells
-        }
-
-        const lineText = line.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
-        if (!lineText) continue;
-        const avgSize = line.items.reduce((a,i) => a+i.fontSize, 0) / line.items.length;
-        const isBold = line.items.some(i => /bold/i.test(i.fontName));
-        const isItalic = line.items.some(i => /italic|oblique/i.test(i.fontName));
-        const gap = lastLineY === null ? 0 : lastLineY - line.y;
-        const newParagraph = lastLineY === null || gap > lastFontSize * 1.6;
-
-        let heading = null;
-        if (avgSize > bodySize * 1.6) heading = HeadingLevel.HEADING_1;
-        else if (avgSize > bodySize * 1.3) heading = HeadingLevel.HEADING_2;
-        else if (avgSize > bodySize * 1.12) heading = HeadingLevel.HEADING_3;
-
-        const run = new TextRun({ text: lineText, bold: isBold, italics: isItalic });
-        if (heading){
-          flushParagraph();
-          docChildren.push(new Paragraph({ heading, children: [run] }));
-        } else if (newParagraph){
-          flushParagraph();
-          currentRuns = [run];
-        } else {
-          currentRuns.push(new TextRun({ text: ' ' + lineText, bold: isBold, italics: isItalic }));
-        }
-        lastLineY = line.y;
-        lastFontSize = avgSize;
-      }
-      flushParagraph();
-      if (pIdx < pageTextItems.length - 1){
-        docChildren.push(new Paragraph({ children: [new PageBreak()] }));
-      }
-      onProgress(45 + Math.round(((pIdx+1)/pageTextItems.length)*40), `Building document \u2014 page ${pIdx+1} of ${pageTextItems.length}\u2026`);
+      throw new Error(errMsg);
     }
 
-    onProgress(90, 'Packaging .docx\u2026');
-    const doc = new Document({ sections: [{ children: docChildren.length ? docChildren : [new Paragraph({ children:[new TextRun('')] })] }] });
-    const blob = await Packer.toBlob(doc);
+    onProgress(95, 'Downloading result…');
+    const blob = await response.blob();
+
+    // A healthy response is the DOCX itself. If something upstream (a proxy,
+    // a misconfigured redirect) returned an HTML error page with a 200
+    // status, catch that here rather than handing the caller a "successful"
+    // blob that Word can't open.
+    const pwContentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (pwContentType.includes('text/html')) {
+      throw new Error('The conversion server returned an unexpected response instead of a Word document. Please try again.');
+    }
+
+    if (isCancelled && isCancelled()) return null;
     onProgress(100, 'Done.');
     return blob;
   }
+
+
 
   /* ================= WORD -> PDF ================= */
   async function extractFloatingImagesFromDocx(arrayBuffer){
