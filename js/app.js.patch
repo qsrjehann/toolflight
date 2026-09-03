@@ -1,0 +1,495 @@
+--- toolflight-main/js/app.js	2026-09-03 18:43:02.000000000 +0000
++++ /tmp/toolflight/toolflight-main/js/app.js	2026-09-03 20:00:21.196511070 +0000
+@@ -480,6 +480,154 @@
+   return out2;
+ }
+ 
++// ---- Primary subject selection ----------------------------------------
++// DeepLab v3 (used by the AI Background Remover below) is a SEMANTIC
++// segmentation model: every pixel gets a PASCAL VOC category label (person,
++// chair, sofa, dog, car, ...), but the model has no notion of individual
++// object INSTANCES and no notion of "which of these is the photo's actual
++// subject." The previous behavior treated every non-background category as
++// keep-worthy ("if pixel belongs to a non-background class -> keep it"),
++// so a bystander, a chair, a sofa, or any other object that happened to
++// land in one of the 20 non-background classes survived removal exactly as
++// reliably as the real subject did.
++//
++// This function does not change what the segmentation model detects. It
++// looks at everything the model marked as "not background" and decides,
++// using only evidence available after the fact, which single connected
++// region is the actual subject: how much of the total foreground area it
++// accounts for, how close it sits to the image's center (a strong, well-
++// established compositional prior for "the subject" in a normal photo),
++// and the model's own per-class confidence in that region. Every other
++// region -- regardless of which of the 20 non-background classes it was
++// labeled as -- is dropped. For the overwhelmingly common single-region
++// case (one clean subject, nothing else surviving segmentation) this is a
++// no-op: there's nothing to choose between, so behavior is unchanged.
++//
++// Known, honestly-stated limitation: because DeepLab v3 has no instance
++// concept, two people (or two of the same object) that are physically
++// touching/overlapping in the frame are one connected "person" region as
++// far as the model is concerned, and cannot be split apart without an
++// instance-segmentation model (out of scope here -- see the audit notes).
++// Two people who are NOT touching (the far more common "bystander in the
++// background" case) already land in separate connected components and are
++// handled correctly below.
++function selectPrimarySubjectMask(rawMaskData, maskW, maskH, confidenceMasks){
++  const n = maskW*maskH;
++  const isFg = new Uint8Array(n);
++  let totalFg = 0;
++  for (let i=0; i<n; i++){ if (rawMaskData[i] !== 0){ isFg[i]=1; totalFg++; } }
++  if (totalFg === 0) return new Uint8ClampedArray(n);
++
++  // Small dilation used ONLY to decide which nearby fragments belong to the
++  // same physical subject (e.g. a hand separated from a torso by a couple
++  // of misclassified pixels at this model's fairly coarse native mask
++  // resolution). It never adds a pixel to the final kept mask -- the
++  // result below is always intersected back against the ORIGINAL isFg
++  // pixels, never the dilated halo.
++  const groupRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.012));
++  const dilateSrc = new Uint8ClampedArray(n);
++  for (let i=0; i<n; i++) dilateSrc[i] = isFg[i] ? 255 : 0;
++  const dilated = dilateMask(dilateSrc, maskW, maskH, groupRadius);
++
++  // Connected-component labeling over the dilated footprint (BFS flood
++  // fill), same primitive style as removeSmallIslands() above.
++  const label = new Int32Array(n).fill(-1);
++  const queue = new Int32Array(n);
++  const comps = [];
++  let nextLabel = 0;
++  for (let start=0; start<n; start++){
++    if (label[start] !== -1 || dilated[start] === 0) continue;
++    const compId = nextLabel++;
++    let qHead=0, qTail=0;
++    queue[qTail++] = start; label[start] = compId;
++    const trueIndices = [];
++    const classCounts = new Map();
++    let sumX = 0, sumY = 0;
++    while (qHead < qTail){
++      const idx = queue[qHead++];
++      const x = idx % maskW, y = (idx / maskW) | 0;
++      if (isFg[idx]){
++        trueIndices.push(idx);
++        sumX += x; sumY += y;
++        const cls = rawMaskData[idx];
++        classCounts.set(cls, (classCounts.get(cls) || 0) + 1);
++      }
++      const neighbors = [
++        x>0 ? idx-1 : -1, x<maskW-1 ? idx+1 : -1,
++        y>0 ? idx-maskW : -1, y<maskH-1 ? idx+maskW : -1,
++      ];
++      for (const nb of neighbors){
++        if (nb >= 0 && label[nb] === -1 && dilated[nb] !== 0){ label[nb] = compId; queue[qTail++] = nb; }
++      }
++    }
++    if (trueIndices.length > 0) comps.push({ compId, trueIndices, sumX, sumY, classCounts });
++  }
++
++  if (comps.length <= 1){
++    // Nothing to choose between -- keep all original foreground exactly as
++    // before. This is the common single-subject-photo path and is
++    // unchanged from prior behavior.
++    const out = new Uint8ClampedArray(n);
++    for (let i=0; i<n; i++) out[i] = isFg[i] ? 1 : 0;
++    return out;
++  }
++
++  const cx = maskW/2, cy = maskH/2;
++  const halfDiag = Math.sqrt(cx*cx + cy*cy) || 1;
++  const confCache = new Map();
++  function confidenceArrFor(classIdx){
++    if (confCache.has(classIdx)) return confCache.get(classIdx);
++    let entry = { arr: null, cw: maskW, ch: maskH };
++    if (confidenceMasks && confidenceMasks[classIdx]){
++      try{
++        entry = {
++          arr: confidenceMasks[classIdx].getAsFloat32Array(),
++          cw: confidenceMasks[classIdx].width,
++          ch: confidenceMasks[classIdx].height,
++        };
++      }catch(e){ /* leave arr:null -- confScore falls back to a neutral value below */ }
++    }
++    confCache.set(classIdx, entry);
++    return entry;
++  }
++
++  let best = null, bestScore = -Infinity;
++  for (const c of comps){
++    let dominantClass = 0, dominantCount = -1;
++    for (const [cls, cnt] of c.classCounts){ if (cnt > dominantCount){ dominantCount = cnt; dominantClass = cls; } }
++    const areaScore = c.trueIndices.length / totalFg;
++    const centroidX = c.sumX / c.trueIndices.length, centroidY = c.sumY / c.trueIndices.length;
++    const dist = Math.sqrt((centroidX-cx)**2 + (centroidY-cy)**2);
++    const centerScore = 1 - Math.min(1, dist / halfDiag);
++    const { arr: confArr, cw, ch } = confidenceArrFor(dominantClass);
++    let confScore = 0.7; // neutral default when no per-class confidence mask is available
++    if (confArr){
++      const stride = Math.max(1, Math.floor(c.trueIndices.length / 500));
++      let sum = 0, sampled = 0;
++      for (let k=0; k<c.trueIndices.length; k += stride){
++        const idx = c.trueIndices[k];
++        const x = idx % maskW, y = (idx / maskW) | 0;
++        const px = Math.min(cw-1, Math.round(x*cw/maskW)), py = Math.min(ch-1, Math.round(y*ch/maskH));
++        sum += confArr[py*cw+px]; sampled++;
++      }
++      if (sampled > 0) confScore = sum/sampled;
++    }
++    // PASCAL VOC class 15 = person. A photographed person is, in the
++    // overwhelming majority of real uploads to a tool described as "best
++    // for photos of people, animals, vehicles, and everyday objects," the
++    // intended subject -- this is a mild tie-breaking bonus, not an
++    // override: a clearly larger, more central non-person object (e.g. a
++    // product shot) still wins on area/center score alone.
++    const personBonus = dominantClass === 15 ? 0.12 : 0;
++    const score = areaScore*0.55 + centerScore*0.30 + confScore*0.15 + personBonus;
++    if (score > bestScore){ bestScore = score; best = c; }
++  }
++
++  const out = new Uint8ClampedArray(n);
++  for (const idx of best.trueIndices) out[idx] = 1;
++  return out;
++}
++
+ function setupDropZone(zoneId, inputId, onFiles){
+   const zone = document.getElementById(zoneId);
+   const input = document.getElementById(inputId);
+@@ -2148,6 +2296,16 @@
+                             // decoded lazily at export time instead of eagerly
+                             // on every upload -- see loadImageExifSafe below.
+   let aiResultCanvas = null;
++  // Generation guard: bumped on every new upload and at the start of every
++  // "Remove background" click. Each async processing run captures its own
++  // generation number and, right before it writes any result into the
++  // shared editor state, checks that no newer generation has started in
++  // the meantime -- if one has, the stale result is silently dropped
++  // instead of clobbering whatever the user is now looking at. This is the
++  // standard fix for the class of bug where a slow AI callback (model
++  // still loading, slow network/device) resolves after the user has
++  // already uploaded a different image or re-clicked the button.
++  let aiProcessGeneration = 0;
+   // EXIF-orientation-safe image load, used only for this tool's uploads.
+   // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
+   // resizeWidth/resizeHeight, rather than decoding the full original and
+@@ -2253,6 +2411,9 @@
+     const f = files.find(f => f.type.startsWith('image/'));
+     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
+     if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB.`, 'err'); return; }
++    // A new upload invalidates any AI processing already in flight for the
++    // previous image -- see the generation-guard comment above.
++    aiProcessGeneration++;
+     try{
+       aiSourceFile = f;
+       aiSourceImg = await loadImgAi(f);
+@@ -2345,6 +2506,7 @@
+     document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
+   }
+   function resetAiToUpload(){
++    aiProcessGeneration++; // invalidate any AI processing still in flight
+     document.getElementById('aiRemoveStage').classList.add('hidden');
+     exitAiFullscreen();
+     document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
+@@ -2627,6 +2789,11 @@
+   document.getElementById('aiRemoveBtn').onclick = async () => {
+     const btn = document.getElementById('aiRemoveBtn');
+     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
++    // See the generation-guard comment near aiProcessGeneration's
++    // declaration above: this run's result is only applied below if
++    // nothing newer (a fresh upload, a reset, or another click) has
++    // started by the time it's ready to write into the shared editor state.
++    const myGeneration = ++aiProcessGeneration;
+     setLoading(btn, true);
+ 
+     if (bgRemoveMode === 'document'){
+@@ -2648,6 +2815,7 @@
+         for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
+         octx.putImageData(imageData, 0, 0);
+ 
++        if (myGeneration !== aiProcessGeneration) return; // superseded -- drop silently, don't touch button state (see the final setLoading below)
+         aiResultCanvas = outCanvas;
+         initManualEditor(srcCanvas, outCanvas);
+         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+@@ -2655,9 +2823,13 @@
+         document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+         toast('Background removed. Refine it below if needed.');
+       }catch(err){
+-        toast(err.message || 'Could not process this image.', 'err');
++        if (myGeneration === aiProcessGeneration) toast(err.message || 'Could not process this image.', 'err');
+       }
+-      setLoading(btn, false);
++      // Same reasoning as the async branch's finally below: only the
++      // generation that's still current is allowed to clear the loading
++      // indicator -- a superseded run's error handler must not stomp on a
++      // newer run's still-in-progress button state.
++      if (myGeneration === aiProcessGeneration) setLoading(btn, false);
+       return;
+     }
+ 
+@@ -2682,21 +2854,22 @@
+       const rawMaskData = result.categoryMask.getAsUint8Array();
+       const maskW = result.categoryMask.width || w;
+       const maskH = result.categoryMask.height || h;
+-      // Normalize: category 0 = background (excluded). All other PASCAL VOC
+-      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
+-      // are treated as potential foreground subject. DeepLab v3 correctly
+-      // identifies semantic categories; however, whether a chair, sofa, or
+-      // table belongs to the user's intended foreground is a compositional
+-      // decision that cannot be correctly made by a static class blacklist --
+-      // a person sitting in a designer chair may want both preserved, while
+-      // another photo may have an unwanted chair in the background. The
+-      // downstream removeSmallIslands() step handles isolated speckling, and
+-      // the manual Eraser / Lasso / Polygon tools handle any residual
+-      // unwanted regions. Background (class 0) is the only class that is
+-      // definitively not the user's intended subject.
+-      const normalizedMask = new Uint8ClampedArray(maskW*maskH);
+-      for (let i=0; i<normalizedMask.length; i++)
+-        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
++      // Category 0 = background (always excluded). Every OTHER PASCAL VOC
++      // class (1-20: person, animals, vehicles, furniture, everyday
++      // objects) is a candidate -- but candidate is not the same as kept.
++      // Keeping literally everything the model didn't call "background"
++      // was the actual bug being fixed here: a chair, a bystander, or any
++      // other object landing in one of those 20 classes survived removal
++      // exactly as reliably as the real subject did. selectPrimarySubjectMask
++      // (defined near the top of this file, next to the other mask-
++      // refinement primitives) picks the single dominant connected region
++      // -- by area, distance from image center, and the model's own
++      // per-class confidence -- and drops everything else, regardless of
++      // which non-background class it was labeled as. See that function's
++      // header comment for the full rationale and its one honestly-stated
++      // limitation (two TOUCHING people of the same class can't be split
++      // without an instance-segmentation model).
++      const normalizedMask = selectPrimarySubjectMask(rawMaskData, maskW, maskH, result.confidenceMasks);
+ 
+ 
+ 
+@@ -2795,6 +2968,7 @@
+       const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
+       const implausible = areaImplausible || lowConfidence;
+ 
++      if (myGeneration !== aiProcessGeneration) return; // superseded by a newer upload/click -- drop silently, don't clobber the newer state
+       aiResultCanvas = outCanvas;
+       initManualEditor(srcCanvas, outCanvas);
+       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
+@@ -2808,7 +2982,10 @@
+     }catch(err){
+       // Error recovery: don't strand the user — let them continue in Manual Mode
+       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
+-      try{
++      // Guarded the same way as the success path: if a newer upload/click has
++      // already started, this stale run's fallback must not overwrite it.
++      if (myGeneration !== aiProcessGeneration){ /* superseded -- fall through to finally, nothing to apply */ }
++      else try{
+         const MAX = 1200;
+         let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
+         if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+@@ -2829,7 +3006,12 @@
+         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
+       }
+     }finally{
+-      setLoading(btn, false, 'Remove background (AI)');
++      // Only this run's own generation is allowed to touch the shared
++      // button state -- if a newer run has since started, it already owns
++      // (and will itself clear) the loading indicator; clearing it here
++      // too would re-enable the button while that newer run is still
++      // genuinely in flight.
++      if (myGeneration === aiProcessGeneration) setLoading(btn, false, 'Remove background (AI)');
+     }
+   };
+ 
+@@ -3179,6 +3361,27 @@
+ 
+   editStageWrap.addEventListener('pointerdown', (e) => {
+     if (!maskCanvas || spacePan || currentTool === 'pan') return;
++    // This is the actual fix for the reported "canvas goes blank, then
++    // tapping it turns it black" bug: painting a brush/eraser/edge dab
++    // draws with whatever color originalCanvas currently reads back --
++    // if the browser silently cleared that canvas's pixel data while the
++    // tab was backgrounded (a real mobile memory-pressure behavior; see
++    // aiCanvasLooksLost's comment above) it reads back as fully
++    // transparent BLACK (0,0,0,0), and painting into the mask at that spot
++    // then composites a solid black dab, not the actual photo -- which
++    // matches exactly what was reported (small black blobs precisely where
++    // the user tapped, everywhere else still correctly blank). Checking
++    // and repairing this BEFORE the very first paint of a session, rather
++    // than relying solely on the visibilitychange/pageshow/focus listeners
++    // to have already caught it, closes the timing gap where the browser's
++    // clear happens lazily and isn't yet visible at the moment those
++    // events fired.
++    if (aiCanvasLooksLost()){
++      e.preventDefault();
++      toast('Restoring your image…');
++      aiRecoverCanvasIfNeeded();
++      return;
++    }
+     const canvas = document.getElementById('aiEditCanvas');
+     editCanvas = canvas;
+     const pt = canvasPointFromEvent(e);
+@@ -3536,18 +3739,31 @@
+   /* ---------- Auto Save (localStorage, best-effort) ---------- */
+   const AUTOSAVE_KEY = 'toolflight_ai_remover_session';
+   let autoSaveTimer = null;
++  function writeAutoSaveNow(){
++    if (!originalCanvas || !maskCanvas) return;
++    try{
++      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
++        ts: Date.now(),
++        original: originalCanvas.toDataURL('image/png'),
++        mask: maskCanvas.toDataURL('image/png')
++      }));
++    }catch(e){ /* private-mode or quota exceeded — auto-save is best-effort, fail silently */ }
++  }
+   function autoSaveSession(){
+     if (!originalCanvas || !maskCanvas) return;
+     if (autoSaveTimer) clearTimeout(autoSaveTimer);
+-    autoSaveTimer = setTimeout(() => {
+-      try{
+-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+-          ts: Date.now(),
+-          original: originalCanvas.toDataURL('image/png'),
+-          mask: maskCanvas.toDataURL('image/png')
+-        }));
+-      }catch(e){ /* private-mode or quota exceeded — auto-save is best-effort, fail silently */ }
+-    }, 900);
++    autoSaveTimer = setTimeout(writeAutoSaveNow, 900);
++  }
++  // Flush any pending debounced save immediately -- used right before the
++  // page is backgrounded/hidden. Without this, an edit made less than 900ms
++  // before the user switches tabs/apps can be lost: if Android kills the
++  // tab's process outright while backgrounded (common under memory
++  // pressure, the same pressure that causes the canvas-clearing bug this
++  // file works around elsewhere), the pending setTimeout never fires and
++  // that last edit was never persisted anywhere.
++  function flushAutoSaveNow(){
++    if (autoSaveTimer){ clearTimeout(autoSaveTimer); autoSaveTimer = null; }
++    writeAutoSaveNow();
+   }
+   function offerAutoSavedSession(){
+     let raw;
+@@ -3617,34 +3833,71 @@
+   // resource) is the one source that has both, already kept fresh by the
+   // existing autoSaveSession() call after every edit -- so recovery reuses
+   // that instead of a separate backup mechanism.
++  // Robust "did the browser wipe one of our canvases" check -- hoisted out
++  // of aiRecoverCanvasIfNeeded so the pointerdown handler further up can
++  // also call it synchronously before painting (see there for why: this is
++  // what actually stops the reported "tap turns the canvas black" bug,
++  // which is not fully explained by the lifecycle-event recovery below --
++  // see the comment block on aiRecoverCanvasIfNeeded for the full story).
++  //
++  // Checks BOTH originalCanvas and maskCanvas independently, at several
++  // spread-out sample points each, rather than one single pixel of one
++  // canvas:
++  //  - A single corner pixel of ONE canvas produces false negatives when
++  //    only the OTHER canvas was the one actually cleared (each is a
++  //    separate, never-appended-to-DOM canvas element -- there's no
++  //    guarantee a browser's memory-pressure reclaim clears both of a
++  //    tool's offscreen canvases in lockstep every time).
++  //  - maskCanvas is checked by its ALPHA channel, which is guaranteed
++  //    255 everywhere BY CONSTRUCTION (every pixel's red channel encodes a
++  //    0-255 keep-amount; the canvas's own alpha is always fully opaque --
++  //    see initManualEditor/renderComposite) -- so alpha reading 0 there is
++  //    unambiguous evidence of a clear, with no legitimate exception.
++  //  - originalCanvas is checked by requiring EVERY sampled point to be
++  //    exactly (0,0,0,0) -- a real uploaded photo essentially never has
++  //    seven spread-out sample points (four corners, center, two
++  //    quadrants) that are all simultaneously pure transparent black; a
++  //    browser-cleared canvas reads exactly that everywhere.
++  function sampleAllZeroRGBA(ctx, w, h){
++    const pts = [
++      [0,0], [w-1,0], [0,h-1], [w-1,h-1],
++      [(w/2)|0, (h/2)|0], [(w/4)|0, (h/4)|0], [(3*w/4)|0, (3*h/4)|0],
++    ];
++    for (const [x,y] of pts){
++      const d = ctx.getImageData(Math.max(0,Math.min(w-1,x)), Math.max(0,Math.min(h-1,y)), 1, 1).data;
++      if (d[0]!==0 || d[1]!==0 || d[2]!==0 || d[3]!==0) return false;
++    }
++    return true;
++  }
++  function sampleMaskAlphaZero(ctx, w, h){
++    const pts = [
++      [0,0], [w-1,0], [0,h-1], [w-1,h-1], [(w/2)|0, (h/2)|0],
++    ];
++    for (const [x,y] of pts){
++      const d = ctx.getImageData(Math.max(0,Math.min(w-1,x)), Math.max(0,Math.min(h-1,y)), 1, 1).data;
++      if (d[3] === 0) return true; // any sampled point with alpha 0 is already conclusive
++    }
++    return false;
++  }
++  function aiCanvasLooksLost(){
++    if (!editCanvas || !originalCanvas || !maskCanvas) return false; // nothing loaded yet -- upload screen, not the editor
++    if (!editCanvas.width || !editCanvas.height || !originalCanvas.width || !originalCanvas.height || !maskCanvas.width || !maskCanvas.height) return true;
++    try{
++      if (sampleMaskAlphaZero(maskCanvas.getContext('2d'), maskCanvas.width, maskCanvas.height)) return true;
++      if (sampleAllZeroRGBA(originalCanvas.getContext('2d'), originalCanvas.width, originalCanvas.height)) return true;
++      return false;
++    }catch(err){
++      return true;
++    }
++  }
++
+   let aiRecoveryInProgress = false;
+   async function aiRecoverCanvasIfNeeded(){
+     if (!editCanvas || !maskCanvas) return; // nothing loaded yet -- upload screen, not the editor
+     if (aiRecoveryInProgress) return;
+     aiRecoveryInProgress = true;
+     try{
+-      const canvasLooksLost = () => {
+-        if (!editCanvas.width || !editCanvas.height) return true;
+-        try{
+-          const px = editCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+-          // A real result's corner is either the checkerboard-transparent
+-          // background (alpha 0 but this is drawn on the DOM, not baked
+-          // into the canvas pixel -- the canvas itself reads fully
+-          // transparent black at a removed-background corner in the
+-          // NORMAL, working case too) -- so alpha alone can't distinguish
+-          // "correctly transparent" from "cleared by the browser." Check
+-          // the mask canvas instead, which is guaranteed fully opaque
+-          // everywhere BY CONSTRUCTION (every pixel's red channel encodes
+-          // a 0-255 keep-amount, but the canvas's OWN alpha channel is
+-          // always 255 -- see initManualEditor/renderComposite above) --
+-          // if that reads as transparent black, something cleared it.
+-          const maskPx = maskCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
+-          return (maskPx[3] === 0);
+-        } catch(err){
+-          return true;
+-        }
+-      };
+-      if (!canvasLooksLost()) return;
++      if (!aiCanvasLooksLost()) return;
+ 
+       const attemptRebuild = async () => {
+         let raw;
+@@ -3688,13 +3941,28 @@
+       aiRecoveryInProgress = false;
+     }
+   }
++  // A single check exactly at the visibilitychange/pageshow/focus moment
++  // isn't always enough: the actual pixel-clearing can be a LAZY effect of
++  // OS/browser memory reclaim that only manifests slightly after the tab
++  // is reported visible again, not synchronously with it. Re-checking a
++  // couple more times over the following seconds catches that delayed case
++  // without depending on the user happening to touch the canvas again
++  // (aiCanvasLooksLost()/aiRecoveryInProgress make every extra call a
++  // cheap no-op once nothing is actually wrong).
++  function aiScheduleRecoveryChecks(){
++    aiRecoverCanvasIfNeeded();
++    setTimeout(aiRecoverCanvasIfNeeded, 400);
++    setTimeout(aiRecoverCanvasIfNeeded, 1500);
++  }
+   window.addEventListener('pageshow', (e) => {
+-    if (e.persisted) aiRecoverCanvasIfNeeded();
++    if (e.persisted) aiScheduleRecoveryChecks();
+   });
+   document.addEventListener('visibilitychange', () => {
+-    if (document.visibilityState === 'visible') aiRecoverCanvasIfNeeded();
++    if (document.visibilityState === 'visible') aiScheduleRecoveryChecks();
++    else flushAutoSaveNow(); // see flushAutoSaveNow's own comment: don't lose an edit made just before backgrounding
+   });
+-  window.addEventListener('focus', () => aiRecoverCanvasIfNeeded());
++  window.addEventListener('pagehide', () => flushAutoSaveNow());
++  window.addEventListener('focus', () => aiScheduleRecoveryChecks());
+ 
+   // Defensive fix for a reported "toolbar visible before upload" issue:
+   // the back-forward cache restores a page's DOM exactly as it was left,
