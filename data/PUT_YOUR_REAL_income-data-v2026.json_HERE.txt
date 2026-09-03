@@ -1,0 +1,7 @@
+Apni Windows machine se jo real file generate hui thi:
+  data\income-data-v2026.json
+Usko is 'data' folder mein copy karo, aur ye placeholder .txt file delete kar dena.
+
+Real file wahi hai jo pichle turn mein generate hui thi:
+  171 economies, 190 PPP factors, world p50=8.7037 int-$/day
+  path: C:\Users\Sartaj Safi\Desktop\Qaisar\data\income-data-v2026.json
