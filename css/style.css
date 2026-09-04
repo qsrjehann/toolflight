@@ -972,7 +972,7 @@ html.dark .category-hub-card .cat-arrow{
 .editor-stage-wrap canvas{display:block;touch-action:none;}
 #rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; }
 .editor-stage-wrap.tool-brush canvas, .editor-stage-wrap.tool-eraser canvas{cursor:crosshair;}
-.editor-stage-wrap.tool-wand canvas{cursor:pointer;}
+.editor-stage-wrap.tool-wand canvas, .editor-stage-wrap.tool-magictap canvas{cursor:pointer;}
 .editor-stage-wrap.tool-pan canvas{cursor:grab;}
 .editor-stage-wrap.tool-pan canvas:active{cursor:grabbing;}
 .editor-stage-wrap.tool-polygon canvas, .editor-stage-wrap.tool-lasso canvas{cursor:crosshair;}
