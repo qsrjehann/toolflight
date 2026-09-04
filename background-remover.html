@@ -220,11 +220,11 @@
           <button class="active" data-mode="add" type="button" aria-pressed="true">Add to selection</button>
           <button data-mode="subtract" type="button" aria-pressed="false">Subtract</button>
         </div>
-        <p class="editor-hint">Add/Subtract applies to Magic Wand, Magic Touch, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough. Magic Wand selects by color, so on photos with a blurry background it can sometimes spread further than expected — if that happens, tap Undo and try again with a lower tolerance, or use Magic Touch instead. Magic Touch uses a second AI model that loads in the background the first time you open it — one-time only, then instant.</p>
+        <p class="editor-hint">Add/Subtract applies to Magic Wand, Magic Touch, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough. Magic Wand selects by color, so it's great for clearing a large flat or blurry background in one tap — but if that background is a similar color to part of your subject (e.g. a dark chair right next to dark hair), it can grab a bit of the subject too, since it can't tell them apart by color alone. If that happens, tap Undo and use Magic Touch on that spot instead — it recognizes objects, not just color. Magic Touch uses a second AI model that loads in the background shortly after you upload your photo — usually ready by the time you need it.</p>
         <div class="qr-controls" style="margin-top:10px;">
           <div class="ctrl"><label for="brushSizeSlider">Brush size: <span id="brushSizeVal">40</span>px</label><input type="range" id="brushSizeSlider" min="5" max="150" value="40"></div>
           <div class="ctrl"><label for="brushSoftSlider">Soft edge: <span id="brushSoftVal">50</span>%</label><input type="range" id="brushSoftSlider" min="0" max="100" value="50"></div>
-          <div class="ctrl"><label for="wandToleranceSlider">Wand tolerance: <span id="wandToleranceVal">15</span></label><input type="range" id="wandToleranceSlider" min="1" max="100" value="15"></div>
+          <div class="ctrl"><label for="wandToleranceSlider">Wand tolerance: <span id="wandToleranceVal">30</span></label><input type="range" id="wandToleranceSlider" min="1" max="100" value="30"></div>
         </div>
         </details>
 
