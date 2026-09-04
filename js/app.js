@@ -2582,9 +2582,21 @@ if (document.getElementById('aiRemoveDrop')){
   let interactiveSegmenterLoadPromise = null;
   let InteractiveBrushMode = null; // grabbed from the module if exported; see fallback below
 
+  // Toggles the "magic" pulse/sparkle animation on the Magic Touch tool
+  // button so the user can SEE the model loading in the background (pre-warm
+  // after AI_SUCCESS, or a first real tap), instead of the previous silent
+  // fetch with zero visible feedback. Looks up the button live (rather than
+  // caching it) since it lives inside the mobile bottom-sheet markup, which
+  // is always present in the DOM whether or not the sheet is currently open.
+  function setMagicTouchLoadingUI(loading){
+    const btn = document.querySelector('.editor-tool-btn[data-tool="magictap"]');
+    if (btn) btn.classList.toggle('ai-loading-pulse', !!loading);
+  }
+
   async function ensureInteractiveSegmenter(){
     if (interactiveSegmenter) return interactiveSegmenter;
     if (interactiveSegmenterLoadPromise) return interactiveSegmenterLoadPromise;
+    setMagicTouchLoadingUI(true);
     interactiveSegmenterLoadPromise = (async () => {
       bgDebugLog('TOUCH_MODEL_LOAD_START', { version: MP_VERSION_TOUCH });
       const LOAD_TIMEOUT_MS = 45000;
@@ -2616,6 +2628,8 @@ if (document.getElementById('aiRemoveDrop')){
       bgDebugLog('TOUCH_MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
       interactiveSegmenterLoadPromise = null;
       throw err;
+    }).finally(() => {
+      setMagicTouchLoadingUI(false);
     });
     return interactiveSegmenterLoadPromise;
   }
@@ -2704,6 +2718,17 @@ if (document.getElementById('aiRemoveDrop')){
       aiResultCanvas = srcCanvas0;
       initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
+      // Pre-warm Magic Touch's model as early as possible -- right at upload,
+      // instead of waiting for the AI (DeepLab) result -- so a slow
+      // connection gets the maximum possible head start before the user
+      // could ever reach the Magic Touch tool. Confirmed with the user this
+      // trade-off (a bit of extra background data use for people who never
+      // touch Magic Touch) is acceptable in exchange for less wait when they
+      // do. Safe to call twice: ensureInteractiveSegmenter() memoizes its
+      // load promise, so the AI_SUCCESS call further down is now just a
+      // no-op safety net for any path that skips this one (e.g. Document
+      // mode, or if this call itself fails and needs a retry opportunity).
+      ensureInteractiveSegmenter().catch(() => {});
       // Auto-detect document/writing vs. photo (see detectDocumentLikeImage
       // below) and set the mode toggle accordingly, so the common case
       // ("I uploaded a photo of my signature" or "I uploaded a photo of my
@@ -3253,14 +3278,14 @@ if (document.getElementById('aiRemoveDrop')){
       } else {
         toast('Background removed. Refine it below if needed.');
       }
-      // Pre-warm Magic Touch's model in the background now, while the user
-      // is looking at/deciding on this result -- purely a head start so the
-      // tool feels fast if/when they reach for it; completely silent and
-      // fire-and-forget, never awaited, so a slow or failed load here can
-      // never block, slow down, or error out the primary Remove Background
-      // flow above. A tap on the Magic Touch tool later awaits the SAME
-      // promise (ensureInteractiveSegmenter memoizes it), so this either
-      // saves the wait entirely or, worst case, costs nothing extra.
+      // Safety-net pre-warm: the primary pre-warm call now fires much
+      // earlier, right at upload (see the comment there for why). This
+      // second call is a no-op in the common case -- ensureInteractiveSegmenter
+      // memoizes its load promise, so if the upload-time call is already
+      // loading/loaded this just reuses it. It only does real work if that
+      // earlier call somehow never fired or failed. Still fire-and-forget:
+      // never awaited, so a slow or failed load here can never block, slow
+      // down, or error out the primary Remove Background flow above.
       ensureInteractiveSegmenter().catch(() => {});
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
@@ -3334,7 +3359,19 @@ if (document.getElementById('aiRemoveDrop')){
   let editCanvas = null;       // visible live-composited canvas (original * mask alpha)
   let currentTool = 'brush';
   let selectMode = 'add';      // add|subtract — used by wand/polygon/lasso
-  let brushSize = 40, brushSoftness = 50, wandTolerance = 30;
+  // wandTolerance default lowered 30 -> 15: on real phone photos with a
+  // blurred/bokeh background (very common), a single tap at tolerance=30
+  // was flood-filling through the smooth blur gradient into completely
+  // unrelated, far-away parts of the image (measured on a real test photo:
+  // one tap selected up to 48% of the whole image, with a bounding box
+  // spanning nearly the full canvas) -- this is what produced the jagged
+  // white streak / black blob artifacts the user reported after using
+  // Magic Wand. Lowering the default to 15 keeps flat/uniform backgrounds
+  // (the tool's main use case) selecting in one tap same as before (their
+  // pixel-to-pixel variance is near zero regardless of tolerance), while
+  // cutting the same real-photo runaway-fill area by roughly 90% in
+  // testing. Users can still raise it back via the existing slider.
+  let brushSize = 40, brushSoftness = 50, wandTolerance = 15;
   let historyStack = [], historyIndex = -1;
   const MAX_HISTORY = 25;
   let polygonPoints = [], lassoPoints = [];
