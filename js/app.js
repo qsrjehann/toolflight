@@ -2305,11 +2305,114 @@ if (document.getElementById('aiRemoveDrop')){
     }catch(e){ _bgDebugOn = false; }
     return _bgDebugOn;
   }
+  // On-screen debug panel: renders the same events console.log gets, but
+  // directly on the page -- so a bug can be diagnosed from a phone alone,
+  // with no laptop/USB/ADB remote-debugging setup required. Still fully
+  // gated behind bgDebugEnabled(); a normal visitor never creates or pays
+  // for this DOM at all.
+  let _bgDebugPanel = null;
+  let _bgDebugLines = [];
+  function ensureBgDebugPanel(){
+    if (_bgDebugPanel) return _bgDebugPanel;
+    if (!document.body) return null;
+    const wrap = document.createElement('div');
+    wrap.id = 'bgDebugPanel';
+    wrap.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'
+      + 'max-height:40vh;background:rgba(8,8,8,0.96);color:#5fe85f;'
+      + 'font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;display:flex;'
+      + 'flex-direction:column;border-top:2px solid #2ecc40;'
+      + 'box-shadow:0 -2px 10px rgba(0,0,0,0.4);';
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px;'
+      + 'background:#111;border-bottom:1px solid #333;flex-shrink:0;';
+    const title = document.createElement('span');
+    title.textContent = 'bg-remover debug · ' + BG_REMOVER_BUILD_ID;
+    title.style.cssText = 'flex:1;color:#5fe85f;font-weight:bold;overflow:hidden;'
+      + 'text-overflow:ellipsis;white-space:nowrap;';
+    function mkBtn(label){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.style.cssText = 'padding:5px 10px;background:#2a2a2a;color:#fff;border:1px solid #444;'
+        + 'border-radius:4px;font:11px ui-monospace,Menlo,Consolas,monospace;';
+      return b;
+    }
+    const copyBtn = mkBtn('Copy');
+    const clearBtn = mkBtn('Clear');
+    const minBtn = mkBtn('_');
+    bar.appendChild(title); bar.appendChild(copyBtn); bar.appendChild(clearBtn); bar.appendChild(minBtn);
+    const logArea = document.createElement('div');
+    logArea.id = 'bgDebugPanelLog';
+    logArea.style.cssText = 'overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;'
+      + 'white-space:pre-wrap;word-break:break-all;flex:1;';
+    wrap.appendChild(bar);
+    wrap.appendChild(logArea);
+    document.body.appendChild(wrap);
+
+    function fallbackCopy(text, done){
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:35%;z-index:2147483647;'
+          + 'font:12px monospace;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try{ document.execCommand('copy'); done(true); }catch(e){ done(false); }
+        setTimeout(() => { if (ta.parentNode) ta.parentNode.removeChild(ta); }, 6000);
+      }catch(e){ done(false); }
+    }
+    copyBtn.addEventListener('click', () => {
+      const text = _bgDebugLines.join('\n');
+      const done = (ok) => {
+        copyBtn.textContent = ok ? 'Copied!' : 'Select & copy';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(() => done(true)).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+    clearBtn.addEventListener('click', () => {
+      _bgDebugLines = [];
+      logArea.textContent = '';
+    });
+    let minimized = false;
+    minBtn.addEventListener('click', () => {
+      minimized = !minimized;
+      logArea.style.display = minimized ? 'none' : '';
+      minBtn.textContent = minimized ? '▢' : '_';
+    });
+
+    _bgDebugPanel = { wrap: wrap, logArea: logArea };
+    return _bgDebugPanel;
+  }
+  function bgDebugPanelAppend(line){
+    _bgDebugLines.push(line);
+    if (_bgDebugLines.length > 500) _bgDebugLines.splice(0, _bgDebugLines.length - 500);
+    const panel = ensureBgDebugPanel();
+    if (!panel) return;
+    const row = document.createElement('div');
+    row.textContent = line;
+    panel.logArea.appendChild(row);
+    while (panel.logArea.childNodes.length > 500) panel.logArea.removeChild(panel.logArea.firstChild);
+    panel.logArea.scrollTop = panel.logArea.scrollHeight;
+  }
   function bgDebugLog(event, data){
     if (!bgDebugEnabled()) return;
+    const stamp = new Date().toISOString().slice(11, 23);
+    let dataStr = '';
+    try{ dataStr = data ? JSON.stringify(data) : ''; }catch(e){ dataStr = String(data); }
     try{ console.log('[bg-remover ' + BG_REMOVER_BUILD_ID + ']', event, data || {}); }catch(e){}
+    try{ bgDebugPanelAppend('[' + stamp + '] ' + event + ' ' + dataStr); }catch(e){}
   }
-  if (bgDebugEnabled()) console.log('[bg-remover] build', BG_REMOVER_BUILD_ID);
+  if (bgDebugEnabled()){
+    console.log('[bg-remover] build', BG_REMOVER_BUILD_ID);
+    // Deferred so document.body definitely exists even if this script
+    // somehow ran before body finished parsing.
+    if (document.body) bgDebugLog('PANEL_INIT', { build: BG_REMOVER_BUILD_ID });
+    else document.addEventListener('DOMContentLoaded', () => bgDebugLog('PANEL_INIT', { build: BG_REMOVER_BUILD_ID }));
+  }
 
   const MP_VERSION = '0.10.2';
   const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
