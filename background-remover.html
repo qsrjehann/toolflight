@@ -212,6 +212,7 @@
           <button class="editor-tool-btn ai-tool-btn" data-tool="eraser" type="button" aria-pressed="false" title="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 20H8l-6-6a2 2 0 0 1 0-2.8l9-9a2 2 0 0 1 2.8 0l6.2 6.2a2 2 0 0 1 0 2.8L13 18"/></svg></button>
           <button class="editor-tool-btn ai-tool-btn" data-tool="edge" type="button" aria-pressed="false" title="Edge Refine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/></svg></button>
           <button class="editor-tool-btn ai-tool-btn" data-tool="wand" type="button" aria-pressed="false" title="Magic Wand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 6.2L11 5M12.2 11.8L11 13M3 21l9-9"/></svg></button>
+          <button class="editor-tool-btn ai-tool-btn" data-tool="magictap" type="button" aria-pressed="false" title="Magic Touch (AI) — tap one object to select just it, even if it's touching something else"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></button>
           <button class="editor-tool-btn ai-tool-btn" data-tool="polygon" type="button" aria-pressed="false" title="Polygon / Pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 8l8-5 8 5-3 12H7z"/></svg></button>
           <button class="editor-tool-btn ai-tool-btn" data-tool="lasso" type="button" aria-pressed="false" title="Lasso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M7 10a5 5 0 1 1 7 4.5L9 21l-2-2 3-3"/></svg></button>
         </div>
@@ -219,7 +220,7 @@
           <button class="active" data-mode="add" type="button" aria-pressed="true">Add to selection</button>
           <button data-mode="subtract" type="button" aria-pressed="false">Subtract</button>
         </div>
-        <p class="editor-hint">Add/Subtract applies to Magic Wand, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough.</p>
+        <p class="editor-hint">Add/Subtract applies to Magic Wand, Magic Touch, Polygon, and Lasso. Brush always adds, Eraser always subtracts. Edge Refine blends toward real color edges under the brush — useful for hair and fur where the AI's edge is rough. Magic Touch uses a second AI model that loads in the background the first time you open it — one-time only, then instant.</p>
         <div class="qr-controls" style="margin-top:10px;">
           <div class="ctrl"><label for="brushSizeSlider">Brush size: <span id="brushSizeVal">40</span>px</label><input type="range" id="brushSizeSlider" min="5" max="150" value="40"></div>
           <div class="ctrl"><label for="brushSoftSlider">Soft edge: <span id="brushSoftVal">50</span>%</label><input type="range" id="brushSoftSlider" min="0" max="100" value="50"></div>
@@ -365,6 +366,6 @@
 
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-<script defer src="js/app.js?v=20260813-1600"></script>
+<script defer src="js/app.js?v=20260903-2110"></script>
 </body>
 </html>
