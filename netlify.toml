@@ -95,7 +95,18 @@
 # the page as a generic "Failed to fetch", confirmed via bgDebugLog
 # MODEL_LOAD_ERROR on a real device. Both origins are added below so the AI
 # model can actually load in production.
+#
+# 'wasm-unsafe-eval' in script-src: once the two origins above were added,
+# the WASM runtime file itself downloaded fine, but WebAssembly.instantiate()
+# was then blocked by CSP too -- Chrome treats compiling/instantiating a WASM
+# module as covered by script-src's eval restriction, confirmed again via
+# bgDebugLog MODEL_LOAD_ERROR on a real device ("violates ... because
+# 'unsafe-eval' is not an allowed source of script"). 'wasm-unsafe-eval' is
+# the narrow, WASM-only token (Chrome 91+/Firefox 106+/Safari 16.4+) that
+# permits exactly this without permitting eval()/Function() of arbitrary JS
+# strings, so it does not reopen the XSS risk the plain 'unsafe-eval' token
+# would.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none';"
