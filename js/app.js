@@ -3359,19 +3359,32 @@ if (document.getElementById('aiRemoveDrop')){
   let editCanvas = null;       // visible live-composited canvas (original * mask alpha)
   let currentTool = 'brush';
   let selectMode = 'add';      // add|subtract — used by wand/polygon/lasso
-  // wandTolerance default lowered 30 -> 15: on real phone photos with a
-  // blurred/bokeh background (very common), a single tap at tolerance=30
-  // was flood-filling through the smooth blur gradient into completely
-  // unrelated, far-away parts of the image (measured on a real test photo:
-  // one tap selected up to 48% of the whole image, with a bounding box
-  // spanning nearly the full canvas) -- this is what produced the jagged
-  // white streak / black blob artifacts the user reported after using
-  // Magic Wand. Lowering the default to 15 keeps flat/uniform backgrounds
-  // (the tool's main use case) selecting in one tap same as before (their
-  // pixel-to-pixel variance is near zero regardless of tolerance), while
-  // cutting the same real-photo runaway-fill area by roughly 90% in
-  // testing. Users can still raise it back via the existing slider.
-  let brushSize = 40, brushSoftness = 50, wandTolerance = 15;
+  // wandTolerance: tried lowering the default 30 -> 15 to contain flood-fill
+  // bleed on blurred photo backgrounds (see git history), but real-device
+  // testing on the user's own photo showed this was the wrong fix and was
+  // REVERTED back to 30:
+  //  - It broke a workflow the user genuinely relied on: one tap clearing
+  //    almost the entire (large, single-toned) background poster behind the
+  //    subject. At tolerance=15 that same tap only grabbed a small fraction,
+  //    needing many more taps.
+  //  - It did NOT fix the actual reported bug anyway: the black chair next
+  //    to the subject's hair is close enough in color to the hair itself
+  //    that even tolerance=15 still bled into the hair (measured ~7% of the
+  //    whole image, still a visible chunk of hair turned transparent) --
+  //    confirmed on a real device after shipping the lower default.
+  // The real lesson: a single global tolerance cannot simultaneously (a) grab
+  // an entire large blurred background region in one tap and (b) refuse to
+  // cross into a similarly-colored part of the subject a moment later --
+  // that would need two different tolerance values for two different taps,
+  // which the tool has no way to know in advance. When the background truly
+  // is close in color to the subject at the point you tap (like this chair
+  // next to dark hair), Magic Wand's plain color-distance approach is the
+  // wrong tool for that specific spot -- Magic Touch (instance-aware AI)
+  // handles exactly that case instead (see the editor-hint text and the
+  // large-selection toast below). Kept at the original 30 so the tool's
+  // main strength (clearing a big flat/blurred background in one tap) isn't
+  // sacrificed for a fix that didn't actually solve the reported problem.
+  let brushSize = 40, brushSoftness = 50, wandTolerance = 30;
   let historyStack = [], historyIndex = -1;
   const MAX_HISTORY = 25;
   let polygonPoints = [], lassoPoints = [];
@@ -3531,18 +3544,24 @@ if (document.getElementById('aiRemoveDrop')){
     mctx.fill();
   }
 
+  // Returns the fraction of the canvas this tap actually changed (0-1), so
+  // the caller can warn when a single tap grabbed an unusually large area --
+  // see the pointerdown handler below. This is a pure safety-net signal, not
+  // a behavior change: it never limits or alters what the flood fill does,
+  // it only reports afterwards how big the result turned out to be.
   function magicWandAt(x, y, tolerance, subtract){
     const w = originalCanvas.width, h = originalCanvas.height;
     const cData = originalCanvas.getContext('2d').getImageData(0, 0, w, h).data;
     const mctx = maskCanvas.getContext('2d');
     const mData = mctx.getImageData(0, 0, w, h);
     const startX = Math.round(x), startY = Math.round(y);
-    if (startX < 0 || startY < 0 || startX >= w || startY >= h) return;
+    if (startX < 0 || startY < 0 || startX >= w || startY >= h) return 0;
     const startI = (startY*w+startX)*4;
     const r0 = cData[startI], g0 = cData[startI+1], b0 = cData[startI+2];
     const visited = new Uint8Array(w*h);
     const stack = [startY*w+startX];
     const tol = tolerance * 2.6; // scale 0-100 to a usable RGB-distance range
+    let filledCount = 0;
     while (stack.length){
       const p = stack.pop();
       if (visited[p]) continue;
@@ -3553,12 +3572,14 @@ if (document.getElementById('aiRemoveDrop')){
       if (Math.sqrt(dr*dr+dg*dg+db*db) > tol) continue;
       const v = subtract ? 0 : 255;
       mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
+      filledCount++;
       if (px>0) stack.push(p-1);
       if (px<w-1) stack.push(p+1);
       if (py>0) stack.push(p-w);
       if (py<h-1) stack.push(p+w);
     }
     mctx.putImageData(mData, 0, 0);
+    return filledCount / (w*h);
   }
 
   function fillPathIntoMask(points, subtract){
@@ -3736,9 +3757,19 @@ if (document.getElementById('aiRemoveDrop')){
       edgeRefineDab(pt.x, pt.y);
       renderComposite();
     } else if (currentTool === 'wand'){
-      magicWandAt(pt.x, pt.y, wandTolerance, selectMode === 'subtract');
+      const filledFrac = magicWandAt(pt.x, pt.y, wandTolerance, selectMode === 'subtract');
       renderComposite();
       pushHistory();
+      // Purely informational safety net (see magicWandAt's own comment): a
+      // single tap changing a very large share of the whole canvas is often
+      // exactly right (a big flat/blurred background), but it's also the
+      // same signature a bleed-into-the-subject tap leaves (color-based
+      // flood fill can't tell "large background" and "background touching a
+      // similarly-colored part of the subject" apart). Never blocks or
+      // undoes anything -- just nudges the user to check the result.
+      if (filledFrac > 0.12){
+        toast('Magic Wand selected a large area. If part of your subject (like hair) got included by mistake, tap Undo and try Magic Touch on that spot instead.');
+      }
     } else if (currentTool === 'magictap'){
       // Async (loads/runs a second AI model) -- magicTapAt applies its own
       // renderComposite()/pushHistory() once the result is ready, unlike
