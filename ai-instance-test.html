@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Instance Segmenter Test (internal — not linked from the site)</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  html,body{ margin:0; padding:0; background:#0b0b0b; color:#eee; font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  #wrap{ max-width:480px; margin:0 auto; padding:12px; padding-bottom:220px; }
+  h1{ font-size:16px; margin:8px 0; }
+  p.note{ color:#999; font-size:12px; }
+  #dropLabel{ display:block; text-align:center; padding:14px; background:#222; border:1px dashed #555; border-radius:8px; margin-bottom:10px; }
+  #stage{ position:relative; width:100%; touch-action:none; }
+  #baseCanvas, #overlayCanvas{ position:absolute; top:0; left:0; width:100%; height:auto; display:block; }
+  #stageBox{ position:relative; width:100%; }
+  .hint{ background:#132; border:1px solid #2a5; border-radius:8px; padding:8px 10px; margin:8px 0; font-size:13px; }
+  button.primary{ display:block; width:100%; padding:12px; margin:8px 0; background:#7c3aed; color:#fff; border:none; border-radius:8px; font-size:15px; font-weight:600; }
+  button.secondary{ display:inline-block; padding:8px 14px; margin:4px 4px 4px 0; background:#333; color:#fff; border:1px solid #555; border-radius:6px; font-size:13px; }
+  select{ padding:8px; border-radius:6px; background:#222; color:#fff; border:1px solid #444; width:100%; margin-bottom:8px; }
+  #status{ font-size:13px; color:#9cf; min-height:18px; }
+  #dbgPanel{ position:fixed; left:0; right:0; bottom:0; z-index:999999; max-height:42vh; background:rgba(8,8,8,0.97); color:#5fe85f; font:11px/1.4 ui-monospace,Menlo,Consolas,monospace; display:flex; flex-direction:column; border-top:2px solid #7c3aed; }
+  #dbgBar{ display:flex; align-items:center; gap:6px; padding:6px 8px; background:#111; border-bottom:1px solid #333; flex-shrink:0; }
+  #dbgBar span{ flex:1; color:#c9a3ff; font-weight:bold; }
+  #dbgBar button{ padding:5px 10px; background:#2a2a2a; color:#fff; border:1px solid #444; border-radius:4px; font:11px ui-monospace,monospace; }
+  #dbgLog{ overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px 8px; white-space:pre-wrap; word-break:break-all; flex:1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Instance Segmenter test (internal)</h1>
+  <p class="note">Ye page sirf ek cheez test karta hai: agar do log/objects photo mein ek dusre ko chhoo rahe hon (touching/overlapping), to kya AI sirf JIS par tap kiya jaye sirf USI ko alag nikal sakta hai — dusre ko chhoo kar bhi nahi. Ye page site ke kisi bhi link se nahi jurra, sirf direct URL se khulta hai. Kisi bhi maujooda tool ko ye nahi chhuta.</p>
+
+  <label id="dropLabel" for="fileInput">Tap to choose a photo (do log qareeb/touching hon, jaisa pichle test mein tha)</label>
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+
+  <div id="stageBox" style="display:none">
+    <div id="stage">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+    <div class="hint">Photo par seedha us shakhs/object par TAP karo jise nikaalna hai (jaise, us insaan ka chehra ya jism). Result neeche foran dikh jayega.</div>
+    <div id="status"></div>
+    <div>
+      <button class="secondary" id="clearOverlayBtn">Clear result</button>
+    </div>
+  </div>
+</div>
+
+<div id="dbgPanel">
+  <div id="dbgBar">
+    <span>instance-seg debug</span>
+    <button id="dbgCopyBtn" type="button">Copy</button>
+    <button id="dbgClearBtn" type="button">Clear</button>
+    <button id="dbgMinBtn" type="button">_</button>
+  </div>
+  <div id="dbgLog"></div>
+</div>
+
+<script type="module">
+  // ---------- tiny on-screen debug panel (same pattern as background-remover's ?bgdebug=1 panel) ----------
+  const dbgLines = [];
+  const dbgLogEl = document.getElementById('dbgLog');
+  function dlog(event, data){
+    const stamp = new Date().toISOString().slice(11,23);
+    let dataStr = '';
+    try{ dataStr = data !== undefined ? JSON.stringify(data) : ''; }catch(e){ dataStr = String(data); }
+    const line = '[' + stamp + '] ' + event + ' ' + dataStr;
+    dbgLines.push(line);
+    if (dbgLines.length > 500) dbgLines.splice(0, dbgLines.length - 500);
+    const row = document.createElement('div');
+    row.textContent = line;
+    dbgLogEl.appendChild(row);
+    while (dbgLogEl.childNodes.length > 500) dbgLogEl.removeChild(dbgLogEl.firstChild);
+    dbgLogEl.scrollTop = dbgLogEl.scrollHeight;
+    try{ console.log('[instance-test]', event, data || {}); }catch(e){}
+  }
+  document.getElementById('dbgCopyBtn').addEventListener('click', () => {
+    const text = dbgLines.join('\n');
+    const btn = document.getElementById('dbgCopyBtn');
+    const done = (ok) => { btn.textContent = ok ? 'Copied!' : 'Select & copy'; setTimeout(() => btn.textContent = 'Copy', 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => done(true)).catch(() => fallbackCopy(text, done));
+    } else fallbackCopy(text, done);
+  });
+  function fallbackCopy(text, done){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:35%;z-index:2147483647;font:12px monospace;';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try{ document.execCommand('copy'); done(true); }catch(e){ done(false); }
+      setTimeout(() => { if (ta.parentNode) ta.parentNode.removeChild(ta); }, 6000);
+    }catch(e){ done(false); }
+  }
+  document.getElementById('dbgClearBtn').addEventListener('click', () => { dbgLines.length = 0; dbgLogEl.textContent = ''; });
+  // Starts MINIMIZED by default: the log area is tall (up to 42vh) and, being
+  // position:fixed, would otherwise sit on top of the tappable photo/canvas
+  // whenever that's scrolled into the bottom part of the screen -- swallowing
+  // the exact taps this page exists to test. Every event is still captured
+  // into dbgLines regardless of minimized state; tap "_" after testing to
+  // expand and Copy the log.
+  let dbgMin = true;
+  dbgLogEl.style.display = 'none';
+  document.getElementById('dbgMinBtn').textContent = '▢';
+  document.getElementById('dbgMinBtn').addEventListener('click', () => {
+    dbgMin = !dbgMin;
+    dbgLogEl.style.display = dbgMin ? 'none' : '';
+    document.getElementById('dbgMinBtn').textContent = dbgMin ? '▢' : '_';
+  });
+
+  // ---------- state ----------
+  const MP_VERSION = '1.0.1'; // pinned separately from the production tool's 0.10.2 -- this test file
+                               // does not touch background-remover.html or js/app.js at all.
+  const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/interactive_segmenter_v2/magic_touch/int8/latest/interactive_segmentation.task';
+  let interactiveSegmenter = null;
+  let segmenterLoadPromise = null;
+  let baseImg = null; // the decoded, capped-resolution source
+  const strokes = []; // accumulated positive-point strokes, so "undo" can drop the last tap
+
+  const baseCanvas = document.getElementById('baseCanvas');
+  const overlayCanvas = document.getElementById('overlayCanvas');
+  const statusEl = document.getElementById('status');
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+
+  async function ensureSegmenter(){
+    if (interactiveSegmenter) return interactiveSegmenter;
+    if (segmenterLoadPromise) return segmenterLoadPromise;
+    segmenterLoadPromise = (async () => {
+      dlog('MODEL_LOAD_START', { version: MP_VERSION, modelUrl: MODEL_URL });
+      setStatus('AI model load ho raha hai (pehli baar, thoda time lagega)…');
+      const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
+      dlog('ESM_IMPORT_OK', { exportedNames: Object.keys(mod) });
+      const { InteractiveSegmenter, FilesetResolver } = mod;
+      if (!InteractiveSegmenter){
+        throw new Error('InteractiveSegmenter export not found in this library version -- exports were: ' + Object.keys(mod).join(', '));
+      }
+      const vision = await FilesetResolver.forVisionTasks(
+        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
+      );
+      dlog('WASM_FILESET_OK', {});
+      const seg = await InteractiveSegmenter.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL_URL },
+        outputCategoryMask: false,
+        outputConfidenceMasks: true,
+      });
+      dlog('MODEL_LOAD_SUCCESS', {});
+      interactiveSegmenter = seg;
+      setStatus('AI model tayyar hai. Ab photo par tap karo.');
+      return seg;
+    })().catch(err => {
+      dlog('MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
+      setStatus('Model load nahi ho saka: ' + (err && err.message || err));
+      segmenterLoadPromise = null;
+      throw err;
+    });
+    return segmenterLoadPromise;
+  }
+
+  function drawBase(){
+    const w = baseImg.width, h = baseImg.height;
+    baseCanvas.width = overlayCanvas.width = w;
+    baseCanvas.height = overlayCanvas.height = h;
+    baseCanvas.getContext('2d').drawImage(baseImg, 0, 0, w, h);
+    overlayCanvas.getContext('2d').clearRect(0, 0, w, h);
+  }
+
+  document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    dlog('UPLOAD', { size: f.size, type: f.type });
+    strokes.length = 0;
+    try{
+      const bitmap = await createImageBitmap(f, { imageOrientation: 'from-image' });
+      const MAX = 1200;
+      let w = bitmap.width, h = bitmap.height;
+      if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+      if (bitmap.close) bitmap.close();
+      baseImg = c;
+      document.getElementById('stageBox').style.display = '';
+      drawBase();
+      setStatus('Photo load ho gayi. Ab AI model load ho raha hai…');
+      dlog('IMAGE_READY', { w, h });
+      ensureSegmenter().catch(() => {}); // pre-warm; errors are already logged + shown
+    }catch(err){
+      dlog('UPLOAD_ERROR', { message: String(err && err.message || err) });
+      setStatus('Photo load nahi ho saki: ' + (err && err.message || err));
+    }
+  });
+
+  async function handleTap(clientX, clientY){
+    if (!baseImg) return;
+    const rect = overlayCanvas.getBoundingClientRect();
+    const nx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    dlog('TAP', { nx: +nx.toFixed(4), ny: +ny.toFixed(4) });
+    setStatus('Segment ho raha hai…');
+    try{
+      const seg = await ensureSegmenter();
+      seg.setImage(baseCanvas);
+      strokes.push({ point: [{ x: nx, y: ny }], isCompleted: true });
+      // Only the single latest tap is sent as the prompt -- this mirrors the
+      // real one-tap "select the thing I'm pointing at" use case the actual
+      // background remover would need (fully automatic today, no user tap;
+      // this test is specifically to find out whether that automatic point
+      // even CAN work before any of that gets built).
+      const lastStroke = strokes[strokes.length - 1];
+      const t0 = performance.now();
+      const result = seg.segment([lastStroke]);
+      const ms = Math.round(performance.now() - t0);
+      renderResult(result, nx, ny, ms);
+    }catch(err){
+      dlog('SEGMENT_ERROR', { message: String(err && err.message || err) });
+      setStatus('Segment fail hua: ' + (err && err.message || err));
+    }
+  }
+
+  function renderResult(mask, nx, ny, ms){
+    // MPMask exposes getAsFloat32Array()/getAsUint8Array() plus width/height,
+    // same pattern already used in production for ImageSegmenter's
+    // confidenceMasks -- but InteractiveSegmenter's exact output type isn't
+    // independently confirmed, so try both defensively and log whatever is
+    // actually available so this is diagnosable instead of just silently wrong.
+    let arr = null, isFloat = false, mw = mask.width, mh = mask.height;
+    try{ arr = mask.getAsFloat32Array(); isFloat = true; }
+    catch(e){
+      try{ arr = mask.getAsUint8Array(); isFloat = false; }
+      catch(e2){ dlog('MASK_READ_ERROR', { float32Error: String(e), uint8Error: String(e2) }); setStatus('Mask read nahi ho saka.'); return; }
+    }
+    let min=Infinity, max=-Infinity, sum=0;
+    for (let i=0;i<arr.length;i++){ const v=arr[i]; if(v<min)min=v; if(v>max)max=v; sum+=v; }
+    const mean = sum/arr.length;
+    const threshold = isFloat ? 0.5 : 127;
+    let kept = 0;
+    for (let i=0;i<arr.length;i++) if (arr[i] > threshold) kept++;
+    const keptFrac = kept/arr.length;
+    dlog('SEGMENT_RESULT', { ms, maskW: mw, maskH: mh, isFloat, min: +min.toFixed(4), max: +max.toFixed(4), mean: +mean.toFixed(4), keptFrac: +keptFrac.toFixed(4) });
+
+    // Paint overlay: kept region tinted solid green, rest left transparent so
+    // the checkerboard/original shows through underneath in the browser's
+    // normal rendering -- makes it visually obvious on a screenshot whether
+    // the touching second subject got swept in (would also turn green) or
+    // correctly excluded (stays un-tinted).
+    const octx = overlayCanvas.getContext('2d');
+    octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    const imgData = octx.createImageData(baseCanvas.width, baseCanvas.height);
+    for (let y=0; y<baseCanvas.height; y++){
+      const my = Math.min(mh-1, Math.round(y*mh/baseCanvas.height));
+      for (let x=0; x<baseCanvas.width; x++){
+        const mx = Math.min(mw-1, Math.round(x*mw/baseCanvas.width));
+        const v = arr[my*mw+mx];
+        const idx = (y*baseCanvas.width+x)*4;
+        if (v > threshold){
+          imgData.data[idx] = 40; imgData.data[idx+1] = 220; imgData.data[idx+2] = 90; imgData.data[idx+3] = 140;
+        }
+      }
+    }
+    octx.putImageData(imgData, 0, 0);
+    // Mark the tap point itself with a small crosshair so it's clear which
+    // point was sent as the prompt.
+    octx.strokeStyle = '#fff'; octx.lineWidth = Math.max(2, baseCanvas.width*0.006);
+    const px = nx*baseCanvas.width, py = ny*baseCanvas.height, r = baseCanvas.width*0.02;
+    octx.beginPath(); octx.moveTo(px-r,py); octx.lineTo(px+r,py); octx.moveTo(px,py-r); octx.lineTo(px,py+r); octx.stroke();
+
+    setStatus('Result tayyar (' + ms + 'ms). Kept ' + Math.round(keptFrac*100) + '% of pixels. Green area = "selected object".');
+  }
+
+  overlayCanvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleTap(e.clientX, e.clientY); });
+
+  document.getElementById('clearOverlayBtn').addEventListener('click', () => {
+    overlayCanvas.getContext('2d').clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+    strokes.length = 0;
+    setStatus('Cleared. Photo par dobara tap karo.');
+  });
+
+  dlog('PAGE_INIT', { mpVersion: MP_VERSION, modelUrl: MODEL_URL });
+</script>
+</body>
+</html>
