@@ -979,6 +979,29 @@ html.dark .category-hub-card .cat-arrow{
 .editor-stage-wrap.panning canvas{cursor:grab;}
 .editor-hint{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.6;}
 
+/* Magic Touch background model-load indicator: applied to the Magic Touch
+   tool button (data-tool="magictap") while ensureInteractiveSegmenter() is
+   actually downloading/initializing the model (pre-warm after AI_SUCCESS,
+   or a first real tap) -- gives the user a visible "something is happening"
+   signal in place of the old silent background fetch. Removed the instant
+   the load resolves or fails. */
+@keyframes ai-magic-pulse{
+  0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent1-solid) 55%, transparent); }
+  50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--accent1-solid) 0%, transparent); }
+}
+@keyframes ai-magic-sparkle{
+  0%,100%{ opacity:0.35; transform:scale(0.85) rotate(0deg); }
+  50%{ opacity:1; transform:scale(1.15) rotate(25deg); }
+}
+.editor-tool-btn.ai-loading-pulse{
+  position:relative;animation:ai-magic-pulse 1.4s ease-in-out infinite;
+  border-color:var(--accent1-solid);
+}
+.editor-tool-btn.ai-loading-pulse::after{
+  content:"✨";position:absolute;top:-7px;right:-6px;font-size:12px;line-height:1;
+  animation:ai-magic-sparkle 1.1s ease-in-out infinite;pointer-events:none;
+}
+
 /* ============ TASK: BACKGROUND REMOVER — PRODUCTION-GRADE EDITOR ADDITIONS ============ */
 .editor-stage-wrap.tool-refine canvas{cursor:crosshair;}
 .editor-stage-wrap.overlay-on{position:relative;}
