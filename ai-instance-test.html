@@ -116,6 +116,7 @@
   const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/interactive_segmenter_v2/magic_touch/int8/latest/interactive_segmentation.task';
   let interactiveSegmenter = null;
   let segmenterLoadPromise = null;
+  let BrushMode = null; // enum from the library itself -- grabbed once at load time, see ensureSegmenter()
   let baseImg = null; // the decoded, capped-resolution source
   const strokes = []; // accumulated positive-point strokes, so "undo" can drop the last tap
 
@@ -137,6 +138,14 @@
       if (!InteractiveSegmenter){
         throw new Error('InteractiveSegmenter export not found in this library version -- exports were: ' + Object.keys(mod).join(', '));
       }
+      // BrushMode is a real exported enum (UNSPECIFIED/POSITIVE/NEGATIVE/LASSO).
+      // A Stroke object without a valid brushMode is malformed input to the
+      // model, which is exactly what produced the generic native
+      // "Segmentation failed." error on first real-device test -- this was a
+      // bug in this test harness's stroke construction below, not evidence
+      // against the model itself.
+      BrushMode = mod.BrushMode || null;
+      dlog('BRUSHMODE_EXPORT', { found: !!BrushMode, value: BrushMode ? BrushMode.POSITIVE : null });
       const vision = await FilesetResolver.forVisionTasks(
         `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
       );
@@ -203,7 +212,13 @@
     try{
       const seg = await ensureSegmenter();
       seg.setImage(baseCanvas);
-      strokes.push({ point: [{ x: nx, y: ny }], isCompleted: true });
+      // brushMode is required -- BrushMode.POSITIVE ("include this") is the
+      // click-to-select case this test is built for. Fall back to the raw
+      // enum ordinal (1 in every published version so far) only if the
+      // module genuinely didn't export the enum, so this can't silently send
+      // `undefined` into the model again.
+      const brushModeValue = (BrushMode && BrushMode.POSITIVE !== undefined) ? BrushMode.POSITIVE : 1;
+      strokes.push({ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true });
       // Only the single latest tap is sent as the prompt -- this mirrors the
       // real one-tap "select the thing I'm pointing at" use case the actual
       // background remover would need (fully automatic today, no user tap;
