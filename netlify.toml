@@ -85,8 +85,17 @@
 # the page only sees a generic failed-fetch. https://toolflight-pdf2word.onrender.com
 # is the PDF -> Word conversion backend (js/app.js, PDF2WORD_API / pdf-to-word.html)
 # -- it was missing here, which is why that one tool's fetch() was blocked by
-# CSP while every other tool kept working.
+# CSP while every other tool kept working. Same class of bug found again for
+# the AI Background Remover (image-tools.html / background-remover.html):
+# script-src already allowed https://cdn.jsdelivr.net so the MediaPipe ESM
+# import itself succeeded, but MediaPipe's FilesetResolver/ImageSegmenter then
+# fetch() the WASM runtime from https://cdn.jsdelivr.net and the segmentation
+# model from https://storage.googleapis.com -- neither origin was in
+# connect-src, so those fetches were silently blocked by CSP and surfaced to
+# the page as a generic "Failed to fetch", confirmed via bgDebugLog
+# MODEL_LOAD_ERROR on a real device. Both origins are added below so the AI
+# model can actually load in production.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none';"
