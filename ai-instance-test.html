@@ -77,21 +77,45 @@
   }
   document.getElementById('dbgCopyBtn').addEventListener('click', () => {
     const text = dbgLines.join('\n');
+    if (!text){ dlog('COPY_CLICKED', { empty: true }); }
     const btn = document.getElementById('dbgCopyBtn');
-    const done = (ok) => { btn.textContent = ok ? 'Copied!' : 'Select & copy'; setTimeout(() => btn.textContent = 'Copy', 1500); };
+    const done = (ok) => { btn.textContent = ok ? 'Copied!' : 'See box below'; setTimeout(() => btn.textContent = 'Copy', 2000); };
     if (navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(() => done(true)).catch(() => fallbackCopy(text, done));
-    } else fallbackCopy(text, done);
+      navigator.clipboard.writeText(text).then(() => done(true)).catch((err) => { dlog('CLIPBOARD_API_FAILED', { message: String(err && err.message || err) }); fallbackCopy(text, done); });
+    } else { dlog('CLIPBOARD_API_UNAVAILABLE', {}); fallbackCopy(text, done); }
   });
   function fallbackCopy(text, done){
+    // IMPORTANT: document.execCommand('copy') returns a BOOLEAN, it does not
+    // throw on failure -- a naive try/catch that ignores the return value
+    // reports "Copied!" even when nothing was actually copied, which reads
+    // to a real user as "the button does nothing." This always leaves a
+    // visible, manually-selectable text box up (with a Close button, no
+    // auto-timeout) as the guaranteed fallback regardless of what
+    // execCommand reports, so there is always a way to get the log out even
+    // on a browser/permission combo where every programmatic path fails.
     try{
+      const existing = document.getElementById('manualCopyBox');
+      if (existing) existing.remove();
+      const box = document.createElement('div');
+      box.id = 'manualCopyBox';
+      box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#111;border-bottom:2px solid #7c3aed;padding:8px;';
+      const label = document.createElement('div');
+      label.textContent = 'Neeche text ko tap-hold karke "Select all" phir "Copy" karo:';
+      label.style.cssText = 'color:#c9a3ff;font-size:12px;margin-bottom:6px;';
       const ta = document.createElement('textarea');
       ta.value = text;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:35%;z-index:2147483647;font:12px monospace;';
-      document.body.appendChild(ta);
+      ta.style.cssText = 'width:100%;height:28vh;font:11px monospace;box-sizing:border-box;';
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Close';
+      closeBtn.type = 'button';
+      closeBtn.style.cssText = 'margin-top:6px;padding:6px 14px;background:#333;color:#fff;border:1px solid #555;border-radius:6px;';
+      closeBtn.addEventListener('click', () => box.remove());
+      box.appendChild(label); box.appendChild(ta); box.appendChild(closeBtn);
+      document.body.appendChild(box);
       ta.focus(); ta.select();
-      try{ document.execCommand('copy'); done(true); }catch(e){ done(false); }
-      setTimeout(() => { if (ta.parentNode) ta.parentNode.removeChild(ta); }, 6000);
+      let ok = false;
+      try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+      done(ok);
     }catch(e){ done(false); }
   }
   document.getElementById('dbgClearBtn').addEventListener('click', () => { dbgLines.length = 0; dbgLogEl.textContent = ''; });
@@ -131,31 +155,56 @@
     if (segmenterLoadPromise) return segmenterLoadPromise;
     segmenterLoadPromise = (async () => {
       dlog('MODEL_LOAD_START', { version: MP_VERSION, modelUrl: MODEL_URL });
+      const loadStartedAt = performance.now();
+      // Heartbeat: on a very slow connection (a real test on this page hit
+      // 1.81 KB/s -- realistically tens of minutes for a multi-MB model) the
+      // page would otherwise sit on one static message with zero visible
+      // change, which is indistinguishable from "frozen." This updates the
+      // status line every second with elapsed time so it's obvious the page
+      // is still alive and just waiting on a slow download, not stuck.
+      const heartbeat = setInterval(() => {
+        const secs = Math.round((performance.now() - loadStartedAt) / 1000);
+        setStatus(`AI model load ho raha hai… ${secs}s (dheemi internet par lambe waqt tak KB/s speed par attar rehna normal hai)`);
+      }, 1000);
       setStatus('AI model load ho raha hai (pehli baar, thoda time lagega)…');
-      const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
-      dlog('ESM_IMPORT_OK', { exportedNames: Object.keys(mod) });
-      const { InteractiveSegmenter, FilesetResolver } = mod;
-      if (!InteractiveSegmenter){
-        throw new Error('InteractiveSegmenter export not found in this library version -- exports were: ' + Object.keys(mod).join(', '));
-      }
-      // BrushMode is a real exported enum (UNSPECIFIED/POSITIVE/NEGATIVE/LASSO).
-      // A Stroke object without a valid brushMode is malformed input to the
-      // model, which is exactly what produced the generic native
-      // "Segmentation failed." error on first real-device test -- this was a
-      // bug in this test harness's stroke construction below, not evidence
-      // against the model itself.
-      BrushMode = mod.BrushMode || null;
-      dlog('BRUSHMODE_EXPORT', { found: !!BrushMode, value: BrushMode ? BrushMode.POSITIVE : null });
-      const vision = await FilesetResolver.forVisionTasks(
-        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
-      );
-      dlog('WASM_FILESET_OK', {});
-      const seg = await InteractiveSegmenter.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL },
-        outputCategoryMask: false,
-        outputConfidenceMasks: true,
+      const LOAD_TIMEOUT_MS = 45000; // generous, matches the very slow connection this was tested on
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`Model download ${LOAD_TIMEOUT_MS/1000}s ke andar poora nahi hua -- connection bohot dheema hai. Behtar WiFi/signal par dobara try karo.`)), LOAD_TIMEOUT_MS);
       });
-      dlog('MODEL_LOAD_SUCCESS', {});
+      const load = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
+        dlog('ESM_IMPORT_OK', { exportedNames: Object.keys(mod) });
+        const { InteractiveSegmenter, FilesetResolver } = mod;
+        if (!InteractiveSegmenter){
+          throw new Error('InteractiveSegmenter export not found in this library version -- exports were: ' + Object.keys(mod).join(', '));
+        }
+        // BrushMode is a real exported enum (UNSPECIFIED/POSITIVE/NEGATIVE/LASSO)
+        // in some builds, but a real-device test showed it is NOT a top-level
+        // export in this library version (exportedNames logged above did not
+        // include it) -- the hardcoded fallback (POSITIVE = 1) below is what
+        // actually matters, this named lookup is kept only in case a future
+        // library version does export it directly.
+        BrushMode = mod.BrushMode || null;
+        dlog('BRUSHMODE_EXPORT', { found: !!BrushMode, value: BrushMode ? BrushMode.POSITIVE : null });
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
+        );
+        dlog('WASM_FILESET_OK', {});
+        return InteractiveSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL },
+          outputCategoryMask: false,
+          outputConfidenceMasks: true,
+        });
+      })();
+      let seg;
+      try{
+        seg = await Promise.race([load, timeout]);
+      }finally{
+        clearTimeout(timeoutId);
+        clearInterval(heartbeat);
+      }
+      dlog('MODEL_LOAD_SUCCESS', { ms: Math.round(performance.now() - loadStartedAt) });
       interactiveSegmenter = seg;
       setStatus('AI model tayyar hai. Ab photo par tap karo.');
       return seg;
@@ -293,7 +342,18 @@
     setStatus('Cleared. Photo par dobara tap karo.');
   });
 
-  dlog('PAGE_INIT', { mpVersion: MP_VERSION, modelUrl: MODEL_URL });
+  // Global safety net: catches anything that throws OUTSIDE the try/catch
+  // blocks already in this file (a typo, a browser-specific API gap, a
+  // rejected promise nobody awaited) so a silent failure never again looks
+  // like "nothing happened" with zero evidence to diagnose it from.
+  window.addEventListener('error', (e) => {
+    dlog('WINDOW_ERROR', { message: e.message, filename: e.filename, lineno: e.lineno });
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    dlog('UNHANDLED_REJECTION', { message: String(e.reason && e.reason.message || e.reason) });
+  });
+
+  dlog('PAGE_INIT', { mpVersion: MP_VERSION, modelUrl: MODEL_URL, ua: navigator.userAgent });
 </script>
 </body>
 </html>
