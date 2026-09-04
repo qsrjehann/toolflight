@@ -480,6 +480,154 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
   return out2;
 }
 
+// ---- Primary subject selection ----------------------------------------
+// DeepLab v3 (used by the AI Background Remover below) is a SEMANTIC
+// segmentation model: every pixel gets a PASCAL VOC category label (person,
+// chair, sofa, dog, car, ...), but the model has no notion of individual
+// object INSTANCES and no notion of "which of these is the photo's actual
+// subject." The previous behavior treated every non-background category as
+// keep-worthy ("if pixel belongs to a non-background class -> keep it"),
+// so a bystander, a chair, a sofa, or any other object that happened to
+// land in one of the 20 non-background classes survived removal exactly as
+// reliably as the real subject did.
+//
+// This function does not change what the segmentation model detects. It
+// looks at everything the model marked as "not background" and decides,
+// using only evidence available after the fact, which single connected
+// region is the actual subject: how much of the total foreground area it
+// accounts for, how close it sits to the image's center (a strong, well-
+// established compositional prior for "the subject" in a normal photo),
+// and the model's own per-class confidence in that region. Every other
+// region -- regardless of which of the 20 non-background classes it was
+// labeled as -- is dropped. For the overwhelmingly common single-region
+// case (one clean subject, nothing else surviving segmentation) this is a
+// no-op: there's nothing to choose between, so behavior is unchanged.
+//
+// Known, honestly-stated limitation: because DeepLab v3 has no instance
+// concept, two people (or two of the same object) that are physically
+// touching/overlapping in the frame are one connected "person" region as
+// far as the model is concerned, and cannot be split apart without an
+// instance-segmentation model (out of scope here -- see the audit notes).
+// Two people who are NOT touching (the far more common "bystander in the
+// background" case) already land in separate connected components and are
+// handled correctly below.
+function selectPrimarySubjectMask(rawMaskData, maskW, maskH, confidenceMasks){
+  const n = maskW*maskH;
+  const isFg = new Uint8Array(n);
+  let totalFg = 0;
+  for (let i=0; i<n; i++){ if (rawMaskData[i] !== 0){ isFg[i]=1; totalFg++; } }
+  if (totalFg === 0) return new Uint8ClampedArray(n);
+
+  // Small dilation used ONLY to decide which nearby fragments belong to the
+  // same physical subject (e.g. a hand separated from a torso by a couple
+  // of misclassified pixels at this model's fairly coarse native mask
+  // resolution). It never adds a pixel to the final kept mask -- the
+  // result below is always intersected back against the ORIGINAL isFg
+  // pixels, never the dilated halo.
+  const groupRadius = Math.max(1, Math.round(Math.min(maskW, maskH) * 0.012));
+  const dilateSrc = new Uint8ClampedArray(n);
+  for (let i=0; i<n; i++) dilateSrc[i] = isFg[i] ? 255 : 0;
+  const dilated = dilateMask(dilateSrc, maskW, maskH, groupRadius);
+
+  // Connected-component labeling over the dilated footprint (BFS flood
+  // fill), same primitive style as removeSmallIslands() above.
+  const label = new Int32Array(n).fill(-1);
+  const queue = new Int32Array(n);
+  const comps = [];
+  let nextLabel = 0;
+  for (let start=0; start<n; start++){
+    if (label[start] !== -1 || dilated[start] === 0) continue;
+    const compId = nextLabel++;
+    let qHead=0, qTail=0;
+    queue[qTail++] = start; label[start] = compId;
+    const trueIndices = [];
+    const classCounts = new Map();
+    let sumX = 0, sumY = 0;
+    while (qHead < qTail){
+      const idx = queue[qHead++];
+      const x = idx % maskW, y = (idx / maskW) | 0;
+      if (isFg[idx]){
+        trueIndices.push(idx);
+        sumX += x; sumY += y;
+        const cls = rawMaskData[idx];
+        classCounts.set(cls, (classCounts.get(cls) || 0) + 1);
+      }
+      const neighbors = [
+        x>0 ? idx-1 : -1, x<maskW-1 ? idx+1 : -1,
+        y>0 ? idx-maskW : -1, y<maskH-1 ? idx+maskW : -1,
+      ];
+      for (const nb of neighbors){
+        if (nb >= 0 && label[nb] === -1 && dilated[nb] !== 0){ label[nb] = compId; queue[qTail++] = nb; }
+      }
+    }
+    if (trueIndices.length > 0) comps.push({ compId, trueIndices, sumX, sumY, classCounts });
+  }
+
+  if (comps.length <= 1){
+    // Nothing to choose between -- keep all original foreground exactly as
+    // before. This is the common single-subject-photo path and is
+    // unchanged from prior behavior.
+    const out = new Uint8ClampedArray(n);
+    for (let i=0; i<n; i++) out[i] = isFg[i] ? 1 : 0;
+    return out;
+  }
+
+  const cx = maskW/2, cy = maskH/2;
+  const halfDiag = Math.sqrt(cx*cx + cy*cy) || 1;
+  const confCache = new Map();
+  function confidenceArrFor(classIdx){
+    if (confCache.has(classIdx)) return confCache.get(classIdx);
+    let entry = { arr: null, cw: maskW, ch: maskH };
+    if (confidenceMasks && confidenceMasks[classIdx]){
+      try{
+        entry = {
+          arr: confidenceMasks[classIdx].getAsFloat32Array(),
+          cw: confidenceMasks[classIdx].width,
+          ch: confidenceMasks[classIdx].height,
+        };
+      }catch(e){ /* leave arr:null -- confScore falls back to a neutral value below */ }
+    }
+    confCache.set(classIdx, entry);
+    return entry;
+  }
+
+  let best = null, bestScore = -Infinity;
+  for (const c of comps){
+    let dominantClass = 0, dominantCount = -1;
+    for (const [cls, cnt] of c.classCounts){ if (cnt > dominantCount){ dominantCount = cnt; dominantClass = cls; } }
+    const areaScore = c.trueIndices.length / totalFg;
+    const centroidX = c.sumX / c.trueIndices.length, centroidY = c.sumY / c.trueIndices.length;
+    const dist = Math.sqrt((centroidX-cx)**2 + (centroidY-cy)**2);
+    const centerScore = 1 - Math.min(1, dist / halfDiag);
+    const { arr: confArr, cw, ch } = confidenceArrFor(dominantClass);
+    let confScore = 0.7; // neutral default when no per-class confidence mask is available
+    if (confArr){
+      const stride = Math.max(1, Math.floor(c.trueIndices.length / 500));
+      let sum = 0, sampled = 0;
+      for (let k=0; k<c.trueIndices.length; k += stride){
+        const idx = c.trueIndices[k];
+        const x = idx % maskW, y = (idx / maskW) | 0;
+        const px = Math.min(cw-1, Math.round(x*cw/maskW)), py = Math.min(ch-1, Math.round(y*ch/maskH));
+        sum += confArr[py*cw+px]; sampled++;
+      }
+      if (sampled > 0) confScore = sum/sampled;
+    }
+    // PASCAL VOC class 15 = person. A photographed person is, in the
+    // overwhelming majority of real uploads to a tool described as "best
+    // for photos of people, animals, vehicles, and everyday objects," the
+    // intended subject -- this is a mild tie-breaking bonus, not an
+    // override: a clearly larger, more central non-person object (e.g. a
+    // product shot) still wins on area/center score alone.
+    const personBonus = dominantClass === 15 ? 0.12 : 0;
+    const score = areaScore*0.55 + centerScore*0.30 + confScore*0.15 + personBonus;
+    if (score > bestScore){ bestScore = score; best = c; }
+  }
+
+  const out = new Uint8ClampedArray(n);
+  for (const idx of best.trueIndices) out[idx] = 1;
+  return out;
+}
+
 function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
@@ -2139,6 +2287,133 @@ if (document.getElementById('rfCanvas')){
    after that. Version is pinned deliberately since Google labels this a
    "Preview" API; bump MP_VERSION only after testing. */
 if (document.getElementById('aiRemoveDrop')){
+  // Forensic diagnostics (Background Remover only). OFF by default --
+  // costs nothing in normal production use. Turned on per-visit with
+  // ?bgdebug=1 in the URL, or persistently with
+  // localStorage.setItem('toolflight_bg_debug','1'), by a real device
+  // reproducing a reported bug. Logs only booleans/dimensions/timestamps
+  // -- never pixel data or the user's image -- and exists specifically so
+  // a future report of "the fix didn't work" can be diagnosed from an
+  // actual device's console log instead of guessed at again.
+  const BG_REMOVER_BUILD_ID = '2026-09-04-FORENSIC-01';
+  let _bgDebugOn = null;
+  function bgDebugEnabled(){
+    if (_bgDebugOn !== null) return _bgDebugOn;
+    try{
+      _bgDebugOn = new URLSearchParams(location.search).get('bgdebug') === '1'
+        || localStorage.getItem('toolflight_bg_debug') === '1';
+    }catch(e){ _bgDebugOn = false; }
+    return _bgDebugOn;
+  }
+  // On-screen debug panel: renders the same events console.log gets, but
+  // directly on the page -- so a bug can be diagnosed from a phone alone,
+  // with no laptop/USB/ADB remote-debugging setup required. Still fully
+  // gated behind bgDebugEnabled(); a normal visitor never creates or pays
+  // for this DOM at all.
+  let _bgDebugPanel = null;
+  let _bgDebugLines = [];
+  function ensureBgDebugPanel(){
+    if (_bgDebugPanel) return _bgDebugPanel;
+    if (!document.body) return null;
+    const wrap = document.createElement('div');
+    wrap.id = 'bgDebugPanel';
+    wrap.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'
+      + 'max-height:40vh;background:rgba(8,8,8,0.96);color:#5fe85f;'
+      + 'font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;display:flex;'
+      + 'flex-direction:column;border-top:2px solid #2ecc40;'
+      + 'box-shadow:0 -2px 10px rgba(0,0,0,0.4);';
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px;'
+      + 'background:#111;border-bottom:1px solid #333;flex-shrink:0;';
+    const title = document.createElement('span');
+    title.textContent = 'bg-remover debug · ' + BG_REMOVER_BUILD_ID;
+    title.style.cssText = 'flex:1;color:#5fe85f;font-weight:bold;overflow:hidden;'
+      + 'text-overflow:ellipsis;white-space:nowrap;';
+    function mkBtn(label){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.style.cssText = 'padding:5px 10px;background:#2a2a2a;color:#fff;border:1px solid #444;'
+        + 'border-radius:4px;font:11px ui-monospace,Menlo,Consolas,monospace;';
+      return b;
+    }
+    const copyBtn = mkBtn('Copy');
+    const clearBtn = mkBtn('Clear');
+    const minBtn = mkBtn('_');
+    bar.appendChild(title); bar.appendChild(copyBtn); bar.appendChild(clearBtn); bar.appendChild(minBtn);
+    const logArea = document.createElement('div');
+    logArea.id = 'bgDebugPanelLog';
+    logArea.style.cssText = 'overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;'
+      + 'white-space:pre-wrap;word-break:break-all;flex:1;';
+    wrap.appendChild(bar);
+    wrap.appendChild(logArea);
+    document.body.appendChild(wrap);
+
+    function fallbackCopy(text, done){
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:35%;z-index:2147483647;'
+          + 'font:12px monospace;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try{ document.execCommand('copy'); done(true); }catch(e){ done(false); }
+        setTimeout(() => { if (ta.parentNode) ta.parentNode.removeChild(ta); }, 6000);
+      }catch(e){ done(false); }
+    }
+    copyBtn.addEventListener('click', () => {
+      const text = _bgDebugLines.join('\n');
+      const done = (ok) => {
+        copyBtn.textContent = ok ? 'Copied!' : 'Select & copy';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(() => done(true)).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+    clearBtn.addEventListener('click', () => {
+      _bgDebugLines = [];
+      logArea.textContent = '';
+    });
+    let minimized = false;
+    minBtn.addEventListener('click', () => {
+      minimized = !minimized;
+      logArea.style.display = minimized ? 'none' : '';
+      minBtn.textContent = minimized ? '▢' : '_';
+    });
+
+    _bgDebugPanel = { wrap: wrap, logArea: logArea };
+    return _bgDebugPanel;
+  }
+  function bgDebugPanelAppend(line){
+    _bgDebugLines.push(line);
+    if (_bgDebugLines.length > 500) _bgDebugLines.splice(0, _bgDebugLines.length - 500);
+    const panel = ensureBgDebugPanel();
+    if (!panel) return;
+    const row = document.createElement('div');
+    row.textContent = line;
+    panel.logArea.appendChild(row);
+    while (panel.logArea.childNodes.length > 500) panel.logArea.removeChild(panel.logArea.firstChild);
+    panel.logArea.scrollTop = panel.logArea.scrollHeight;
+  }
+  function bgDebugLog(event, data){
+    if (!bgDebugEnabled()) return;
+    const stamp = new Date().toISOString().slice(11, 23);
+    let dataStr = '';
+    try{ dataStr = data ? JSON.stringify(data) : ''; }catch(e){ dataStr = String(data); }
+    try{ console.log('[bg-remover ' + BG_REMOVER_BUILD_ID + ']', event, data || {}); }catch(e){}
+    try{ bgDebugPanelAppend('[' + stamp + '] ' + event + ' ' + dataStr); }catch(e){}
+  }
+  if (bgDebugEnabled()){
+    console.log('[bg-remover] build', BG_REMOVER_BUILD_ID);
+    // Deferred so document.body definitely exists even if this script
+    // somehow ran before body finished parsing.
+    if (document.body) bgDebugLog('PANEL_INIT', { build: BG_REMOVER_BUILD_ID });
+    else document.addEventListener('DOMContentLoaded', () => bgDebugLog('PANEL_INIT', { build: BG_REMOVER_BUILD_ID }));
+  }
+
   const MP_VERSION = '0.10.2';
   const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
   let segmenter = null;
@@ -2148,6 +2423,16 @@ if (document.getElementById('aiRemoveDrop')){
                             // decoded lazily at export time instead of eagerly
                             // on every upload -- see loadImageExifSafe below.
   let aiResultCanvas = null;
+  // Generation guard: bumped on every new upload and at the start of every
+  // "Remove background" click. Each async processing run captures its own
+  // generation number and, right before it writes any result into the
+  // shared editor state, checks that no newer generation has started in
+  // the meantime -- if one has, the stale result is silently dropped
+  // instead of clobbering whatever the user is now looking at. This is the
+  // standard fix for the class of bug where a slow AI callback (model
+  // still loading, slow network/device) resolves after the user has
+  // already uploaded a different image or re-clicked the button.
+  let aiProcessGeneration = 0;
   // EXIF-orientation-safe image load, used only for this tool's uploads.
   // IMPORTANT: decodes at a CAPPED resolution via createImageBitmap's own
   // resizeWidth/resizeHeight, rather than decoding the full original and
@@ -2224,23 +2509,47 @@ if (document.getElementById('aiRemoveDrop')){
   async function ensureSegmenter(){
     if (segmenter) return segmenter;
     if (!segmenterLoadPromise){
+      // Bounded timeout around the CDN load: this previously had NONE, so
+      // on a genuinely slow/throttled mobile connection (a real device
+      // reproducing this reported 42.5 KB/s in a screenshot -- easily
+      // 30s+ to pull the MediaPipe WASM runtime plus the multi-MB model
+      // from two third-party CDNs) the button would sit on "Processing…"
+      // indefinitely with no feedback, and if the tab got backgrounded
+      // partway through, some browsers abort/throttle in-flight network
+      // requests for hidden tabs -- which is a plausible, separate reason
+      // this can end in "AI processing failed" that has nothing to do
+      // with primary-subject selection and everything to do with the
+      // model never finishing its download. A clear, bounded timeout at
+      // least turns an indefinite hang into an honest, actionable message.
+      const SEGMENTER_LOAD_TIMEOUT_MS = 25000;
       segmenterLoadPromise = (async () => {
         setAiStatus('', 'Loading AI model (first use only, a few MB, cached after)…');
-        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
-        const { ImageSegmenter, FilesetResolver } = mod;
-        const vision = await FilesetResolver.forVisionTasks(
-          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
-        );
-        const seg = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL },
-          outputCategoryMask: true,
-          outputConfidenceMasks: true,
-          runningMode: 'IMAGE'
+        bgDebugLog('MODEL_LOAD_START', {});
+        let timeoutId;
+        const timeout = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Model download timed out — this can happen on a slow connection. Check your connection and try again.')), SEGMENTER_LOAD_TIMEOUT_MS);
         });
+        const load = (async () => {
+          const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`);
+          const { ImageSegmenter, FilesetResolver } = mod;
+          const vision = await FilesetResolver.forVisionTasks(
+            `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`
+          );
+          return ImageSegmenter.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL },
+            outputCategoryMask: true,
+            outputConfidenceMasks: true,
+            runningMode: 'IMAGE'
+          });
+        })();
+        const seg = await Promise.race([load, timeout]);
+        clearTimeout(timeoutId);
         segmenter = seg;
         setAiStatus('ready', 'AI model ready.');
+        bgDebugLog('MODEL_LOAD_SUCCESS', {});
         return seg;
       })().catch((err) => {
+        bgDebugLog('MODEL_LOAD_ERROR', { message: String(err && err.message) });
         setAiStatus('error', 'Could not load the AI model — check your connection and try again.');
         segmenterLoadPromise = null;
         throw err;
@@ -2249,10 +2558,133 @@ if (document.getElementById('aiRemoveDrop')){
     return segmenterLoadPromise;
   }
 
+  /* ---------- Magic Touch (AI) -- tap-to-select a single object ----------
+     A second, separate MediaPipe task: InteractiveSegmenter ("MagicTouch"
+     model), pinned to its own library version independently of the
+     ensureSegmenter() DeepLab pipeline above -- deliberately NOT sharing a
+     version pin with it, so nothing here can ever change DeepLab's already-
+     proven-in-production behavior. Unlike DeepLab's per-pixel CLASS labeling
+     (which cannot tell two touching people of the same class apart -- see
+     selectPrimarySubjectMask's comment), this model is point-prompted and
+     genuinely instance-aware: tap on one object and it returns a mask for
+     just that object, confirmed via real-device testing (bgdebug session,
+     Sept 2026) across three different photos of people standing close
+     together/overlapping.
+
+     Loaded lazily -- never on page load, never on upload -- only pre-warmed
+     once a DeepLab result is already on screen (see the pre-warm call after
+     AI_SUCCESS below) so it never competes with or slows down the primary,
+     already-working Remove Background flow for users who never touch this
+     tool. */
+  const MP_VERSION_TOUCH = '1.0.1';
+  const MODEL_URL_TOUCH = 'https://storage.googleapis.com/mediapipe-models/interactive_segmenter_v2/magic_touch/int8/latest/interactive_segmentation.task';
+  let interactiveSegmenter = null;
+  let interactiveSegmenterLoadPromise = null;
+  let InteractiveBrushMode = null; // grabbed from the module if exported; see fallback below
+
+  async function ensureInteractiveSegmenter(){
+    if (interactiveSegmenter) return interactiveSegmenter;
+    if (interactiveSegmenterLoadPromise) return interactiveSegmenterLoadPromise;
+    interactiveSegmenterLoadPromise = (async () => {
+      bgDebugLog('TOUCH_MODEL_LOAD_START', { version: MP_VERSION_TOUCH });
+      const LOAD_TIMEOUT_MS = 45000;
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Magic Touch model download timed out — check your connection and try again.')), LOAD_TIMEOUT_MS);
+      });
+      const load = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}`);
+        const { InteractiveSegmenter, FilesetResolver } = mod;
+        if (!InteractiveSegmenter) throw new Error('InteractiveSegmenter not available in this library version.');
+        InteractiveBrushMode = mod.BrushMode || null;
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}/wasm`
+        );
+        return InteractiveSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
+          outputCategoryMask: false,
+          outputConfidenceMasks: true,
+        });
+      })();
+      let seg;
+      try{ seg = await Promise.race([load, timeout]); }
+      finally{ clearTimeout(timeoutId); }
+      interactiveSegmenter = seg;
+      bgDebugLog('TOUCH_MODEL_LOAD_SUCCESS', {});
+      return seg;
+    })().catch((err) => {
+      bgDebugLog('TOUCH_MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
+      interactiveSegmenterLoadPromise = null;
+      throw err;
+    });
+    return interactiveSegmenterLoadPromise;
+  }
+
+  // Reads an MPMask result defensively (float32 with fallback to uint8 --
+  // InteractiveSegmenter's exact output type wasn't documented anywhere
+  // findable, confirmed empirically instead) and writes it into maskCanvas
+  // using the SAME red=green=blue=keepAmount convention magicWandAt already
+  // uses, so undo/redo, autosave, and renderComposite all treat a Magic
+  // Touch selection exactly like a Magic Wand one -- no separate code path
+  // for the rest of the editor to know about.
+  function applyInteractiveMaskResult(mask, subtract){
+    const w = originalCanvas.width, h = originalCanvas.height;
+    let arr, isFloat = true;
+    try{ arr = mask.getAsFloat32Array(); }
+    catch(e){ arr = mask.getAsUint8Array(); isFloat = false; }
+    const threshold = isFloat ? 0.5 : 127;
+    const mw = mask.width, mh = mask.height;
+    const mctx = maskCanvas.getContext('2d');
+    const mData = mctx.getImageData(0, 0, w, h);
+    const v = subtract ? 0 : 255;
+    for (let y = 0; y < h; y++){
+      const my = Math.min(mh - 1, Math.round(y * mh / h));
+      for (let x = 0; x < w; x++){
+        const mx = Math.min(mw - 1, Math.round(x * mw / w));
+        if (arr[my*mw+mx] > threshold){
+          const ci = (y*w+x)*4;
+          mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
+        }
+      }
+    }
+    mctx.putImageData(mData, 0, 0);
+  }
+
+  let magicTapBusy = false; // guards against a second tap firing while one is still loading/segmenting
+  async function magicTapAt(x, y, subtract){
+    if (!originalCanvas || magicTapBusy) return;
+    const w = originalCanvas.width, h = originalCanvas.height;
+    const nx = Math.min(1, Math.max(0, x / w));
+    const ny = Math.min(1, Math.max(0, y / h));
+    magicTapBusy = true;
+    const firstLoad = !interactiveSegmenter;
+    if (firstLoad) toast('Getting Magic Touch ready — first use only, a few seconds…');
+    bgDebugLog('MAGICTAP', { nx: +nx.toFixed(4), ny: +ny.toFixed(4), subtract, firstLoad });
+    try{
+      const seg = await ensureInteractiveSegmenter();
+      seg.setImage(originalCanvas);
+      const brushModeValue = (InteractiveBrushMode && InteractiveBrushMode.POSITIVE !== undefined) ? InteractiveBrushMode.POSITIVE : 1;
+      const result = seg.segment([{ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true }]);
+      applyInteractiveMaskResult(result, subtract);
+      renderComposite();
+      pushHistory();
+      bgDebugLog('MAGICTAP_APPLIED', {});
+    }catch(err){
+      bgDebugLog('MAGICTAP_ERROR', { message: String(err && err.message || err) });
+      toast('Magic Touch could not select that spot: ' + (err && err.message || 'try again') , 'err');
+    }finally{
+      magicTapBusy = false;
+    }
+  }
+
   setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
     const f = files.find(f => f.type.startsWith('image/'));
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
     if (f.size > 50*1024*1024){ toast(`That image is ${fmtBytes(f.size)} — the limit is 50 MB.`, 'err'); return; }
+    // A new upload invalidates any AI processing already in flight for the
+    // previous image -- see the generation-guard comment above.
+    aiProcessGeneration++;
+    bgDebugLog('UPLOAD', { size: f.size, type: f.type, generation: aiProcessGeneration });
     try{
       aiSourceFile = f;
       aiSourceImg = await loadImgAi(f);
@@ -2345,6 +2777,7 @@ if (document.getElementById('aiRemoveDrop')){
     document.querySelector('footer') && document.querySelector('footer').classList.remove('hidden');
   }
   function resetAiToUpload(){
+    aiProcessGeneration++; // invalidate any AI processing still in flight
     document.getElementById('aiRemoveStage').classList.add('hidden');
     exitAiFullscreen();
     document.getElementById('aiRemoveDrop') && (document.getElementById('aiRemoveInput').value = '');
@@ -2627,6 +3060,12 @@ if (document.getElementById('aiRemoveDrop')){
   document.getElementById('aiRemoveBtn').onclick = async () => {
     const btn = document.getElementById('aiRemoveBtn');
     if (!aiSourceImg){ toast('Load an image first.', 'err'); return; }
+    // See the generation-guard comment near aiProcessGeneration's
+    // declaration above: this run's result is only applied below if
+    // nothing newer (a fresh upload, a reset, or another click) has
+    // started by the time it's ready to write into the shared editor state.
+    const myGeneration = ++aiProcessGeneration;
+    bgDebugLog('AI_START', { mode: bgRemoveMode, generation: myGeneration });
     setLoading(btn, true);
 
     if (bgRemoveMode === 'document'){
@@ -2648,16 +3087,22 @@ if (document.getElementById('aiRemoveDrop')){
         for (let i = 0; i < w*h; i++) imageData.data[i*4+3] = alpha[i];
         octx.putImageData(imageData, 0, 0);
 
+        if (myGeneration !== aiProcessGeneration){ bgDebugLog('GENERATION_STALE', { generation: myGeneration, current: aiProcessGeneration }); return; } // superseded -- drop silently, don't touch button state (see the final setLoading below)
         aiResultCanvas = outCanvas;
         initManualEditor(srcCanvas, outCanvas);
         document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
         document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
         document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
         toast('Background removed. Refine it below if needed.');
+        bgDebugLog('AI_SUCCESS', { mode: 'document', generation: myGeneration });
       }catch(err){
-        toast(err.message || 'Could not process this image.', 'err');
+        if (myGeneration === aiProcessGeneration){ bgDebugLog('AI_ERROR', { mode: 'document', message: String(err && err.message) }); toast(err.message || 'Could not process this image.', 'err'); }
       }
-      setLoading(btn, false);
+      // Same reasoning as the async branch's finally below: only the
+      // generation that's still current is allowed to clear the loading
+      // indicator -- a superseded run's error handler must not stomp on a
+      // newer run's still-in-progress button state.
+      if (myGeneration === aiProcessGeneration) setLoading(btn, false);
       return;
     }
 
@@ -2682,21 +3127,22 @@ if (document.getElementById('aiRemoveDrop')){
       const rawMaskData = result.categoryMask.getAsUint8Array();
       const maskW = result.categoryMask.width || w;
       const maskH = result.categoryMask.height || h;
-      // Normalize: category 0 = background (excluded). All other PASCAL VOC
-      // classes (1–20: person, animals, vehicles, furniture, everyday objects)
-      // are treated as potential foreground subject. DeepLab v3 correctly
-      // identifies semantic categories; however, whether a chair, sofa, or
-      // table belongs to the user's intended foreground is a compositional
-      // decision that cannot be correctly made by a static class blacklist --
-      // a person sitting in a designer chair may want both preserved, while
-      // another photo may have an unwanted chair in the background. The
-      // downstream removeSmallIslands() step handles isolated speckling, and
-      // the manual Eraser / Lasso / Polygon tools handle any residual
-      // unwanted regions. Background (class 0) is the only class that is
-      // definitively not the user's intended subject.
-      const normalizedMask = new Uint8ClampedArray(maskW*maskH);
-      for (let i=0; i<normalizedMask.length; i++)
-        normalizedMask[i] = rawMaskData[i] !== 0 ? 1 : 0;
+      // Category 0 = background (always excluded). Every OTHER PASCAL VOC
+      // class (1-20: person, animals, vehicles, furniture, everyday
+      // objects) is a candidate -- but candidate is not the same as kept.
+      // Keeping literally everything the model didn't call "background"
+      // was the actual bug being fixed here: a chair, a bystander, or any
+      // other object landing in one of those 20 classes survived removal
+      // exactly as reliably as the real subject did. selectPrimarySubjectMask
+      // (defined near the top of this file, next to the other mask-
+      // refinement primitives) picks the single dominant connected region
+      // -- by area, distance from image center, and the model's own
+      // per-class confidence -- and drops everything else, regardless of
+      // which non-background class it was labeled as. See that function's
+      // header comment for the full rationale and its one honestly-stated
+      // limitation (two TOUCHING people of the same class can't be split
+      // without an instance-segmentation model).
+      const normalizedMask = selectPrimarySubjectMask(rawMaskData, maskW, maskH, result.confidenceMasks);
 
 
 
@@ -2795,20 +3241,35 @@ if (document.getElementById('aiRemoveDrop')){
       const lowConfidence = avgConfidence !== null && avgConfidence < 0.65;
       const implausible = areaImplausible || lowConfidence;
 
+      if (myGeneration !== aiProcessGeneration){ bgDebugLog('GENERATION_STALE', { generation: myGeneration, current: aiProcessGeneration }); return; } // superseded by a newer upload/click -- drop silently, don't clobber the newer state
       aiResultCanvas = outCanvas;
       initManualEditor(srcCanvas, outCanvas);
       document.getElementById('aiRemoveDownloadRow').classList.remove('hidden');
       document.getElementById('sendToAiChangerBtn').classList.remove('hidden');
       document.getElementById('aiExportSendToChangerRow').classList.remove('hidden');
+      bgDebugLog('AI_SUCCESS', { mode: 'photo', generation: myGeneration, implausible, keptFrac, avgConfidence });
       if (implausible){
         toast('The AI couldn\u2019t confidently find a clear subject in this image \u2014 large parts may now look blank/transparent. This works best on photos of people, animals, vehicles, or everyday objects. Use the manual tools below (Restore brush, Lasso, or Polygon) to bring back what you need.', 'err');
       } else {
         toast('Background removed. Refine it below if needed.');
       }
+      // Pre-warm Magic Touch's model in the background now, while the user
+      // is looking at/deciding on this result -- purely a head start so the
+      // tool feels fast if/when they reach for it; completely silent and
+      // fire-and-forget, never awaited, so a slow or failed load here can
+      // never block, slow down, or error out the primary Remove Background
+      // flow above. A tap on the Magic Touch tool later awaits the SAME
+      // promise (ensureInteractiveSegmenter memoizes it), so this either
+      // saves the wait entirely or, worst case, costs nothing extra.
+      ensureInteractiveSegmenter().catch(() => {});
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
-      try{
+      // Guarded the same way as the success path: if a newer upload/click has
+      // already started, this stale run's fallback must not overwrite it.
+      bgDebugLog('AI_ERROR', { mode: 'photo', message: String(err && err.message), generation: myGeneration, current: aiProcessGeneration });
+      if (myGeneration !== aiProcessGeneration){ /* superseded -- fall through to finally, nothing to apply */ }
+      else try{
         const MAX = 1200;
         let w = aiSourceImg.naturalWidth, h = aiSourceImg.naturalHeight;
         if (Math.max(w, h) > MAX){ const sc = MAX / Math.max(w, h); w = Math.round(w*sc); h = Math.round(h*sc); }
@@ -2829,7 +3290,12 @@ if (document.getElementById('aiRemoveDrop')){
         toast('AI background removal failed: ' + (err.message || 'please try a different image.'), 'err');
       }
     }finally{
-      setLoading(btn, false, 'Remove background (AI)');
+      // Only this run's own generation is allowed to touch the shared
+      // button state -- if a newer run has since started, it already owns
+      // (and will itself clear) the loading indicator; clearing it here
+      // too would re-enable the button while that newer run is still
+      // genuinely in flight.
+      if (myGeneration === aiProcessGeneration) setLoading(btn, false, 'Remove background (AI)');
     }
   };
 
@@ -2897,7 +3363,13 @@ if (document.getElementById('aiRemoveDrop')){
     editCanvas.width = w; editCanvas.height = h;
 
     historyStack = []; historyIndex = -1;
-    pushHistory();
+    bgDebugLog('EDITOR_INIT', { w, h });
+    // Immediate (non-debounced) checkpoint: this is the upload/AI-result/
+    // document-mode/fallback checkpoint (see pushHistory's own comment) --
+    // the one moment a lost autosave actually costs the user their whole
+    // result, not just one brush stroke, so it must not wait out the
+    // normal 900ms debounce.
+    pushHistory(true);
     renderComposite();
 
     // Deferred (not called synchronously): on a slow connection or a layout
@@ -2929,14 +3401,25 @@ if (document.getElementById('aiRemoveDrop')){
     aiResultCanvas = editCanvas; // keep download/send-to-changer pointed at the live edit
   }
 
-  function pushHistory(){
+  // immediate=true skips the normal 900ms autosave debounce and persists
+  // right away -- used only at the few checkpoints where losing the
+  // interval before the debounce fires would lose the user's WHOLE result
+  // (upload / AI success / document mode / error fallback, all funneled
+  // through initManualEditor), not just one interactive edit. Ordinary
+  // brush/eraser/wand/lasso edits keep the debounce: those fire far more
+  // often (every stroke), so encoding a full-resolution PNG synchronously
+  // on every one of them would be a real perf/battery cost for no benefit
+  // -- the existing hide/pagehide flush already covers "about to
+  // background" for that interactive case.
+  function pushHistory(immediate){
     if (!maskCanvas) return;
     const snap = maskCanvas.getContext('2d').getImageData(0, 0, maskCanvas.width, maskCanvas.height);
     historyStack = historyStack.slice(0, historyIndex + 1);
     historyStack.push(snap);
     if (historyStack.length > MAX_HISTORY) historyStack.shift();
     historyIndex = historyStack.length - 1;
-    if (typeof autoSaveSession === 'function') autoSaveSession();
+    if (immediate && typeof flushAutoSaveNow === 'function') flushAutoSaveNow();
+    else if (typeof autoSaveSession === 'function') autoSaveSession();
     updateAiUndoRedoState();
   }
   function restoreHistory(idx){
@@ -3179,6 +3662,28 @@ if (document.getElementById('aiRemoveDrop')){
 
   editStageWrap.addEventListener('pointerdown', (e) => {
     if (!maskCanvas || spacePan || currentTool === 'pan') return;
+    // This is the actual fix for the reported "canvas goes blank, then
+    // tapping it turns it black" bug: painting a brush/eraser/edge dab
+    // draws with whatever color originalCanvas currently reads back --
+    // if the browser silently cleared that canvas's pixel data while the
+    // tab was backgrounded (a real mobile memory-pressure behavior; see
+    // aiCanvasLooksLost's comment above) it reads back as fully
+    // transparent BLACK (0,0,0,0), and painting into the mask at that spot
+    // then composites a solid black dab, not the actual photo -- which
+    // matches exactly what was reported (small black blobs precisely where
+    // the user tapped, everywhere else still correctly blank). Checking
+    // and repairing this BEFORE the very first paint of a session, rather
+    // than relying solely on the visibilitychange/pageshow/focus listeners
+    // to have already caught it, closes the timing gap where the browser's
+    // clear happens lazily and isn't yet visible at the moment those
+    // events fired.
+    if (aiCanvasLooksLost()){
+      bgDebugLog('POINTERDOWN_BLOCKED', {});
+      e.preventDefault();
+      toast('Restoring your image…');
+      aiRecoverCanvasIfNeeded();
+      return;
+    }
     const canvas = document.getElementById('aiEditCanvas');
     editCanvas = canvas;
     const pt = canvasPointFromEvent(e);
@@ -3197,6 +3702,11 @@ if (document.getElementById('aiRemoveDrop')){
       magicWandAt(pt.x, pt.y, wandTolerance, selectMode === 'subtract');
       renderComposite();
       pushHistory();
+    } else if (currentTool === 'magictap'){
+      // Async (loads/runs a second AI model) -- magicTapAt applies its own
+      // renderComposite()/pushHistory() once the result is ready, unlike
+      // the synchronous wand/lasso/polygon branches around it.
+      magicTapAt(pt.x, pt.y, selectMode === 'subtract');
     } else if (currentTool === 'polygon'){
       polygonPoints.push(pt);
       drawInProgressPath(polygonPoints, false);
@@ -3536,18 +4046,47 @@ if (document.getElementById('aiRemoveDrop')){
   /* ---------- Auto Save (localStorage, best-effort) ---------- */
   const AUTOSAVE_KEY = 'toolflight_ai_remover_session';
   let autoSaveTimer = null;
+  function writeAutoSaveNow(){
+    if (!originalCanvas || !maskCanvas) return;
+    // Never persist a snapshot that already looks blank/cleared -- this is
+    // what actually prevents a real, previously-unaddressed failure mode:
+    // a DEBOUNCED save (this function, called 900ms after the last edit)
+    // can fire AFTER the browser has already cleared the live canvases out
+    // from under a backgrounded tab, in which case it would happily encode
+    // and persist that already-blank state, OVERWRITING the last known-good
+    // snapshot with a bad one -- so recovery later has nothing valid left
+    // to restore from and "successfully" restores a blank result (this
+    // reproduced in local testing -- see aiSnapshotIsBlank's own comment
+    // for how it's verified). Skipping the write here leaves the previous,
+    // still-good snapshot in place instead.
+    if (typeof aiSnapshotIsBlank === 'function' && aiSnapshotIsBlank(originalCanvas, maskCanvas)){
+      bgDebugLog('AUTOSAVE_SKIPPED_BLANK', {});
+      return;
+    }
+    try{
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        ts: Date.now(),
+        original: originalCanvas.toDataURL('image/png'),
+        mask: maskCanvas.toDataURL('image/png')
+      }));
+      bgDebugLog('AUTOSAVE', { w: originalCanvas.width, h: originalCanvas.height });
+    }catch(e){ /* private-mode or quota exceeded — auto-save is best-effort, fail silently */ }
+  }
   function autoSaveSession(){
     if (!originalCanvas || !maskCanvas) return;
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(() => {
-      try{
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-          ts: Date.now(),
-          original: originalCanvas.toDataURL('image/png'),
-          mask: maskCanvas.toDataURL('image/png')
-        }));
-      }catch(e){ /* private-mode or quota exceeded — auto-save is best-effort, fail silently */ }
-    }, 900);
+    autoSaveTimer = setTimeout(writeAutoSaveNow, 900);
+  }
+  // Flush any pending debounced save immediately -- used right before the
+  // page is backgrounded/hidden. Without this, an edit made less than 900ms
+  // before the user switches tabs/apps can be lost: if Android kills the
+  // tab's process outright while backgrounded (common under memory
+  // pressure, the same pressure that causes the canvas-clearing bug this
+  // file works around elsewhere), the pending setTimeout never fires and
+  // that last edit was never persisted anywhere.
+  function flushAutoSaveNow(){
+    if (autoSaveTimer){ clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+    writeAutoSaveNow();
   }
   function offerAutoSavedSession(){
     let raw;
@@ -3617,34 +4156,96 @@ if (document.getElementById('aiRemoveDrop')){
   // resource) is the one source that has both, already kept fresh by the
   // existing autoSaveSession() call after every edit -- so recovery reuses
   // that instead of a separate backup mechanism.
+  // Robust "did the browser wipe one of our canvases" check -- hoisted out
+  // of aiRecoverCanvasIfNeeded so the pointerdown handler further up can
+  // also call it synchronously before painting (see there for why: this is
+  // what actually stops the reported "tap turns the canvas black" bug,
+  // which is not fully explained by the lifecycle-event recovery below --
+  // see the comment block on aiRecoverCanvasIfNeeded for the full story).
+  //
+  // Checks BOTH originalCanvas and maskCanvas independently, at several
+  // spread-out sample points each, rather than one single pixel of one
+  // canvas:
+  //  - A single corner pixel of ONE canvas produces false negatives when
+  //    only the OTHER canvas was the one actually cleared (each is a
+  //    separate, never-appended-to-DOM canvas element -- there's no
+  //    guarantee a browser's memory-pressure reclaim clears both of a
+  //    tool's offscreen canvases in lockstep every time).
+  //  - maskCanvas is checked by its ALPHA channel, which is guaranteed
+  //    255 everywhere BY CONSTRUCTION (every pixel's red channel encodes a
+  //    0-255 keep-amount; the canvas's own alpha is always fully opaque --
+  //    see initManualEditor/renderComposite) -- so alpha reading 0 there is
+  //    unambiguous evidence of a clear, with no legitimate exception.
+  //  - originalCanvas is checked by requiring EVERY sampled point to be
+  //    exactly (0,0,0,0) -- a real uploaded photo essentially never has
+  //    seven spread-out sample points (four corners, center, two
+  //    quadrants) that are all simultaneously pure transparent black; a
+  //    browser-cleared canvas reads exactly that everywhere.
+  function sampleAllZeroRGBA(ctx, w, h){
+    const pts = [
+      [0,0], [w-1,0], [0,h-1], [w-1,h-1],
+      [(w/2)|0, (h/2)|0], [(w/4)|0, (h/4)|0], [(3*w/4)|0, (3*h/4)|0],
+    ];
+    for (const [x,y] of pts){
+      const d = ctx.getImageData(Math.max(0,Math.min(w-1,x)), Math.max(0,Math.min(h-1,y)), 1, 1).data;
+      if (d[0]!==0 || d[1]!==0 || d[2]!==0 || d[3]!==0) return false;
+    }
+    return true;
+  }
+  function sampleMaskAlphaZero(ctx, w, h){
+    const pts = [
+      [0,0], [w-1,0], [0,h-1], [w-1,h-1], [(w/2)|0, (h/2)|0],
+    ];
+    for (const [x,y] of pts){
+      const d = ctx.getImageData(Math.max(0,Math.min(w-1,x)), Math.max(0,Math.min(h-1,y)), 1, 1).data;
+      if (d[3] === 0) return true; // any sampled point with alpha 0 is already conclusive
+    }
+    return false;
+  }
+  // Shared "is this original+mask pair actually blank" check -- used both
+  // to validate the LIVE canvases (aiCanvasLooksLost, below) and, just as
+  // importantly, to validate a snapshot right before it's WRITTEN to
+  // localStorage and right after one is REBUILT from it (see
+  // writeAutoSaveNow and attemptRebuild). The previous version of the
+  // rebuild path only checked whether the rebuilt mask canvas's own ALPHA
+  // channel read 0 at a single pixel -- but that channel is always 255 by
+  // construction (see initManualEditor/renderComposite) regardless of
+  // whether the mask's actual KEEP-VALUE content is meaningful, so that
+  // check could never actually catch a snapshot that was already blank
+  // when it was saved. That is a real, confirmed failure mode: a
+  // debounced autosave write landing AFTER the live canvases were already
+  // cleared persists a blank snapshot; recovery then rebuilds that blank
+  // snapshot, the old check passes it as valid, and the user sees
+  // "Image recovered..." next to an empty canvas -- exactly the
+  // contradiction reported. Using the same all-zero-RGBA test on the
+  // ORIGINAL photo (a real photo essentially never has 7 spread sample
+  // points that are all simultaneously pure transparent black) closes
+  // that gap on both the write side and the read side.
+  function aiSnapshotIsBlank(origCanvas, maskCv){
+    try{
+      if (sampleAllZeroRGBA(origCanvas.getContext('2d'), origCanvas.width, origCanvas.height)) return true;
+      if (sampleMaskAlphaZero(maskCv.getContext('2d'), maskCv.width, maskCv.height)) return true;
+      return false;
+    }catch(err){
+      return true;
+    }
+  }
+  function aiCanvasLooksLost(){
+    if (!editCanvas || !originalCanvas || !maskCanvas) return false; // nothing loaded yet -- upload screen, not the editor
+    if (!editCanvas.width || !editCanvas.height || !originalCanvas.width || !originalCanvas.height || !maskCanvas.width || !maskCanvas.height) return true;
+    return aiSnapshotIsBlank(originalCanvas, maskCanvas);
+  }
+
   let aiRecoveryInProgress = false;
   async function aiRecoverCanvasIfNeeded(){
     if (!editCanvas || !maskCanvas) return; // nothing loaded yet -- upload screen, not the editor
     if (aiRecoveryInProgress) return;
     aiRecoveryInProgress = true;
     try{
-      const canvasLooksLost = () => {
-        if (!editCanvas.width || !editCanvas.height) return true;
-        try{
-          const px = editCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
-          // A real result's corner is either the checkerboard-transparent
-          // background (alpha 0 but this is drawn on the DOM, not baked
-          // into the canvas pixel -- the canvas itself reads fully
-          // transparent black at a removed-background corner in the
-          // NORMAL, working case too) -- so alpha alone can't distinguish
-          // "correctly transparent" from "cleared by the browser." Check
-          // the mask canvas instead, which is guaranteed fully opaque
-          // everywhere BY CONSTRUCTION (every pixel's red channel encodes
-          // a 0-255 keep-amount, but the canvas's OWN alpha channel is
-          // always 255 -- see initManualEditor/renderComposite above) --
-          // if that reads as transparent black, something cleared it.
-          const maskPx = maskCanvas.getContext('2d').getImageData(0, 0, 1, 1).data;
-          return (maskPx[3] === 0);
-        } catch(err){
-          return true;
-        }
-      };
-      if (!canvasLooksLost()) return;
+      bgDebugLog('CANVAS_VALIDATE', {});
+      if (!aiCanvasLooksLost()) return;
+      bgDebugLog('CANVAS_LOST', {});
+      bgDebugLog('RECOVERY_START', {});
 
       const attemptRebuild = async () => {
         let raw;
@@ -3661,8 +4262,14 @@ if (document.getElementById('aiRemoveDrop')){
           oc.getContext('2d').drawImage(origImg, 0, 0);
           const mc = document.createElement('canvas'); mc.width = maskImg.naturalWidth; mc.height = maskImg.naturalHeight;
           mc.getContext('2d').drawImage(maskImg, 0, 0);
-          const verifyPx = mc.getContext('2d').getImageData(0, 0, 1, 1).data;
-          if (verifyPx[3] === 0) throw new Error('rebuilt mask still reads blank');
+          // See aiSnapshotIsBlank's comment: this replaces a check that
+          // only ever looked at the mask's own alpha byte (always 255 by
+          // construction, so it could never actually fail) with a real
+          // "does this rebuilt pair have any actual photo/keep content"
+          // check. A snapshot that fails this is not worth restoring --
+          // fall through to the retry / honest failure message below
+          // instead of reporting a false "recovered."
+          if (aiSnapshotIsBlank(oc, mc)) throw new Error('rebuilt snapshot is blank');
           originalCanvas = oc; maskCanvas = mc;
           editCanvas.width = oc.width; editCanvas.height = oc.height;
           renderComposite();
@@ -3680,21 +4287,38 @@ if (document.getElementById('aiRemoveDrop')){
       if (ok){
         requestAnimationFrame(() => requestAnimationFrame(fitAiCanvasDisplay));
         toast('Image recovered after the browser cleared it in the background.', 'ok');
+        bgDebugLog('RECOVERY_SUCCESS', {});
       } else {
         toast('The browser cleared this image from memory and it could not be restored. Please upload it again.', 'err');
+        bgDebugLog('RECOVERY_FAILED', {});
         resetAiToUpload();
       }
     } finally {
       aiRecoveryInProgress = false;
     }
   }
+  // A single check exactly at the visibilitychange/pageshow/focus moment
+  // isn't always enough: the actual pixel-clearing can be a LAZY effect of
+  // OS/browser memory reclaim that only manifests slightly after the tab
+  // is reported visible again, not synchronously with it. Re-checking a
+  // couple more times over the following seconds catches that delayed case
+  // without depending on the user happening to touch the canvas again
+  // (aiCanvasLooksLost()/aiRecoveryInProgress make every extra call a
+  // cheap no-op once nothing is actually wrong).
+  function aiScheduleRecoveryChecks(){
+    aiRecoverCanvasIfNeeded();
+    setTimeout(aiRecoverCanvasIfNeeded, 400);
+    setTimeout(aiRecoverCanvasIfNeeded, 1500);
+  }
   window.addEventListener('pageshow', (e) => {
-    if (e.persisted) aiRecoverCanvasIfNeeded();
+    if (e.persisted) aiScheduleRecoveryChecks();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') aiRecoverCanvasIfNeeded();
+    if (document.visibilityState === 'visible'){ bgDebugLog('VISIBILITY_VISIBLE', {}); aiScheduleRecoveryChecks(); }
+    else { bgDebugLog('VISIBILITY_HIDDEN', {}); flushAutoSaveNow(); } // see flushAutoSaveNow's own comment: don't lose an edit made just before backgrounding
   });
-  window.addEventListener('focus', () => aiRecoverCanvasIfNeeded());
+  window.addEventListener('pagehide', () => flushAutoSaveNow());
+  window.addEventListener('focus', () => aiScheduleRecoveryChecks());
 
   // Defensive fix for a reported "toolbar visible before upload" issue:
   // the back-forward cache restores a page's DOM exactly as it was left,
@@ -3905,6 +4529,45 @@ if (document.getElementById('aiRemoveDrop')){
   editStageWrap.addEventListener('touchend', (e) => {
     if (e.touches.length < 2){ pinchStartDist = null; pinchStartMid = null; }
   });
+
+  // QA/reproduction hook -- ONLY installed when bg-remover diagnostics are
+  // turned on (see bgDebugEnabled above; ?bgdebug=1 or the localStorage
+  // flag). Lets a real device -- or an automated test -- deliberately
+  // reproduce "the browser cleared the canvas while backgrounded" on
+  // demand, without needing to actually background the tab and hope the
+  // OS reclaims memory in time to observe it. getState() reports booleans/
+  // dimensions only, never pixel data.
+  if (bgDebugEnabled()){
+    window.__tfBgDebug = {
+      buildId: BG_REMOVER_BUILD_ID,
+      getState(){
+        return {
+          hasOriginal: !!originalCanvas, hasMask: !!maskCanvas, hasEdit: !!editCanvas,
+          originalDims: originalCanvas ? [originalCanvas.width, originalCanvas.height] : null,
+          maskDims: maskCanvas ? [maskCanvas.width, maskCanvas.height] : null,
+          editDims: editCanvas ? [editCanvas.width, editCanvas.height] : null,
+          generation: aiProcessGeneration,
+          looksLost: aiCanvasLooksLost(),
+        };
+      },
+      // Mimics exactly what a mobile browser's memory-pressure reclaim does
+      // to a canvas's backing store: every pixel reads back as (0,0,0,0)
+      // afterward, width/height unchanged. which: 'original' | 'mask' | 'both'.
+      simulateCanvasLoss(which){
+        which = which || 'both';
+        if ((which === 'original' || which === 'both') && originalCanvas){
+          const ctx = originalCanvas.getContext('2d');
+          ctx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+        }
+        if ((which === 'mask' || which === 'both') && maskCanvas){
+          const ctx = maskCanvas.getContext('2d');
+          ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+        }
+        return this.getState();
+      },
+      recoverNow(){ return aiRecoverCanvasIfNeeded(); },
+    };
+  }
 }
 
 /* ============ BACKGROUND CHANGER (image-tools.html) ============ */
