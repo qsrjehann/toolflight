@@ -2295,7 +2295,7 @@ if (document.getElementById('aiRemoveDrop')){
   // -- never pixel data or the user's image -- and exists specifically so
   // a future report of "the fix didn't work" can be diagnosed from an
   // actual device's console log instead of guessed at again.
-  const BG_REMOVER_BUILD_ID = '2026-09-04-FORENSIC-01';
+  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-06';
   let _bgDebugOn = null;
   function bgDebugEnabled(){
     if (_bgDebugOn !== null) return _bgDebugOn;
@@ -2558,6 +2558,339 @@ if (document.getElementById('aiRemoveDrop')){
     return segmenterLoadPromise;
   }
 
+  /* ---------- Magic Touch (AI) -- tap-to-select a single object ----------
+     A second, separate MediaPipe task: InteractiveSegmenter ("MagicTouch"
+     model), pinned to its own library version independently of the
+     ensureSegmenter() DeepLab pipeline above -- deliberately NOT sharing a
+     version pin with it, so nothing here can ever change DeepLab's already-
+     proven-in-production behavior. Unlike DeepLab's per-pixel CLASS labeling
+     (which cannot tell two touching people of the same class apart -- see
+     selectPrimarySubjectMask's comment), this model is point-prompted and
+     genuinely instance-aware: tap on one object and it returns a mask for
+     just that object, confirmed via real-device testing (bgdebug session,
+     Sept 2026) across three different photos of people standing close
+     together/overlapping.
+
+     Loaded lazily -- never on page load, never on upload -- only pre-warmed
+     once a DeepLab result is already on screen (see the pre-warm call after
+     AI_SUCCESS below) so it never competes with or slows down the primary,
+     already-working Remove Background flow for users who never touch this
+     tool. */
+  const MP_VERSION_TOUCH = '1.0.1';
+  const MODEL_URL_TOUCH = 'https://storage.googleapis.com/mediapipe-models/interactive_segmenter_v2/magic_touch/int8/latest/interactive_segmentation.task';
+  let interactiveSegmenter = null;
+  let interactiveSegmenterLoadPromise = null;
+  let InteractiveBrushMode = null; // grabbed from the module if exported; see fallback below
+  let touchSegmenterDelegate = null; // 'GPU' or 'CPU' -- which one actually ended up loaded, for the debug log
+
+  // Toggles the "magic" pulse/sparkle animation on the Magic Touch tool
+  // button so the user can SEE the model loading in the background (pre-warm
+  // after AI_SUCCESS, or a first real tap), instead of the previous silent
+  // fetch with zero visible feedback. Looks up the button(s) live (rather
+  // than caching) since Magic Touch now has TWO buttons in the DOM at once
+  // -- one in the floating on-canvas toolbar, one in the bottom tool panel
+  // -- both always present regardless of which is currently visible, so
+  // this must update all matches, not just the first one found.
+  function setMagicTouchLoadingUI(loading){
+    document.querySelectorAll('.editor-tool-btn[data-tool="magictap"]').forEach(btn => {
+      btn.classList.toggle('ai-loading-pulse', !!loading);
+    });
+  }
+
+  // Shows/hides the full-card loading overlay over the canvas (dark card +
+  // twinkling sparkles + spinner, matching the request to mirror remove.bg's
+  // loading look). Unlike a plain toast or button glow, this is deliberately
+  // built ONLY from transform/opacity @keyframes animations -- verified
+  // (test_compositor_anim_during_block.js) to keep animating on the
+  // browser's compositor thread even while segment() blocks the main JS
+  // thread for its full 16-19 second real-device duration, so it's not just
+  // a static frame frozen for the whole wait like a box-shadow or toast
+  // would be.
+  function setMagicTouchOverlay(visible, text){
+    const el = document.getElementById('magicTouchOverlay');
+    if (!el) return;
+    el.classList.toggle('hidden', !visible);
+    if (visible && text){
+      const t = document.getElementById('magicTouchOverlayText');
+      if (t) t.textContent = text;
+    }
+  }
+
+  // showUI (default true): whether THIS call should show the pulse/overlay
+  // while it waits. A real user reported the pulse + full-canvas "Getting
+  // Magic Touch ready…" overlay appearing right at image upload, before
+  // they'd ever touched Magic Touch -- caused by the silent background
+  // pre-warm calls below (added so a slow connection gets a head start)
+  // unconditionally showing this same loading UI. The UI-vs-load-promise
+  // concerns are now separate: creating/reusing interactiveSegmenterLoadPromise
+  // happens unconditionally so pre-warming still works, but each CALLER
+  // decides for itself whether to show the pulse/overlay while it waits on
+  // that promise. Pre-warm calls (upload time, AI_SUCCESS safety net) pass
+  // showUI:false so they stay invisible. magicTapAt's call keeps the
+  // default (true) so a genuine user-facing wait -- either the first load,
+  // or a tap that lands while a silent pre-warm is still in flight -- still
+  // gets the visible "Getting Magic Touch ready…" treatment.
+  async function ensureInteractiveSegmenter(showUI = true){
+    if (interactiveSegmenter) return interactiveSegmenter;
+    if (!interactiveSegmenterLoadPromise) interactiveSegmenterLoadPromise = (async () => {
+      bgDebugLog('TOUCH_MODEL_LOAD_START', { version: MP_VERSION_TOUCH });
+      const LOAD_TIMEOUT_MS = 45000;
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Magic Touch model download timed out — check your connection and try again.')), LOAD_TIMEOUT_MS);
+      });
+      const load = (async () => {
+        const mod = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}`);
+        const { InteractiveSegmenter, FilesetResolver } = mod;
+        if (!InteractiveSegmenter) throw new Error('InteractiveSegmenter not available in this library version.');
+        InteractiveBrushMode = mod.BrushMode || null;
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}/wasm`
+        );
+        // REVERTED: this used to try delegate:'GPU' first (with a CPU
+        // fallback) to speed up segment()'s 16-19s CPU/WASM inference. A
+        // real user then reported the exact failure mode that kind of bug
+        // produces -- Magic Touch's loading animation completes normally,
+        // but no selection ever gets applied, even after waiting -- with no
+        // error surfaced (so createFromOptions with delegate:'GPU' likely
+        // succeeded, but the confidence-mask output it then produced didn't
+        // match what applyInteractiveMaskResult expects, e.g. a different
+        // value range/threshold, silently selecting ~nothing). This matches
+        // a known, documented class of issue (GPU delegate producing
+        // incorrect/differently-shaped output on some browsers) rather than
+        // a guess. Given real correctness beats an unproven speed gain,
+        // GPU delegate is reverted -- back to the CPU path that was
+        // confirmed working (via real-device timing logs) before it was
+        // added. touchSegmenterDelegate is kept (always 'CPU' now) so the
+        // debug log still records which path ran, in case this needs
+        // revisiting later with a device that can actually confirm GPU
+        // output correctness first.
+        touchSegmenterDelegate = 'CPU';
+        return InteractiveSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
+          outputCategoryMask: false,
+          outputConfidenceMasks: true,
+        });
+      })();
+      let seg;
+      try{ seg = await Promise.race([load, timeout]); }
+      finally{ clearTimeout(timeoutId); }
+      interactiveSegmenter = seg;
+      bgDebugLog('TOUCH_MODEL_LOAD_SUCCESS', { delegate: touchSegmenterDelegate });
+      return seg;
+    })().catch((err) => {
+      bgDebugLog('TOUCH_MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
+      interactiveSegmenterLoadPromise = null;
+      throw err;
+    });
+    // UI is toggled here, per-call, around whatever promise is in flight --
+    // NOT inside the promise itself -- so a silent pre-warm (showUI:false)
+    // never shows it, while a genuine user-facing wait (a real first tap,
+    // or a tap landing while a silent pre-warm is still loading) still does,
+    // even though in that second case it's someone else's in-flight promise
+    // this call is simply waiting on.
+    if (!showUI) return interactiveSegmenterLoadPromise;
+    setMagicTouchLoadingUI(true);
+    setMagicTouchOverlay(true, 'Getting Magic Touch ready…');
+    try{
+      return await interactiveSegmenterLoadPromise;
+    } finally {
+      setMagicTouchLoadingUI(false);
+      // Only drop the overlay here if a tap isn't ALSO about to hold it up
+      // for its own segment() call right after (magicTapAt sets it again
+      // itself) -- harmless either way since setMagicTouchOverlay(true) in
+      // magicTapAt runs synchronously right after this promise resolves,
+      // before the browser gets a chance to paint the brief "hidden" state.
+      setMagicTouchOverlay(false);
+    }
+  }
+
+  // Grows a boolean "included" pixel grid outward by `radius` pixels (simple
+  // iterative 4-neighbor dilation -- radius is always small here, a few px,
+  // so this stays cheap). Used to expand Magic Touch's raw selection a
+  // little: the user compared it directly against Magic Wand's result and
+  // asked for the cut to be a touch more generous at the edges (thin hair
+  // strands / a softly blurred boundary can otherwise look slightly
+  // under-included right at the edge).
+  function dilateIncludedGrid(included, w, h, radius){
+    let cur = included;
+    for (let iter = 0; iter < radius; iter++){
+      const next = new Uint8Array(w*h);
+      for (let y = 0; y < h; y++){
+        const row = y*w;
+        for (let x = 0; x < w; x++){
+          const idx = row+x;
+          if (cur[idx] || (x>0 && cur[idx-1]) || (x<w-1 && cur[idx+1]) || (y>0 && cur[idx-w]) || (y<h-1 && cur[idx+w])){
+            next[idx] = 1;
+          }
+        }
+      }
+      cur = next;
+    }
+    return cur;
+  }
+
+  // Reads an MPMask result defensively (float32 with fallback to uint8 --
+  // InteractiveSegmenter's exact output type wasn't documented anywhere
+  // findable, confirmed empirically instead) and writes it into maskCanvas
+  // using the SAME red=green=blue=keepAmount convention magicWandAt already
+  // uses, so undo/redo, autosave, and renderComposite all treat a Magic
+  // Touch selection exactly like a Magic Wand one -- no separate code path
+  // for the rest of the editor to know about.
+  // Returns the fraction of the canvas that ended up included (0..1) --
+  // purely diagnostic (logged by magicTapAt as includedFrac). Added after a
+  // real report of "animation finishes, but no result appears, even after
+  // waiting": with no error thrown, the only way to tell a genuinely-empty
+  // mask (e.g. a bad delegate output, wrong threshold/value-range) apart
+  // from "it worked but the change was too subtle to notice" is a real
+  // number in the log instead of guessing again next time.
+  function applyInteractiveMaskResult(mask, subtract){
+    const w = originalCanvas.width, h = originalCanvas.height;
+    let arr, isFloat = true;
+    try{ arr = mask.getAsFloat32Array(); }
+    catch(e){ arr = mask.getAsUint8Array(); isFloat = false; }
+    const threshold = isFloat ? 0.5 : 127;
+    const mw = mask.width, mh = mask.height;
+    let included = new Uint8Array(w*h);
+    for (let y = 0; y < h; y++){
+      const my = Math.min(mh - 1, Math.round(y * mh / h));
+      for (let x = 0; x < w; x++){
+        const mx = Math.min(mw - 1, Math.round(x * mw / w));
+        if (arr[my*mw+mx] > threshold) included[y*w+x] = 1;
+      }
+    }
+    // Expand a few pixels -- scales with image size so it looks the same
+    // regardless of resolution (roughly 0.6% of the shorter side, min 2px).
+    const EXPAND_RADIUS_PX = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+    included = dilateIncludedGrid(included, w, h, EXPAND_RADIUS_PX);
+
+    let includedCount = 0;
+    for (let i = 0; i < w*h; i++) if (included[i]) includedCount++;
+
+    const mctx = maskCanvas.getContext('2d');
+    const mData = mctx.getImageData(0, 0, w, h);
+    const v = subtract ? 0 : 255;
+    for (let i = 0; i < w*h; i++){
+      if (included[i]){
+        const ci = i*4;
+        mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
+      }
+    }
+    mctx.putImageData(mData, 0, 0);
+    return includedCount / (w*h);
+  }
+
+  // Magic Touch speed, round 2 -- a real-device log with per-step timing
+  // (added below) came back and settled the question with actual numbers:
+  // setImageMs was ~16ms and stayed near 0ms on repeat taps (so the setImage
+  // -skip caching below is working and setImage was NEVER the bottleneck),
+  // while segmentMs was 16,000-19,000ms on EVERY single tap. The entire
+  // "still slow" complaint is the model's own inference for segment() on
+  // this device -- not encode/setImage, not our JS-side mask/composite work
+  // (both measured under 250ms). Two consequences:
+  //  1. REMOVED the downscaled-input feed to setImage() that a previous
+  //     round added to try to speed up encoding: it measurably gained
+  //     nothing (setImage was already ~16ms even at full resolution) and is
+  //     the likely cause of a real quality regression the user reported
+  //     right after -- a blocky, jagged, wrong-shaped result -- consistent
+  //     with the model's own output mask resolution scaling down with a
+  //     smaller input image, then getting visibly chunkier on nearest-
+  //     neighbor upscale back to the full canvas. setImage() is fed the
+  //     full-resolution originalCanvas again now.
+  //  2. Still keep the setImage-skip caching -- it's real, correct (per
+  //     MediaPipe's own docs), and free; it just isn't what was slow.
+  let touchSetImageState = null; // { seg, canvas } most recently embedded
+
+  let magicTapBusy = false; // guards against a second tap firing while one is still loading/segmenting
+  async function magicTapAt(x, y, subtract){
+    if (!originalCanvas || magicTapBusy) return;
+    const w = originalCanvas.width, h = originalCanvas.height;
+    const nx = Math.min(1, Math.max(0, x / w));
+    const ny = Math.min(1, Math.max(0, y / h));
+    magicTapBusy = true;
+    const firstLoad = !interactiveSegmenter;
+    if (firstLoad) toast('Getting Magic Touch ready — first use only, a few seconds…');
+    bgDebugLog('MAGICTAP', { nx: +nx.toFixed(4), ny: +ny.toFixed(4), subtract, firstLoad });
+    // Granular per-step timing -- added specifically because a real-device
+    // log showed MAGICTAP -> MAGICTAP_APPLIED taking 18-23 SECONDS even on
+    // the 2nd/3rd tap on the same photo, well after TOUCH_MODEL_LOAD_SUCCESS
+    // had already fired (so it isn't the model download). Without this, we
+    // can't tell whether the cost is the (supposedly-skipped) setImage, the
+    // segment() inference itself, or the JS-side mask/dilation/composite
+    // work -- this makes the next real-device log answer that directly
+    // instead of another round of guessing.
+    const tStart = performance.now();
+    try{
+      const seg = await ensureInteractiveSegmenter();
+      const tAfterEnsure = performance.now();
+      let setImageCalled = false;
+      if (!touchSetImageState || touchSetImageState.seg !== seg || touchSetImageState.canvas !== originalCanvas){
+        seg.setImage(originalCanvas);
+        touchSetImageState = { seg, canvas: originalCanvas };
+        setImageCalled = true;
+      }
+      const tAfterSetImage = performance.now();
+      // segment() is SYNCHRONOUS -- confirmed by the timing log itself
+      // (16,000-19,000ms spent inside this one call, on the main thread).
+      // That means a normal repaint (a toast appearing, a box-shadow pulse,
+      // a class toggle) has no moment to happen WHILE it runs -- the tab
+      // looks completely frozen for that whole stretch, since the browser
+      // can't paint main-thread-driven changes until the main thread is
+      // free again.
+      //
+      // setMagicTouchOverlay's sparkle/spinner are deliberately built ONLY
+      // from transform+opacity, started (via the double requestAnimationFrame
+      // below) BEFORE segment() blocks. Browsers CAN keep advancing exactly
+      // this kind of animation on a separate compositor thread even while
+      // the main thread is fully blocked -- confirmed in a minimal isolated
+      // page (test_compositor_anim_during_block.js: a bare animated div,
+      // screenshotted repeatedly during a real synchronous busy-loop, showed
+      // visibly different frames). Trying to confirm the SAME thing on this
+      // actual editor page hit a sandbox-specific wall: Playwright's
+      // screenshot capture for this page (real canvas content, real layout)
+      // waits for the main thread to free up before it returns ANYTHING --
+      // confirmed by timing the call itself, not assumed -- so it cannot be
+      // used to prove or disprove what's really on screen mid-freeze here.
+      // What IS proven on this real page: the overlay reliably shows right
+      // before the freeze and hides right after (MutationObserver-timestamped
+      // against segment()'s own measured duration). Whether the sparkles
+      // keep visibly moving for the FULL 16-19s on a real phone, or hold on
+      // one frame, could not be settled from this sandbox -- that needs a
+      // real-device check, not a guess presented as fact.
+      setMagicTouchLoadingUI(true);
+      setMagicTouchOverlay(true, 'Magic Touch is working on that spot…');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const brushModeValue = (InteractiveBrushMode && InteractiveBrushMode.POSITIVE !== undefined) ? InteractiveBrushMode.POSITIVE : 1;
+      const result = seg.segment([{ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true }]);
+      setMagicTouchLoadingUI(false);
+      setMagicTouchOverlay(false);
+      const tAfterSegment = performance.now();
+      const includedFrac = applyInteractiveMaskResult(result, subtract);
+      const tAfterMaskApply = performance.now();
+      renderComposite();
+      pushHistory();
+      const tEnd = performance.now();
+      bgDebugLog('MAGICTAP_TIMING', {
+        setImageCalled,
+        delegate: touchSegmenterDelegate,
+        includedFrac: +includedFrac.toFixed(4), // 0 here (with no error) is exactly the "animation finishes, no visible result" signature -- see applyInteractiveMaskResult's comment
+        ensureMs: Math.round(tAfterEnsure - tStart),
+        setImageMs: Math.round(tAfterSetImage - tAfterEnsure),
+        segmentMs: Math.round(tAfterSegment - tAfterSetImage),
+        maskApplyMs: Math.round(tAfterMaskApply - tAfterSegment),
+        compositeMs: Math.round(tEnd - tAfterMaskApply),
+        totalMs: Math.round(tEnd - tStart),
+      });
+      bgDebugLog('MAGICTAP_APPLIED', {});
+    }catch(err){
+      bgDebugLog('MAGICTAP_ERROR', { message: String(err && err.message || err) });
+      toast('Magic Touch could not select that spot: ' + (err && err.message || 'try again') , 'err');
+    }finally{
+      setMagicTouchLoadingUI(false); // safety net: clears the pulse even if segment() itself threw before reaching the explicit turn-off above
+      setMagicTouchOverlay(false); // same safety net for the overlay
+      magicTapBusy = false;
+    }
+  }
   setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
     const f = files.find(f => f.type.startsWith('image/'));
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
@@ -2585,6 +2918,22 @@ if (document.getElementById('aiRemoveDrop')){
       aiResultCanvas = srcCanvas0;
       initManualEditor(srcCanvas0, srcCanvas0); // fully opaque -- nothing removed yet
       document.getElementById('aiRemoveBtn').disabled = false;
+      // Pre-warm Magic Touch's model as early as possible -- right at upload,
+      // instead of waiting for the AI (DeepLab) result -- so a slow
+      // connection gets the maximum possible head start before the user
+      // could ever reach the Magic Touch tool. Confirmed with the user this
+      // trade-off (a bit of extra background data use for people who never
+      // touch Magic Touch) is acceptable in exchange for less wait when they
+      // do. Safe to call twice: ensureInteractiveSegmenter() memoizes its
+      // load promise, so the AI_SUCCESS call further down is now just a
+      // no-op safety net for any path that skips this one (e.g. Document
+      // mode, or if this call itself fails and needs a retry opportunity).
+      // showUI:false -- a real user reported the pulse + "Getting Magic
+      // Touch ready…" overlay appearing right at upload, before they'd even
+      // touched Magic Touch. This pre-warm must stay completely silent; the
+      // visible loading UI is reserved for when the user actually selects
+      // Magic Touch and taps the canvas (see magicTapAt's own call).
+      ensureInteractiveSegmenter(false).catch(() => {});
       // Auto-detect document/writing vs. photo (see detectDocumentLikeImage
       // below) and set the mode toggle accordingly, so the common case
       // ("I uploaded a photo of my signature" or "I uploaded a photo of my
@@ -3134,6 +3483,18 @@ if (document.getElementById('aiRemoveDrop')){
       } else {
         toast('Background removed. Refine it below if needed.');
       }
+      // Safety-net pre-warm: the primary pre-warm call now fires much
+      // earlier, right at upload (see the comment there for why). This
+      // second call is a no-op in the common case -- ensureInteractiveSegmenter
+      // memoizes its load promise, so if the upload-time call is already
+      // loading/loaded this just reuses it. It only does real work if that
+      // earlier call somehow never fired or failed. Still fire-and-forget:
+      // never awaited, so a slow or failed load here can never block, slow
+      // down, or error out the primary Remove Background flow above.
+      // showUI:false -- same reasoning as the upload-time call: this is a
+      // silent safety net, not a user-facing wait, so it must never show
+      // the pulse/overlay.
+      ensureInteractiveSegmenter(false).catch(() => {});
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
@@ -3206,6 +3567,31 @@ if (document.getElementById('aiRemoveDrop')){
   let editCanvas = null;       // visible live-composited canvas (original * mask alpha)
   let currentTool = 'brush';
   let selectMode = 'add';      // add|subtract — used by wand/polygon/lasso
+  // wandTolerance: tried lowering the default 30 -> 15 to contain flood-fill
+  // bleed on blurred photo backgrounds (see git history), but real-device
+  // testing on the user's own photo showed this was the wrong fix and was
+  // REVERTED back to 30:
+  //  - It broke a workflow the user genuinely relied on: one tap clearing
+  //    almost the entire (large, single-toned) background poster behind the
+  //    subject. At tolerance=15 that same tap only grabbed a small fraction,
+  //    needing many more taps.
+  //  - It did NOT fix the actual reported bug anyway: the black chair next
+  //    to the subject's hair is close enough in color to the hair itself
+  //    that even tolerance=15 still bled into the hair (measured ~7% of the
+  //    whole image, still a visible chunk of hair turned transparent) --
+  //    confirmed on a real device after shipping the lower default.
+  // The real lesson: a single global tolerance cannot simultaneously (a) grab
+  // an entire large blurred background region in one tap and (b) refuse to
+  // cross into a similarly-colored part of the subject a moment later --
+  // that would need two different tolerance values for two different taps,
+  // which the tool has no way to know in advance. When the background truly
+  // is close in color to the subject at the point you tap (like this chair
+  // next to dark hair), Magic Wand's plain color-distance approach is the
+  // wrong tool for that specific spot -- Magic Touch (instance-aware AI)
+  // handles exactly that case instead (see the editor-hint text and the
+  // large-selection toast below). Kept at the original 30 so the tool's
+  // main strength (clearing a big flat/blurred background in one tap) isn't
+  // sacrificed for a fix that didn't actually solve the reported problem.
   let brushSize = 40, brushSoftness = 50, wandTolerance = 30;
   let historyStack = [], historyIndex = -1;
   const MAX_HISTORY = 25;
@@ -3323,6 +3709,21 @@ if (document.getElementById('aiRemoveDrop')){
     });
     document.getElementById('aiEditStageWrap').className = 'editor-stage-wrap tool-' + tool + (overlayMode ? ' overlay-on' : '');
     polygonPoints = []; lassoPoints = [];
+    // Magic Touch's real-world use, per its own hint text, is almost always
+    // removing one small leftover mistake AFTER the main cutout already ran
+    // (a stray chair fragment, a poster edge) -- i.e. Subtract, not Add.
+    // Defaults it to Subtract every time it's selected, instead of silently
+    // inheriting whatever Add/Subtract state another tool (e.g. Magic Wand,
+    // which usually wants Add) was last left on. Other tools are unaffected
+    // and keep their own last-set mode.
+    if (tool === 'magictap'){
+      selectMode = 'subtract';
+      document.querySelectorAll('.select-mode-toggle button').forEach(b => {
+        const isActive = b.dataset.mode === 'subtract';
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
   }
   document.querySelectorAll('.editor-tool-btn').forEach(btn => {
     btn.onclick = () => setTool(btn.dataset.tool);
@@ -3366,18 +3767,24 @@ if (document.getElementById('aiRemoveDrop')){
     mctx.fill();
   }
 
+  // Returns the fraction of the canvas this tap actually changed (0-1), so
+  // the caller can warn when a single tap grabbed an unusually large area --
+  // see the pointerdown handler below. This is a pure safety-net signal, not
+  // a behavior change: it never limits or alters what the flood fill does,
+  // it only reports afterwards how big the result turned out to be.
   function magicWandAt(x, y, tolerance, subtract){
     const w = originalCanvas.width, h = originalCanvas.height;
     const cData = originalCanvas.getContext('2d').getImageData(0, 0, w, h).data;
     const mctx = maskCanvas.getContext('2d');
     const mData = mctx.getImageData(0, 0, w, h);
     const startX = Math.round(x), startY = Math.round(y);
-    if (startX < 0 || startY < 0 || startX >= w || startY >= h) return;
+    if (startX < 0 || startY < 0 || startX >= w || startY >= h) return 0;
     const startI = (startY*w+startX)*4;
     const r0 = cData[startI], g0 = cData[startI+1], b0 = cData[startI+2];
     const visited = new Uint8Array(w*h);
     const stack = [startY*w+startX];
     const tol = tolerance * 2.6; // scale 0-100 to a usable RGB-distance range
+    let filledCount = 0;
     while (stack.length){
       const p = stack.pop();
       if (visited[p]) continue;
@@ -3388,12 +3795,14 @@ if (document.getElementById('aiRemoveDrop')){
       if (Math.sqrt(dr*dr+dg*dg+db*db) > tol) continue;
       const v = subtract ? 0 : 255;
       mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
+      filledCount++;
       if (px>0) stack.push(p-1);
       if (px<w-1) stack.push(p+1);
       if (py>0) stack.push(p-w);
       if (py<h-1) stack.push(p+w);
     }
     mctx.putImageData(mData, 0, 0);
+    return filledCount / (w*h);
   }
 
   function fillPathIntoMask(points, subtract){
@@ -3571,9 +3980,24 @@ if (document.getElementById('aiRemoveDrop')){
       edgeRefineDab(pt.x, pt.y);
       renderComposite();
     } else if (currentTool === 'wand'){
-      magicWandAt(pt.x, pt.y, wandTolerance, selectMode === 'subtract');
+      const filledFrac = magicWandAt(pt.x, pt.y, wandTolerance, selectMode === 'subtract');
       renderComposite();
       pushHistory();
+      // Purely informational safety net (see magicWandAt's own comment): a
+      // single tap changing a very large share of the whole canvas is often
+      // exactly right (a big flat/blurred background), but it's also the
+      // same signature a bleed-into-the-subject tap leaves (color-based
+      // flood fill can't tell "large background" and "background touching a
+      // similarly-colored part of the subject" apart). Never blocks or
+      // undoes anything -- just nudges the user to check the result.
+      if (filledFrac > 0.12){
+        toast('Magic Wand selected a large area. If part of your subject (like hair) got included by mistake, tap Undo and try Magic Touch on that spot instead.');
+      }
+    } else if (currentTool === 'magictap'){
+      // Async (loads/runs a second AI model) -- magicTapAt applies its own
+      // renderComposite()/pushHistory() once the result is ready, unlike
+      // the synchronous wand/lasso/polygon branches around it.
+      magicTapAt(pt.x, pt.y, selectMode === 'subtract');
     } else if (currentTool === 'polygon'){
       polygonPoints.push(pt);
       drawInProgressPath(polygonPoints, false);
@@ -4110,7 +4534,25 @@ if (document.getElementById('aiRemoveDrop')){
     aiRecoveryInProgress = true;
     try{
       bgDebugLog('CANVAS_VALIDATE', {});
-      if (!aiCanvasLooksLost()) return;
+      if (!aiCanvasLooksLost()){
+        // aiCanvasLooksLost() only inspects originalCanvas/maskCanvas's own
+        // pixel DATA -- it was never able to tell us whether editCanvas's
+        // own on-screen drawing buffer is still intact. A real user's screen
+        // recording showed the editor going fully blank (plain checkerboard,
+        // no photo) after heavy app-switching while this exact check kept
+        // reporting "fine" on every single pass, with no CANVAS_LOST ever
+        // logged -- the data really was fine, only the visible canvas's own
+        // paint was gone (a real, documented mobile-browser behavior: a 2D
+        // canvas's drawing buffer can be discarded under memory pressure
+        // while backgrounded; see the 'contextlost'/'contextrestored'
+        // listeners below for the more precise version of this same fix).
+        // This repaint is cheap and a total no-op when nothing was actually
+        // wrong, so doing it unconditionally here is a safe, "why not"
+        // extra layer for whenever those events don't fire.
+        renderComposite();
+        fitAiCanvasDisplay();
+        return;
+      }
       bgDebugLog('CANVAS_LOST', {});
       bgDebugLog('RECOVERY_START', {});
 
@@ -4186,6 +4628,31 @@ if (document.getElementById('aiRemoveDrop')){
   });
   window.addEventListener('pagehide', () => flushAutoSaveNow());
   window.addEventListener('focus', () => aiScheduleRecoveryChecks());
+
+  // The web platform's own signal for "this canvas's on-screen drawing
+  // buffer was discarded by the browser" (distinct from the photo/mask
+  // DATA being lost, which aiCanvasLooksLost() already covers) is the
+  // 'contextlost' / 'contextrestored' event pair on the canvas element
+  // itself. #aiEditCanvas is a single, fixed DOM element for the whole
+  // page's life (only the `editCanvas` JS variable gets reassigned to
+  // point at it), so these listeners are attached once, here, rather than
+  // wherever `editCanvas` happens to get set. On restore, redrawing is just
+  // the existing renderComposite() from the still-good originalCanvas/
+  // maskCanvas -- e.preventDefault() on 'contextlost' matches the standard
+  // WebGL convention for allowing 'contextrestored' to actually fire.
+  (() => {
+    const ec = document.getElementById('aiEditCanvas');
+    if (!ec) return;
+    ec.addEventListener('contextlost', (e) => {
+      e.preventDefault();
+      bgDebugLog('EDITCANVAS_CONTEXT_LOST', {});
+    });
+    ec.addEventListener('contextrestored', () => {
+      bgDebugLog('EDITCANVAS_CONTEXT_RESTORED', {});
+      if (originalCanvas && maskCanvas) renderComposite();
+      fitAiCanvasDisplay();
+    });
+  })();
 
   // Defensive fix for a reported "toolbar visible before upload" issue:
   // the back-forward cache restores a page's DOM exactly as it was left,
