@@ -972,12 +972,35 @@ html.dark .category-hub-card .cat-arrow{
 .editor-stage-wrap canvas{display:block;touch-action:none;}
 #rtCanvasStageWrap{ display:flex; align-items:center; justify-content:center; }
 .editor-stage-wrap.tool-brush canvas, .editor-stage-wrap.tool-eraser canvas{cursor:crosshair;}
-.editor-stage-wrap.tool-wand canvas{cursor:pointer;}
+.editor-stage-wrap.tool-wand canvas, .editor-stage-wrap.tool-magictap canvas{cursor:pointer;}
 .editor-stage-wrap.tool-pan canvas{cursor:grab;}
 .editor-stage-wrap.tool-pan canvas:active{cursor:grabbing;}
 .editor-stage-wrap.tool-polygon canvas, .editor-stage-wrap.tool-lasso canvas{cursor:crosshair;}
 .editor-stage-wrap.panning canvas{cursor:grab;}
 .editor-hint{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.6;}
+
+/* Magic Touch background model-load indicator: applied to the Magic Touch
+   tool button (data-tool="magictap") while ensureInteractiveSegmenter() is
+   actually downloading/initializing the model (pre-warm after AI_SUCCESS,
+   or a first real tap) -- gives the user a visible "something is happening"
+   signal in place of the old silent background fetch. Removed the instant
+   the load resolves or fails. */
+@keyframes ai-magic-pulse{
+  0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent1-solid) 55%, transparent); }
+  50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--accent1-solid) 0%, transparent); }
+}
+@keyframes ai-magic-sparkle{
+  0%,100%{ opacity:0.35; transform:scale(0.85) rotate(0deg); }
+  50%{ opacity:1; transform:scale(1.15) rotate(25deg); }
+}
+.editor-tool-btn.ai-loading-pulse{
+  position:relative;animation:ai-magic-pulse 1.4s ease-in-out infinite;
+  border-color:var(--accent1-solid);
+}
+.editor-tool-btn.ai-loading-pulse::after{
+  content:"✨";position:absolute;top:-7px;right:-6px;font-size:12px;line-height:1;
+  animation:ai-magic-sparkle 1.1s ease-in-out infinite;pointer-events:none;
+}
 
 /* ============ TASK: BACKGROUND REMOVER — PRODUCTION-GRADE EDITOR ADDITIONS ============ */
 .editor-stage-wrap.tool-refine canvas{cursor:crosshair;}
@@ -1407,6 +1430,21 @@ html.dark .category-hub-card .cat-arrow{
 .epe-tab-btn svg{ width:20px; height:20px; }
 .epe-tab-btn.active{ color:var(--accent1-solid); }
 .epe-tab-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+/* The Magic Touch shortcut added to this tab bar carries BOTH .epe-tab-btn
+   (this file's plain icon-tab styling, whose .active state above only
+   retints color -- no background fill, matching Edit/More/Export) AND
+   .editor-tool-btn (the flat tool-selector-row styling elsewhere, whose
+   own .active rule fills a solid background AND sets white text). Same
+   specificity, so the LATER rule in the cascade wins per property: this
+   file's .epe-tab-btn.active (below .editor-tool-btn.active in source)
+   overrides color to var(--accent1-solid), but nothing overrides the
+   solid var(--accent1-solid) BACKGROUND .editor-tool-btn.active also set --
+   so background and text ended up the exact same color, a real reported
+   bug (the active button looked like a blank solid-blue block, icon and
+   label both invisible). Scoped to this exact class combination so the
+   flat tool-selector row (which never carries .epe-tab-btn) is untouched;
+   this makes the Magic Touch tab just tint like its neighbors instead. */
+.epe-tab-btn.editor-tool-btn.active{ background:transparent; border-color:transparent; }
 
 /* ============================================================
    MOBILE / TABLET-PORTRAIT LAYOUT (<900px)
@@ -1802,6 +1840,54 @@ html.dark .category-hub-card .cat-arrow{
 #aiFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
 #aiFloatingControls button.active{ background:var(--accent1-solid); color:#fff; }
 #aiFloatingControls button[aria-pressed="true"]{ background:var(--accent1-solid); color:#fff; }
+/* Magic Touch's own button moved OUT of this floating toolbar and into the
+   main Edit/More/Export tab bar (#aiLeftRail / #aiBottomToolbar) -- easier
+   to find as a persistent, always-visible shortcut than a pill buried in a
+   toolbar that only appears over the canvas. See .editor-tool-btn[data-tool
+   ="magictap"] there. */
+
+/* Magic Touch loading overlay -- shown over the canvas both while the
+   model is first downloading (ensureInteractiveSegmenter) and during each
+   tap's segment() call. That second case is a genuinely SYNCHRONOUS call
+   that blocks the main JS thread for 16-19 real seconds on a slow device
+   (measured via real-device timing logs, not assumed). Deliberately built
+   from ONLY transform/opacity (sparkle move/spin, spinner rotate) instead
+   of box-shadow/background, because a browser's compositor thread CAN keep
+   advancing exactly that kind of animation even while the main thread is
+   blocked -- confirmed in a minimal isolated test page. Confirming the
+   SAME thing on this actual editor page (real canvas, real layout) hit a
+   sandbox limitation instead: this environment's screenshot tool waits for
+   the main thread before returning anything for this page, so it can't
+   prove what's really on screen mid-freeze here one way or the other. What
+   IS confirmed here is that the overlay shows right before the freeze and
+   hides right after; whether the sparkles keep visibly moving for the
+   whole wait on a real phone, or hold on one frame, needs a real-device
+   check -- noted honestly rather than assumed. Even in the "holds on one
+   frame" case this is still a real improvement over the old behavior
+   (nothing shown at all beyond a small button glow). */
+.mt-loading-overlay{
+  position:absolute; inset:0; z-index:48; border-radius:16px;
+  background:rgba(15,14,20,0.84);
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none; /* purely a visual status card -- must never swallow a tap meant for the canvas underneath, including if it were ever stuck visible by a bug */
+}
+.mt-loading-overlay.hidden{ display:none; }
+.mt-loading-card{ position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; }
+.mt-spinner{
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid rgba(255,255,255,0.22); border-top-color:#ffd166;
+  animation:mt-spin 0.9s linear infinite;
+}
+@keyframes mt-spin{ to{ transform:rotate(360deg); } }
+.mt-sparkle{
+  position:absolute; width:16px; height:16px; pointer-events:none;
+  animation:ai-magic-sparkle 1.15s ease-in-out infinite;
+}
+.mt-sparkle::before{
+  content:"✦"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:#ffd166; font-size:15px;
+}
+.mt-loading-text{ position:relative; margin:0; color:#fff; font-size:13px; font-weight:700; text-align:center; padding:0 16px; }
 
 #aiToolPanel{
   display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
