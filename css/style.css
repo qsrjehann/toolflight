@@ -1430,6 +1430,21 @@ html.dark .category-hub-card .cat-arrow{
 .epe-tab-btn svg{ width:20px; height:20px; }
 .epe-tab-btn.active{ color:var(--accent1-solid); }
 .epe-tab-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+/* The Magic Touch shortcut added to this tab bar carries BOTH .epe-tab-btn
+   (this file's plain icon-tab styling, whose .active state above only
+   retints color -- no background fill, matching Edit/More/Export) AND
+   .editor-tool-btn (the flat tool-selector-row styling elsewhere, whose
+   own .active rule fills a solid background AND sets white text). Same
+   specificity, so the LATER rule in the cascade wins per property: this
+   file's .epe-tab-btn.active (below .editor-tool-btn.active in source)
+   overrides color to var(--accent1-solid), but nothing overrides the
+   solid var(--accent1-solid) BACKGROUND .editor-tool-btn.active also set --
+   so background and text ended up the exact same color, a real reported
+   bug (the active button looked like a blank solid-blue block, icon and
+   label both invisible). Scoped to this exact class combination so the
+   flat tool-selector row (which never carries .epe-tab-btn) is untouched;
+   this makes the Magic Touch tab just tint like its neighbors instead. */
+.epe-tab-btn.editor-tool-btn.active{ background:transparent; border-color:transparent; }
 
 /* ============================================================
    MOBILE / TABLET-PORTRAIT LAYOUT (<900px)
