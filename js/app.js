@@ -2295,7 +2295,7 @@ if (document.getElementById('aiRemoveDrop')){
   // -- never pixel data or the user's image -- and exists specifically so
   // a future report of "the fix didn't work" can be diagnosed from an
   // actual device's console log instead of guessed at again.
-  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-04';
+  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-05';
   let _bgDebugOn = null;
   function bgDebugEnabled(){
     if (_bgDebugOn !== null) return _bgDebugOn;
@@ -2636,33 +2636,30 @@ if (document.getElementById('aiRemoveDrop')){
         const vision = await FilesetResolver.forVisionTasks(
           `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}/wasm`
         );
-        // A real-device log with per-step timing showed segment() itself --
-        // the model's own inference, not any of our code -- taking 16-19
-        // SECONDS on every single tap, pointing at slow CPU/WASM inference
-        // on that device. MediaPipe's baseOptions supports delegate: 'GPU'
-        // to run on WebGL instead (confirmed via MediaPipe's own web guide
-        // and real-world usage, not guessed). GPU delegate support and
-        // correctness varies by device/browser, so this tries GPU first and
-        // falls back to the plain default (CPU) if GPU creation throws,
-        // rather than risking Magic Touch breaking entirely on a device
-        // where GPU isn't usable.
-        try{
-          const gpuSeg = await InteractiveSegmenter.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: MODEL_URL_TOUCH, delegate: 'GPU' },
-            outputCategoryMask: false,
-            outputConfidenceMasks: true,
-          });
-          touchSegmenterDelegate = 'GPU';
-          return gpuSeg;
-        }catch(gpuErr){
-          bgDebugLog('TOUCH_GPU_DELEGATE_FAILED', { message: String(gpuErr && gpuErr.message || gpuErr) });
-          touchSegmenterDelegate = 'CPU';
-          return InteractiveSegmenter.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
-            outputCategoryMask: false,
-            outputConfidenceMasks: true,
-          });
-        }
+        // REVERTED: this used to try delegate:'GPU' first (with a CPU
+        // fallback) to speed up segment()'s 16-19s CPU/WASM inference. A
+        // real user then reported the exact failure mode that kind of bug
+        // produces -- Magic Touch's loading animation completes normally,
+        // but no selection ever gets applied, even after waiting -- with no
+        // error surfaced (so createFromOptions with delegate:'GPU' likely
+        // succeeded, but the confidence-mask output it then produced didn't
+        // match what applyInteractiveMaskResult expects, e.g. a different
+        // value range/threshold, silently selecting ~nothing). This matches
+        // a known, documented class of issue (GPU delegate producing
+        // incorrect/differently-shaped output on some browsers) rather than
+        // a guess. Given real correctness beats an unproven speed gain,
+        // GPU delegate is reverted -- back to the CPU path that was
+        // confirmed working (via real-device timing logs) before it was
+        // added. touchSegmenterDelegate is kept (always 'CPU' now) so the
+        // debug log still records which path ran, in case this needs
+        // revisiting later with a device that can actually confirm GPU
+        // output correctness first.
+        touchSegmenterDelegate = 'CPU';
+        return InteractiveSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
+          outputCategoryMask: false,
+          outputConfidenceMasks: true,
+        });
       })();
       let seg;
       try{ seg = await Promise.race([load, timeout]); }
@@ -2718,6 +2715,13 @@ if (document.getElementById('aiRemoveDrop')){
   // uses, so undo/redo, autosave, and renderComposite all treat a Magic
   // Touch selection exactly like a Magic Wand one -- no separate code path
   // for the rest of the editor to know about.
+  // Returns the fraction of the canvas that ended up included (0..1) --
+  // purely diagnostic (logged by magicTapAt as includedFrac). Added after a
+  // real report of "animation finishes, but no result appears, even after
+  // waiting": with no error thrown, the only way to tell a genuinely-empty
+  // mask (e.g. a bad delegate output, wrong threshold/value-range) apart
+  // from "it worked but the change was too subtle to notice" is a real
+  // number in the log instead of guessing again next time.
   function applyInteractiveMaskResult(mask, subtract){
     const w = originalCanvas.width, h = originalCanvas.height;
     let arr, isFloat = true;
@@ -2738,6 +2742,9 @@ if (document.getElementById('aiRemoveDrop')){
     const EXPAND_RADIUS_PX = Math.max(2, Math.round(Math.min(w, h) * 0.006));
     included = dilateIncludedGrid(included, w, h, EXPAND_RADIUS_PX);
 
+    let includedCount = 0;
+    for (let i = 0; i < w*h; i++) if (included[i]) includedCount++;
+
     const mctx = maskCanvas.getContext('2d');
     const mData = mctx.getImageData(0, 0, w, h);
     const v = subtract ? 0 : 255;
@@ -2748,6 +2755,7 @@ if (document.getElementById('aiRemoveDrop')){
       }
     }
     mctx.putImageData(mData, 0, 0);
+    return includedCount / (w*h);
   }
 
   // Magic Touch speed, round 2 -- a real-device log with per-step timing
@@ -2835,13 +2843,15 @@ if (document.getElementById('aiRemoveDrop')){
       setMagicTouchLoadingUI(false);
       setMagicTouchOverlay(false);
       const tAfterSegment = performance.now();
-      applyInteractiveMaskResult(result, subtract);
+      const includedFrac = applyInteractiveMaskResult(result, subtract);
       const tAfterMaskApply = performance.now();
       renderComposite();
       pushHistory();
       const tEnd = performance.now();
       bgDebugLog('MAGICTAP_TIMING', {
         setImageCalled,
+        delegate: touchSegmenterDelegate,
+        includedFrac: +includedFrac.toFixed(4), // 0 here (with no error) is exactly the "animation finishes, no visible result" signature -- see applyInteractiveMaskResult's comment
         ensureMs: Math.round(tAfterEnsure - tStart),
         setImageMs: Math.round(tAfterSetImage - tAfterEnsure),
         segmentMs: Math.round(tAfterSegment - tAfterSetImage),
@@ -3669,6 +3679,21 @@ if (document.getElementById('aiRemoveDrop')){
     });
     document.getElementById('aiEditStageWrap').className = 'editor-stage-wrap tool-' + tool + (overlayMode ? ' overlay-on' : '');
     polygonPoints = []; lassoPoints = [];
+    // Magic Touch's real-world use, per its own hint text, is almost always
+    // removing one small leftover mistake AFTER the main cutout already ran
+    // (a stray chair fragment, a poster edge) -- i.e. Subtract, not Add.
+    // Defaults it to Subtract every time it's selected, instead of silently
+    // inheriting whatever Add/Subtract state another tool (e.g. Magic Wand,
+    // which usually wants Add) was last left on. Other tools are unaffected
+    // and keep their own last-set mode.
+    if (tool === 'magictap'){
+      selectMode = 'subtract';
+      document.querySelectorAll('.select-mode-toggle button').forEach(b => {
+        const isActive = b.dataset.mode === 'subtract';
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
   }
   document.querySelectorAll('.editor-tool-btn').forEach(btn => {
     btn.onclick = () => setTool(btn.dataset.tool);
