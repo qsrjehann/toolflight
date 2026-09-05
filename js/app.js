@@ -2295,7 +2295,7 @@ if (document.getElementById('aiRemoveDrop')){
   // -- never pixel data or the user's image -- and exists specifically so
   // a future report of "the fix didn't work" can be diagnosed from an
   // actual device's console log instead of guessed at again.
-  const BG_REMOVER_BUILD_ID = '2026-09-04-FORENSIC-01';
+  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-02';
   let _bgDebugOn = null;
   function bgDebugEnabled(){
     if (_bgDebugOn !== null) return _bgDebugOn;
@@ -2737,17 +2737,42 @@ if (document.getElementById('aiRemoveDrop')){
     const firstLoad = !interactiveSegmenter;
     if (firstLoad) toast('Getting Magic Touch ready — first use only, a few seconds…');
     bgDebugLog('MAGICTAP', { nx: +nx.toFixed(4), ny: +ny.toFixed(4), subtract, firstLoad });
+    // Granular per-step timing -- added specifically because a real-device
+    // log showed MAGICTAP -> MAGICTAP_APPLIED taking 18-23 SECONDS even on
+    // the 2nd/3rd tap on the same photo, well after TOUCH_MODEL_LOAD_SUCCESS
+    // had already fired (so it isn't the model download). Without this, we
+    // can't tell whether the cost is the (supposedly-skipped) setImage, the
+    // segment() inference itself, or the JS-side mask/dilation/composite
+    // work -- this makes the next real-device log answer that directly
+    // instead of another round of guessing.
+    const tStart = performance.now();
     try{
       const seg = await ensureInteractiveSegmenter();
+      const tAfterEnsure = performance.now();
+      let setImageCalled = false;
       if (!touchSetImageState || touchSetImageState.seg !== seg || touchSetImageState.canvas !== originalCanvas){
         seg.setImage(getTouchInputCanvas());
         touchSetImageState = { seg, canvas: originalCanvas };
+        setImageCalled = true;
       }
+      const tAfterSetImage = performance.now();
       const brushModeValue = (InteractiveBrushMode && InteractiveBrushMode.POSITIVE !== undefined) ? InteractiveBrushMode.POSITIVE : 1;
       const result = seg.segment([{ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true }]);
+      const tAfterSegment = performance.now();
       applyInteractiveMaskResult(result, subtract);
+      const tAfterMaskApply = performance.now();
       renderComposite();
       pushHistory();
+      const tEnd = performance.now();
+      bgDebugLog('MAGICTAP_TIMING', {
+        setImageCalled,
+        ensureMs: Math.round(tAfterEnsure - tStart),
+        setImageMs: Math.round(tAfterSetImage - tAfterEnsure),
+        segmentMs: Math.round(tAfterSegment - tAfterSetImage),
+        maskApplyMs: Math.round(tAfterMaskApply - tAfterSegment),
+        compositeMs: Math.round(tEnd - tAfterMaskApply),
+        totalMs: Math.round(tEnd - tStart),
+      });
       bgDebugLog('MAGICTAP_APPLIED', {});
     }catch(err){
       bgDebugLog('MAGICTAP_ERROR', { message: String(err && err.message || err) });
@@ -4377,7 +4402,25 @@ if (document.getElementById('aiRemoveDrop')){
     aiRecoveryInProgress = true;
     try{
       bgDebugLog('CANVAS_VALIDATE', {});
-      if (!aiCanvasLooksLost()) return;
+      if (!aiCanvasLooksLost()){
+        // aiCanvasLooksLost() only inspects originalCanvas/maskCanvas's own
+        // pixel DATA -- it was never able to tell us whether editCanvas's
+        // own on-screen drawing buffer is still intact. A real user's screen
+        // recording showed the editor going fully blank (plain checkerboard,
+        // no photo) after heavy app-switching while this exact check kept
+        // reporting "fine" on every single pass, with no CANVAS_LOST ever
+        // logged -- the data really was fine, only the visible canvas's own
+        // paint was gone (a real, documented mobile-browser behavior: a 2D
+        // canvas's drawing buffer can be discarded under memory pressure
+        // while backgrounded; see the 'contextlost'/'contextrestored'
+        // listeners below for the more precise version of this same fix).
+        // This repaint is cheap and a total no-op when nothing was actually
+        // wrong, so doing it unconditionally here is a safe, "why not"
+        // extra layer for whenever those events don't fire.
+        renderComposite();
+        fitAiCanvasDisplay();
+        return;
+      }
       bgDebugLog('CANVAS_LOST', {});
       bgDebugLog('RECOVERY_START', {});
 
@@ -4453,6 +4496,31 @@ if (document.getElementById('aiRemoveDrop')){
   });
   window.addEventListener('pagehide', () => flushAutoSaveNow());
   window.addEventListener('focus', () => aiScheduleRecoveryChecks());
+
+  // The web platform's own signal for "this canvas's on-screen drawing
+  // buffer was discarded by the browser" (distinct from the photo/mask
+  // DATA being lost, which aiCanvasLooksLost() already covers) is the
+  // 'contextlost' / 'contextrestored' event pair on the canvas element
+  // itself. #aiEditCanvas is a single, fixed DOM element for the whole
+  // page's life (only the `editCanvas` JS variable gets reassigned to
+  // point at it), so these listeners are attached once, here, rather than
+  // wherever `editCanvas` happens to get set. On restore, redrawing is just
+  // the existing renderComposite() from the still-good originalCanvas/
+  // maskCanvas -- e.preventDefault() on 'contextlost' matches the standard
+  // WebGL convention for allowing 'contextrestored' to actually fire.
+  (() => {
+    const ec = document.getElementById('aiEditCanvas');
+    if (!ec) return;
+    ec.addEventListener('contextlost', (e) => {
+      e.preventDefault();
+      bgDebugLog('EDITCANVAS_CONTEXT_LOST', {});
+    });
+    ec.addEventListener('contextrestored', () => {
+      bgDebugLog('EDITCANVAS_CONTEXT_RESTORED', {});
+      if (originalCanvas && maskCanvas) renderComposite();
+      fitAiCanvasDisplay();
+    });
+  })();
 
   // Defensive fix for a reported "toolbar visible before upload" issue:
   // the back-forward cache restores a page's DOM exactly as it was left,
