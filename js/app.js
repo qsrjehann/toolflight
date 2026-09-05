@@ -2634,6 +2634,31 @@ if (document.getElementById('aiRemoveDrop')){
     return interactiveSegmenterLoadPromise;
   }
 
+  // Grows a boolean "included" pixel grid outward by `radius` pixels (simple
+  // iterative 4-neighbor dilation -- radius is always small here, a few px,
+  // so this stays cheap). Used to expand Magic Touch's raw selection a
+  // little: the user compared it directly against Magic Wand's result and
+  // asked for the cut to be a touch more generous at the edges (thin hair
+  // strands / a softly blurred boundary can otherwise look slightly
+  // under-included right at the edge).
+  function dilateIncludedGrid(included, w, h, radius){
+    let cur = included;
+    for (let iter = 0; iter < radius; iter++){
+      const next = new Uint8Array(w*h);
+      for (let y = 0; y < h; y++){
+        const row = y*w;
+        for (let x = 0; x < w; x++){
+          const idx = row+x;
+          if (cur[idx] || (x>0 && cur[idx-1]) || (x<w-1 && cur[idx+1]) || (y>0 && cur[idx-w]) || (y<h-1 && cur[idx+w])){
+            next[idx] = 1;
+          }
+        }
+      }
+      cur = next;
+    }
+    return cur;
+  }
+
   // Reads an MPMask result defensively (float32 with fallback to uint8 --
   // InteractiveSegmenter's exact output type wasn't documented anywhere
   // findable, confirmed empirically instead) and writes it into maskCanvas
@@ -2648,20 +2673,58 @@ if (document.getElementById('aiRemoveDrop')){
     catch(e){ arr = mask.getAsUint8Array(); isFloat = false; }
     const threshold = isFloat ? 0.5 : 127;
     const mw = mask.width, mh = mask.height;
-    const mctx = maskCanvas.getContext('2d');
-    const mData = mctx.getImageData(0, 0, w, h);
-    const v = subtract ? 0 : 255;
+    let included = new Uint8Array(w*h);
     for (let y = 0; y < h; y++){
       const my = Math.min(mh - 1, Math.round(y * mh / h));
       for (let x = 0; x < w; x++){
         const mx = Math.min(mw - 1, Math.round(x * mw / w));
-        if (arr[my*mw+mx] > threshold){
-          const ci = (y*w+x)*4;
-          mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
-        }
+        if (arr[my*mw+mx] > threshold) included[y*w+x] = 1;
+      }
+    }
+    // Expand a few pixels -- scales with image size so it looks the same
+    // regardless of resolution (roughly 0.6% of the shorter side, min 2px).
+    const EXPAND_RADIUS_PX = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+    included = dilateIncludedGrid(included, w, h, EXPAND_RADIUS_PX);
+
+    const mctx = maskCanvas.getContext('2d');
+    const mData = mctx.getImageData(0, 0, w, h);
+    const v = subtract ? 0 : 255;
+    for (let i = 0; i < w*h; i++){
+      if (included[i]){
+        const ci = i*4;
+        mData.data[ci] = v; mData.data[ci+1] = v; mData.data[ci+2] = v; mData.data[ci+3] = 255;
       }
     }
     mctx.putImageData(mData, 0, 0);
+  }
+
+  // Magic Touch speed: two real, verified levers (not guesses) --
+  //  1. setImage() is the expensive step (it runs the model's image encoder
+  //     over the whole photo); segment() with a stroke/point is the cheap
+  //     part. MediaPipe's own web guide confirms setImage and segment are
+  //     separate calls specifically so segment() can be called repeatedly
+  //     against ONE setImage() -- so a second/third tap on the SAME photo
+  //     should never re-run the expensive encode. touchSetImageState tracks
+  //     which (segmenter, photo) pair is currently embedded and skips
+  //     setImage() when a tap reuses both.
+  //  2. Feed setImage() a capped-size copy of the photo instead of the full
+  //     up-to-1200px original -- the model's own input resolution is much
+  //     smaller than that anyway, so encoding a bigger image than it can
+  //     use just adds resize/encode time with no accuracy benefit.
+  let touchSetImageState = null; // { seg, canvas } most recently embedded
+  let touchInputCanvasCache = null, touchInputCanvasSourceRef = null;
+  const MAX_TOUCH_DIM = 640;
+  function getTouchInputCanvas(){
+    if (touchInputCanvasSourceRef === originalCanvas && touchInputCanvasCache) return touchInputCanvasCache;
+    const w = originalCanvas.width, h = originalCanvas.height;
+    const scale = Math.min(1, MAX_TOUCH_DIM / Math.max(w, h));
+    const tw = Math.max(1, Math.round(w*scale)), th = Math.max(1, Math.round(h*scale));
+    const c = document.createElement('canvas');
+    c.width = tw; c.height = th;
+    c.getContext('2d').drawImage(originalCanvas, 0, 0, tw, th);
+    touchInputCanvasCache = c;
+    touchInputCanvasSourceRef = originalCanvas;
+    return c;
   }
 
   let magicTapBusy = false; // guards against a second tap firing while one is still loading/segmenting
@@ -2676,7 +2739,10 @@ if (document.getElementById('aiRemoveDrop')){
     bgDebugLog('MAGICTAP', { nx: +nx.toFixed(4), ny: +ny.toFixed(4), subtract, firstLoad });
     try{
       const seg = await ensureInteractiveSegmenter();
-      seg.setImage(originalCanvas);
+      if (!touchSetImageState || touchSetImageState.seg !== seg || touchSetImageState.canvas !== originalCanvas){
+        seg.setImage(getTouchInputCanvas());
+        touchSetImageState = { seg, canvas: originalCanvas };
+      }
       const brushModeValue = (InteractiveBrushMode && InteractiveBrushMode.POSITIVE !== undefined) ? InteractiveBrushMode.POSITIVE : 1;
       const result = seg.segment([{ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true }]);
       applyInteractiveMaskResult(result, subtract);
