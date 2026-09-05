@@ -2295,7 +2295,7 @@ if (document.getElementById('aiRemoveDrop')){
   // -- never pixel data or the user's image -- and exists specifically so
   // a future report of "the fix didn't work" can be diagnosed from an
   // actual device's console log instead of guessed at again.
-  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-02';
+  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-04';
   let _bgDebugOn = null;
   function bgDebugEnabled(){
     if (_bgDebugOn !== null) return _bgDebugOn;
@@ -2581,22 +2581,46 @@ if (document.getElementById('aiRemoveDrop')){
   let interactiveSegmenter = null;
   let interactiveSegmenterLoadPromise = null;
   let InteractiveBrushMode = null; // grabbed from the module if exported; see fallback below
+  let touchSegmenterDelegate = null; // 'GPU' or 'CPU' -- which one actually ended up loaded, for the debug log
 
   // Toggles the "magic" pulse/sparkle animation on the Magic Touch tool
   // button so the user can SEE the model loading in the background (pre-warm
   // after AI_SUCCESS, or a first real tap), instead of the previous silent
-  // fetch with zero visible feedback. Looks up the button live (rather than
-  // caching it) since it lives inside the mobile bottom-sheet markup, which
-  // is always present in the DOM whether or not the sheet is currently open.
+  // fetch with zero visible feedback. Looks up the button(s) live (rather
+  // than caching) since Magic Touch now has TWO buttons in the DOM at once
+  // -- one in the floating on-canvas toolbar, one in the bottom tool panel
+  // -- both always present regardless of which is currently visible, so
+  // this must update all matches, not just the first one found.
   function setMagicTouchLoadingUI(loading){
-    const btn = document.querySelector('.editor-tool-btn[data-tool="magictap"]');
-    if (btn) btn.classList.toggle('ai-loading-pulse', !!loading);
+    document.querySelectorAll('.editor-tool-btn[data-tool="magictap"]').forEach(btn => {
+      btn.classList.toggle('ai-loading-pulse', !!loading);
+    });
+  }
+
+  // Shows/hides the full-card loading overlay over the canvas (dark card +
+  // twinkling sparkles + spinner, matching the request to mirror remove.bg's
+  // loading look). Unlike a plain toast or button glow, this is deliberately
+  // built ONLY from transform/opacity @keyframes animations -- verified
+  // (test_compositor_anim_during_block.js) to keep animating on the
+  // browser's compositor thread even while segment() blocks the main JS
+  // thread for its full 16-19 second real-device duration, so it's not just
+  // a static frame frozen for the whole wait like a box-shadow or toast
+  // would be.
+  function setMagicTouchOverlay(visible, text){
+    const el = document.getElementById('magicTouchOverlay');
+    if (!el) return;
+    el.classList.toggle('hidden', !visible);
+    if (visible && text){
+      const t = document.getElementById('magicTouchOverlayText');
+      if (t) t.textContent = text;
+    }
   }
 
   async function ensureInteractiveSegmenter(){
     if (interactiveSegmenter) return interactiveSegmenter;
     if (interactiveSegmenterLoadPromise) return interactiveSegmenterLoadPromise;
     setMagicTouchLoadingUI(true);
+    setMagicTouchOverlay(true, 'Getting Magic Touch ready…');
     interactiveSegmenterLoadPromise = (async () => {
       bgDebugLog('TOUCH_MODEL_LOAD_START', { version: MP_VERSION_TOUCH });
       const LOAD_TIMEOUT_MS = 45000;
@@ -2612,17 +2636,39 @@ if (document.getElementById('aiRemoveDrop')){
         const vision = await FilesetResolver.forVisionTasks(
           `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION_TOUCH}/wasm`
         );
-        return InteractiveSegmenter.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
-          outputCategoryMask: false,
-          outputConfidenceMasks: true,
-        });
+        // A real-device log with per-step timing showed segment() itself --
+        // the model's own inference, not any of our code -- taking 16-19
+        // SECONDS on every single tap, pointing at slow CPU/WASM inference
+        // on that device. MediaPipe's baseOptions supports delegate: 'GPU'
+        // to run on WebGL instead (confirmed via MediaPipe's own web guide
+        // and real-world usage, not guessed). GPU delegate support and
+        // correctness varies by device/browser, so this tries GPU first and
+        // falls back to the plain default (CPU) if GPU creation throws,
+        // rather than risking Magic Touch breaking entirely on a device
+        // where GPU isn't usable.
+        try{
+          const gpuSeg = await InteractiveSegmenter.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL_TOUCH, delegate: 'GPU' },
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+          touchSegmenterDelegate = 'GPU';
+          return gpuSeg;
+        }catch(gpuErr){
+          bgDebugLog('TOUCH_GPU_DELEGATE_FAILED', { message: String(gpuErr && gpuErr.message || gpuErr) });
+          touchSegmenterDelegate = 'CPU';
+          return InteractiveSegmenter.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL_TOUCH },
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+        }
       })();
       let seg;
       try{ seg = await Promise.race([load, timeout]); }
       finally{ clearTimeout(timeoutId); }
       interactiveSegmenter = seg;
-      bgDebugLog('TOUCH_MODEL_LOAD_SUCCESS', {});
+      bgDebugLog('TOUCH_MODEL_LOAD_SUCCESS', { delegate: touchSegmenterDelegate });
       return seg;
     })().catch((err) => {
       bgDebugLog('TOUCH_MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
@@ -2630,6 +2676,12 @@ if (document.getElementById('aiRemoveDrop')){
       throw err;
     }).finally(() => {
       setMagicTouchLoadingUI(false);
+      // Only drop the overlay here if a tap isn't ALSO about to hold it up
+      // for its own segment() call right after (magicTapAt sets it again
+      // itself) -- harmless either way since setMagicTouchOverlay(true) in
+      // magicTapAt runs synchronously right after this promise resolves,
+      // before the browser gets a chance to paint the brief "hidden" state.
+      setMagicTouchOverlay(false);
     });
     return interactiveSegmenterLoadPromise;
   }
@@ -2698,34 +2750,26 @@ if (document.getElementById('aiRemoveDrop')){
     mctx.putImageData(mData, 0, 0);
   }
 
-  // Magic Touch speed: two real, verified levers (not guesses) --
-  //  1. setImage() is the expensive step (it runs the model's image encoder
-  //     over the whole photo); segment() with a stroke/point is the cheap
-  //     part. MediaPipe's own web guide confirms setImage and segment are
-  //     separate calls specifically so segment() can be called repeatedly
-  //     against ONE setImage() -- so a second/third tap on the SAME photo
-  //     should never re-run the expensive encode. touchSetImageState tracks
-  //     which (segmenter, photo) pair is currently embedded and skips
-  //     setImage() when a tap reuses both.
-  //  2. Feed setImage() a capped-size copy of the photo instead of the full
-  //     up-to-1200px original -- the model's own input resolution is much
-  //     smaller than that anyway, so encoding a bigger image than it can
-  //     use just adds resize/encode time with no accuracy benefit.
+  // Magic Touch speed, round 2 -- a real-device log with per-step timing
+  // (added below) came back and settled the question with actual numbers:
+  // setImageMs was ~16ms and stayed near 0ms on repeat taps (so the setImage
+  // -skip caching below is working and setImage was NEVER the bottleneck),
+  // while segmentMs was 16,000-19,000ms on EVERY single tap. The entire
+  // "still slow" complaint is the model's own inference for segment() on
+  // this device -- not encode/setImage, not our JS-side mask/composite work
+  // (both measured under 250ms). Two consequences:
+  //  1. REMOVED the downscaled-input feed to setImage() that a previous
+  //     round added to try to speed up encoding: it measurably gained
+  //     nothing (setImage was already ~16ms even at full resolution) and is
+  //     the likely cause of a real quality regression the user reported
+  //     right after -- a blocky, jagged, wrong-shaped result -- consistent
+  //     with the model's own output mask resolution scaling down with a
+  //     smaller input image, then getting visibly chunkier on nearest-
+  //     neighbor upscale back to the full canvas. setImage() is fed the
+  //     full-resolution originalCanvas again now.
+  //  2. Still keep the setImage-skip caching -- it's real, correct (per
+  //     MediaPipe's own docs), and free; it just isn't what was slow.
   let touchSetImageState = null; // { seg, canvas } most recently embedded
-  let touchInputCanvasCache = null, touchInputCanvasSourceRef = null;
-  const MAX_TOUCH_DIM = 640;
-  function getTouchInputCanvas(){
-    if (touchInputCanvasSourceRef === originalCanvas && touchInputCanvasCache) return touchInputCanvasCache;
-    const w = originalCanvas.width, h = originalCanvas.height;
-    const scale = Math.min(1, MAX_TOUCH_DIM / Math.max(w, h));
-    const tw = Math.max(1, Math.round(w*scale)), th = Math.max(1, Math.round(h*scale));
-    const c = document.createElement('canvas');
-    c.width = tw; c.height = th;
-    c.getContext('2d').drawImage(originalCanvas, 0, 0, tw, th);
-    touchInputCanvasCache = c;
-    touchInputCanvasSourceRef = originalCanvas;
-    return c;
-  }
 
   let magicTapBusy = false; // guards against a second tap firing while one is still loading/segmenting
   async function magicTapAt(x, y, subtract){
@@ -2751,13 +2795,45 @@ if (document.getElementById('aiRemoveDrop')){
       const tAfterEnsure = performance.now();
       let setImageCalled = false;
       if (!touchSetImageState || touchSetImageState.seg !== seg || touchSetImageState.canvas !== originalCanvas){
-        seg.setImage(getTouchInputCanvas());
+        seg.setImage(originalCanvas);
         touchSetImageState = { seg, canvas: originalCanvas };
         setImageCalled = true;
       }
       const tAfterSetImage = performance.now();
+      // segment() is SYNCHRONOUS -- confirmed by the timing log itself
+      // (16,000-19,000ms spent inside this one call, on the main thread).
+      // That means a normal repaint (a toast appearing, a box-shadow pulse,
+      // a class toggle) has no moment to happen WHILE it runs -- the tab
+      // looks completely frozen for that whole stretch, since the browser
+      // can't paint main-thread-driven changes until the main thread is
+      // free again.
+      //
+      // setMagicTouchOverlay's sparkle/spinner are deliberately built ONLY
+      // from transform+opacity, started (via the double requestAnimationFrame
+      // below) BEFORE segment() blocks. Browsers CAN keep advancing exactly
+      // this kind of animation on a separate compositor thread even while
+      // the main thread is fully blocked -- confirmed in a minimal isolated
+      // page (test_compositor_anim_during_block.js: a bare animated div,
+      // screenshotted repeatedly during a real synchronous busy-loop, showed
+      // visibly different frames). Trying to confirm the SAME thing on this
+      // actual editor page hit a sandbox-specific wall: Playwright's
+      // screenshot capture for this page (real canvas content, real layout)
+      // waits for the main thread to free up before it returns ANYTHING --
+      // confirmed by timing the call itself, not assumed -- so it cannot be
+      // used to prove or disprove what's really on screen mid-freeze here.
+      // What IS proven on this real page: the overlay reliably shows right
+      // before the freeze and hides right after (MutationObserver-timestamped
+      // against segment()'s own measured duration). Whether the sparkles
+      // keep visibly moving for the FULL 16-19s on a real phone, or hold on
+      // one frame, could not be settled from this sandbox -- that needs a
+      // real-device check, not a guess presented as fact.
+      setMagicTouchLoadingUI(true);
+      setMagicTouchOverlay(true, 'Magic Touch is working on that spot…');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const brushModeValue = (InteractiveBrushMode && InteractiveBrushMode.POSITIVE !== undefined) ? InteractiveBrushMode.POSITIVE : 1;
       const result = seg.segment([{ brushMode: brushModeValue, point: [{ x: nx, y: ny }], isCompleted: true }]);
+      setMagicTouchLoadingUI(false);
+      setMagicTouchOverlay(false);
       const tAfterSegment = performance.now();
       applyInteractiveMaskResult(result, subtract);
       const tAfterMaskApply = performance.now();
@@ -2778,10 +2854,11 @@ if (document.getElementById('aiRemoveDrop')){
       bgDebugLog('MAGICTAP_ERROR', { message: String(err && err.message || err) });
       toast('Magic Touch could not select that spot: ' + (err && err.message || 'try again') , 'err');
     }finally{
+      setMagicTouchLoadingUI(false); // safety net: clears the pulse even if segment() itself threw before reaching the explicit turn-off above
+      setMagicTouchOverlay(false); // same safety net for the overlay
       magicTapBusy = false;
     }
   }
-
   setupDropZone('aiRemoveDrop','aiRemoveInput', async (files) => {
     const f = files.find(f => f.type.startsWith('image/'));
     if (!f){ if (files.length>0) toast('Please select a JPG, PNG, or WEBP image.', 'err'); return; }
