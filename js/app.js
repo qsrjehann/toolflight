@@ -2295,7 +2295,7 @@ if (document.getElementById('aiRemoveDrop')){
   // -- never pixel data or the user's image -- and exists specifically so
   // a future report of "the fix didn't work" can be diagnosed from an
   // actual device's console log instead of guessed at again.
-  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-05';
+  const BG_REMOVER_BUILD_ID = '2026-09-05-FORENSIC-06';
   let _bgDebugOn = null;
   function bgDebugEnabled(){
     if (_bgDebugOn !== null) return _bgDebugOn;
@@ -2616,12 +2616,23 @@ if (document.getElementById('aiRemoveDrop')){
     }
   }
 
-  async function ensureInteractiveSegmenter(){
+  // showUI (default true): whether THIS call should show the pulse/overlay
+  // while it waits. A real user reported the pulse + full-canvas "Getting
+  // Magic Touch ready…" overlay appearing right at image upload, before
+  // they'd ever touched Magic Touch -- caused by the silent background
+  // pre-warm calls below (added so a slow connection gets a head start)
+  // unconditionally showing this same loading UI. The UI-vs-load-promise
+  // concerns are now separate: creating/reusing interactiveSegmenterLoadPromise
+  // happens unconditionally so pre-warming still works, but each CALLER
+  // decides for itself whether to show the pulse/overlay while it waits on
+  // that promise. Pre-warm calls (upload time, AI_SUCCESS safety net) pass
+  // showUI:false so they stay invisible. magicTapAt's call keeps the
+  // default (true) so a genuine user-facing wait -- either the first load,
+  // or a tap that lands while a silent pre-warm is still in flight -- still
+  // gets the visible "Getting Magic Touch ready…" treatment.
+  async function ensureInteractiveSegmenter(showUI = true){
     if (interactiveSegmenter) return interactiveSegmenter;
-    if (interactiveSegmenterLoadPromise) return interactiveSegmenterLoadPromise;
-    setMagicTouchLoadingUI(true);
-    setMagicTouchOverlay(true, 'Getting Magic Touch ready…');
-    interactiveSegmenterLoadPromise = (async () => {
+    if (!interactiveSegmenterLoadPromise) interactiveSegmenterLoadPromise = (async () => {
       bgDebugLog('TOUCH_MODEL_LOAD_START', { version: MP_VERSION_TOUCH });
       const LOAD_TIMEOUT_MS = 45000;
       let timeoutId;
@@ -2671,7 +2682,19 @@ if (document.getElementById('aiRemoveDrop')){
       bgDebugLog('TOUCH_MODEL_LOAD_ERROR', { message: String(err && err.message || err) });
       interactiveSegmenterLoadPromise = null;
       throw err;
-    }).finally(() => {
+    });
+    // UI is toggled here, per-call, around whatever promise is in flight --
+    // NOT inside the promise itself -- so a silent pre-warm (showUI:false)
+    // never shows it, while a genuine user-facing wait (a real first tap,
+    // or a tap landing while a silent pre-warm is still loading) still does,
+    // even though in that second case it's someone else's in-flight promise
+    // this call is simply waiting on.
+    if (!showUI) return interactiveSegmenterLoadPromise;
+    setMagicTouchLoadingUI(true);
+    setMagicTouchOverlay(true, 'Getting Magic Touch ready…');
+    try{
+      return await interactiveSegmenterLoadPromise;
+    } finally {
       setMagicTouchLoadingUI(false);
       // Only drop the overlay here if a tap isn't ALSO about to hold it up
       // for its own segment() call right after (magicTapAt sets it again
@@ -2679,8 +2702,7 @@ if (document.getElementById('aiRemoveDrop')){
       // magicTapAt runs synchronously right after this promise resolves,
       // before the browser gets a chance to paint the brief "hidden" state.
       setMagicTouchOverlay(false);
-    });
-    return interactiveSegmenterLoadPromise;
+    }
   }
 
   // Grows a boolean "included" pixel grid outward by `radius` pixels (simple
@@ -2906,7 +2928,12 @@ if (document.getElementById('aiRemoveDrop')){
       // load promise, so the AI_SUCCESS call further down is now just a
       // no-op safety net for any path that skips this one (e.g. Document
       // mode, or if this call itself fails and needs a retry opportunity).
-      ensureInteractiveSegmenter().catch(() => {});
+      // showUI:false -- a real user reported the pulse + "Getting Magic
+      // Touch ready…" overlay appearing right at upload, before they'd even
+      // touched Magic Touch. This pre-warm must stay completely silent; the
+      // visible loading UI is reserved for when the user actually selects
+      // Magic Touch and taps the canvas (see magicTapAt's own call).
+      ensureInteractiveSegmenter(false).catch(() => {});
       // Auto-detect document/writing vs. photo (see detectDocumentLikeImage
       // below) and set the mode toggle accordingly, so the common case
       // ("I uploaded a photo of my signature" or "I uploaded a photo of my
@@ -3464,7 +3491,10 @@ if (document.getElementById('aiRemoveDrop')){
       // earlier call somehow never fired or failed. Still fire-and-forget:
       // never awaited, so a slow or failed load here can never block, slow
       // down, or error out the primary Remove Background flow above.
-      ensureInteractiveSegmenter().catch(() => {});
+      // showUI:false -- same reasoning as the upload-time call: this is a
+      // silent safety net, not a user-facing wait, so it must never show
+      // the pulse/overlay.
+      ensureInteractiveSegmenter(false).catch(() => {});
     }catch(err){
       // Error recovery: don't strand the user — let them continue in Manual Mode
       // on the image they already uploaded, using Brush/Eraser/Wand/Polygon/Lasso.
