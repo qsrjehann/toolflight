@@ -1825,13 +1825,11 @@ html.dark .category-hub-card .cat-arrow{
 #aiFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
 #aiFloatingControls button.active{ background:var(--accent1-solid); color:#fff; }
 #aiFloatingControls button[aria-pressed="true"]{ background:var(--accent1-solid); color:#fff; }
-/* The floating toolbar's other buttons are icon-only circles (min 40x40,
-   no text) -- Magic Touch is the one exception, given text labels over
-   ambiguous icons everywhere is an established, deliberate choice in this
-   editor (see .editor-tool-btn usage elsewhere). min-width alone already
-   lets the button grow past 40px for its text; this just keeps the label
-   from touching the pill's rounded edges. */
-#aiFloatingControls .epe-float-label-btn{ padding:0 14px; white-space:nowrap; font-size:12px; }
+/* Magic Touch's own button moved OUT of this floating toolbar and into the
+   main Edit/More/Export tab bar (#aiLeftRail / #aiBottomToolbar) -- easier
+   to find as a persistent, always-visible shortcut than a pill buried in a
+   toolbar that only appears over the canvas. See .editor-tool-btn[data-tool
+   ="magictap"] there. */
 
 /* Magic Touch loading overlay -- shown over the canvas both while the
    model is first downloading (ensureInteractiveSegmenter) and during each
@@ -1856,6 +1854,7 @@ html.dark .category-hub-card .cat-arrow{
   position:absolute; inset:0; z-index:48; border-radius:16px;
   background:rgba(15,14,20,0.84);
   display:flex; align-items:center; justify-content:center;
+  pointer-events:none; /* purely a visual status card -- must never swallow a tap meant for the canvas underneath, including if it were ever stuck visible by a bug */
 }
 .mt-loading-overlay.hidden{ display:none; }
 .mt-loading-card{ position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; }
