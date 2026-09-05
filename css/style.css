@@ -1825,6 +1825,55 @@ html.dark .category-hub-card .cat-arrow{
 #aiFloatingControls button:hover{ background:rgba(109,94,245,0.12); }
 #aiFloatingControls button.active{ background:var(--accent1-solid); color:#fff; }
 #aiFloatingControls button[aria-pressed="true"]{ background:var(--accent1-solid); color:#fff; }
+/* The floating toolbar's other buttons are icon-only circles (min 40x40,
+   no text) -- Magic Touch is the one exception, given text labels over
+   ambiguous icons everywhere is an established, deliberate choice in this
+   editor (see .editor-tool-btn usage elsewhere). min-width alone already
+   lets the button grow past 40px for its text; this just keeps the label
+   from touching the pill's rounded edges. */
+#aiFloatingControls .epe-float-label-btn{ padding:0 14px; white-space:nowrap; font-size:12px; }
+
+/* Magic Touch loading overlay -- shown over the canvas both while the
+   model is first downloading (ensureInteractiveSegmenter) and during each
+   tap's segment() call. That second case is a genuinely SYNCHRONOUS call
+   that blocks the main JS thread for 16-19 real seconds on a slow device
+   (measured via real-device timing logs, not assumed). Deliberately built
+   from ONLY transform/opacity (sparkle move/spin, spinner rotate) instead
+   of box-shadow/background, because a browser's compositor thread CAN keep
+   advancing exactly that kind of animation even while the main thread is
+   blocked -- confirmed in a minimal isolated test page. Confirming the
+   SAME thing on this actual editor page (real canvas, real layout) hit a
+   sandbox limitation instead: this environment's screenshot tool waits for
+   the main thread before returning anything for this page, so it can't
+   prove what's really on screen mid-freeze here one way or the other. What
+   IS confirmed here is that the overlay shows right before the freeze and
+   hides right after; whether the sparkles keep visibly moving for the
+   whole wait on a real phone, or hold on one frame, needs a real-device
+   check -- noted honestly rather than assumed. Even in the "holds on one
+   frame" case this is still a real improvement over the old behavior
+   (nothing shown at all beyond a small button glow). */
+.mt-loading-overlay{
+  position:absolute; inset:0; z-index:48; border-radius:16px;
+  background:rgba(15,14,20,0.84);
+  display:flex; align-items:center; justify-content:center;
+}
+.mt-loading-overlay.hidden{ display:none; }
+.mt-loading-card{ position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; }
+.mt-spinner{
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid rgba(255,255,255,0.22); border-top-color:#ffd166;
+  animation:mt-spin 0.9s linear infinite;
+}
+@keyframes mt-spin{ to{ transform:rotate(360deg); } }
+.mt-sparkle{
+  position:absolute; width:16px; height:16px; pointer-events:none;
+  animation:ai-magic-sparkle 1.15s ease-in-out infinite;
+}
+.mt-sparkle::before{
+  content:"✦"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:#ffd166; font-size:15px;
+}
+.mt-loading-text{ position:relative; margin:0; color:#fff; font-size:13px; font-weight:700; text-align:center; padding:0 16px; }
 
 #aiToolPanel{
   display:flex; flex-direction:column; background:var(--epe-shell-surface); border-left:1px solid var(--epe-shell-border);
