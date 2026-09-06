@@ -106,7 +106,31 @@
 # permits exactly this without permitting eval()/Function() of arbitrary JS
 # strings, so it does not reopen the XSS risk the plain 'unsafe-eval' token
 # would.
+#
+# BUG FIX (2026-09-06 -- Google Sign-In failing with auth/internal-error on
+# every browser, right after picking a Google account): the exact same
+# "silently blocked by CSP, no network attempt even made" class of bug this
+# comment block already documents twice above -- just never applied to
+# Firebase Auth's OWN internal requests. signInWithPopup/signInWithRedirect
+# use Firebase's default browserPopupRedirectResolver, which:
+#   1. loads https://apis.google.com/js/api.js as a <script> tag to set up
+#      Google's cross-origin "gapi.iframes" relay -- this origin was missing
+#      from script-src, so the browser blocked the script outright;
+#   2. opens a hidden same-purpose iframe at the project's authDomain
+#      (https://toolflight-invoice.firebaseapp.com/__/auth/iframe) to track
+#      the popup/redirect handshake -- frame-src was never set at all, so it
+#      fell back to default-src 'self', which blocks ANY cross-origin iframe,
+#      including Firebase's own.
+# Both failures happen entirely on our own origin, after control has already
+# returned from Google's side -- which is exactly why Google's account
+# picker always worked fine, the API key/OAuth client/consent-screen configs
+# all checked out, and yet sign-in still died right after account selection,
+# identically on every browser (a site-wide CSP header, not a browser
+# quirk). securetoken.googleapis.com is added to connect-src for the same
+# reason: it's the Token Service API endpoint Firebase Auth calls to
+# exchange/refresh the session token right after this handshake completes,
+# and it was missing too.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self' blob:; frame-ancestors 'none';"
