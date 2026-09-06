@@ -93,12 +93,26 @@ async function loadFirebase() {
     // pending result. A no-op (resolves to null) on every normal page
     // load that isn't a redirect return, so it's safe to always call.
     try {
-      await firebaseAuthFns.getRedirectResult(auth);
+      const redirectResult = await firebaseAuthFns.getRedirectResult(auth);
+      // BUG FIX (redirect sign-in silently landing back on "Continue as
+      // Guest" with zero feedback): this used to only console.error on
+      // failure, which nobody but a developer with devtools open would
+      // ever see. On a phone, that reads as "I picked my Google account
+      // and it just went back to the same screen" with no clue why.
+      // Also logs the null-vs-user outcome either way, since a browser
+      // that blocks the cross-origin storage this flow relies on
+      // (Safari, or Chrome with third-party storage partitioning) can
+      // make getRedirectResult() resolve to null instead of throwing --
+      // indistinguishable from "this page load just isn't a redirect
+      // return" without this log line.
+      console.log("[invoice-auth] getRedirectResult resolved:", redirectResult ? `user ${redirectResult.user && redirectResult.user.email}` : "null (no pending redirect, or the browser lost track of it)");
     } catch (err) {
+      console.error("[invoice-auth] redirect sign-in result failed:", err && err.code, err);
       if (err && err.code === "auth/account-exists-with-different-credential") {
         handleAccountExistsError(err);
-      } else {
-        console.error("[invoice-auth] redirect sign-in result failed:", err);
+      } else if (err) {
+        openAuthModal("invAuthPanelSignIn");
+        setError("invSignInError", friendlyAuthError(err));
       }
     }
 
