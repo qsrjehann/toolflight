@@ -155,10 +155,17 @@ function friendlyAuthError(err) {
     "auth/invalid-api-key": "The site's Firebase API key is invalid -- check js/firebase-config.js.",
     "auth/operation-not-allowed": "Google sign-in isn't enabled for this project yet (Firebase Console → Authentication → Sign-in method → Google needs to be turned on).",
     // Reached only if the auth/internal-error -> signInWithRedirect
-    // fallback above also fails. Likely cause at that point: the
-    // browser is blocking third-party cookies/site data for
-    // firebaseapp.com, or a privacy extension/ad-blocker is interfering.
-    "auth/internal-error": "Google sign-in couldn't complete. This usually means the browser is blocking third-party cookies/site data for firebaseapp.com, or an ad-blocker/privacy extension is interfering -- try allowing cookies for this site or a different browser.",
+    // fallback above also fails. CONFIRMED 2026-09-06: reproduces
+    // identically across multiple browsers with no ad-blocker, which
+    // rules out the browser/cookie theory this message used to lead
+    // with. Consistent-across-browsers + fails right after picking the
+    // Google account (not before) points at the Google Cloud project
+    // side instead: the API key's restrictions, the Identity Toolkit
+    // API being disabled, or the auto-created OAuth Web client's
+    // origins/redirect URIs -- see the Phase (2026-09-06) investigation
+    // notes for the checklist. Message kept generic on-screen since the
+    // real fix is a console check, not something the end user can do.
+    "auth/internal-error": "Google sign-in couldn't complete (auth/internal-error). This isn't a browser issue -- it needs a check in the Google Cloud / Firebase console for this project (API key restrictions, Identity Toolkit API, or OAuth client setup).",
   };
   return map[code] || "Something went wrong. Please try again.";
 }
