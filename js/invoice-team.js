@@ -256,7 +256,13 @@ async function handleSendInvite() {
     await refreshTeam(businessId);
   } catch (err) {
     console.error("[invoice-team] send invite failed:", err);
-    setError("invTeamModalError", "Could not send the invite right now. Please try again.");
+    // Surface the real reason (e.g. Firestore's own "permission-denied")
+    // instead of a bare generic message -- this is exactly the kind of
+    // rules-sync bug that generic messages made painfully slow to track
+    // down before. err.code/message are safe to show: they describe the
+    // failed operation, not any private data.
+    const detail = err && (err.code || err.message) ? " (" + (err.code || err.message) + ")" : "";
+    setError("invTeamModalError", "Could not send the invite right now. Please try again." + detail);
   } finally {
     btn.disabled = false; btn.textContent = originalText;
   }
