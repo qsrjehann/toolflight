@@ -166,12 +166,24 @@ async function sendInvitationEmail(email, roleLabel, businessId) {
   }
   ensureEmailjsInit();
   const profile = window.toolflightInvoiceBusiness.getBusinessProfile();
+  const businessName = (profile && profile.name) || "a ToolFlight business";
+  const inviterEmail = currentUser ? currentUser.email : "";
   const templateParams = {
     to_email: email,
-    business_name: (profile && profile.name) || "a ToolFlight business",
-    inviter_email: currentUser ? currentUser.email : "",
+    business_name: businessName,
+    inviter_email: inviterEmail,
     role: roleLabel,
     invoice_maker_url: window.location.origin + window.location.pathname + "?invite=" + encodeURIComponent(email) + "&biz=" + encodeURIComponent(businessId),
+    // Also sent under the plain "name"/"email" keys because the default
+    // EmailJS template (Contact Us-style) that a fresh EmailJS account
+    // starts with uses {{name}} for "From Name" and {{email}} for
+    // "Reply To" -- without these, those two template fields render
+    // blank even though the invite email itself still sends. Sending
+    // both sets of keys means this works whether the template was
+    // customized to use the *_email names above or left as the
+    // EmailJS-provided defaults.
+    name: businessName,
+    email: inviterEmail,
   };
   try {
     await emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, templateParams);
