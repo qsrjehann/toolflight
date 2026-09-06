@@ -136,6 +136,11 @@ function friendlyAuthError(err) {
     "auth/network-request-failed": "Network error. Check your connection and try again.",
     "auth/popup-closed-by-user": "The Google sign-in window was closed before finishing. Please try again.",
     "auth/cancelled-popup-request": "The Google sign-in window was closed before finishing. Please try again.",
+    "auth/unauthorized-domain": "This website's domain isn't authorized for Google sign-in yet (Firebase Console → Authentication → Settings → Authorized domains needs this domain added).",
+    "auth/api-key-expired": "The site's Firebase API key has expired -- this needs a fresh key in js/firebase-config.js.",
+    "auth/invalid-api-key": "The site's Firebase API key is invalid -- check js/firebase-config.js.",
+    "auth/operation-not-allowed": "Google sign-in isn't enabled for this project yet (Firebase Console → Authentication → Sign-in method → Google needs to be turned on).",
+    "auth/internal-error": "Google sign-in hit an internal error. This can happen inside an app's built-in browser (Instagram/WhatsApp/Facebook) -- try opening the site in Chrome or Safari directly.",
   };
   return map[code] || "Something went wrong. Please try again.";
 }
@@ -202,7 +207,20 @@ const POPUP_UNSUPPORTED_CODES = new Set([
   "auth/operation-not-supported-in-this-environment",
 ]);
 
-async function handleGoogleSignIn() {
+// BUG FIX (Google button silently doing nothing on the Create Account
+// panel): every call below used to hardcode "invSignInError" as the
+// place to show the error, no matter which panel/button triggered it.
+// invGoogleSignInBtn2 lives in invAuthPanelCreate; when that panel is
+// the one showing, invAuthPanelSignIn (and its invSignInError text) is
+// hidden by CSS. So a real Firebase error (unauthorized domain, expired
+// API key, popup blocked, etc.) was being written into an invisible
+// element -- from the user's side that looks exactly like "I clicked
+// Continue with Google and literally nothing happened", even though
+// Firebase was actually failing and saying why. Now the caller tells
+// this function which panel it was clicked from, so the message always
+// lands in the box the user is actually looking at.
+async function handleGoogleSignIn(errorTargetId) {
+  const errorId = errorTargetId || "invSignInError";
   if (!FIREBASE_READY || !auth || !googleProvider) {
     setError("invSignInError", NOT_CONFIGURED_MESSAGE);
     setError("invCreateError", NOT_CONFIGURED_MESSAGE);
@@ -215,6 +233,10 @@ async function handleGoogleSignIn() {
     // every other sign-in path here -- never assume the UI state
     // before Firebase itself confirms it.
   } catch (err) {
+    // Logged unconditionally so the real Firebase error code is always
+    // visible in the browser console, even when the friendly mapping
+    // below shows something generic on-screen.
+    console.error("[invoice-auth] Google sign-in failed:", err && err.code, err);
     if (err && err.code === "auth/account-exists-with-different-credential") {
       handleAccountExistsError(err);
       return;
@@ -226,11 +248,11 @@ async function handleGoogleSignIn() {
         // after the redirect back, handled by getRedirectResult() in
         // loadFirebase() above.
       } catch (redirectErr) {
-        setError("invSignInError", friendlyAuthError(redirectErr));
+        setError(errorId, friendlyAuthError(redirectErr));
       }
       return;
     }
-    setError("invSignInError", friendlyAuthError(err));
+    setError(errorId, friendlyAuthError(err));
   }
 }
 
@@ -416,8 +438,8 @@ function initAuthUI() {
   $("invForgotSubmitBtn").addEventListener("click", handleForgotPassword);
   $("invResendVerifyBtn").addEventListener("click", handleResendVerification);
   $("invSignOutBtn").addEventListener("click", handleSignOut);
-  $("invGoogleSignInBtn1").addEventListener("click", handleGoogleSignIn);
-  $("invGoogleSignInBtn2").addEventListener("click", handleGoogleSignIn);
+  $("invGoogleSignInBtn1").addEventListener("click", () => handleGoogleSignIn("invSignInError"));
+  $("invGoogleSignInBtn2").addEventListener("click", () => handleGoogleSignIn("invCreateError"));
 
   // Enter key submits the focused panel's form without needing a <form> element.
   ["invSignInEmail", "invSignInPassword"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") handleSignIn(); }));
