@@ -53,6 +53,8 @@ const ROLE_PRESETS = {
   manager: {
     customers: { view: true, create: true, edit: true, delete: true },
     products:  { view: true, create: true, edit: true, delete: true },
+    suppliers: { view: true, create: true, edit: true, delete: true },
+    expenses:  { view: true, create: true, edit: true, delete: true },
     invoices:  { view: true, create: true, edit: true, delete: false }, // no delete -- "no destructive admin controls"
     inventory: { view: true, adjust: true },
     settings:  { view: true, edit: false },
@@ -61,6 +63,8 @@ const ROLE_PRESETS = {
   staff: {
     customers: { view: true, create: true, edit: true, delete: false },
     products:  { view: true, create: false, edit: false, delete: false },
+    suppliers: { view: true, create: true, edit: true, delete: false },
+    expenses:  { view: true, create: true, edit: false, delete: false },
     invoices:  { view: true, create: true, edit: false, delete: false },
     inventory: { view: true, adjust: false },
     settings:  { view: false, edit: false },
@@ -69,6 +73,8 @@ const ROLE_PRESETS = {
   viewer: {
     customers: { view: true, create: false, edit: false, delete: false },
     products:  { view: true, create: false, edit: false, delete: false },
+    suppliers: { view: true, create: false, edit: false, delete: false },
+    expenses:  { view: true, create: false, edit: false, delete: false },
     invoices:  { view: true, create: false, edit: false, delete: false },
     inventory: { view: true, adjust: false },
     settings:  { view: true, edit: false },
@@ -86,6 +92,10 @@ const CUSTOM_PERM_MAP = {
   "customers.manage": [["customers", "create"], ["customers", "edit"], ["customers", "delete"]],
   "products.view":    [["products", "view"]],
   "products.manage":  [["products", "create"], ["products", "edit"], ["products", "delete"]],
+  "suppliers.view":   [["suppliers", "view"]],
+  "suppliers.manage": [["suppliers", "create"], ["suppliers", "edit"], ["suppliers", "delete"]],
+  "expenses.view":    [["expenses", "view"]],
+  "expenses.manage":  [["expenses", "create"], ["expenses", "edit"], ["expenses", "delete"]],
   "invoices.create":  [["invoices", "create"]],
   "invoices.edit":    [["invoices", "edit"]],
   "invoices.delete":  [["invoices", "delete"]],
@@ -100,6 +110,8 @@ function emptyPermissions() {
   return {
     customers: { view: false, create: false, edit: false, delete: false },
     products:  { view: false, create: false, edit: false, delete: false },
+    suppliers: { view: false, create: false, edit: false, delete: false },
+    expenses:  { view: false, create: false, edit: false, delete: false },
     invoices:  { view: false, create: false, edit: false, delete: false },
     inventory: { view: false, adjust: false },
     settings:  { view: false, edit: false },
@@ -259,7 +271,7 @@ function permissionSummary(permissions) {
   if (permissions.invoices && permissions.invoices.delete) parts.push("Delete Invoices");
   if (permissions.inventory && permissions.inventory.adjust) parts.push("Adjust Inventory");
   if (parts.length === 0) {
-    const anyEdit = ["customers", "products"].some(r => permissions[r] && (permissions[r].create || permissions[r].edit));
+    const anyEdit = ["customers", "products", "suppliers", "expenses"].some(r => permissions[r] && (permissions[r].create || permissions[r].edit));
     parts.push(anyEdit ? "Standard access" : "View only");
   }
   return parts.join(", ");
