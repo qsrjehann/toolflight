@@ -140,7 +140,11 @@ function friendlyAuthError(err) {
     "auth/api-key-expired": "The site's Firebase API key has expired -- this needs a fresh key in js/firebase-config.js.",
     "auth/invalid-api-key": "The site's Firebase API key is invalid -- check js/firebase-config.js.",
     "auth/operation-not-allowed": "Google sign-in isn't enabled for this project yet (Firebase Console → Authentication → Sign-in method → Google needs to be turned on).",
-    "auth/internal-error": "Google sign-in hit an internal error. This can happen inside an app's built-in browser (Instagram/WhatsApp/Facebook) -- try opening the site in Chrome or Safari directly.",
+    // Reached only if the auth/internal-error -> signInWithRedirect
+    // fallback above also fails. Likely cause at that point: the
+    // browser is blocking third-party cookies/site data for
+    // firebaseapp.com, or a privacy extension/ad-blocker is interfering.
+    "auth/internal-error": "Google sign-in couldn't complete. This usually means the browser is blocking third-party cookies/site data for firebaseapp.com, or an ad-blocker/privacy extension is interfering -- try allowing cookies for this site or a different browser.",
   };
   return map[code] || "Something went wrong. Please try again.";
 }
@@ -202,9 +206,23 @@ function renderSignedOut() {
 // Codes where popup-based sign-in genuinely can't work in this browser/
 // context (blocked popups, in-app browsers, some mobile webviews) --
 // falls back to a full-page redirect rather than just failing.
+//
+// auth/internal-error is included here too: confirmed (2026-09-06) to
+// happen in plain Chrome/Safari, not just in-app browsers, so it is NOT
+// reliably an in-app-webview issue. The far more common real cause is
+// the popup flow's cross-domain handshake with <project>.firebaseapp.com
+// failing because the browser blocks third-party storage/cookies for
+// that domain (Safari does this by default; Chrome increasingly does
+// too, e.g. Incognito or "Block third-party cookies" turned on) --
+// signInWithPopup needs that storage access and fails with this vague
+// code when it's unavailable, even though nothing else is wrong.
+// signInWithRedirect doesn't have this problem (everything happens on
+// the site's own origin), so retrying with it recovers automatically
+// instead of just dead-ending on a confusing error.
 const POPUP_UNSUPPORTED_CODES = new Set([
   "auth/popup-blocked",
   "auth/operation-not-supported-in-this-environment",
+  "auth/internal-error",
 ]);
 
 // BUG FIX (Google button silently doing nothing on the Create Account
