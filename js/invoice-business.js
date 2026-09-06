@@ -1628,15 +1628,37 @@ function initBusinessUI() {
           err.diagnosticStep = "loading customers/products for this business";
           throw err;
         }
+        // Land a returning, already-set-up user straight on their
+        // business's own Dashboard -- not the "Create Invoice / My
+        // Business / Sign Out" chooser bar, which made them take an
+        // extra click every single time just to reach the business
+        // they already have. showBusinessArea() itself hides that
+        // chooser bar along with every other pre-business screen.
+        //
+        // SECURITY GATE: only for a verified user. invoice-auth.js
+        // keeps an unverified user parked on the "Check Your Email"
+        // modal, but that modal's own close (×) button can dismiss it
+        // -- whatever is sitting underneath at that point must never be
+        // real business data. Skipping this auto-navigation for an
+        // unverified user means dismissing that modal reveals nothing
+        // more than the plain guest landing screen, exactly as before.
+        if (user.emailVerified) {
+          showBusinessArea();
+          switchBusinessTab("dashboard");
+        }
       } else {
         currentBusinessId = null; businessProfile = null;
         // Proactively invite a fresh account holder to set up their
         // business -- but only if they're not already mid-way through
         // the guest invoice builder, so signing in never interrupts
-        // someone actively typing an invoice.
+        // someone actively typing an invoice, AND only once their email
+        // is verified (same security gate as above -- an unverified
+        // user must never see even the "set up your business" screen
+        // if they dismiss the verify-email modal).
         const guestBuilderActive = !$("invGuestBuilder").classList.contains("hidden");
-        if (!guestBuilderActive) {
+        if (!guestBuilderActive && user.emailVerified) {
           hide("invModeSelect");
+          hide("invAccountBar"); // same reasoning as above: a first-time signed-in user lands on ONE clear "set up your business" screen, not that plus a leftover chooser bar
           hide("invBusinessLookupError");
           show("invSetupPrompt");
         }

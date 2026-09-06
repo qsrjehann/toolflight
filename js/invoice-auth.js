@@ -61,6 +61,37 @@ let googleProvider = null;
 let pendingLinkCredential = null;
 let pendingLinkEmail = null;
 
+/* ==================================================================
+   Explicit sign-out intent guard.
+   ==================================================================
+   Firebase Auth's default persistence (browserLocalPersistence) keeps a
+   session alive across browser restarts until signOut() is called --
+   that part is correct and intentional (nobody wants to re-type a
+   password every visit). The behavior being fixed here is different:
+   once someone HAS explicitly signed out on this browser, the very
+   next visit must never silently sign them back in on its own --
+   whoever opens the browser next (a shared/borrowed device, a family
+   member, anyone) should see the signed-out landing screen and have to
+   deliberately choose "Continue with Google" (or email/password)
+   themselves, not land straight into someone else's business data.
+   This is a plain localStorage flag, not a security boundary by
+   itself -- the actual security boundary is still Firebase's real
+   signOut() (which genuinely invalidates the session) and Firestore's
+   rules (server-side). This flag only decides whether THIS app
+   chooses to *display* a session Firebase handed it back; it never
+   grants access that Firebase/Firestore wouldn't already allow, so it
+   cannot make any account easier to access than before. */
+const SIGNED_OUT_INTENT_KEY = "toolflightInvoiceSignedOutIntentionally";
+function markSignedOutIntentionally() {
+  try { localStorage.setItem(SIGNED_OUT_INTENT_KEY, "1"); } catch (err) { /* private browsing / storage blocked -- fine, just less sticky */ }
+}
+function clearSignedOutIntent() {
+  try { localStorage.removeItem(SIGNED_OUT_INTENT_KEY); } catch (err) { /* fine */ }
+}
+function wasSignedOutIntentionally() {
+  try { return localStorage.getItem(SIGNED_OUT_INTENT_KEY) === "1"; } catch (err) { return false; }
+}
+
 async function loadFirebase() {
   if (!FIREBASE_READY) return;
   try {
@@ -84,6 +115,18 @@ async function loadFirebase() {
     googleProvider = new authModule.GoogleAuthProvider();
 
     firebaseAuthFns.onAuthStateChanged(auth, (user) => {
+      if (user && wasSignedOutIntentionally()) {
+        // Firebase restored a persisted session on its own (page
+        // load/reload), but this browser was explicitly signed out of
+        // last time -- honor that choice instead of silently showing
+        // someone's business. Sign out again for real (not just a UI
+        // toggle) so the restored session doesn't linger in memory
+        // either, then render/notify as signed-out.
+        firebaseAuthFns.signOut(auth).catch(err => console.error("[invoice-auth] could not clear a session that was restored after an explicit sign-out:", err));
+        renderSignedOut();
+        authChangeListeners.forEach(cb => cb(null));
+        return;
+      }
       if (user) renderSignedIn(user); else renderSignedOut();
       authChangeListeners.forEach(cb => cb(user));
     });
@@ -94,6 +137,7 @@ async function loadFirebase() {
     // load that isn't a redirect return, so it's safe to always call.
     try {
       const redirectResult = await firebaseAuthFns.getRedirectResult(auth);
+      if (redirectResult && redirectResult.user) clearSignedOutIntent(); // defensive -- normally already cleared before the redirect navigation above, but this is the one path that can complete a sign-in without ever running that line first (e.g. a previous page load initiated the redirect)
       // BUG FIX (redirect sign-in silently landing back on "Continue as
       // Guest" with zero feedback): this used to only console.error on
       // failure, which nobody but a developer with devtools open would
@@ -267,6 +311,7 @@ async function handleGoogleSignIn(errorTargetId) {
   }
   try {
     await firebaseAuthFns.signInWithPopup(auth, googleProvider);
+    clearSignedOutIntent(); // this is a deliberate, explicit sign-in -- any earlier sign-out choice is superseded
     closeAuthModal();
     // renderSignedIn() runs from onAuthStateChanged, same pattern as
     // every other sign-in path here -- never assume the UI state
@@ -282,6 +327,7 @@ async function handleGoogleSignIn(errorTargetId) {
     }
     if (err && POPUP_UNSUPPORTED_CODES.has(err.code)) {
       try {
+        clearSignedOutIntent(); // about to navigate away for the redirect flow -- clear now, this IS the explicit sign-in action
         await firebaseAuthFns.signInWithRedirect(auth, googleProvider);
         // Browser navigates away here; execution resumes (if at all)
         // after the redirect back, handled by getRedirectResult() in
@@ -323,6 +369,7 @@ async function handleCreateAccount() {
   setLoading(btn, true, "Creating account…", "Create Free Account");
   try {
     const cred = await firebaseAuthFns.createUserWithEmailAndPassword(auth, email, password);
+    clearSignedOutIntent();
     await firebaseAuthFns.sendEmailVerification(cred.user, verificationActionCodeSettings());
     $("invVerifyEmailAddress").textContent = email;
     showAuthPanel("invAuthPanelVerify");
@@ -352,6 +399,7 @@ async function handleSignIn() {
   setLoading(btn, true, "Signing in…", "Sign In");
   try {
     const cred = await firebaseAuthFns.signInWithEmailAndPassword(auth, email, password);
+    clearSignedOutIntent();
     if (pendingLinkCredential && pendingLinkEmail && pendingLinkEmail.toLowerCase() === email.toLowerCase()) {
       try {
         await firebaseAuthFns.linkWithCredential(cred.user, pendingLinkCredential);
@@ -440,6 +488,16 @@ function startVerificationWatcher() {
     if (auth.currentUser.emailVerified) {
       closeAuthModal();
       renderSignedIn(auth.currentUser);
+      // Becoming verified doesn't fire a fresh onAuthStateChanged event
+      // (reload() only refreshes the existing user object's fields) --
+      // but invoice-business.js's business-resolution/auto-navigation
+      // logic is gated on emailVerified and only ran once already, back
+      // when this user was still unverified. Re-notify explicitly so a
+      // freshly-verified, first-time signup lands on "set up your
+      // business" (or an existing owner's Dashboard) right away,
+      // instead of sitting on the plain account bar until they click
+      // something themselves.
+      authChangeListeners.forEach(cb => cb(auth.currentUser));
     }
   }
 
@@ -450,6 +508,7 @@ function startVerificationWatcher() {
 }
 
 async function handleSignOut() {
+  markSignedOutIntentionally(); // remember this even if the signOut() call below fails for some reason
   if (!auth) { renderSignedOut(); return; }
   try {
     await firebaseAuthFns.signOut(auth);

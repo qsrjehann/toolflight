@@ -178,8 +178,13 @@ async function sendInvitationEmail(email, roleLabel, businessId) {
   } catch (err) {
     // Genuinely non-blocking: the invite itself already succeeded and
     // is fully usable. A failed notification email is a real limitation
-    // worth logging, but not a reason to tell the user the invite failed.
+    // worth logging -- and, unlike before, worth telling the business
+    // owner too (as a soft toast, not a blocking error), since without
+    // this they had no way of knowing the invite email never actually
+    // reached anyone. The invite row's own "Copy Invite Link" button
+    // (see renderTeamList) is the fallback this message points them to.
     console.error("[invoice-team] sending invitation email failed:", err);
+    if (typeof toast === "function") toast("Invite created, but the notification email couldn't be sent. Use \"Copy Invite Link\" below to share it yourself.", "err");
   }
 }
 
@@ -305,7 +310,8 @@ function renderTeamList() {
           <div class="inv-record-sub">${escapeHtml(i.role)} · Pending invite</div>
         </div>
         <div class="inv-record-actions">
-          <button type="button" class="btn btn-ghost inv-team-revoke" data-invite-id="${i.id}">Revoke</button>
+          <button type="button" class="btn btn-ghost inv-team-copy-link" data-invite-id="${i.id}" data-email="${escapeHtml(i.email)}">Copy Invite Link</button>
+          <button type="button" class="btn btn-danger inv-team-revoke" data-invite-id="${i.id}">Revoke</button>
         </div>
       </div>
     `);
@@ -341,6 +347,35 @@ async function handleRemoveMember(uid) {
   } catch (err) {
     console.error("[invoice-team] remove member failed:", err);
     setError("invTeamError", "Could not remove that person right now.");
+  }
+}
+
+/** Fallback for when the notification email never arrives (a real,
+    reported limitation of the EmailJS-based best-effort send above --
+    the invite itself is always valid and usable regardless): lets the
+    business owner copy the exact same accept-link the email would have
+    contained and share it themselves (WhatsApp, SMS, in person, etc).
+    Uses the same URL shape detectPendingInvitesForUser() above parses
+    (?invite=<email>&biz=<businessId>), since invites are keyed by
+    email -- so this is never a second/different link than the emailed
+    one, just a manual copy of it. */
+async function handleCopyInviteLink(btn) {
+  const email = btn.dataset.email;
+  const businessId = window.toolflightInvoiceBusiness ? window.toolflightInvoiceBusiness.getBusinessId() : null;
+  if (!email || !businessId) return;
+  const link = window.location.origin + window.location.pathname + "?invite=" + encodeURIComponent(email) + "&biz=" + encodeURIComponent(businessId);
+  const originalText = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(link);
+    btn.textContent = "Copied!";
+  } catch (err) {
+    // Clipboard API can be unavailable (very old browser, insecure
+    // context, permission denied) -- fall back to showing the link
+    // itself so it's still copyable by hand rather than a dead end.
+    console.error("[invoice-team] copying invite link failed:", err);
+    window.prompt("Copy this invite link:", link);
+  } finally {
+    setTimeout(() => { btn.textContent = originalText; }, 2000);
   }
 }
 
@@ -559,6 +594,7 @@ function initTeamUI() {
   $("invTeamList").addEventListener("click", (e) => {
     if (e.target.classList.contains("inv-team-remove")) handleRemoveMember(e.target.dataset.uid);
     else if (e.target.classList.contains("inv-team-revoke")) handleRevokeInvite(e.target.dataset.inviteId);
+    else if (e.target.classList.contains("inv-team-copy-link")) handleCopyInviteLink(e.target);
   });
 
   const teamTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="team"]');
