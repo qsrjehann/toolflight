@@ -191,6 +191,30 @@ service cloud.firestore {
         allow delete: if hasPermission(businessId, 'products', 'delete');
       }
 
+      // ---- suppliers (My Business: Suppliers) -- same CRUD shape as
+      // customers, its own permission resource so a role can be given
+      // supplier access independently of customer access.
+      match /suppliers/{supplierId} {
+        allow read: if hasPermission(businessId, 'suppliers', 'view');
+        allow create: if hasPermission(businessId, 'suppliers', 'create');
+        allow update: if hasPermission(businessId, 'suppliers', 'edit');
+        allow delete: if hasPermission(businessId, 'suppliers', 'delete');
+      }
+
+      // ---- expenses (Phase C, client-side) -- BUG FIX: this feature has
+      // been fully built and shipped client-side (js/invoice-business.js)
+      // since Phase C, but no rule for it was ever added here, meaning
+      // every read/write against businesses/{id}/expenses/* has been
+      // silently permission-denied in any real deployment. Same CRUD
+      // shape as customers/suppliers, gated on its own 'expenses'
+      // permission resource.
+      match /expenses/{expenseId} {
+        allow read: if hasPermission(businessId, 'expenses', 'view');
+        allow create: if hasPermission(businessId, 'expenses', 'create');
+        allow update: if hasPermission(businessId, 'expenses', 'edit');
+        allow delete: if hasPermission(businessId, 'expenses', 'delete');
+      }
+
       // ---- inventory ----
       match /inventory/{productId} {
         allow read: if hasPermission(businessId, 'inventory', 'view');
