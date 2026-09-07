@@ -196,7 +196,15 @@ async function sendInvitationEmail(email, roleLabel, businessId) {
     // reached anyone. The invite row's own "Copy Invite Link" button
     // (see renderTeamList) is the fallback this message points them to.
     console.error("[invoice-team] sending invitation email failed:", err);
-    if (typeof toast === "function") toast("Invite created, but the notification email couldn't be sent. Use \"Copy Invite Link\" below to share it yourself.", "err");
+    // EmailJS SDK errors carry .status/.text (e.g. 403 + "Forbidden" when
+    // the calling origin isn't allow-listed, 422 + a field-validation
+    // message) -- surfacing that detail is what finally makes this class
+    // of failure diagnosable from a phone screenshot instead of needing
+    // browser dev tools, which isn't practical on mobile.
+    const detail = err && (err.status || err.text || err.message)
+      ? " (" + [err.status, err.text || err.message].filter(Boolean).join(": ") + ")"
+      : "";
+    if (typeof toast === "function") toast("Invite created, but the notification email couldn't be sent" + detail + ". Use \"Copy Invite Link\" below to share it yourself.", "err");
   }
 }
 
