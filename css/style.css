@@ -1,14 +1,16 @@
 :root{
-  --bg1:#EEF1FF; --bg2:#FDF4FF; --bg3:#F5FBFF;
+  --bg1:#EDF3FF; --bg2:#F3F8FF; --bg3:#F5FBFF;
   --ink:#151726; --ink-soft:#5C6079;
   --card:rgba(255,255,255,0.72); --card-border:rgba(255,255,255,0.9);
-  --accent1:#6D5EF5; --accent2:#C24CF0; --accent-text:#ffffff;
+  /* ToolFlight brand blue family (replaces the earlier purple/pink pair) --
+     sampled from the ToolFlight brand board's TF wing mark. */
+  --accent1:#1458C9; --accent2:#227AD1; --accent-text:#ffffff;
   --ok:#12A66B; --err:#EF4444; --warn:#F59E0B;
   --paper:#ffffff;
   /* Darker "-solid" variants for use behind white text — the base tokens above
      don't all meet WCAG AA (4.5:1) contrast with white, these do. */
-  --accent1-solid:#5142D6; --ok-solid:#0E8F5C; --warn-solid:#B45309; --err-solid:#DC2626;
-  --shadow: 0 20px 45px -20px rgba(90,60,200,0.25);
+  --accent1-solid:#0B3E8F; --ok-solid:#0E8F5C; --warn-solid:#B45309; --err-solid:#DC2626;
+  --shadow: 0 20px 45px -20px rgba(20,88,201,0.25);
   --radius:20px;
   color-scheme: light;
   /* Solid editor-shell surfaces (bottom sheet, accordions, floating
@@ -18,9 +20,14 @@
   --epe-shell-surface: rgba(255,255,255,0.97);
   --epe-shell-surface-solid: #FFFFFF;
   --epe-shell-border: rgba(20,15,45,0.12);
+  /* Dedicated navbar link color -- kept separate from --ink-soft (used all
+     over the rest of the site for softer supporting text) so the header
+     can have its own, higher-contrast on-brand tone without changing
+     secondary text everywhere else. */
+  --nav-link-color: #2B3352;
 }
 html.dark{
-  --bg1:#0B0D18; --bg2:#141225; --bg3:#0E1024;
+  --bg1:#0A0E1A; --bg2:#101B2E; --bg3:#0C1526;
   --ink:#F1F1F8; --ink-soft:#9A9CC0;
   --card:rgba(255,255,255,0.06); --card-border:rgba(255,255,255,0.12);
   --paper:#ffffff;
@@ -30,6 +37,10 @@ html.dark{
   --epe-shell-surface: rgba(20,18,37,0.97);
   --epe-shell-surface-solid: #141225;
   --epe-shell-border: rgba(255,255,255,0.14);
+  /* Milk-white navbar link color for dark mode -- much brighter than the
+     shared --ink-soft muted lavender-gray so the header stays crisp and
+     legible against the dark background. */
+  --nav-link-color: #EDF1FB;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;scroll-behavior:smooth;}
@@ -64,8 +75,15 @@ a{color:inherit;}
   .navbar.ai-nav-collapsed .logo img{ width:22px; height:22px; }
   .navbar.ai-nav-collapsed .theme-toggle{ transform:scale(0.8); }
 }
-.nav-inner{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;max-width:1080px;margin:0 auto;}
-.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-.02em;}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 20px;max-width:1080px;margin:0 auto;}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-.02em;flex-shrink:0;margin-right:14px;}
+/* Theme-aware logo mark -- the colorful icon renders for light mode, the
+   white icon swaps in for dark mode, purely via the existing html.dark
+   class toggle so it stays in sync with the rest of the theme system. */
+.logo-icon{width:30px;height:30px;display:block;}
+.logo-icon-dark{display:none;}
+html.dark .logo-icon-light{display:none;}
+html.dark .logo-icon-dark{display:block;}
 .logo .mark{
   width:30px;height:30px;border-radius:9px;
   background:linear-gradient(135deg,var(--accent1),var(--accent2));
@@ -73,8 +91,8 @@ a{color:inherit;}
   box-shadow:0 6px 16px -4px color-mix(in srgb, var(--accent1) 60%, transparent);
 }
 .nav-links{display:flex;gap:22px;align-items:center;font-size:14px;font-weight:600;}
-.nav-links a{text-decoration:none;color:var(--ink-soft);transition:color .2s;}
-.nav-links a:hover{color:var(--ink);}
+.nav-links a{text-decoration:none;color:var(--nav-link-color);transition:color .2s;}
+.nav-links a:hover{color:var(--accent1);}
 .theme-toggle{
   width:38px;height:38px;border-radius:12px;border:1px solid var(--card-border);
   background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;
@@ -84,6 +102,60 @@ a{color:inherit;}
 .theme-toggle svg{width:18px;height:18px;}
 .mobile-hide{display:flex;}
 @media (max-width:680px){ .mobile-hide{display:none;} }
+
+/* ---- Mobile nav drawer (hamburger + slide-in overlay) --------------------
+   Markup for this exists on a couple of standalone pages (contact.html,
+   invoice-maker.html) but previously had no CSS at all, so the drawer's
+   contents rendered inline in the page flow instead of hidden -- a wall of
+   unstyled links sitting right under the logo. This gives it the fixed,
+   hidden-by-default overlay + slide-in panel it was always meant to have,
+   toggled via the .open class (see js/app.js). */
+.mobile-menu-btn{
+  width:38px;height:38px;border-radius:12px;border:1px solid var(--card-border);
+  background:var(--card);cursor:pointer;display:none;align-items:center;justify-content:center;
+  color:var(--ink);
+}
+.mobile-menu-btn svg{width:20px;height:20px;}
+@media (max-width:680px){ .mobile-menu-btn{display:flex;} }
+
+.mobile-nav-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(8,10,20,0.5);
+  opacity:0;pointer-events:none;visibility:hidden;
+  transition:opacity .25s ease, visibility 0s linear .25s;
+}
+.mobile-nav-overlay.open{
+  opacity:1;pointer-events:auto;visibility:visible;
+  transition:opacity .25s ease, visibility 0s linear 0s;
+}
+.mobile-nav-panel{
+  position:absolute;top:0;right:0;height:100%;width:min(300px,84vw);
+  background:var(--bg2);border-left:1px solid var(--card-border);
+  box-shadow:-20px 0 45px -20px rgba(0,0,0,0.35);
+  padding:18px 18px 24px;display:flex;flex-direction:column;gap:4px;
+  transform:translateX(100%);transition:transform .28s ease;
+  overflow-y:auto;
+}
+.mobile-nav-overlay.open .mobile-nav-panel{transform:translateX(0);}
+.mobile-nav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.mobile-nav-logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px;color:var(--ink);text-decoration:none;}
+.mobile-nav-close{
+  width:34px;height:34px;border-radius:10px;border:1px solid var(--card-border);
+  background:var(--card);cursor:pointer;color:var(--ink);font-size:15px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.mobile-nav-links{display:flex;flex-direction:column;gap:2px;}
+.mobile-nav-links a{
+  text-decoration:none;color:var(--ink);font-weight:600;font-size:15px;
+  padding:11px 8px;border-radius:10px;transition:background .15s ease,color .15s ease;
+}
+.mobile-nav-links a:hover,.mobile-nav-links a.active{background:var(--card);color:var(--accent1);}
+.mobile-nav-footer{margin-top:14px;padding-top:14px;border-top:1px solid var(--card-border);}
+.mobile-nav-theme-btn{
+  width:100%;display:flex;align-items:center;gap:8px;justify-content:center;
+  padding:11px;border-radius:12px;border:1px solid var(--card-border);
+  background:var(--card);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;
+}
 
 /* ---- Hero 3D Moving Tool Wall ---- */
 .hero-section{
