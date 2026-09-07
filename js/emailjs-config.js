@@ -44,7 +44,12 @@
 export const emailjsConfig = {
   serviceId: "service_igq663u",
   templateId: "template_t6mp0hq",
-  publicKey: "mximSHjvpSzhlBQF_",
+  // BUG FIX (2026-09-07): this was "mximSHjvpSzhlBQF_", which matched no
+  // EmailJS account at all -- that's why every send failed with EmailJS's
+  // own "404: Account not found", regardless of any Firestore rule, CSP,
+  // or dashboard template/security setting. Confirmed against the live
+  // value shown on Account > General > API keys > Public Key.
+  publicKey: "1-e12O-FNHSJZZeEQ",
 };
 
 export function isEmailjsConfigured() {
