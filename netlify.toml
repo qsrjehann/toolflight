@@ -130,7 +130,19 @@
 # reason: it's the Token Service API endpoint Firebase Auth calls to
 # exchange/refresh the session token right after this handshake completes,
 # and it was missing too.
+#
+# BUG FIX (2026-09-07 -- Team invite emails failing with a generic
+# "Invite created, but the notification email couldn't be sent" and, once
+# the underlying error was surfaced to the UI, an exact "Failed to fetch"):
+# the FOURTH occurrence of this exact same class of bug. js/invoice-team.js
+# calls emailjs.send(), which POSTs to https://api.emailjs.com -- that
+# origin was never in connect-src, so the browser blocked the request
+# before it ever left the device. This is why nothing in the EmailJS
+# dashboard itself (Private Key setting, Domains allowlist, Test It) could
+# ever have been the cause: EmailJS's servers never received the request
+# to reject or accept in the first place. https://api.emailjs.com is added
+# below so the invitation-email feature can actually reach EmailJS.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.jsdelivr.net https://unpkg.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://open.er-api.com https://api.exchangerate-api.com https://toolflight-pdf2word.onrender.com https://cdn.jsdelivr.net https://storage.googleapis.com https://api.emailjs.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self' blob:; frame-ancestors 'none';"
