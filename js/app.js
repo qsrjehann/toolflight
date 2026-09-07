@@ -37,6 +37,33 @@ window.addEventListener('pageshow', function(e){
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
+/* ============ MOBILE NAV DRAWER ============
+   Only a couple of standalone pages carry this markup (a hamburger button
+   plus a slide-in overlay) -- guarded the same way as every other block
+   here so it's a no-op everywhere else. */
+(function(){
+  const overlay = document.getElementById('mobileNavOverlay');
+  const openBtn = document.getElementById('mobileMenuBtn');
+  const closeBtn = document.getElementById('mobileNavClose');
+  if (!overlay || !openBtn) return;
+  function openNav(){
+    overlay.classList.add('open');
+    openBtn.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeNav(){
+    overlay.classList.remove('open');
+    openBtn.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+  openBtn.onclick = openNav;
+  if (closeBtn) closeBtn.onclick = closeNav;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeNav(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNav(); });
+  const mobileThemeBtn = document.getElementById('mobileNavThemeBtn');
+  if (mobileThemeBtn && themeToggleBtn) mobileThemeBtn.onclick = () => themeToggleBtn.onclick();
+})();
+
 /* ============ TOASTS ============ */
 function toast(message, type='ok'){
   const stack = document.getElementById('toastStack');
@@ -14758,6 +14785,7 @@ if (document.getElementById('rtDrop')){
   }
   Object.entries(RT_ID_MAP).forEach(([key, id]) => {
     const el = document.getElementById(id);
+    if (!el) return; // some RT_ID_MAP entries (beauty/hair sliders) have no control on every retouch page variant
     const valEl = document.getElementById(id + 'Val');
     el.addEventListener('input', () => {
       rtAdj[key] = +el.value;
@@ -14769,6 +14797,7 @@ if (document.getElementById('rtDrop')){
   function rtApplyAdjustmentsToUI(){
     Object.entries(RT_ID_MAP).forEach(([key, id]) => {
       const el = document.getElementById(id), valEl = document.getElementById(id+'Val');
+      if (!el) return; // some RT_ID_MAP entries (beauty/hair sliders) have no control on every retouch page variant
       el.value = rtAdj[key];
       if (valEl) valEl.textContent = String(rtAdj[key]);
     });
@@ -14803,9 +14832,10 @@ if (document.getElementById('rtDrop')){
     rtSourceCanvas = null; // defensive: nothing should render against a stale canvas while the upload section is showing
     const inputEl = document.getElementById('rtInput');
     if (inputEl) inputEl.value = ''; // allows re-selecting the same file
-    document.getElementById('rtUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (uploadSectionEl) uploadSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  document.getElementById('rtChangePhotoBtn').onclick = rtReturnToUploadScreen;
+  const rtChangePhotoBtnEl = document.getElementById('rtChangePhotoBtn');
+  if (rtChangePhotoBtnEl) rtChangePhotoBtnEl.onclick = rtReturnToUploadScreen;
 
   /* ---------- Filter presets: real slider combinations, not a separate
      rendering path -- applying a preset just sets rtAdj and goes through
@@ -16076,7 +16106,8 @@ if (document.getElementById('rtDrop')){
     rtPushHistory('Make Layer Transparent');
     toast('Layer cleared to transparent \u2014 export as PNG to keep transparency.');
   }
-  document.getElementById('rtAddColorLayerBtn').addEventListener('click', rtAddColorLayer);
+  const rtAddColorLayerBtnEl = document.getElementById('rtAddColorLayerBtn');
+  if (rtAddColorLayerBtnEl) rtAddColorLayerBtnEl.addEventListener('click', rtAddColorLayer);
   const rtHairAnalyzeBtnEl = document.getElementById('rtHairAnalyzeBtn');
   if (rtHairAnalyzeBtnEl) rtHairAnalyzeBtnEl.addEventListener('click', async () => {
     const resultsEl = document.getElementById('rtHairAnalysisResults');
@@ -16203,8 +16234,10 @@ if (document.getElementById('rtDrop')){
   if (rtAutoCorrectionBtnEl) rtAutoCorrectionBtnEl.addEventListener('click', () => {
     rtRunAiMagicAutoApply();
   });
-  document.getElementById('rtAddGradientLayerBtn').addEventListener('click', rtAddGradientLayer);
-  document.getElementById('rtMakeTransparentBtn').addEventListener('click', rtMakeLayerTransparent);
+  const rtAddGradientLayerBtnEl = document.getElementById('rtAddGradientLayerBtn');
+  if (rtAddGradientLayerBtnEl) rtAddGradientLayerBtnEl.addEventListener('click', rtAddGradientLayer);
+  const rtMakeTransparentBtnEl = document.getElementById('rtMakeTransparentBtn');
+  if (rtMakeTransparentBtnEl) rtMakeTransparentBtnEl.addEventListener('click', rtMakeLayerTransparent);
 
   /* ---------- Canvas Background (Phase 2 slice 5) ----------
      Purely a view-time CSS background behind the canvas -- toggling it
@@ -16222,7 +16255,8 @@ if (document.getElementById('rtDrop')){
   document.querySelectorAll('.rt-canvas-bg-swatch[data-bg]').forEach(btn => {
     btn.addEventListener('click', () => rtSetCanvasBackground(btn.dataset.bg));
   });
-  document.getElementById('rtCanvasBgCustomColor').addEventListener('input', (e) => rtSetCanvasBackground('custom', e.target.value));
+  const rtCanvasBgCustomColorEl = document.getElementById('rtCanvasBgCustomColor');
+  if (rtCanvasBgCustomColorEl) rtCanvasBgCustomColorEl.addEventListener('input', (e) => rtSetCanvasBackground('custom', e.target.value));
 
   async function rtDuplicateLayer(){
     const active = rtGetActiveLayer();
@@ -16924,6 +16958,9 @@ if (document.getElementById('rtDrop')){
       renderRtPreview();
     }
   }
+  // Rotate/straighten/crop controls -- guarded as one block since none of
+  // these elements exist unless the retouch page ships the crop panel.
+  if (document.getElementById('rtStraightenSlider')) {
   document.getElementById('rtStraightenSlider').addEventListener('input', (e) => {
     rtCrop.straighten = +e.target.value;
     document.getElementById('rtStraightenVal').textContent = `${rtCrop.straighten}\u00b0`;
@@ -16977,6 +17014,7 @@ if (document.getElementById('rtDrop')){
     toast('Crop removed.');
   });
   window.addEventListener('resize', () => { if (rtCropEditMode) rtSyncCropOverlayToCanvas(); });
+  }
 
   /* ---------- Healing / Clone / Spot Heal (Phase 2 slice 4) ----------
      All three tools paint onto layer.healCanvas, a transparent overlay
@@ -17042,6 +17080,9 @@ if (document.getElementById('rtDrop')){
       rtSyncHealControlsToState();
     });
   });
+  // Heal/clone brush controls -- guarded as one block since none of these
+  // elements exist unless the retouch page ships the healing panel.
+  if (document.getElementById('rtHealBrushSizeSlider')) {
   document.getElementById('rtHealBrushSizeSlider').addEventListener('input', (e) => {
     rtHealBrushSize = +e.target.value;
     document.getElementById('rtHealBrushSizeVal').textContent = `${rtHealBrushSize}px`;
@@ -17062,6 +17103,7 @@ if (document.getElementById('rtDrop')){
     rtPushHistory('Clear Heal Edits');
     toast('Heal edits cleared.');
   });
+  }
 
   function rtPaintCloneAt(layer, targetX, targetY){
     const half = rtHealBrushSize;
