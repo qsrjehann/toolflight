@@ -8213,7 +8213,18 @@ if (document.getElementById('resumeTabBuilder')){
   function renderResumePreview(){
     const p = resumeData.personal;
     const contactParts = [p.email, p.phone, p.location, p.linkedin, p.portfolio].filter(Boolean).map(esc);
-    let html = `<h1 class="resume-pv-name">${esc(p.name) || 'Your Name'}</h1>`;
+    // SEO FIX (final QA): this used to be a literal <h1>, which meant every
+    // resume-builder.html page load put a second <h1> ("Your Name" by
+    // default, or whatever the user has typed) into the rendered DOM
+    // alongside the page's own <h1>Resume Builder & ATS Checker</h1> --
+    // confirmed via Playwright, not visible in the static HTML since this
+    // is rendered client-side. A page should have exactly one <h1>. This
+    // preview name is presentational (mirrors the live document the user
+    // is building), not the page's own heading, so it's a <div> now; the
+    // 4 CSS rules that styled `h1.resume-pv-name` were updated in lockstep
+    // (see css/style.css) to target the class alone so every resume
+    // template's name styling (size/color/weight/transform) is unchanged.
+    let html = `<div class="resume-pv-name">${esc(p.name) || 'Your Name'}</div>`;
     html += `<div class="resume-pv-contact">${contactParts.map(c => `<span>${c}</span>`).join('')}</div>`;
 
     if (resumeData.summary){
@@ -11147,20 +11158,19 @@ if (document.getElementById('ppDrop')){
 }
 
 /* ============ FAQ (index.html) ============ */
+// SEO FIX (2026-09-07): the four Q&A pairs used to be built entirely by this
+// script (faqList started as an empty <div>), so a crawler reading the raw
+// HTML response -- before any JS runs -- saw no question text at all. The
+// questions and answers are now hard-coded directly into index.html (with a
+// matching FAQPage JSON-LD block), so this script's only job is to wire up
+// the existing static .faq-item elements' click-to-expand behavior. This
+// keeps the exact same accordion UX without hiding the content from crawlers
+// that don't execute JavaScript, and without maintaining the FAQ text in
+// two places.
 if (document.getElementById('faqList')){
-  const faqs = [
-    { q: "Do my files get uploaded anywhere?", a: "No. Every tool on this site runs entirely in your browser using JavaScript. Your PDFs and images never leave your device." },
-    { q: "Is ToolFlight really free?", a: "Yes, every live tool is free to use with no account or sign-up required." },
-    { q: "What file size limits apply?", a: "Since processing happens on your device, limits depend on your browser and device memory. Image Compressor rejects files over 50MB and auto-resizes very large images for reliability on mobile." },
-    { q: "Which browsers are supported?", a: "Any modern browser: Chrome, Edge, Firefox, or Safari, on desktop or mobile, including Android Chrome." },
-  ];
-  const faqList = document.getElementById('faqList');
-  faqs.forEach(f => {
-    const item = document.createElement('div');
-    item.className = 'faq-item';
-    item.innerHTML = `<div class="faq-q">${f.q} <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div><div class="faq-a">${f.a}</div>`;
-    item.querySelector('.faq-q').onclick = () => item.classList.toggle('open');
-    faqList.appendChild(item);
+  document.querySelectorAll('#faqList .faq-item').forEach(item => {
+    const q = item.querySelector('.faq-q');
+    if (q) q.onclick = () => item.classList.toggle('open');
   });
 }
 
