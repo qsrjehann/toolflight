@@ -1181,7 +1181,7 @@ html.dark .category-hub-card .cat-arrow{
   padding:34px 30px;font-size:12.5px;line-height:1.55;overflow-wrap:break-word;box-shadow:var(--shadow);
   max-height:80vh;overflow-y:auto;
 }
-.resume-preview h1.resume-pv-name{font-size:22px;margin:0 0 3px;letter-spacing:.2px;}
+.resume-preview .resume-pv-name{font-size:22px;margin:0 0 3px;letter-spacing:.2px;}
 .resume-preview .resume-pv-contact{font-size:11.5px;color:#444;margin-bottom:14px;}
 .resume-preview .resume-pv-contact span{margin-right:10px;}
 .resume-preview h2.resume-pv-heading{font-size:13px;text-transform:uppercase;letter-spacing:.6px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1.5px solid #ddd;}
@@ -1193,15 +1193,15 @@ html.dark .category-hub-card .cat-arrow{
 .resume-preview .resume-pv-skill-chip{background:#f1f1f4;border-radius:999px;padding:2px 10px;font-size:11px;}
 
 /* Template variants -- same markup, different visual identity */
-.resume-tpl-modern h1.resume-pv-name{color:#5142D6;}
+.resume-tpl-modern .resume-pv-name{color:#5142D6;}
 .resume-tpl-modern h2.resume-pv-heading{color:#5142D6;border-bottom-color:#c9c3f7;}
 .resume-tpl-modern .resume-pv-skill-chip{background:#EEF0FF;color:#5142D6;}
 
 .resume-tpl-minimal{padding:30px 26px;}
-.resume-tpl-minimal h1.resume-pv-name{font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:18px;}
+.resume-tpl-minimal .resume-pv-name{font-weight:600;letter-spacing:1px;text-transform:uppercase;font-size:18px;}
 .resume-tpl-minimal h2.resume-pv-heading{border-bottom:none;font-weight:700;color:#888;font-size:11px;}
 
-.resume-tpl-professional h1.resume-pv-name{font-size:20px;text-align:center;}
+.resume-tpl-professional .resume-pv-name{font-size:20px;text-align:center;}
 .resume-tpl-professional .resume-pv-contact{text-align:center;}
 .resume-tpl-professional h2.resume-pv-heading{background:#141414;color:#fff;padding:4px 10px;border-bottom:none;border-radius:4px;}
 
