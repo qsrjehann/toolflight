@@ -102,6 +102,17 @@
 <script type="application/ld+json">
 { "@context": "https://schema.org", "@type": "Organization", "name": "ToolFlight", "url": "https://toolflight.com/", "logo": "https://toolflight.com/assets/logo.svg" }
 </script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "WebSite", "name": "ToolFlight", "url": "https://toolflight.com/" }
+</script>
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+  { "@type": "Question", "name": "Do my files get uploaded anywhere?", "acceptedAnswer": { "@type": "Answer", "text": "No. Every tool on this site runs entirely in your browser using JavaScript. Your PDFs and images never leave your device." } },
+  { "@type": "Question", "name": "Is ToolFlight really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes, every live tool is free to use with no account or sign-up required." } },
+  { "@type": "Question", "name": "What file size limits apply?", "acceptedAnswer": { "@type": "Answer", "text": "Since processing happens on your device, limits depend on your browser and device memory. Image Compressor rejects files over 50MB and auto-resizes very large images for reliability on mobile." } },
+  { "@type": "Question", "name": "Which browsers are supported?", "acceptedAnswer": { "@type": "Answer", "text": "Any modern browser: Chrome, Edge, Firefox, or Safari, on desktop or mobile, including Android Chrome." } }
+] }
+</script>
 
 </head>
 <body>
@@ -319,7 +330,24 @@
 <section id="faq">
   <div class="container" style="max-width:680px;">
     <h2 class="section-title">Frequently Asked Questions</h2>
-    <div id="faqList"></div>
+    <div id="faqList">
+      <div class="faq-item">
+        <div class="faq-q">Do my files get uploaded anywhere? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="faq-a">No. Every tool on this site runs entirely in your browser using JavaScript. Your PDFs and images never leave your device.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Is ToolFlight really free? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="faq-a">Yes, every live tool is free to use with no account or sign-up required.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">What file size limits apply? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="faq-a">Since processing happens on your device, limits depend on your browser and device memory. Image Compressor rejects files over 50MB and auto-resizes very large images for reliability on mobile.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Which browsers are supported? <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="faq-a">Any modern browser: Chrome, Edge, Firefox, or Safari, on desktop or mobile, including Android Chrome.</div>
+      </div>
+    </div>
   </div>
 </section>
 
