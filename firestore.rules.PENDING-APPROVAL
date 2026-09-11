@@ -178,6 +178,14 @@ service cloud.firestore {
         allow delete: if hasPermission(businessId, 'customers', 'delete');
       }
 
+      // ---- expenses (Phase C) ----
+      match /expenses/{expenseId} {
+        allow read: if hasPermission(businessId, 'expenses', 'view');
+        allow create: if hasPermission(businessId, 'expenses', 'create');
+        allow update: if hasPermission(businessId, 'expenses', 'edit');
+        allow delete: if hasPermission(businessId, 'expenses', 'delete');
+      }
+
       // ---- products ----
       match /products/{productId} {
         allow read: if hasPermission(businessId, 'products', 'view');

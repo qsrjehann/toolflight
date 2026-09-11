@@ -6,9 +6,9 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/pdf-compress.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <loc>https://toolflight.com/pdf-tools.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://toolflight.com/pdf-merge.html</loc>
@@ -21,7 +21,17 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/image-to-pdf.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/pdf-to-image.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/pdf-compress.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -31,12 +41,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/pdf-tools.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/protect-pdf.html</loc>
+    <loc>https://toolflight.com/word-to-pdf.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -46,44 +51,9 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/unlock-pdf.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/word-to-pdf.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/ai-image-upscaler.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/ai-ocr.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/ai-photo-enhancer.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/ai-photo-retouch.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/background-changer.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/background-remover.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <loc>https://toolflight.com/image-tools.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://toolflight.com/ecommerce-product-editor.html</loc>
@@ -101,22 +71,22 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/image-format-converter.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/image-to-pdf.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/image-tools.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
     <loc>https://toolflight.com/image-watermark.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/rotate-flip.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/background-remover.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/background-changer.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -126,13 +96,33 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/ai-photo-enhancer.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/ai-photo-retouch.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/ai-image-upscaler.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/ai-ocr.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/passport-photo-maker.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/rotate-flip.html</loc>
-    <changefreq>monthly</changefreq>
+    <loc>https://toolflight.com/calculators.html</loc>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
@@ -146,17 +136,7 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/calculators.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/compound-interest-calculator.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/currency-converter.html</loc>
+    <loc>https://toolflight.com/percentage-calculator.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -176,16 +156,6 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/income-percentile-calculator.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/percentage-calculator.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://toolflight.com/scientific-calculator.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -196,22 +166,42 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://toolflight.com/currency-converter.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://toolflight.com/finance-tools.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/keyword-density-checker.html</loc>
-    <changefreq>monthly</changefreq>
+    <loc>https://toolflight.com/seo-tools.html</loc>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/meta-tag-generator.html</loc>
-    <changefreq>monthly</changefreq>
+    <loc>https://toolflight.com/ai-tools.html</loc>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/invoice-maker.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/contact.html</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://toolflight.com/qr-code-generator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/keyword-density-checker.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -221,12 +211,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/seo-tools.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/word-counter.html</loc>
+    <loc>https://toolflight.com/meta-tag-generator.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -241,57 +226,12 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/ai-tools.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/contact.html</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/invoice-maker.html</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://toolflight.com/blog.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/blog/best-free-pdf-tools.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/blog/dynamic-vs-static-qr-codes.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/blog/how-to-calculate-discount-percentage.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
     <loc>https://toolflight.com/blog/how-to-compress-images-without-losing-quality.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/blog/how-to-merge-pdf-files-online.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/blog/how-to-resize-images-online.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://toolflight.com/blog/jpg-vs-png-vs-webp.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -301,7 +241,22 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://toolflight.com/blog/why-iphone-photos-wont-open-heic-to-jpg.html</loc>
+    <loc>https://toolflight.com/blog/how-to-merge-pdf-files-online.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/blog/jpg-vs-png-vs-webp.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/blog/best-free-pdf-tools.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://toolflight.com/blog/how-to-resize-images-online.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
