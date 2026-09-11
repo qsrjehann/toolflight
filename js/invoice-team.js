@@ -53,8 +53,6 @@ const ROLE_PRESETS = {
   manager: {
     customers: { view: true, create: true, edit: true, delete: true },
     products:  { view: true, create: true, edit: true, delete: true },
-    suppliers: { view: true, create: true, edit: true, delete: true },
-    expenses:  { view: true, create: true, edit: true, delete: true },
     invoices:  { view: true, create: true, edit: true, delete: false }, // no delete -- "no destructive admin controls"
     inventory: { view: true, adjust: true },
     settings:  { view: true, edit: false },
@@ -63,8 +61,6 @@ const ROLE_PRESETS = {
   staff: {
     customers: { view: true, create: true, edit: true, delete: false },
     products:  { view: true, create: false, edit: false, delete: false },
-    suppliers: { view: true, create: true, edit: true, delete: false },
-    expenses:  { view: true, create: true, edit: false, delete: false },
     invoices:  { view: true, create: true, edit: false, delete: false },
     inventory: { view: true, adjust: false },
     settings:  { view: false, edit: false },
@@ -73,8 +69,6 @@ const ROLE_PRESETS = {
   viewer: {
     customers: { view: true, create: false, edit: false, delete: false },
     products:  { view: true, create: false, edit: false, delete: false },
-    suppliers: { view: true, create: false, edit: false, delete: false },
-    expenses:  { view: true, create: false, edit: false, delete: false },
     invoices:  { view: true, create: false, edit: false, delete: false },
     inventory: { view: true, adjust: false },
     settings:  { view: true, edit: false },
@@ -92,10 +86,6 @@ const CUSTOM_PERM_MAP = {
   "customers.manage": [["customers", "create"], ["customers", "edit"], ["customers", "delete"]],
   "products.view":    [["products", "view"]],
   "products.manage":  [["products", "create"], ["products", "edit"], ["products", "delete"]],
-  "suppliers.view":   [["suppliers", "view"]],
-  "suppliers.manage": [["suppliers", "create"], ["suppliers", "edit"], ["suppliers", "delete"]],
-  "expenses.view":    [["expenses", "view"]],
-  "expenses.manage":  [["expenses", "create"], ["expenses", "edit"], ["expenses", "delete"]],
   "invoices.create":  [["invoices", "create"]],
   "invoices.edit":    [["invoices", "edit"]],
   "invoices.delete":  [["invoices", "delete"]],
@@ -110,8 +100,6 @@ function emptyPermissions() {
   return {
     customers: { view: false, create: false, edit: false, delete: false },
     products:  { view: false, create: false, edit: false, delete: false },
-    suppliers: { view: false, create: false, edit: false, delete: false },
-    expenses:  { view: false, create: false, edit: false, delete: false },
     invoices:  { view: false, create: false, edit: false, delete: false },
     inventory: { view: false, adjust: false },
     settings:  { view: false, edit: false },
@@ -166,45 +154,20 @@ async function sendInvitationEmail(email, roleLabel, businessId) {
   }
   ensureEmailjsInit();
   const profile = window.toolflightInvoiceBusiness.getBusinessProfile();
-  const businessName = (profile && profile.name) || "a ToolFlight business";
-  const inviterEmail = currentUser ? currentUser.email : "";
   const templateParams = {
     to_email: email,
-    business_name: businessName,
-    inviter_email: inviterEmail,
+    business_name: (profile && profile.name) || "a ToolFlight business",
+    inviter_email: currentUser ? currentUser.email : "",
     role: roleLabel,
     invoice_maker_url: window.location.origin + window.location.pathname + "?invite=" + encodeURIComponent(email) + "&biz=" + encodeURIComponent(businessId),
-    // Also sent under the plain "name"/"email" keys because the default
-    // EmailJS template (Contact Us-style) that a fresh EmailJS account
-    // starts with uses {{name}} for "From Name" and {{email}} for
-    // "Reply To" -- without these, those two template fields render
-    // blank even though the invite email itself still sends. Sending
-    // both sets of keys means this works whether the template was
-    // customized to use the *_email names above or left as the
-    // EmailJS-provided defaults.
-    name: businessName,
-    email: inviterEmail,
   };
   try {
     await emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, templateParams);
   } catch (err) {
     // Genuinely non-blocking: the invite itself already succeeded and
     // is fully usable. A failed notification email is a real limitation
-    // worth logging -- and, unlike before, worth telling the business
-    // owner too (as a soft toast, not a blocking error), since without
-    // this they had no way of knowing the invite email never actually
-    // reached anyone. The invite row's own "Copy Invite Link" button
-    // (see renderTeamList) is the fallback this message points them to.
+    // worth logging, but not a reason to tell the user the invite failed.
     console.error("[invoice-team] sending invitation email failed:", err);
-    // EmailJS SDK errors carry .status/.text (e.g. 403 + "Forbidden" when
-    // the calling origin isn't allow-listed, 422 + a field-validation
-    // message) -- surfacing that detail is what finally makes this class
-    // of failure diagnosable from a phone screenshot instead of needing
-    // browser dev tools, which isn't practical on mobile.
-    const detail = err && (err.status || err.text || err.message)
-      ? " (" + [err.status, err.text || err.message].filter(Boolean).join(": ") + ")"
-      : "";
-    if (typeof toast === "function") toast("Invite created, but the notification email couldn't be sent" + detail + ". Use \"Copy Invite Link\" below to share it yourself.", "err");
   }
 }
 
@@ -264,13 +227,7 @@ async function handleSendInvite() {
     await refreshTeam(businessId);
   } catch (err) {
     console.error("[invoice-team] send invite failed:", err);
-    // Surface the real reason (e.g. Firestore's own "permission-denied")
-    // instead of a bare generic message -- this is exactly the kind of
-    // rules-sync bug that generic messages made painfully slow to track
-    // down before. err.code/message are safe to show: they describe the
-    // failed operation, not any private data.
-    const detail = err && (err.code || err.message) ? " (" + (err.code || err.message) + ")" : "";
-    setError("invTeamModalError", "Could not send the invite right now. Please try again." + detail);
+    setError("invTeamModalError", "Could not send the invite right now. Please try again.");
   } finally {
     btn.disabled = false; btn.textContent = originalText;
   }
@@ -302,7 +259,7 @@ function permissionSummary(permissions) {
   if (permissions.invoices && permissions.invoices.delete) parts.push("Delete Invoices");
   if (permissions.inventory && permissions.inventory.adjust) parts.push("Adjust Inventory");
   if (parts.length === 0) {
-    const anyEdit = ["customers", "products", "suppliers", "expenses"].some(r => permissions[r] && (permissions[r].create || permissions[r].edit));
+    const anyEdit = ["customers", "products"].some(r => permissions[r] && (permissions[r].create || permissions[r].edit));
     parts.push(anyEdit ? "Standard access" : "View only");
   }
   return parts.join(", ");
@@ -336,8 +293,7 @@ function renderTeamList() {
           <div class="inv-record-sub">${escapeHtml(i.role)} · Pending invite</div>
         </div>
         <div class="inv-record-actions">
-          <button type="button" class="btn btn-ghost inv-team-copy-link" data-invite-id="${i.id}" data-email="${escapeHtml(i.email)}">Copy Invite Link</button>
-          <button type="button" class="btn btn-danger inv-team-revoke" data-invite-id="${i.id}">Revoke</button>
+          <button type="button" class="btn btn-ghost inv-team-revoke" data-invite-id="${i.id}">Revoke</button>
         </div>
       </div>
     `);
@@ -373,35 +329,6 @@ async function handleRemoveMember(uid) {
   } catch (err) {
     console.error("[invoice-team] remove member failed:", err);
     setError("invTeamError", "Could not remove that person right now.");
-  }
-}
-
-/** Fallback for when the notification email never arrives (a real,
-    reported limitation of the EmailJS-based best-effort send above --
-    the invite itself is always valid and usable regardless): lets the
-    business owner copy the exact same accept-link the email would have
-    contained and share it themselves (WhatsApp, SMS, in person, etc).
-    Uses the same URL shape detectPendingInvitesForUser() above parses
-    (?invite=<email>&biz=<businessId>), since invites are keyed by
-    email -- so this is never a second/different link than the emailed
-    one, just a manual copy of it. */
-async function handleCopyInviteLink(btn) {
-  const email = btn.dataset.email;
-  const businessId = window.toolflightInvoiceBusiness ? window.toolflightInvoiceBusiness.getBusinessId() : null;
-  if (!email || !businessId) return;
-  const link = window.location.origin + window.location.pathname + "?invite=" + encodeURIComponent(email) + "&biz=" + encodeURIComponent(businessId);
-  const originalText = btn.textContent;
-  try {
-    await navigator.clipboard.writeText(link);
-    btn.textContent = "Copied!";
-  } catch (err) {
-    // Clipboard API can be unavailable (very old browser, insecure
-    // context, permission denied) -- fall back to showing the link
-    // itself so it's still copyable by hand rather than a dead end.
-    console.error("[invoice-team] copying invite link failed:", err);
-    window.prompt("Copy this invite link:", link);
-  } finally {
-    setTimeout(() => { btn.textContent = originalText; }, 2000);
   }
 }
 
@@ -620,7 +547,6 @@ function initTeamUI() {
   $("invTeamList").addEventListener("click", (e) => {
     if (e.target.classList.contains("inv-team-remove")) handleRemoveMember(e.target.dataset.uid);
     else if (e.target.classList.contains("inv-team-revoke")) handleRevokeInvite(e.target.dataset.inviteId);
-    else if (e.target.classList.contains("inv-team-copy-link")) handleCopyInviteLink(e.target);
   });
 
   const teamTabBtns = document.querySelectorAll('.inv-business-tab[data-tab="team"]');

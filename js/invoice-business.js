@@ -23,7 +23,6 @@ let currentBusinessId = null;
 let businessProfile = null;
 let customers = [];
 let products = [];
-let suppliers = [];
 let movements = [];
 let expenses = [];
 let expensesLoaded = false; // lazy-loaded on first Expenses tab open, like inventory movements
@@ -49,7 +48,6 @@ function setSuccess(id, msg) { const el = $(id); if (el) el.textContent = msg ||
 const paginationState = {
   customers: { page: 1, pageSize: 20 },
   products: { page: 1, pageSize: 20 },
-  suppliers: { page: 1, pageSize: 20 },
   inventory: { page: 1, pageSize: 20 },
   expenses: { page: 1, pageSize: 20 },
 };
@@ -386,132 +384,6 @@ async function refreshCustomers() {
 }
 
 /* ==================================================================
-   SUPPLIERS
-   ==================================================================
-   Same architecture and shape as Customers -- businesses/{id}/suppliers
-   subcollection, one document per supplier, own permission resource
-   ('suppliers') in firestore.rules and js/invoice-team.js. Eagerly
-   loaded alongside customers/products at sign-in (refreshCustomersAndProducts),
-   matching how Customers/Products already work rather than the
-   lazy-load pattern used for the larger Inventory/Expenses/Invoices lists. */
-
-async function listSuppliers(businessId) {
-  const db = getDb();
-  const fns = await loadFirestoreFns();
-  const snap = await fns.getDocs(fns.collection(db, "businesses", businessId, "suppliers"));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-function readSupplierFormData() {
-  return {
-    name: $("invSupFormName").value.trim(),
-    contactPerson: $("invSupFormContact").value.trim(),
-    phone: $("invSupFormPhone").value.trim(),
-    email: $("invSupFormEmail").value.trim(),
-    address: $("invSupFormAddress").value.trim(),
-    taxId: $("invSupFormTaxId").value.trim(),
-    notes: $("invSupFormNotes").value.trim(),
-  };
-}
-
-function openSupplierModal(supplier) {
-  $("invSupplierModalTitle").textContent = supplier ? "Edit Supplier" : "Add Supplier";
-  $("invSupplierEditId").value = supplier ? supplier.id : "";
-  $("invSupFormName").value = supplier ? supplier.name || "" : "";
-  $("invSupFormContact").value = supplier ? supplier.contactPerson || "" : "";
-  $("invSupFormPhone").value = supplier ? supplier.phone || "" : "";
-  $("invSupFormEmail").value = supplier ? supplier.email || "" : "";
-  $("invSupFormAddress").value = supplier ? supplier.address || "" : "";
-  $("invSupFormTaxId").value = supplier ? supplier.taxId || "" : "";
-  $("invSupFormNotes").value = supplier ? supplier.notes || "" : "";
-  setError("invSupFormError", "");
-  $("invSupplierModal").classList.add("show");
-}
-
-async function handleSaveSupplier() {
-  const btn = $("invSupFormSaveBtn");
-  const data = readSupplierFormData();
-  const editId = $("invSupplierEditId").value;
-  setError("invSupFormError", "");
-
-  if (!isNonEmpty(data.name)) { setError("invSupFormError", "Supplier name is required."); return; }
-  if (!getDb() || !currentBusinessId) { setError("invSupFormError", NOT_CONFIGURED_MESSAGE); return; }
-
-  const originalText = btn.textContent;
-  btn.disabled = true; btn.textContent = "Saving…";
-  try {
-    const db = getDb();
-    const fns = await loadFirestoreFns();
-    if (editId) {
-      await fns.updateDoc(fns.doc(db, "businesses", currentBusinessId, "suppliers", editId), data);
-    } else {
-      await fns.addDoc(fns.collection(db, "businesses", currentBusinessId, "suppliers"), { ...data, createdAt: fns.serverTimestamp() });
-    }
-    $("invSupplierModal").classList.remove("show");
-    await refreshSuppliers();
-  } catch (err) {
-    console.error("[invoice-business] save supplier failed:", err);
-    setError("invSupFormError", "Could not save right now. Please try again.");
-  } finally {
-    btn.disabled = false; btn.textContent = originalText;
-  }
-}
-
-async function handleDeleteSupplier(supplierId) {
-  if (!confirm("Delete this supplier? This cannot be undone.")) return;
-  try {
-    const db = getDb();
-    const fns = await loadFirestoreFns();
-    await fns.deleteDoc(fns.doc(db, "businesses", currentBusinessId, "suppliers", supplierId));
-    await refreshSuppliers();
-  } catch (err) {
-    console.error("[invoice-business] delete supplier failed:", err);
-    setError("invSuppliersError", "Could not delete right now. Please try again.");
-  }
-}
-
-function renderSuppliersList(filterText) {
-  paginationRenderers.suppliers = () => renderSuppliersList(filterText);
-  const list = $("invSuppliersList");
-  const term = (filterText || "").trim().toLowerCase();
-  const filtered = term
-    ? suppliers.filter(s => (s.name||"").toLowerCase().includes(term) || (s.contactPerson||"").toLowerCase().includes(term) || (s.email||"").toLowerCase().includes(term) || (s.phone||"").toLowerCase().includes(term))
-    : suppliers;
-  const sorted = sortByName(filtered, "name");
-
-  if (sorted.length === 0) {
-    list.innerHTML = `<p class="editor-hint">${suppliers.length === 0 ? "No suppliers yet. Add your first one above." : "No suppliers match your search."}</p>`;
-    $("invSuppliersPagination").innerHTML = "";
-    return;
-  }
-  const { pageItems, controlsHtml } = paginate("suppliers", sorted);
-  list.innerHTML = pageItems.map(s => `
-    <div class="inv-record-row" data-id="${s.id}">
-      <div class="inv-record-main">
-        <div class="inv-record-name">${escapeHtml(s.name)}</div>
-        <div class="inv-record-sub">${[s.contactPerson, s.email, s.phone].filter(Boolean).map(escapeHtml).join(" · ") || "&nbsp;"}</div>
-      </div>
-      <div class="inv-record-actions">
-        <button type="button" class="btn inv-btn-edit inv-supplier-edit" data-id="${s.id}">Edit</button>
-        <button type="button" class="btn btn-danger inv-supplier-delete" data-id="${s.id}">Delete</button>
-      </div>
-    </div>
-  `).join("");
-  $("invSuppliersPagination").innerHTML = controlsHtml;
-}
-
-async function refreshSuppliers() {
-  if (!currentBusinessId) return;
-  try {
-    suppliers = await listSuppliers(currentBusinessId);
-    renderSuppliersList($("invSupplierSearch") ? $("invSupplierSearch").value : "");
-  } catch (err) {
-    console.error("[invoice-business] load suppliers failed:", err);
-    setError("invSuppliersError", "Could not load suppliers right now.");
-  }
-}
-
-/* ==================================================================
    PRODUCTS
    ================================================================== */
 
@@ -816,212 +688,6 @@ function renderExpensesList(filterText) {
 }
 
 /* ==================================================================
-   REPORTS -- read-only analytics. Every number below is derived from
-   data already loaded elsewhere (invoices via the invoice-history.js
-   bridge, customers/products from this module) -- no new Firestore
-   collection, no invented/sample figures. Charts are plain inline SVG
-   built from scratch here, reusing the .inv-chart-svg/.inv-chart-x-labels/
-   .inv-tc-row/.inv-tc-avatar classes that already exist in css/invoice.css
-   from an earlier phase's dashboard (now unused there), rather than
-   adding a charting library and a new CSP allowance for it.
-   ================================================================== */
-
-function monthKeyOf(dateStr) {
-  return (typeof dateStr === "string" && dateStr.length >= 7) ? dateStr.slice(0, 7) : null;
-}
-
-function lastNMonthKeys(n) {
-  const out = [];
-  const now = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0"));
-  }
-  return out;
-}
-
-function monthShortLabel(key) {
-  const parts = key.split("-").map(Number);
-  return new Date(parts[0], parts[1] - 1, 1).toLocaleDateString(undefined, { month: "short" });
-}
-
-function monthFullLabel(key) {
-  const parts = key.split("-").map(Number);
-  return new Date(parts[0], parts[1] - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
-const CHART_COLORS = ["var(--cat-green)", "var(--cat-blue)", "var(--cat-purple)", "var(--cat-orange)", "var(--cat-green)"];
-
-/** Renders a grouped bar chart (1+ series) into an inline SVG. `series`
-    is an array of { values: number[] (one per month key), color }. */
-function renderBarChart(svgId, labelsId, monthKeys, series) {
-  const svg = $(svgId);
-  const labelsEl = $(labelsId);
-  if (!svg || !labelsEl) return;
-  const W = 600, H = 150, padBottom = 4;
-  const maxVal = Math.max(1, ...series.flatMap(s => s.values));
-  const n = Math.max(1, monthKeys.length);
-  const groupWidth = W / n;
-  const gap = 4;
-  const barWidth = Math.max(1, (groupWidth - gap * (series.length + 1)) / series.length);
-  let rects = "";
-  monthKeys.forEach((mk, i) => {
-    series.forEach((s, si) => {
-      const val = Number(s.values[i]) || 0;
-      const barH = maxVal > 0 ? (val / maxVal) * (H - padBottom) : 0;
-      const x = i * groupWidth + gap + si * (barWidth + gap);
-      const y = H - padBottom - barH;
-      rects += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(barH, val > 0 ? 1.5 : 0).toFixed(1)}" rx="2" fill="${s.color}"></rect>`;
-    });
-  });
-  svg.innerHTML = rects;
-  labelsEl.innerHTML = monthKeys.map(mk => `<span>${escapeHtml(monthShortLabel(mk))}</span>`).join("");
-}
-
-function rankedListHtml(entries, fmt) {
-  if (entries.length === 0) return `<p class="editor-hint">No invoice data yet.</p>`;
-  return entries.map(([name, total], i) => `
-    <div class="inv-tc-row">
-      <div class="inv-tc-avatar" style="background:${CHART_COLORS[i % CHART_COLORS.length]};">${escapeHtml((name || "?").charAt(0).toUpperCase())}</div>
-      <div style="flex:1;min-width:0;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</div>
-      <div class="inv-record-amount">${fmt(total)}</div>
-    </div>
-  `).join("");
-}
-
-async function refreshReports() {
-  if (!currentBusinessId) return;
-  if (window.toolflightInvoiceHistory) {
-    try {
-      await window.toolflightInvoiceHistory.refreshInvoices(currentBusinessId);
-    } catch (err) {
-      console.error("[invoice-business] reports: could not refresh invoices:", err);
-    }
-  }
-  renderReports();
-}
-
-function renderReports() {
-  const invoices = window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.getInvoices() : [];
-  const currency = (businessProfile && businessProfile.defaultCurrency) ||
-    (invoices[0] && invoices[0].meta && invoices[0].meta.currency) || "USD";
-  const fmt = (n) => window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.formatMoney(n, currency) : currency + " " + Number(n || 0).toFixed(2);
-
-  const totalRevenue = invoices.reduce((sum, inv) => sum + Number((inv.totals && inv.totals.total) || 0), 0);
-  $("invReportsStatRevenue").textContent = fmt(totalRevenue);
-  $("invReportsStatInvoices").textContent = String(invoices.length);
-  $("invReportsStatAvg").textContent = fmt(invoices.length ? totalRevenue / invoices.length : 0);
-  const activeCustomerNames = new Set(invoices.map(inv => (inv.customer && inv.customer.name) || "").filter(Boolean));
-  $("invReportsStatCustomers").textContent = String(activeCustomerNames.size);
-
-  const months = lastNMonthKeys(6);
-  const monthTotals = months.map(mk => invoices.reduce((sum, inv) =>
-    monthKeyOf(inv.meta && inv.meta.date) === mk ? sum + Number((inv.totals && inv.totals.total) || 0) : sum, 0));
-  renderBarChart("invReportsTrendSvg", "invReportsTrendLabels", months, [{ values: monthTotals, color: "var(--accent1)" }]);
-
-  const customerTotals = {};
-  invoices.forEach(inv => {
-    const name = (inv.customer && inv.customer.name) || "Unknown";
-    customerTotals[name] = (customerTotals[name] || 0) + Number((inv.totals && inv.totals.total) || 0);
-  });
-  const topCustomers = Object.entries(customerTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  $("invReportsTopCustomers").innerHTML = rankedListHtml(topCustomers, fmt);
-
-  const productTotals = {};
-  invoices.forEach(inv => {
-    (inv.items || []).forEach(item => {
-      const name = (item && item.description) || "Unnamed item";
-      const lineTotal = Number(item && item.qty || 0) * Number(item && item.price || 0);
-      productTotals[name] = (productTotals[name] || 0) + lineTotal;
-    });
-  });
-  const topProducts = Object.entries(productTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  $("invReportsTopProducts").innerHTML = rankedListHtml(topProducts, fmt);
-}
-
-/* ==================================================================
-   ACCOUNTING -- a simple Profit & Loss view. Income is the sum of
-   saved invoice totals (the invoice schema has no payment-status
-   field to separate paid from unpaid invoices, so "total invoiced" is
-   the honest number here, not a fabricated "collected" figure).
-   Expenses come from the Expenses module above. No new Firestore
-   collection either.
-   ================================================================== */
-
-async function refreshAccounting() {
-  if (!currentBusinessId) return;
-  if (window.toolflightInvoiceHistory) {
-    try {
-      await window.toolflightInvoiceHistory.refreshInvoices(currentBusinessId);
-    } catch (err) {
-      console.error("[invoice-business] accounting: could not refresh invoices:", err);
-    }
-  }
-  if (!expensesLoaded) {
-    try {
-      await refreshExpenses();
-    } catch (err) {
-      console.error("[invoice-business] accounting: could not refresh expenses:", err);
-    }
-  }
-  renderAccounting();
-}
-
-function renderAccounting() {
-  const invoices = window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.getInvoices() : [];
-  const currency = (businessProfile && businessProfile.defaultCurrency) ||
-    (invoices[0] && invoices[0].meta && invoices[0].meta.currency) || "USD";
-  const fmt = (n) => window.toolflightInvoiceHistory ? window.toolflightInvoiceHistory.formatMoney(n, currency) : currency + " " + Number(n || 0).toFixed(2);
-
-  const totalIncome = invoices.reduce((sum, inv) => sum + Number((inv.totals && inv.totals.total) || 0), 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const net = totalIncome - totalExpenses;
-  const margin = totalIncome > 0 ? (net / totalIncome) * 100 : 0;
-
-  $("invAcctStatIncome").textContent = fmt(totalIncome);
-  $("invAcctStatExpenses").textContent = fmt(totalExpenses);
-  $("invAcctStatNet").textContent = fmt(net);
-  $("invAcctStatMargin").textContent = (totalIncome > 0 ? margin.toFixed(1) : "0.0") + "%";
-
-  const months = lastNMonthKeys(6);
-  const incomeByMonth = months.map(mk => invoices.reduce((sum, inv) =>
-    monthKeyOf(inv.meta && inv.meta.date) === mk ? sum + Number((inv.totals && inv.totals.total) || 0) : sum, 0));
-  const expensesByMonth = months.map(mk => expenses.reduce((sum, e) =>
-    (typeof e.date === "string" && e.date.slice(0, 7) === mk) ? sum + (Number(e.amount) || 0) : sum, 0));
-  renderBarChart("invAcctTrendSvg", "invAcctTrendLabels", months, [
-    { values: incomeByMonth, color: "var(--cat-green)" },
-    { values: expensesByMonth, color: "var(--cat-orange)" },
-  ]);
-
-  $("invAcctMonthlyList").innerHTML = months.slice().reverse().map((mk, revIdx) => {
-    const i = months.length - 1 - revIdx;
-    const inc = incomeByMonth[i], exp = expensesByMonth[i], netM = inc - exp;
-    return `
-      <div class="inv-record-row">
-        <div class="inv-record-main">
-          <div class="inv-record-name">${escapeHtml(monthFullLabel(mk))}</div>
-          <div class="inv-record-sub">Income ${fmt(inc)} · Expenses ${fmt(exp)}</div>
-        </div>
-        <div class="inv-record-amount" style="color:${netM >= 0 ? "var(--ok-solid,#16A34A)" : "var(--err-solid,#DC2626)"};">${fmt(netM)}</div>
-      </div>
-    `;
-  }).join("");
-
-  const categoryTotals = {};
-  expenses.forEach(e => {
-    const cat = e.category || "Other";
-    categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount) || 0);
-  });
-  const catEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
-  $("invAcctCategoryList").innerHTML = catEntries.length ? catEntries.map(([cat, total]) => `
-    <div class="inv-record-row">
-      <div class="inv-record-main"><div class="inv-record-name">${escapeHtml(cat)}</div></div>
-      <div class="inv-record-amount">${fmt(total)}</div>
-    </div>
-  `).join("") : `<p class="editor-hint">No expenses recorded yet.</p>`;
-}
-
-/* ==================================================================
    Adjust Stock (Phase 5) -- covers both "Add Stock" (a positive
    change, e.g. a new purchase) and "Stock Adjustment" (positive or
    negative, e.g. damage/loss/correction) with one form, since both are
@@ -1165,10 +831,7 @@ async function refreshProducts() {
 }
 
 async function refreshCustomersAndProducts() {
-  // Suppliers refreshed alongside Customers/Products -- same "small
-  // master-data list, load it eagerly at sign-in" treatment, not the
-  // lazy-on-tab-open pattern used for Inventory/Expenses/Invoices.
-  await Promise.all([refreshCustomers(), refreshProducts(), refreshSuppliers()]);
+  await Promise.all([refreshCustomers(), refreshProducts()]);
 }
 
 function matchesStockFilter(p, filter) {
@@ -1263,9 +926,6 @@ function escapeHtml(str) {
 window.toolflightInvoiceBusiness = {
   getCustomers: () => customers.slice(),
   getProducts: () => products.slice(),
-  getExpenses: () => expenses.slice(),
-  areExpensesLoaded: () => expensesLoaded,
-  refreshExpenses: () => refreshExpenses(),
   getBusinessProfile: () => businessProfile,
   getBusinessId: () => currentBusinessId,
   refreshAfterJoiningBusiness: async (businessId) => {
@@ -1301,16 +961,6 @@ function switchBusinessTab(tab) {
   if (tab === "expenses") {
     $("invExpensesList").innerHTML = `<p class="inv-dash-empty">Loading expenses…</p>`;
     refreshExpenses();
-  }
-  if (tab === "suppliers") {
-    $("invSuppliersList").innerHTML = `<p class="inv-dash-empty">Loading suppliers…</p>`;
-    refreshSuppliers();
-  }
-  if (tab === "reports") {
-    refreshReports();
-  }
-  if (tab === "accounting") {
-    refreshAccounting();
   }
   if (tab === "dashboard") renderDashboard();
 }
@@ -1568,16 +1218,6 @@ function initBusinessUI() {
     else if (e.target.classList.contains("inv-record-delete")) handleDeleteCustomer(id);
   });
 
-  $("invAddSupplierBtn").addEventListener("click", () => openSupplierModal(null));
-  $("invSupFormSaveBtn").addEventListener("click", handleSaveSupplier);
-  $("invSupplierSearch").addEventListener("input", (e) => { paginationState.suppliers.page = 1; renderSuppliersList(e.target.value); });
-  $("invSuppliersList").addEventListener("click", (e) => {
-    const id = e.target.dataset.id;
-    if (!id) return;
-    if (e.target.classList.contains("inv-supplier-edit")) openSupplierModal(suppliers.find(s => s.id === id));
-    else if (e.target.classList.contains("inv-supplier-delete")) handleDeleteSupplier(id);
-  });
-
   $("invAddProductBtn").addEventListener("click", () => openProductModal(null));
   $("invProdFormTaxEnabled").addEventListener("change", (e) => { $("invProdFormTaxRate").disabled = !e.target.checked; });
   $("invProdFormInventoryTracking").addEventListener("change", (e) => { $("invProdFormThresholdWrap").style.display = e.target.checked ? "" : "none"; });
@@ -1628,37 +1268,15 @@ function initBusinessUI() {
           err.diagnosticStep = "loading customers/products for this business";
           throw err;
         }
-        // Land a returning, already-set-up user straight on their
-        // business's own Dashboard -- not the "Create Invoice / My
-        // Business / Sign Out" chooser bar, which made them take an
-        // extra click every single time just to reach the business
-        // they already have. showBusinessArea() itself hides that
-        // chooser bar along with every other pre-business screen.
-        //
-        // SECURITY GATE: only for a verified user. invoice-auth.js
-        // keeps an unverified user parked on the "Check Your Email"
-        // modal, but that modal's own close (×) button can dismiss it
-        // -- whatever is sitting underneath at that point must never be
-        // real business data. Skipping this auto-navigation for an
-        // unverified user means dismissing that modal reveals nothing
-        // more than the plain guest landing screen, exactly as before.
-        if (user.emailVerified) {
-          showBusinessArea();
-          switchBusinessTab("dashboard");
-        }
       } else {
         currentBusinessId = null; businessProfile = null;
         // Proactively invite a fresh account holder to set up their
         // business -- but only if they're not already mid-way through
         // the guest invoice builder, so signing in never interrupts
-        // someone actively typing an invoice, AND only once their email
-        // is verified (same security gate as above -- an unverified
-        // user must never see even the "set up your business" screen
-        // if they dismiss the verify-email modal).
+        // someone actively typing an invoice.
         const guestBuilderActive = !$("invGuestBuilder").classList.contains("hidden");
-        if (!guestBuilderActive && user.emailVerified) {
+        if (!guestBuilderActive) {
           hide("invModeSelect");
-          hide("invAccountBar"); // same reasoning as above: a first-time signed-in user lands on ONE clear "set up your business" screen, not that plus a leftover chooser bar
           hide("invBusinessLookupError");
           show("invSetupPrompt");
         }
@@ -1688,7 +1306,7 @@ function initBusinessUI() {
     currentUser = user;
     if (!user) {
       lastProcessedUid = null;
-      currentBusinessId = null; businessProfile = null; customers = []; products = []; suppliers = [];
+      currentBusinessId = null; businessProfile = null; customers = []; products = [];
       // Sign-out bug fix: clearing the in-memory state above was never
       // enough on its own -- if the person was inside My Business (or
       // any protected screen) at the moment they signed out, the DOM
