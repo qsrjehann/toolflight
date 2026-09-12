@@ -157,15 +157,33 @@ service cloud.firestore {
         allow read: if hasPermission(businessId, 'team', 'manage') ||
           (isSignedIn() && resource.data.email == myEmail());
         allow create: if hasPermission(businessId, 'team', 'manage') && request.resource.data.role != 'owner';
-        // Only two legitimate transitions: an owner/manager revoking a
-        // still-pending invite, or the invited person themselves
-        // accepting it (and only flipping status to "accepted", nothing
-        // else about the invite -- role/permissions on an invite are
-        // fixed at creation time by whoever sent it).
-        allow update: if (hasPermission(businessId, 'team', 'manage') && request.resource.data.status == 'revoked') ||
+        // BUG FIX: invites are keyed by email (doc ID = the invitee's
+        // email), so re-inviting an email that was EVER invited before
+        // -- accepted, declined, revoked, expired, doesn't matter --
+        // writes to a path that already has a document there. Firestore
+        // classifies that write as an UPDATE, not a create, regardless
+        // of which client SDK method (setDoc/updateDoc) was used. The
+        // old rule below only allowed an update to *revoke* a pending
+        // invite or to *accept* one -- it had no path for "owner/manager
+        // sends a brand new invite over a stale one" at all, so
+        // re-inviting anyone previously invited failed outright with a
+        // generic "could not send" error. Fixed by allowing any
+        // owner/manager update as long as the new role still isn't
+        // 'owner' (the same condition create already enforces) --
+        // revoking is just one such update (status -> 'revoked'), so
+        // that transition doesn't need its own separate clause anymore.
+        // SECOND BUG FIX, found while auditing the one above: declining
+        // an invite (js/invoice-team.js's handleDeclineInvite -- flips
+        // status to 'declined') was never coverable by any clause here
+        // either -- only a flip to 'accepted' was ever allowed for the
+        // invitee. Declining has therefore never actually worked. Now
+        // covered by the same clause as accepting, since both are the
+        // invitee resolving their own still-pending, non-expired invite
+        // without changing anything else about it.
+        allow update: if (hasPermission(businessId, 'team', 'manage') && request.resource.data.role != 'owner') ||
           (isSignedIn() && resource.data.email == myEmail() &&
            resource.data.status == 'pending' && resource.data.expiresAtMs > request.time.toMillis() &&
-           request.resource.data.status == 'accepted' &&
+           (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined') &&
            request.resource.data.role == resource.data.role);
         allow delete: if hasPermission(businessId, 'team', 'manage');
       }
@@ -189,6 +207,30 @@ service cloud.firestore {
         // not edit product details must still be able to complete a sale.
         allow update: if hasPermission(businessId, 'products', 'edit') || hasPermission(businessId, 'invoices', 'create');
         allow delete: if hasPermission(businessId, 'products', 'delete');
+      }
+
+      // ---- suppliers (My Business: Suppliers) -- same CRUD shape as
+      // customers, its own permission resource so a role can be given
+      // supplier access independently of customer access.
+      match /suppliers/{supplierId} {
+        allow read: if hasPermission(businessId, 'suppliers', 'view');
+        allow create: if hasPermission(businessId, 'suppliers', 'create');
+        allow update: if hasPermission(businessId, 'suppliers', 'edit');
+        allow delete: if hasPermission(businessId, 'suppliers', 'delete');
+      }
+
+      // ---- expenses (Phase C, client-side) -- BUG FIX: this feature has
+      // been fully built and shipped client-side (js/invoice-business.js)
+      // since Phase C, but no rule for it was ever added here, meaning
+      // every read/write against businesses/{id}/expenses/* has been
+      // silently permission-denied in any real deployment. Same CRUD
+      // shape as customers/suppliers, gated on its own 'expenses'
+      // permission resource.
+      match /expenses/{expenseId} {
+        allow read: if hasPermission(businessId, 'expenses', 'view');
+        allow create: if hasPermission(businessId, 'expenses', 'create');
+        allow update: if hasPermission(businessId, 'expenses', 'edit');
+        allow delete: if hasPermission(businessId, 'expenses', 'delete');
       }
 
       // ---- inventory ----
