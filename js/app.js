@@ -452,8 +452,15 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
     maskW, maskH, complexitySampleRadius
   );
   const blurred = new Float32Array(n);
+  // Saved per-pixel (not just used locally) so the final sharpening pass
+  // below can re-use the exact same simple-vs-complex judgment: it must
+  // stay tight on genuinely simple boundaries and hands-off on hair/fur,
+  // and re-deriving it from the already-blurred `blurred` array afterward
+  // would no longer distinguish the two cases correctly.
+  const complexityWeightArr = new Float32Array(n);
   for (let i=0; i<n; i++){
     const complexityWeight = Math.max(0, Math.min(1, localComplexity[i] / 60)); // 0 = simple boundary, 1 = complex/hair-like
+    complexityWeightArr[i] = complexityWeight;
     blurred[i] = blurredTight[i]*(1-complexityWeight) + blurredWide[i]*complexityWeight;
   }
 
@@ -497,6 +504,39 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
     finalRes = combined;
   }
 
+  // Final edge-sharpening pass: pushes the alpha transition closer to a
+  // hard, binary cut specifically on simple boundaries (a shirt hem, a
+  // straight edge, a product outline) -- addressing feedback that clean
+  // edges should look razor-sharp / professional-matte rather than
+  // visibly gradiented -- while leaving genuinely complex boundaries
+  // (hair, fur, the localComplexity signal computed above) at their
+  // existing, deliberately soft feather untouched. Implemented as a
+  // steepened sigmoid around the 50% midpoint: steepness k=1 (no change)
+  // wherever complexityWeightArr is 1 (fully hair-like), rising to
+  // SHARPEN_MAX at complexityWeightArr=0 (fully simple boundary), so this
+  // can only ever tighten a transition, never widen one. The 0.47 cap
+  // below only applies to pixels that were NOT already fully confident
+  // (originalMag < 0.5) -- so a genuinely already-opaque/transparent
+  // interior/exterior pixel (originalMag exactly 0.5, the overwhelming
+  // majority of the mask) is left at full 0/255 exactly as before, while a
+  // pixel actually influenced by the edge transition keeps a sliver of
+  // real anti-aliasing (~3% alpha) instead of collapsing to a literal
+  // 1-pixel binary cliff, which would look jagged/stair-stepped on screen
+  // rather than the smooth "professional cutout" look intended. Without
+  // this originalMag guard, capping would uniformly shave every fully-
+  // confident pixel in the whole mask down to ~97% opacity too -- a subtle
+  // whole-subject translucency regression, not just a tighter edge.
+  const SHARPEN_MAX = 3.5;
+  for (let i=0; i<n; i++){
+    const v = finalRes[i] / 255;
+    const k = 1 + (1 - complexityWeightArr[i]) * (SHARPEN_MAX - 1);
+    const c = v - 0.5;
+    const originalMag = Math.abs(c);
+    let mag = Math.min(0.5, originalMag * k);
+    if (originalMag < 0.5) mag = Math.min(mag, 0.47);
+    finalRes[i] = (0.5 + Math.sign(c) * mag) * 255;
+  }
+
   const out2 = new Uint8ClampedArray(outW*outH);
   for (let y=0; y<outH; y++){
     for (let x=0; x<outW; x++){
@@ -505,6 +545,72 @@ function refineSegmentationMask({ maskData, maskW, maskH, confidenceData, confW,
     }
   }
   return out2;
+}
+
+// Alpha color decontamination ("defringing"): removes the dark/light
+// "halo" artifact that appears at a cutout's edge when the ORIGINAL pixel
+// colors are kept unchanged and only the alpha channel is made partially
+// transparent there. A pixel right at the boundary was captured by the
+// camera as a physical blend of the subject's true color and the
+// background's color (that's what a soft real-world edge or a semi-
+// transparent alpha pixel actually represents), so simply carrying that
+// blended color forward at reduced opacity leaves a visible rim of the
+// original background's color/darkness once composited onto a NEW
+// background (most obviously a transparent one, since there's nothing
+// there to mask it).
+// This replaces each edge pixel's RGB with a color estimate drawn only
+// from nearby CONFIDENTLY-opaque pixels (multi-source BFS nearest-fill,
+// the same flood-fill primitive style as fillHoles/removeSmallIslands
+// above) -- so the halo simply has no contaminated color left to show,
+// regardless of what the original background behind that edge happened to
+// look like. Confidently-transparent interior background pixels and
+// confidently-opaque interior subject pixels are left completely alone;
+// only the ambiguous edge band is touched, and even there the correction
+// is blended in proportionally to how far a pixel actually is from fully
+// opaque, so it can only ever replace color that alpha is already mostly
+// discarding.
+function decontaminateEdgeColors(pixels, alpha, w, h){
+  const n = w*h;
+  const CONFIDENT_THRESH = 250;
+  let anyConfident = false;
+  const fillR = new Float32Array(n), fillG = new Float32Array(n), fillB = new Float32Array(n);
+  const visited = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let qHead = 0, qTail = 0;
+  for (let i=0; i<n; i++){
+    if (alpha[i] >= CONFIDENT_THRESH){
+      fillR[i] = pixels[i*4]; fillG[i] = pixels[i*4+1]; fillB[i] = pixels[i*4+2];
+      visited[i] = 1; queue[qTail++] = i; anyConfident = true;
+    }
+  }
+  if (!anyConfident) return; // nothing confidently opaque to decontaminate against -- leave colors untouched
+  while (qHead < qTail){
+    const idx = queue[qHead++];
+    const x = idx % w, y = (idx / w) | 0;
+    const neighbors = [
+      x>0 ? idx-1 : -1, x<w-1 ? idx+1 : -1,
+      y>0 ? idx-w : -1, y<h-1 ? idx+w : -1,
+    ];
+    for (const nb of neighbors){
+      if (nb >= 0 && !visited[nb]){
+        visited[nb] = 1;
+        fillR[nb] = fillR[idx]; fillG[nb] = fillG[idx]; fillB[nb] = fillB[idx];
+        queue[qTail++] = nb;
+      }
+    }
+  }
+  for (let i=0; i<n; i++){
+    if (alpha[i] > 0 && alpha[i] < CONFIDENT_THRESH){
+      // Weight rises quickly as alpha drops away from the confident
+      // threshold, since that's exactly where background contamination in
+      // the original camera pixel is strongest.
+      const weight = Math.min(1, (1 - alpha[i]/CONFIDENT_THRESH) * 1.4);
+      const ci = i*4;
+      pixels[ci]   = pixels[ci]  *(1-weight) + fillR[i]*weight;
+      pixels[ci+1] = pixels[ci+1]*(1-weight) + fillG[i]*weight;
+      pixels[ci+2] = pixels[ci+2]*(1-weight) + fillB[i]*weight;
+    }
+  }
 }
 
 // ---- Primary subject selection ----------------------------------------
@@ -3449,6 +3555,11 @@ if (document.getElementById('aiRemoveDrop')){
       for (let i = 0; i < w*h; i++){
         pixels[i*4 + 3] = refinedAlpha[i];
       }
+      // Strip the dark/light "halo" left by background color bleeding into
+      // the original camera pixel right at the cutout edge -- see
+      // decontaminateEdgeColors' own header for why this has to run on the
+      // actual RGB values, not just the alpha channel above.
+      decontaminateEdgeColors(pixels, refinedAlpha, w, h);
       octx.putImageData(imageData, 0, 0);
       if (result.categoryMask.close) result.categoryMask.close();
       if (result.confidenceMasks) result.confidenceMasks.forEach(m => m.close && m.close());
@@ -4705,6 +4816,50 @@ if (document.getElementById('aiRemoveDrop')){
   function getExportWorker(){
     if (exportWorker) return exportWorker;
     const workerSrc = `
+      // Same edge color-decontamination algorithm as decontaminateEdgeColors
+      // in the main app.js (duplicated, not shared: a Worker is a separate
+      // JS realm with no access to the page's functions). Keep any change
+      // to that halo-removal logic in sync with this copy.
+      function decontaminateEdgeColorsWorker(pixels, alpha, w, h){
+        const n = w*h;
+        const CONFIDENT_THRESH = 250;
+        let anyConfident = false;
+        const fillR = new Float32Array(n), fillG = new Float32Array(n), fillB = new Float32Array(n);
+        const visited = new Uint8Array(n);
+        const queue = new Int32Array(n);
+        let qHead = 0, qTail = 0;
+        for (let i=0; i<n; i++){
+          if (alpha[i] >= CONFIDENT_THRESH){
+            fillR[i] = pixels[i*4]; fillG[i] = pixels[i*4+1]; fillB[i] = pixels[i*4+2];
+            visited[i] = 1; queue[qTail++] = i; anyConfident = true;
+          }
+        }
+        if (!anyConfident) return;
+        while (qHead < qTail){
+          const idx = queue[qHead++];
+          const x = idx % w, y = (idx / w) | 0;
+          const neighbors = [
+            x>0 ? idx-1 : -1, x<w-1 ? idx+1 : -1,
+            y>0 ? idx-w : -1, y<h-1 ? idx+w : -1,
+          ];
+          for (const nb of neighbors){
+            if (nb >= 0 && !visited[nb]){
+              visited[nb] = 1;
+              fillR[nb] = fillR[idx]; fillG[nb] = fillG[idx]; fillB[nb] = fillB[idx];
+              queue[qTail++] = nb;
+            }
+          }
+        }
+        for (let i=0; i<n; i++){
+          if (alpha[i] > 0 && alpha[i] < CONFIDENT_THRESH){
+            const weight = Math.min(1, (1 - alpha[i]/CONFIDENT_THRESH) * 1.4);
+            const ci = i*4;
+            pixels[ci]   = pixels[ci]  *(1-weight) + fillR[i]*weight;
+            pixels[ci+1] = pixels[ci+1]*(1-weight) + fillG[i]*weight;
+            pixels[ci+2] = pixels[ci+2]*(1-weight) + fillB[i]*weight;
+          }
+        }
+      }
       self.onmessage = async function(e){
         try{
           const { originalBitmap, maskBitmap, w, h } = e.data;
@@ -4719,12 +4874,15 @@ if (document.getElementById('aiRemoveDrop')){
           const out = new OffscreenCanvas(w, h);
           const outCtx = out.getContext('2d');
           const outData = outCtx.createImageData(w, h);
-          for (let i = 0; i < colorData.data.length; i += 4){
+          const fullAlpha = new Uint8ClampedArray(w*h);
+          for (let i = 0, p = 0; i < colorData.data.length; i += 4, p++){
             outData.data[i] = colorData.data[i];
             outData.data[i+1] = colorData.data[i+1];
             outData.data[i+2] = colorData.data[i+2];
             outData.data[i+3] = maskData.data[i];
+            fullAlpha[p] = maskData.data[i];
           }
+          decontaminateEdgeColorsWorker(outData.data, fullAlpha, w, h);
           outCtx.putImageData(outData, 0, 0);
           const blob = await out.convertToBlob({ type: 'image/png' });
           self.postMessage({ ok: true, blob });
@@ -4760,6 +4918,14 @@ if (document.getElementById('aiRemoveDrop')){
       outData.data[i+2] = colorData.data[i+2];
       outData.data[i+3] = maskData.data[i];
     }
+    // Full-resolution export re-composites straight from the ORIGINAL
+    // full-res file plus an upscaled alpha mask -- the working-resolution
+    // decontamination applied to the on-screen preview earlier never
+    // touched this fresh copy, so it has to run again here or the
+    // downloaded file would still show the halo the preview doesn't.
+    const fullAlpha = new Uint8ClampedArray(fullW*fullH);
+    for (let i = 0, p = 0; i < outData.data.length; i += 4, p++) fullAlpha[p] = outData.data[i+3];
+    decontaminateEdgeColors(outData.data, fullAlpha, fullW, fullH);
     octx.putImageData(outData, 0, 0);
     return out;
   }
