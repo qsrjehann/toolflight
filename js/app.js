@@ -761,6 +761,143 @@ function selectPrimarySubjectMask(rawMaskData, maskW, maskH, confidenceMasks){
   return out;
 }
 
+// ---- Touching-subject separation (erosion-based blob splitting) -------
+// selectPrimarySubjectMask above can only choose between subjects that
+// land in genuinely SEPARATE connected components -- its own header
+// comment states the honest limitation: two subjects of the same class
+// that are physically touching/overlapping in the frame (e.g. a person's
+// head against a background person's shoulder) are already ONE connected
+// region by the time it runs, so there is nothing to choose between and
+// both survive together. There is no instance-segmentation model
+// available in this environment to split them, so this uses a purely
+// mathematical morphological technique instead: erode the mask just
+// enough to snap the thin pixel bridge at the touching point (almost
+// always much narrower than either subject's own body), label the
+// resulting separate blobs, keep only the one that best matches "the
+// subject" (largest mass, closest to the image's vertical centerline),
+// then dilate that single blob back out by the same amount to restore
+// its original boundary thickness before handing off to edge refinement.
+//
+// The erosion radius is found ADAPTIVELY, starting at 1px and growing
+// only as far as needed to reveal a genuine second blob (above a noise-
+// floor size) -- not one fixed radius. This matters: a fixed radius large
+// enough to reliably break every touching-bridge would also be large
+// enough to slice through a single, un-merged subject's own thin parts
+// (a neck, a wrist, ankles on a wide stance) purely because they happen
+// to be that narrow -- exactly the false-positive failure mode a single
+// person standing with legs apart must never trigger. Growing the radius
+// one pixel at a time and stopping the instant a split appears means the
+// erosion actually used is always the SMALLEST one that finds a bridge at
+// all, so a subject whose own narrowest point is wider than any real
+// touching-bridge in the photo never gets split.
+function separateTouchingPrimarySubject(mask01, w, h){
+  const n = w*h;
+  const binary = new Uint8ClampedArray(n);
+  for (let i=0; i<n; i++) binary[i] = mask01[i] ? 255 : 0;
+
+  function labelComponents(bin){
+    const visited = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    const comps = [];
+    for (let start=0; start<n; start++){
+      if (visited[start] || bin[start] === 0) continue;
+      let qHead=0, qTail=0;
+      queue[qTail++] = start; visited[start] = 1;
+      const indices = [];
+      let sumX = 0, sumY = 0;
+      while (qHead < qTail){
+        const idx = queue[qHead++];
+        indices.push(idx);
+        const x = idx % w, y = (idx / w) | 0;
+        sumX += x; sumY += y;
+        const neighbors = [
+          x>0 ? idx-1 : -1, x<w-1 ? idx+1 : -1,
+          y>0 ? idx-w : -1, y<h-1 ? idx+w : -1,
+        ];
+        for (const nb of neighbors){
+          if (nb >= 0 && !visited[nb] && bin[nb] !== 0){ visited[nb] = 1; queue[qTail++] = nb; }
+        }
+      }
+      comps.push({ indices, sumX, sumY });
+    }
+    return comps;
+  }
+
+  const initialComps = labelComponents(binary);
+  const initialTotal = initialComps.reduce((s,c) => s + c.indices.length, 0);
+  if (initialTotal === 0) return mask01.slice();
+  // A candidate blob has to be a meaningful fraction of the whole subject
+  // to count as a genuine second subject -- otherwise ordinary erosion
+  // noise (a few speckled pixels flaking off the boundary) would look
+  // like a "split" on every single photo.
+  const minBlobSize = Math.max(40, Math.round(initialTotal * 0.03));
+  const maxRadius = Math.max(3, Math.round(Math.min(w, h) * 0.02));
+
+  let splitComps = null, radiusUsed = 0;
+  for (let r = 1; r <= maxRadius; r++){
+    const eroded = erodeMask(binary, w, h, r);
+    const comps = labelComponents(eroded).filter(c => c.indices.length >= minBlobSize);
+    if (comps.length === 0) break; // eroded away entirely before finding a split -- no safe radius exists here, bail out untouched
+    if (comps.length >= 2){ splitComps = comps; radiusUsed = r; break; }
+  }
+  if (!splitComps) return mask01.slice(); // no touching-bridge found within a safe radius -- single subject, nothing to separate
+
+  // Safety guard against a well-documented false-positive: a SINGLE
+  // subject's own narrow internal joints (a neck, a waist on a legs-
+  // apart stance) can look exactly like a "thin bridge" to the erosion
+  // loop above, and eroding through one would silently discard half of
+  // one real subject rather than remove a second one -- exactly the
+  // failure mode an earlier "neck-split" attempt hit and had to be
+  // reverted for (it erased half a real subject on common wide-stance
+  // poses). The distinguishing signal: two genuinely separate
+  // people/objects in one photo are almost always positioned SIDE BY
+  // SIDE (their horizontal extents barely overlap), while a single
+  // subject's own parts (head over torso, torso over spread legs) are
+  // stacked and occupy nearly the SAME horizontal range regardless of
+  // their different vertical position. So the split is only trusted when
+  // the candidate blobs are meaningfully offset from each other
+  // horizontally, not merely by vertical position -- exactly the axis the
+  // reverted feature got wrong.
+  function bboxX(indices){
+    let minX = w, maxX = 0;
+    for (const idx of indices){ const x = idx % w; if (x < minX) minX = x; if (x > maxX) maxX = x; }
+    return { minX, maxX };
+  }
+  const boxesX = splitComps.map(c => bboxX(c.indices));
+  let sideBySide = true;
+  for (let i=0; i<boxesX.length && sideBySide; i++){
+    for (let j=i+1; j<boxesX.length && sideBySide; j++){
+      const a = boxesX[i], b = boxesX[j];
+      const overlap = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
+      const narrower = Math.min(a.maxX - a.minX, b.maxX - b.minX) || 1;
+      // One blob's horizontal range mostly nested inside the other's --
+      // looks like the SAME subject's own stacked parts, not two
+      // side-by-side subjects.
+      if (overlap / narrower > 0.5) sideBySide = false;
+    }
+  }
+  if (!sideBySide) return mask01.slice(); // looks like a single subject's own internal narrowing, not a genuine second subject -- leave unsplit
+
+  const cx = w/2;
+  const maxArea = Math.max(...splitComps.map(c => c.indices.length));
+  let best = null, bestScore = -Infinity;
+  for (const c of splitComps){
+    const areaScore = c.indices.length / maxArea;
+    const centroidX = c.sumX / c.indices.length;
+    const centerScore = 1 - Math.min(1, Math.abs(centroidX - cx) / cx);
+    const score = areaScore*0.65 + centerScore*0.35;
+    if (score > bestScore){ bestScore = score; best = c; }
+  }
+
+  const isolated = new Uint8ClampedArray(n);
+  for (const idx of best.indices) isolated[idx] = 255;
+  const restored = dilateMask(isolated, w, h, radiusUsed);
+
+  const out = new Uint8ClampedArray(n);
+  for (let i=0; i<n; i++) out[i] = (restored[i] !== 0 && mask01[i]) ? 1 : 0;
+  return out;
+}
+
 function setupDropZone(zoneId, inputId, onFiles){
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
@@ -3504,8 +3641,17 @@ if (document.getElementById('aiRemoveDrop')){
       // which non-background class it was labeled as. See that function's
       // header comment for the full rationale and its one honestly-stated
       // limitation (two TOUCHING people of the same class can't be split
-      // without an instance-segmentation model).
+      // without an instance-segmentation model) is addressed next.
       const normalizedMask = selectPrimarySubjectMask(rawMaskData, maskW, maskH, result.confidenceMasks);
+      // separateTouchingPrimarySubject (defined right after
+      // selectPrimarySubjectMask above) covers exactly that limitation:
+      // it erodes just enough to break the thin bridge where a second,
+      // physically-touching subject of the same class merges into this
+      // mask, keeps only the blob that best matches "the subject" (mass +
+      // centering), then dilates it back to its original thickness. On
+      // the overwhelmingly common case of a single, unmerged subject it
+      // finds no safe split and returns the mask unchanged.
+      const separatedMask = separateTouchingPrimarySubject(normalizedMask, maskW, maskH);
 
 
 
@@ -3546,7 +3692,7 @@ if (document.getElementById('aiRemoveDrop')){
       const pixels = imageData.data;
 
       const refinedAlpha = refineSegmentationMask({
-        maskData: normalizedMask, maskW, maskH,
+        maskData: separatedMask, maskW, maskH,
         confidenceData, confW, confH,
         outW: w, outH: h,
         personCategoryValue: 1,
