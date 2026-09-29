@@ -680,7 +680,7 @@ RESUME_FORM = """<div class="view-title"><h2>Build Your Resume</h2></div>
       </div>"""
 
 PDF_TOOLS = [
-    {"slug":"pdf-merge","name":"Merge PDF","desc":"Combine multiple PDFs into one, in any order you choose.",
+    {"slug":"pdf-merge","name":"Merge PDF","layout":"A","desc":"Combine multiple PDFs into one, in any order you choose.",
      "subtitle":"Combine multiple PDF files into one, in any order you choose — free, private, instant.",
      "meta":"Free online PDF merge tool. Combine multiple PDF files into one in any order, right in your browser. No upload, no signup.",
      "category":"BusinessApplication","form":PDF_MERGE_FORM,
@@ -693,7 +693,7 @@ PDF_TOOLS = [
             ("Can I merge password-protected PDFs?","Most browser-based mergers, including this one, can't read encrypted PDFs directly — remove the password first using a PDF editor, then merge.")],
      "related":["pdf-split","pdf-to-word"]},
 
-    {"slug":"pdf-split","name":"Split PDF","desc":"Pull specific pages out, or split every page into its own file.",
+    {"slug":"pdf-split","name":"Split PDF","layout":"B","desc":"Pull specific pages out, or split every page into its own file.",
      "subtitle":"Pull specific pages out, or split every page into its own file — free, private, instant.",
      "meta":"Free online PDF split tool. Extract specific pages or split every page into its own file, right in your browser. No upload, no signup.",
      "category":"BusinessApplication","form":PDF_SPLIT_FORM,
@@ -706,7 +706,7 @@ PDF_TOOLS = [
             ("Can I extract just one page?","Yes — tap only that page in the grid before splitting; the result is a .zip containing just that single-page PDF.")],
      "related":["pdf-merge","word-to-pdf"]},
 
-    {"slug":"image-to-pdf","name":"Image to PDF","desc":"Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.",
+    {"slug":"image-to-pdf","name":"Image to PDF","layout":"C","desc":"Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF.",
      "subtitle":"Combine JPG, PNG, WEBP, BMP, or GIF images into a single PDF, with page size, orientation, and margin control.",
      "meta":"Free online image to PDF converter. Combine JPG, PNG, WEBP, BMP, or GIF images into one PDF with A4/Letter/original sizing, right in your browser.",
      "category":"BusinessApplication","form":ITP_FORM,
@@ -719,7 +719,7 @@ PDF_TOOLS = [
             ("Can I mix different image formats and sizes in one PDF?","Yes — each image becomes its own page, so you can freely mix formats, orientations, and sizes in a single conversion.")],
      "related":["pdf-to-image","pdf-compress"]},
 
-    {"slug":"pdf-compress","name":"PDF Compress","desc":"Shrink PDF file size by recompressing embedded images.",
+    {"slug":"pdf-compress","name":"PDF Compress","layout":"D","desc":"Shrink PDF file size by recompressing embedded images.",
      "subtitle":"Shrink a PDF's file size by recompressing its embedded images, while keeping text sharp and selectable.",
      "meta":"Free online PDF compressor. Reduce PDF file size by recompressing embedded images at your chosen level, right in your browser. Text stays untouched.",
      "category":"BusinessApplication","form":PDFC_FORM,
@@ -732,7 +732,7 @@ PDF_TOOLS = [
             ("Which images does this compress?","Images embedded using JPEG compression, which covers the large majority of photos and scans in real-world PDFs. Images using other internal formats are left unchanged to avoid any risk of visual corruption.")],
      "related":["pdf-merge","pdf-to-word"]},
 
-    {"slug":"pdf-to-word","name":"PDF to Word Converter","desc":"Convert PDF into an editable DOCX \u2014 real selectable text, not a screenshot.",
+    {"slug":"pdf-to-word","name":"PDF to Word Converter","layout":"B","desc":"Convert PDF into an editable DOCX \u2014 real selectable text, not a screenshot.",
      "subtitle":"Convert a PDF into an editable Word document \u2014 real selectable text, not an image pretending to be one.",
      "meta":"Free PDF to Word converter. Convert PDF into an editable DOCX with headings, bold/italic, and hyperlinks preserved on a best-effort basis, entirely in your browser.",
      "category":"BusinessApplication","form":pw_form("p2w"),
@@ -746,7 +746,7 @@ PDF_TOOLS = [
             ("Is my file uploaded anywhere?","No \u2014 both reading the PDF and building the Word document happen entirely inside your browser.")],
      "related":["resume-builder","word-to-pdf"]},
 
-    {"slug":"word-to-pdf","name":"Word to PDF Converter","desc":"Convert DOCX into a real, selectable-text PDF \u2014 not a screenshot.",
+    {"slug":"word-to-pdf","name":"Word to PDF Converter","layout":"C","desc":"Convert DOCX into a real, selectable-text PDF \u2014 not a screenshot.",
      "subtitle":"Convert a Word document into a real PDF with selectable text \u2014 not a screenshot embedded in a PDF wrapper.",
      "meta":"Free Word to PDF converter. Convert DOCX into a genuine text-based PDF with headings, bold/italic, lists, tables, and images preserved, entirely in your browser.",
      "category":"BusinessApplication","form":pw_form("w2p"),
@@ -760,7 +760,7 @@ PDF_TOOLS = [
             ("Is my file uploaded anywhere?","No \u2014 both reading the Word document and building the PDF happen entirely inside your browser.")],
      "related":["pdf-to-word","pdf-merge"]},
 
-    {"slug":"pdf-to-image","name":"PDF to Image","desc":"Convert every page of a PDF into JPG, PNG, or WEBP images.",
+    {"slug":"pdf-to-image","name":"PDF to Image","layout":"D","desc":"Convert every page of a PDF into JPG, PNG, or WEBP images.",
      "subtitle":"Convert every page of a PDF into JPG, PNG, or WEBP images, with adjustable DPI and quality.",
      "meta":"Free online PDF to image converter. Convert every page of a PDF into JPG, PNG, or WEBP, with adjustable DPI and quality, right in your browser.",
      "category":"BusinessApplication","form":PTI_FORM,
@@ -772,7 +772,7 @@ PDF_TOOLS = [
             ("Why would I choose WEBP over JPG or PNG?","WEBP typically produces smaller files than JPG at similar quality; if your browser can't encode WEBP, this tool automatically falls back to PNG for that page rather than failing.")],
      "related":["image-to-pdf","pdf-compress"]},
 
-    {"slug":"resume-builder","name":"Resume Builder & ATS Checker","desc":"Build a professional resume and check it against common ATS patterns.",
+    {"slug":"resume-builder","name":"Resume Builder & ATS Checker","layout":"A","desc":"Build a professional resume and check it against common ATS patterns.",
      "subtitle":"Build a professional resume with live preview, plus check any resume against common ATS (Applicant Tracking System) patterns \u2014 both entirely in your browser.",
      "meta":"Free resume builder and ATS resume checker. Build a resume with 4 templates and a live preview, or upload a PDF/DOCX resume for a rule-based ATS score, entirely in your browser.",
      "category":"BusinessApplication","form":RESUME_FORM,
@@ -830,6 +830,101 @@ def build_pdf_tool_page(tool):
     }
     faqpage_schema = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": faq_items}
 
+    # ---- Layout variants -------------------------------------------------
+    # Same underlying facts (intro/features/benefits/how_to/faq) every time —
+    # only the section labels, order, and presentation differ. This exists
+    # to avoid every PDF tool page reading as the exact same template with
+    # the tool name swapped, which is a real crawl/quality signal for a
+    # brand-new, low-authority domain. Nothing here is fabricated: every
+    # section still traces back to a field already on the tool dict.
+    h2 = '<h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">'
+    h2_first = '<h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">'
+    intro_p = f'<p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["intro"]}</p>'
+    features_ul = f'<ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{features_html}</ul>'
+    benefits_ul = f'<ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{benefits_html}</ul>'
+    howto_p = f'<p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["how_to"]}</p>'
+    faq_block = f'{faq_html}'
+    related_block = f'<div class="related-grid">\n{related_html}    </div>'
+
+    layout = tool.get("layout", "A")
+
+    if layout == "B":
+        # Process-first ordering: how a first-time visitor actually decides
+        # whether to use a converter/multi-step tool — see the steps, then
+        # why it's worth trusting, then what it can do, then open questions.
+        content = f"""{h2_first}About the {tool["name"]}</h2>
+    {intro_p}
+
+    {h2}How It Works</h2>
+    {howto_p}
+
+    {h2}Why Use This Tool</h2>
+    {benefits_ul}
+
+    {h2}Key Capabilities</h2>
+    {features_ul}
+
+    {h2}Frequently Asked Questions</h2>
+{faq_block}    {h2}Related Tools</h2>
+    {related_block}"""
+
+    elif layout == "C":
+        # Benefit-led ordering, features and benefits merged under one
+        # "What You Can Do" heading instead of two separate lists — fits
+        # tools where the feature list and the benefit list overlap a lot
+        # (a converter's main "feature" mostly *is* its benefit).
+        merged_html = features_html + benefits_html
+        content = f"""{h2_first}About the {tool["name"]}</h2>
+    {intro_p}
+
+    {h2}What You Can Do</h2>
+    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{merged_html}</ul>
+
+    {h2}How to Use</h2>
+    {howto_p}
+
+    {h2}Frequently Asked Questions</h2>
+{faq_block}    {h2}Related Tools</h2>
+    {related_block}"""
+
+    elif layout == "D":
+        # Trust-first ordering: leads with why it's safe/different
+        # (benefits), then capabilities, then process — fits privacy- or
+        # quality-sensitive tools (compression, format conversion) where
+        # "what happens to my file" is the first thing a visitor wants to know.
+        content = f"""{h2_first}About the {tool["name"]}</h2>
+    {intro_p}
+
+    {h2}Why It's Different</h2>
+    {benefits_ul}
+
+    {h2}Key Capabilities</h2>
+    {features_ul}
+
+    {h2}How to Use</h2>
+    {howto_p}
+
+    {h2}Frequently Asked Questions</h2>
+{faq_block}    {h2}Related Tools</h2>
+    {related_block}"""
+
+    else:  # layout == "A" (original ordering, kept as-is)
+        content = f"""{h2_first}About the {tool["name"]}</h2>
+    {intro_p}
+
+    {h2}Features</h2>
+    {features_ul}
+
+    {h2}How to Use</h2>
+    {howto_p}
+
+    {h2}Benefits</h2>
+    {benefits_ul}
+
+    {h2}Frequently Asked Questions</h2>
+{faq_block}    {h2}Related Tools</h2>
+    {related_block}"""
+
     body = f"""<div class="hero-sub">
   {breadcrumb}
   <h1>{tool["name"]}</h1>
@@ -846,22 +941,7 @@ def build_pdf_tool_page(tool):
   </div>
 
   <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--card-border);max-width:720px;">
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">About the {tool["name"]}</h2>
-    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["intro"]}</p>
-
-    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Features</h2>
-    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{features_html}</ul>
-
-    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">How to Use</h2>
-    <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7;">{tool["how_to"]}</p>
-
-    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Benefits</h2>
-    <ul style="font-size:13.5px;color:var(--ink-soft);line-height:1.8;padding-left:20px;margin:0;">{benefits_html}</ul>
-
-    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Frequently Asked Questions</h2>
-{faq_html}    <h2 style="font-size:18px;font-weight:800;margin:22px 0 8px;">Related Tools</h2>
-    <div class="related-grid">
-{related_html}    </div>
+    {content}
   </div>
 </div>
 
