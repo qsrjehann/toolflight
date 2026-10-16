@@ -2494,3 +2494,19 @@ html.dark .category-hub-card .cat-arrow{
 .rt-crop-handle-ne{ cursor:nesw-resize; } .rt-crop-handle-sw{ cursor:nesw-resize; }
 .rt-crop-handle-n{ cursor:ns-resize; } .rt-crop-handle-s{ cursor:ns-resize; }
 .rt-crop-handle-e{ cursor:ew-resize; } .rt-crop-handle-w{ cursor:ew-resize; }
+
+/* ===== Sitewide "Explore all tools" crawl-path navigation (added in GSC clean-up) ===== */
+.tf-allnav{margin-top:48px;padding:30px 0 6px;border-top:1px solid var(--card-border);}
+.tf-allnav-title{font-size:15px;font-weight:800;margin:0 0 18px;color:var(--ink);letter-spacing:-.01em;}
+.tf-allnav-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:22px 26px;}
+.tf-allnav h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 10px;font-weight:700;}
+.tf-allnav ul{list-style:none;margin:0;padding:0;}
+.tf-allnav li{margin:0 0 7px;}
+.tf-allnav a{font-size:13.5px;color:var(--ink);opacity:.85;text-decoration:none;}
+.tf-allnav a:hover{opacity:1;color:var(--accent1);text-decoration:underline;}
+
+/* ===== Page guide sections (GSC clean-up: unique, tool-specific content) ===== */
+.tf-guide h2{font-size:18px;font-weight:800;margin:22px 0 8px;}
+.tf-guide p,.tf-guide li{font-size:13.5px;color:var(--ink-soft);line-height:1.7;}
+.tf-guide p{margin:0 0 10px;} .tf-guide ul{padding-left:20px;margin:8px 0 10px;} .tf-guide li{margin-bottom:6px;}
+.tf-guide a{color:var(--accent1);} .tf-guide strong{color:var(--ink);}
