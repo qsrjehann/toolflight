@@ -101,9 +101,10 @@ document.querySelectorAll('.tool-card[data-tool]').forEach(card => {
 
 /* ============ ACTIVE NAV LINK ============ */
 (function highlightActiveNav(){
-  const path = window.location.pathname.split('/').pop() || 'index.html';
+  // Clean URLs (/pdf-tools) and legacy .html URLs both resolve to the same key.
+  const path = (window.location.pathname.split('/').pop() || 'index').replace(/\.html$/, '');
   document.querySelectorAll('.nav-links a[data-page]').forEach(a => {
-    if (a.dataset.page === path) a.classList.add('active');
+    if (a.dataset.page.replace(/\.html$/, '') === path) a.classList.add('active');
   });
 })();
 
@@ -3686,7 +3687,7 @@ if (document.getElementById('aiRemoveDrop')){
     // pattern already used elsewhere, then navigate to the standalone page.
     try{
       localStorage.setItem('toolflight_bg_handoff', aiResultCanvas.toDataURL('image/png'));
-      window.location.href = 'background-changer.html';
+      window.location.href = '/background-changer';
     }catch(err){
       toast('Could not hand off to Background Changer — try downloading and re-uploading instead.', 'err');
     }
